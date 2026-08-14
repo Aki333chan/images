@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "strictPropertyInitialization": false,
+    "declaration": false
+  },
+  // prisma/seed.ts не входит в сборку: он запускается через ts-node
+  // (npm run prisma:seed) и не должен влиять на rootDir и layout dist/.
+  "include": ["src"]
+}

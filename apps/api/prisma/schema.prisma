@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MODERATOR
+  VIEWER
+}
+
+enum TicketStatus {
+  OPEN
+  CLOSED
+}
+
+enum ActorType {
+  user
+  ai
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  displayName   String   @map("display_name")
+  role          Role     @default(VIEWER)
+  isActive      Boolean  @default(true) @map("is_active")
+  totpSecretEnc String?  @map("totp_secret_enc")
+  totpEnabled   Boolean  @default(false) @map("totp_enabled")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  sessions     Session[]
+  serverAccess UserServerAccess[]
+
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String    @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  ip               String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Зеркало серверов Pterodactyl + привязка игрового модуля + доп. креды.
+model Server {
+  id              String   @id @default(uuid())
+  pteroId         Int      @unique @map("ptero_id")
+  pteroIdentifier String   @unique @map("ptero_identifier")
+  pteroUuid       String   @unique @map("ptero_uuid")
+  name            String
+  description     String?
+  node            String?
+  status          String?
+  /// id игрового модуля из реестра (null — модуль не назначен)
+  moduleId        String?  @map("module_id")
+  /// AES-256-GCM-шифрованный JSON с доп. кредами (RCON и т.п.)
+  credentialsEnc  String?  @map("credentials_enc")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  access  UserServerAccess[]
+  tickets Ticket[]
+
+  @@map("servers")
+}
+
+/// Server-scoped доступ: Admin/Moderator видит только привязанные сервера.
+model UserServerAccess {
+  userId   String @map("user_id")
+  serverId String @map("server_id")
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@id([userId, serverId])
+  @@map("user_server_access")
+}
+
+/// Зашифрованные интеграционные секреты (ключи Pterodactyl API и т.п.).
+model IntegrationSecret {
+  key       String   @id
+  valueEnc  String   @map("value_enc")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("integration_secrets")
+}
+
+model Ticket {
+  id               String       @id @default(uuid())
+  serverId         String       @map("server_id")
+  server           Server       @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerUuid       String       @map("player_uuid")
+  playerNameCached String       @map("player_name_cached")
+  status           TicketStatus @default(OPEN)
+  /// [{ text, from, created_at }]
+  messages         Json         @default("[]")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@index([serverId, status])
+  @@index([status])
+  @@map("tickets")
+}
+
+model AuditLog {
+  id         BigInt    @id @default(autoincrement())
+  actorId    String?   @map("actor_id")
+  actorType  ActorType @default(user) @map("actor_type")
+  action     String
+  targetType String?   @map("target_type")
+  targetId   String?   @map("target_id")
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@map("audit_log")
+}
