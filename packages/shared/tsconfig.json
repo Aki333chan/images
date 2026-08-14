@@ -1,0 +1,7 @@
+// Конфиг для редактора/IDE. Сборка идёт через tsconfig.cjs.json + tsconfig.esm.json.
+{
+  "extends": "./tsconfig.cjs.json",
+  "compilerOptions": {
+    "noEmit": true
+  }
+}
