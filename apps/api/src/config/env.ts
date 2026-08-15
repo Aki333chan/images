@@ -32,6 +32,19 @@ export const env = {
   NODE_ENV: optional('NODE_ENV', 'development'),
   isProd: process.env.NODE_ENV === 'production',
   API_PORT: intVar('API_PORT', 3001),
+  /**
+   * Адрес прослушивания. По умолчанию только localhost — наружу ничего не
+   * торчит. В проде ставится адрес WireGuard (10.0.0.1): туда ходит и nginx
+   * с той же машины, и companion-плагин через туннель, а на публичном
+   * интерфейсе порт при этом не слушается вовсе.
+   */
+  API_BIND: optional('API_BIND', '127.0.0.1'),
+  /**
+   * Адреса реверс-прокси, чьему X-Forwarded-For можно верить (через запятую).
+   * Пусто — не верить никому: тогда req.ip всегда реальный источник.
+   * Важно для журнала сессий и для проверки «запрос из приватной сети».
+   */
+  TRUST_PROXY: optional('TRUST_PROXY', ''),
   WEB_ORIGIN: optional('WEB_ORIGIN', 'http://localhost:5173'),
   DATABASE_URL: isTest ? optional('DATABASE_URL') : required('DATABASE_URL'),
   REDIS_URL: optional('REDIS_URL', 'redis://localhost:6379'),

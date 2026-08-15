@@ -1,0 +1,61 @@
+[Unit]
+Description=Aurum Panel API
+Documentation=https://github.com/Aki333chan/images
+# Postgres и Redis — на этой же машине; Requires не ставим намеренно:
+# при кратком падении БД сервис должен остаться поднятым и вернуть 503
+# на /api/health/ready, а не уйти в stopped.
+# wg-quick — потому что API слушает адрес туннеля (10.0.0.1): без поднятого
+# интерфейса bind не удастся. Restart=always вытянет, если WireGuard
+# поднимется позже.
+After=network-online.target wg-quick@wg0.service postgresql.service aurum-redis.service
+Wants=network-online.target
+
+# Ограничение перезапусков задаётся именно здесь: в секции [Service]
+# современный systemd эти ключи игнорирует (и молча — проверено
+# через systemd-analyze verify).
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=aurum
+Group=aurum
+WorkingDirectory=/opt/aurum-panel/apps/api
+EnvironmentFile=/etc/aurum-panel/api.env
+ExecStart=/usr/bin/node dist/main.js
+
+# Падает чаще 5 раз в минуту (см. StartLimit* в [Unit]) — systemd
+# перестаёт его поднимать и оставляет в failed, чтобы это было видно.
+Restart=always
+RestartSec=5
+
+# Логи уходят в журнал: journalctl -u aurum-api -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-api
+
+# --- Ограничение прав процесса ---
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+# Писать разрешено только сюда (Prisma и логи ничего больше не трогают).
+ReadWritePaths=/var/log/aurum-panel
+# Наружу ходим только по IP: Pterodactyl на localhost, игровые сервера в туннеле.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# .env содержит секреты — читаем, но не показываем другим пользователям.
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

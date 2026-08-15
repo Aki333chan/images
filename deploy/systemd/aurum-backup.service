@@ -1,0 +1,31 @@
+[Unit]
+Description=Бэкап PostgreSQL панели Aurum
+Documentation=https://github.com/Aki333chan/images
+After=postgresql.service
+# Только своя БД панели. MariaDB Pterodactyl на домашнем сервере
+# этот бэкап не касается вообще.
+
+[Service]
+Type=oneshot
+User=aurum
+Group=aurum
+EnvironmentFile=/etc/aurum-panel/backup.env
+ExecStart=/opt/aurum-panel/deploy/scripts/backup-db.sh
+
+# Бэкап не должен мешать панели работать.
+Nice=10
+IOSchedulingClass=idle
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-backup
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/aurum-panel
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

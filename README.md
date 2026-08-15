@@ -140,11 +140,14 @@ npm run build     # сборка shared + api + web (полная проверк
 
 ```ts
 interface GameModuleManifest {
-  id: string;                        // 'minecraft-vanilla'
+  id: string;                       // 'minecraft'
   displayName: string;
-  capabilities: ModuleCapability[];  // console | playerList | banKick | whitelist
-                                     // | inventory | quickCommands | tickets
-  permissions: ModulePermission[];   // ключи вида '<id>.<action>' + роли по умолчанию
+  // Ключи: console | playerList | banKick | whitelist | inventory
+  //        | quickCommands | tickets
+  // Значение: true — работает всегда; 'requires-plugin' — вкладка есть,
+  // но без companion-плагина показывает инструкцию.
+  capabilities: ModuleCapabilities;
+  permissions: ModulePermission[];  // ключи вида '<id>.<action>' + роли по умолчанию
 }
 ```
 
@@ -160,7 +163,7 @@ Backend-часть (`BackendGameModule`) добавляет к манифест�
 2. `<id>.def.ts` — манифест + ссылка на NestJS-модуль; зарегистрировать в
    `ALL_MODULES` (`module-registry.ts`).
 3. `apps/web/src/modules/<id>/` — компоненты вкладок; связать capability →
-   компонент в `MODULE_TAB_REGISTRY`.
+   компонент в `MODULE_REGISTRY` (там же — необязательный виджет дашборда).
 4. Добавить id в `modules.config.ts`.
 5. Модели БД модуля — в общий `schema.prisma` с префиксом таблиц `mod_<id>_`.
 
@@ -303,31 +306,39 @@ ticketsService.createOrAppendTicket(serverId, playerUuid, playerName, text)
 
 ## Развёртывание на VDS
 
-```bash
-npm ci
-npm run build                       # shared + api + web
-npm run prisma:generate
-npm --workspace @aurum/api run prisma:deploy
-node apps/api/dist/main.js          # под systemd
-```
+Полный пошаговый runbook — в [`deploy/DEPLOY.md`](deploy/DEPLOY.md): аудит
+живой системы перед изменениями, установка рядом с работающей Pterodactyl,
+nginx и сертификат, systemd, бэкапы, чек-лист секретов и финальный чек-лист
+перед запуском.
 
-Статика веба — `apps/web/dist`. Пример nginx для `manage.aurumgg.ovh`:
+Готовые артефакты в `deploy/`:
 
-```nginx
-location /api/ { proxy_pass http://127.0.0.1:3001; }
+| Файл | Что это |
+| --- | --- |
+| `audit.sh` | read-only осмотр обеих машин; ничего не меняет |
+| `firewall/home-server-additive.sh` | additive ufw-правила на 10.0.0.2 под RCON и плагин |
+| `nginx/manage.aurumgg.ovh.conf` | server-block рядом с блоком Pterodactyl |
+| `systemd/aurum-api.service` | юнит API |
+| `systemd/aurum-redis.service` + `redis/aurum.conf` | отдельный Redis на 6380 |
+| `systemd/aurum-backup.{service,timer}` | ежедневный бэкап своей БД |
+| `scripts/backup-db.sh`, `scripts/restore-db.sh` | бэкап и восстановление |
+| `env/api.env.example` | продакшен-переменные с пояснениями |
 
-location /ws  {                      # WebSocket-эндпоинт панели
-  proxy_pass http://127.0.0.1:3001;
-  proxy_http_version 1.1;
-  proxy_set_header Upgrade $http_upgrade;
-  proxy_set_header Connection "upgrade";
-}
+Ключевое про сеть: API слушает адрес туннеля (`API_BIND=10.0.0.1`), а не
+`0.0.0.0` — на публичном интерфейсе порт не открыт вовсе, даже при ошибке в
+ufw. К нему ходят nginx с той же машины и companion-плагин через туннель.
+`TRUST_PROXY=10.0.0.1` разрешает верить `X-Forwarded-For` только от своего
+nginx, иначе IP в списке сессий можно было бы подделать заголовком.
 
-location / { root /var/www/aurum-panel; try_files $uri /index.html; }
-```
+## Health-check
 
-В продакшене выставьте `NODE_ENV=production` (refresh-cookie получит флаг
-`Secure`) и `WEB_ORIGIN=https://manage.aurumgg.ovh`.
+| Роут | Назначение |
+| --- | --- |
+| `GET /api/health` | liveness: процесс жив. Не ходит в БД — не покраснеет из-за кратковременной недоступности Postgres. Это то, что стоит опрашивать мониторингом |
+| `GET /api/health/ready` | readiness: проверяет БД и Redis, отдаёт `503`, если что-то недоступно |
+
+Оба публичные и намеренно скупые: ни версий, ни адресов, ни текстов ошибок —
+подробности пишутся в `journalctl -u aurum-api`.
 
 ## Модель безопасности
 
