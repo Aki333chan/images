@@ -1,4 +1,7 @@
 node_modules/
+# На сервере /opt/aurum-panel — одновременно репозиторий и домашний каталог
+# пользователя aurum, поэтому npm складывает кэш прямо сюда.
+.npm/
 dist/
 build/
 coverage/

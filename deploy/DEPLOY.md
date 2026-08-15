@@ -586,16 +586,34 @@ redis-cli -p 6379 ping    # Pterodactyl не задет — тоже PONG
 
 **Что делаем:** кладём код на сервер, собираем его, заполняем конфигурацию.
 
-### 3.1. Создать пользователя для панели
+### 3.1. Создать пользователя для панели и каталог
 
 ```bash
-sudo useradd --system --create-home --home-dir /opt/aurum-panel --shell /usr/sbin/nologin aurum
+sudo useradd --system --home-dir /opt/aurum-panel --shell /usr/sbin/nologin aurum
+sudo install -d -o aurum -g aurum -m 0755 /opt/aurum-panel
 ```
 
 **Почему отдельный пользователь:** панель будет работать не от root. Если в
 ней найдётся уязвимость, злоумышленник получит права этого ограниченного
 пользователя, а не всей машины. `--shell /usr/sbin/nologin` означает, что
 под ним нельзя залогиниться.
+
+**Почему каталог создаём отдельной командой, а не через `--create-home`:**
+`--create-home` скопировал бы в каталог файлы-заготовки из `/etc/skel`
+(`.bashrc`, `.profile`, `.bash_logout`), и следующий шаг упал бы с
+`destination path already exists and is not an empty directory` — `git clone`
+отказывается класть репозиторий в непустой каталог. Плюс `--create-home`
+ставит права `0750`, а nginx читает собранный фронтенд из этого каталога от
+пользователя `www-data` и при `0750` получил бы 403 на каждой странице.
+Поэтому `0755`: владелец `aurum` пишет, остальные только читают.
+
+Проверка:
+
+```bash
+ls -ld /opt/aurum-panel
+```
+
+Ожидаемо: `drwxr-xr-x` и владелец `aurum aurum`. Каталог пустой.
 
 ### 3.2. Скачать код
 
@@ -608,6 +626,41 @@ sudo -u aurum git checkout claude/pterodactyl-admin-panel-core-984zye
 > `sudo -u aurum` = «выполни от имени пользователя aurum». Так все файлы
 > сразу принадлежат ему и не придётся чинить права потом.
 
+`git clone` в **заранее созданный пустой** каталог работает штатно — ругается
+он только на непустой.
+
+### Если не получилось
+
+- **`destination path '/opt/aurum-panel' already exists and is not an empty
+  directory`** → каталог создан с `--create-home` по старой версии инструкции.
+  Как починить — блок ниже.
+- **`detected dubious ownership in repository`** при последующих командах
+  `git` → вы запускаете git от root в каталоге, который принадлежит `aurum`.
+  Не «чините» это через `safe.directory`, просто добавляйте `sudo -u aurum`
+  перед командой, как в инструкции.
+
+### Если каталог уже создан с `--create-home`
+
+Сначала **посмотрите, что внутри** — удалять вслепую нельзя:
+
+```bash
+ls -la /opt/aurum-panel
+```
+
+Если там только `.bashrc`, `.profile`, `.bash_logout` (и `.`/`..`) — это
+заготовки из `/etc/skel`, они не нужны. Пересоздаём каталог:
+
+```bash
+sudo rm -rf /opt/aurum-panel
+sudo install -d -o aurum -g aurum -m 0755 /opt/aurum-panel
+```
+
+Если внутри есть что-то ещё — остановитесь и разберитесь, что это, прежде
+чем удалять.
+
+Пользователя `aurum` пересоздавать не нужно, он уже есть. После этого
+возвращайтесь к шагу 3.2.
+
 ### 3.3. Установить зависимости и собрать
 
 ```bash
@@ -619,12 +672,34 @@ sudo -u aurum npm run prisma:generate
 Это самый долгий шаг — **3–7 минут**. `npm ci` качает библиотеки,
 `npm run build` собирает бэкенд и фронтенд.
 
+> Команды выполняются из `/opt/aurum-panel` — вы перешли туда на шаге 3.2.
+> Домашний каталог пользователя `aurum` — тот же `/opt/aurum-panel`, поэтому
+> npm сложит свой кэш в `/opt/aurum-panel/.npm`. Это нормально, каталог
+> добавлен в `.gitignore` и обновлениям кода не мешает.
+
 Проверка:
 
 ```bash
 ls /opt/aurum-panel/apps/api/dist/main.js      # файл должен существовать
 ls /opt/aurum-panel/apps/web/dist/index.html   # и этот тоже
 ```
+
+### Если не получилось
+
+- **`EACCES: permission denied`** → команду запустили без `sudo -u aurum`,
+  и часть файлов теперь принадлежит root. Верните владельца и повторите:
+  `sudo chown -R aurum:aurum /opt/aurum-panel`
+- **`npm: command not found`** → Node не установлен, вернитесь к шагу 2.3.
+- **Сборка упала где-то посередине** → `npm run build` собирает три части
+  подряд, и по сообщению не всегда понятно, какая именно сломалась.
+  Прогоните их по одной, в этом порядке (`shared` обязательно первым — от
+  него зависят остальные две):
+
+  ```bash
+  sudo -u aurum npm run build -w packages/shared
+  sudo -u aurum npm run build -w apps/api
+  sudo -u aurum npm run build -w apps/web
+  ```
 
 ### 3.4. Создать служебные каталоги
 
