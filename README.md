@@ -51,59 +51,211 @@ packages/
 
 ## Быстрый старт (локальная разработка)
 
+Это для запуска панели **на своём компьютере**, чтобы посмотреть и поправить.
+Для установки на сервер — [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
+
+### Что нужно поставить заранее
+
+| Что | Зачем | Проверить |
+| --- | --- | --- |
+| Node.js 22+ | на нём работает панель | `node --version` |
+| Docker + Docker Compose | поднимает Postgres и Redis одной командой | `docker --version` |
+| Git | забрать код | `git --version` |
+
+Node ставится с [nodejs.org](https://nodejs.org/) (берите LTS) или через
+[nvm](https://github.com/nvm-sh/nvm). Docker — с
+[docs.docker.com/get-docker](https://docs.docker.com/get-docker/).
+
+### Шаг 1. Забрать код
+
 ```bash
-# 1. Postgres + Redis
-docker compose up -d
-
-# 2. Зависимости
-npm install
-
-# 3. Конфигурация
-cp .env.example apps/api/.env
-#    Обязательно сгенерируйте секреты:
-#    openssl rand -base64 48   -> JWT_ACCESS_SECRET, JWT_REFRESH_SECRET
-#    openssl rand -base64 32   -> APP_ENCRYPTION_KEY (ровно 32 байта)
-#    Укажите OWNER_EMAIL / OWNER_PASSWORD — из них создастся владелец.
-
-# 4. Общие типы, схема БД, владелец
-npm run build -w @aurum/shared
-npm run prisma:generate
-npm run prisma:migrate      # или prisma migrate deploy на проде
-npm run prisma:seed
-
-# 5. Запуск (в двух терминалах)
-npm run dev:api             # http://localhost:3001/api
-npm run dev:web             # http://localhost:5173
+git clone https://github.com/Aki333chan/images.git aurum-panel
+cd aurum-panel
+git checkout claude/pterodactyl-admin-panel-core-984zye
 ```
 
-Vite проксирует `/api` и `/ws` на API, поэтому cookie остаются first-party и в
-разработке ничего дополнительно настраивать не нужно.
+### Шаг 2. Поднять базу и Redis
+
+```bash
+docker compose up -d
+```
+
+Скачает образы (первый раз — минуту-две) и запустит два контейнера.
+
+Проверка:
+
+```bash
+docker compose ps
+```
+
+Ожидаемо: две строки со статусом `Up` и `(healthy)`.
+
+> Порты 5432 и 6379 слушают только на `127.0.0.1` — наружу база не смотрит.
+> Если порт уже занят чем-то другим, поменяйте его в `docker-compose.yml`.
+
+### Шаг 3. Установить зависимости
+
+```bash
+npm install
+```
+
+Займёт 2–4 минуты. Ставит зависимости сразу для всех частей монорепозитория.
+
+### Шаг 4. Настроить конфигурацию
+
+```bash
+cp .env.example apps/api/.env
+```
+
+Сгенерируйте секреты:
+
+```bash
+echo "JWT_ACCESS_SECRET=$(openssl rand -base64 48)"
+echo "JWT_REFRESH_SECRET=$(openssl rand -base64 48)"
+echo "APP_ENCRYPTION_KEY=$(openssl rand -base64 32)"
+```
+
+Откройте `apps/api/.env` любым редактором и подставьте эти три значения,
+а также свой email и пароль в `OWNER_EMAIL` / `OWNER_PASSWORD` — под ними
+вы будете входить.
+
+`DATABASE_URL` и `REDIS_URL` менять не надо: они уже совпадают с тем, что
+поднял `docker compose`.
+
+> Пробелов вокруг `=` быть не должно. Правильно: `API_PORT=3001`.
+
+### Шаг 5. Создать таблицы и первого пользователя
+
+```bash
+npm run build -w @aurum/shared    # общие типы, нужны остальным частям
+npm run prisma:generate           # клиент БД по схеме
+npm run prisma:migrate            # создать таблицы
+npm run prisma:seed               # создать владельца из OWNER_EMAIL
+```
+
+Ожидаемо в конце: `Создан владелец ваш@email`.
+
+### Шаг 6. Запустить
+
+Нужны **два терминала**, в каждом своя команда:
+
+```bash
+# терминал 1 — бэкенд
+npm run dev:api
+```
+
+```bash
+# терминал 2 — фронтенд
+npm run dev:web
+```
+
+Откройте `http://localhost:5173` и войдите под `OWNER_EMAIL`.
+
+Обе команды следят за файлами и перезапускаются сами при изменениях.
+Остановить — Ctrl+C в соответствующем терминале.
+
+Vite проксирует `/api` и `/ws` на бэкенд, поэтому cookie остаются
+first-party и ничего дополнительно настраивать не нужно.
+
+### Если не получилось
+
+| Ошибка | Причина и что делать |
+| --- | --- |
+| `Can't reach database server at localhost:5432` | не поднят Docker: `docker compose up -d` |
+| `Переменная окружения ... обязательна` | не заполнено поле в `apps/api/.env`, имя в сообщении |
+| `APP_ENCRYPTION_KEY должен быть 32 байта` | сгенерируйте ровно `openssl rand -base64 32` |
+| `EADDRINUSE :::3001` | порт занят другим процессом; поменяйте `API_PORT` |
+| `port is already allocated` от Docker | 5432 или 6379 заняты локальным Postgres/Redis; поменяйте порты в `docker-compose.yml` |
+| Фронт открывается, но вход не работает | не запущен бэкенд во втором терминале |
+
+Начать с чистого листа (**удалит все данные локальной БД**):
+
+```bash
+docker compose down -v && docker compose up -d
+npm run prisma:migrate && npm run prisma:seed
+```
 
 ### Проверки качества
 
 ```bash
-npm test          # unit-тесты (auth, ротация refresh, RBAC guard, тикеты)
+npm test          # unit-тесты (auth, ротация refresh, RBAC guard, тикеты, health)
 npm run lint      # ESLint
 npm run build     # сборка shared + api + web (полная проверка типов)
 ```
 
+Тесты плагина отдельно (нужен JDK 21+):
+
+```bash
+cd companion-plugin && ./gradlew :core:test
+```
+
 ## Настройка Pterodactyl
 
-Нужны **два** ключа — они хранятся в БД зашифрованными (AES-256-GCM) и никогда
-не попадают на фронтенд:
+Нужны **два разных ключа**. Они хранятся в БД зашифрованными (AES-256-GCM) и
+никогда не попадают на фронтенд.
 
-1. **Application API key** — админка Pterodactyl → *Application API*. Полный
-   доступ; используется только бэкендом для зеркалирования списка серверов
-   (`GET /api/application/servers`).
-2. **Client API key служебного пользователя** — заведите отдельного пользователя
-   Pterodactyl, добавьте его на нужные сервера и создайте ему Client API key
-   (*Account → API Credentials*). Через него идут консоль, питание и статистика:
-   `GET /api/client/servers/{id}/websocket`, `POST .../power`,
-   `POST .../command`, `GET .../resources`.
+### Ключ 1: Application API — читать список серверов
 
-Положите оба ключа в `PTERO_APP_API_KEY` / `PTERO_CLIENT_API_KEY`. При первом
-старте они шифруются и переносятся в таблицу `integration_secrets`, после чего
-переменные окружения можно очистить.
+1. Откройте Pterodactyl под администратором.
+2. Значок гаечного ключа (админка) → левое меню **Application API**.
+3. **Create New**.
+4. Description: `Aurum Panel`.
+5. В списке прав найдите строку **Servers** и поставьте **Read**.
+   Остальное можно оставить выключенным.
+6. **Create**.
+
+⚠️ Ключ показывается **один раз**. Скопируйте сразу и сохраните в менеджер
+паролей. Если потеряли — создайте новый, старый удалите.
+
+Используется для `GET /api/application/servers` — панель зеркалит список
+серверов себе.
+
+### Ключ 2: Client API служебного пользователя — консоль и питание
+
+Отдельный пользователь нужен, чтобы права панели можно было отозвать, не
+трогая вашу личную учётку.
+
+1. Админка → **Users** → **Create New**:
+   - Email: например `panel-bot@aurumgg.ovh`
+   - Username: `panelbot`
+   - Пароль: сгенерируйте `openssl rand -base64 24` и сохраните
+2. **Дайте ему доступ к серверам.** Для каждого сервера, которым будет
+   управлять панель: админка → **Servers** → сервер → вкладка **Users**
+   (в некоторых версиях **Subusers**) → **New User** → email `panelbot` →
+   отметьте права на консоль, питание и просмотр.
+3. Выйдите из админки и **войдите под `panelbot`**.
+4. Правый верхний угол → **Account** → вкладка **API Credentials**.
+5. **Create**: описание `Aurum Panel`, поле Allowed IPs оставьте пустым.
+6. Скопируйте ключ — он тоже показывается один раз.
+
+Через него идут консоль, питание и статистика:
+`GET /api/client/servers/{id}/websocket`, `POST .../power`,
+`POST .../command`, `GET .../resources`.
+
+> Если пропустить пункт 2, ключ создастся, но панель не увидит ни одного
+> сервера: Client API показывает только то, к чему у пользователя есть доступ.
+
+### Куда положить
+
+В `apps/api/.env` (локально) или `/etc/aurum-panel/api.env` (на сервере):
+
+```
+PTERO_APP_API_KEY=ключ_1
+PTERO_CLIENT_API_KEY=ключ_2
+```
+
+При первом старте они шифруются и переносятся в таблицу
+`integration_secrets`, после чего переменные окружения можно очистить и
+перезапустить сервис.
+
+### Проверка
+
+Войдите в панель → **Серверы** → **Синхронизировать с Pterodactyl**.
+Должен появиться список серверов. Если пусто — проверьте ключ 1 и журнал:
+`journalctl -u aurum-api -n 50 --no-pager`.
+
+Откройте сервер → вкладка **Консоль**. Если консоль подключилась — ключ 2 и
+права служебного пользователя настроены верно.
 
 Список серверов синхронизируется при старте и далее каждые 5 минут (BullMQ).
 Сервер, пропавший в Pterodactyl, не удаляется, а помечается статусом `missing` —
@@ -155,20 +307,92 @@ Backend-часть (`BackendGameModule`) добавляет к манифест�
 роутами, WS-gateway и кронами. Включённые модули перечислены в
 `apps/api/src/modules/modules.config.ts` и монтируются при старте динамически.
 
-**Как добавить модуль**
+### Как добавить свой модуль
 
-1. `apps/api/src/modules/<id>/` — NestJS-модуль; контроллеры вешаются на
-   `modules/<id>/servers/:serverId/...`, права проверяются декораторами
-   `@RequirePermission('<id>.action')` и `@ServerScoped('serverId')`.
-2. `<id>.def.ts` — манифест + ссылка на NestJS-модуль; зарегистрировать в
-   `ALL_MODULES` (`module-registry.ts`).
-3. `apps/web/src/modules/<id>/` — компоненты вкладок; связать capability →
-   компонент в `MODULE_REGISTRY` (там же — необязательный виджет дашборда).
-4. Добавить id в `modules.config.ts`.
-5. Модели БД модуля — в общий `schema.prisma` с префиксом таблиц `mod_<id>_`.
+Проще всего скопировать `test-dummy` — он маленький и содержит все нужные
+части. Ниже — что именно надо сделать, на примере модуля с id `rust`.
 
-Убрать id из `modules.config.ts` — безопасно: роуты, крон и вкладки исчезают,
-**данные в БД остаются нетронутыми**.
+**1. Backend: NestJS-модуль.** Создайте `apps/api/src/modules/rust/`:
+
+- `rust.controller.ts` — роуты. Путь всегда
+  `modules/<id>/servers/:serverId/...`, чтобы ядро могло проверить доступ
+  к серверу. Каждый метод защищается двумя декораторами:
+
+  ```ts
+  @Get('players')
+  @RequirePermission('rust.players.view')   // право модуля
+  @ServerScoped('serverId')                 // доступ к этому серверу
+  players(@Param('serverId') serverId: string) { ... }
+  ```
+
+- `rust.module.ts` — обычный `@Module` с контроллерами и сервисами.
+
+**2. Манифест.** Создайте `rust.def.ts`:
+
+```ts
+export const rustManifest: GameModuleManifest = {
+  id: 'rust',
+  displayName: 'Rust',
+  capabilities: { console: true, playerList: true, banKick: true },
+  permissions: [
+    {
+      key: 'rust.players.view',
+      description: 'Просмотр списка игроков',
+      defaultRoles: ['ADMIN', 'MODERATOR'],   // пустой список = только ГМ
+    },
+  ],
+};
+
+export const rustModule: BackendGameModule = {
+  manifest: rustManifest,
+  nestModule: RustModule,
+};
+```
+
+Зарегистрируйте его в `ALL_MODULES` в `apps/api/src/modules/module-registry.ts`.
+
+**3. Frontend: вкладки.** Создайте `apps/web/src/modules/rust/tabs.tsx` и
+свяжите capability с компонентом в `MODULE_REGISTRY`
+(`apps/web/src/modules/registry.tsx`):
+
+```ts
+rust: {
+  tabs: {
+    playerList: { label: 'Игроки', permission: 'rust.players.view', component: RustPlayersTab },
+  },
+  dashboard: { permission: 'rust.commands', component: RustQuickCommands },  // необязательно
+},
+```
+
+Capability `console` и `tickets` реализовывать не нужно — их рисует ядро.
+
+**4. Включить модуль.** Добавьте id в
+`apps/api/src/modules/modules.config.ts`:
+
+```ts
+export const ENABLED_MODULE_IDS: string[] = ['minecraft', 'rust'];
+```
+
+**5. Таблицы БД, если нужны.** Добавьте модели в общий
+`apps/api/prisma/schema.prisma` с префиксом таблиц `mod_<id>_`:
+
+```prisma
+model RustBan {
+  id String @id @default(uuid())
+  // ...
+  @@map("mod_rust_bans")
+}
+```
+
+Затем `npm run prisma:migrate` — Prisma создаст миграцию.
+
+**6. Проверить.** Перезапустите API и посмотрите в логе строки
+`Mapped {/api/modules/rust/...}` — значит роуты смонтировались. В панели
+назначьте модуль серверу и убедитесь, что появились вкладки.
+
+**Выключить модуль** — убрать id из `modules.config.ts` и перезапустить.
+Роуты, крон и вкладки исчезнут, **данные в БД останутся нетронутыми**.
+Это безопасная операция: вернуть модуль можно в любой момент.
 
 В комплекте есть модуль `test-dummy` — фейковый стенд, на котором видно, как
 работают динамические вкладки, права модуля и вызов core-сервиса тикетов.
@@ -209,26 +433,66 @@ Backend-часть (`BackendGameModule`) добавляет к манифест�
 и банить; снятие бана, whitelist и произвольная команда — у Админа;
 `minecraft.configure` (настройки подключения) — только у ГМ.
 
-### Настройка подключения
+### Настройка подключения: пошагово
 
-Роль ГМ задаёт для каждого сервера RCON-хост (приватный адрес `10.0.0.2`), порт
-и пароль. Значения шифруются AES-256-GCM и кладутся в `servers.credentials_enc`.
+Подключение сервера состоит из трёх частей: включить RCON в игре, открыть порт
+в фаерволе, прописать доступ в панели.
 
-**Секреты не покидают бэкенд:** эндпоинт статуса отдаёт только флаги
-«настроено / не настроено», а тело запросов на настройку помечено декоратором
-`@AuditRedactBody()` — в аудит-лог пишется факт вызова (кто, когда, какой
-сервер), но не адреса и пароли.
+**1. Включить RCON на игровом сервере.**
 
-Со стороны Minecraft нужно включить RCON в `server.properties`:
+В Pterodactyl откройте сервер → **Files** → `server.properties`:
 
 ```properties
 enable-rcon=true
 rcon.port=25575
-rcon.password=<длинный случайный пароль>
+rcon.password=ЗАМЕНИТЕ_НА_СЛУЧАЙНЫЙ_ПАРОЛЬ
 ```
 
-RCON слушает на всех интерфейсах, поэтому порт должен быть закрыт файрволом
-для всего, кроме адреса туннеля.
+Пароль сгенерируйте `openssl rand -base64 24` и сохраните в менеджер паролей.
+
+У каждого сервера должен быть **свой порт**: 25575, 25576 и так далее —
+иначе они не запустятся одновременно.
+
+Сохраните файл и перезапустите сервер (**Restart**).
+
+**2. Открыть порт для панели.** На домашнем сервере:
+
+```bash
+sudo ufw allow from 10.0.0.1 to any port 25575 proto tcp comment 'RCON <имя сервера>'
+```
+
+Правило пускает только адрес туннеля — из интернета порт остаётся закрыт.
+Это важно: RCON не шифруется, и доступ к нему = полный доступ к серверу.
+
+Проверка с VDS: `nc -vz 10.0.0.2 25575` → `succeeded`.
+
+**3. Прописать в панели.** Роль **ГМ** → сервер → настройки модуля:
+
+| Поле | Значение |
+| --- | --- |
+| Хост | `10.0.0.2` — адрес туннеля, не публичный IP |
+| Порт | тот, что задали в `server.properties` |
+| Пароль | тот, что задали в `server.properties` |
+
+При сохранении панель сразу проверяет связь: если пароль или порт неверны,
+вы увидите ошибку прямо в интерфейсе, а не потом.
+
+**4. Проверить.** Откройте вкладку **Игроки** — если видите тех, кто сейчас
+в сети, всё работает.
+
+**Как хранятся секреты.** Значения шифруются AES-256-GCM и кладутся в
+`servers.credentials_enc`. Наружу они не отдаются никогда: эндпоинт статуса
+возвращает только флаги «настроено / не настроено», а тело запросов на
+настройку помечено декоратором `@AuditRedactBody()` — в аудит-лог попадает
+факт вызова (кто, когда, какой сервер), но не адреса и пароли.
+
+**Если не получилось:**
+
+| Симптом | Причина |
+| --- | --- |
+| «Игровой сервер недоступен по RCON» | сервер выключен, порт закрыт фаерволом или не тот номер |
+| «RCON отверг пароль» | пароль в панели не совпадает с `server.properties` |
+| «RCON для этого сервера не настроен» | настройки не сохранены — вернитесь к пункту 3 |
 
 ### Особенности реализации
 
