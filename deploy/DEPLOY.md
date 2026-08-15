@@ -681,12 +681,23 @@ sudo install -d -o aurum -g aurum -m 0755 /opt/aurum-panel
 
 ```bash
 sudo -u aurum npm ci
-sudo -u aurum npm run build
 sudo -u aurum npm run prisma:generate
+sudo -u aurum npm run build
 ```
 
 Это самый долгий шаг — **3–7 минут**. `npm ci` качает библиотеки,
+`prisma generate` создаёт по схеме БД типы для бэкенда,
 `npm run build` собирает бэкенд и фронтенд.
+
+> **Порядок команд важен.** Бэкенд написан на TypeScript, и типы таблиц он
+> берёт из кода, который `prisma generate` создаёт в `node_modules`. Если
+> собирать раньше генерации, сборка падает двумя десятками ошибок вида
+> `Namespace 'Prisma' has no exported member 'InputJsonValue'` и
+> `Parameter 'r' implicitly has an 'any' type` — выглядит как поломка кода,
+> хотя не хватает всего лишь сгенерированных типов.
+>
+> Начиная с этой версии `npm ci` запускает генерацию сам (хук `postinstall`),
+> так что команда выше — подстраховка, а не обязательный шаг.
 
 > Команды выполняются из `/opt/aurum-panel` — вы перешли туда на шаге 3.2.
 > Домашний каталог пользователя `aurum` — тот же `/opt/aurum-panel`, поэтому
@@ -706,6 +717,19 @@ ls /opt/aurum-panel/apps/web/dist/index.html   # и этот тоже
   и часть файлов теперь принадлежит root. Верните владельца и повторите:
   `sudo chown -R aurum:aurum /opt/aurum-panel`
 - **`npm: command not found`** → Node не установлен, вернитесь к шагу 2.3.
+- **Куча ошибок `TS2694: Namespace 'Prisma' has no exported member ...`,
+  `TS7006: Parameter implicitly has an 'any' type`, `Module '@prisma/client'
+  has no exported member 'Ticket'`** → не сгенерированы типы Prisma. Все эти
+  ошибки — следствия одной причины, разбирать их по отдельности не нужно:
+
+  ```bash
+  sudo -u aurum npm run prisma:generate
+  sudo -u aurum npm run build
+  ```
+
+  Если после этого сборка прошла, но `apps/web/dist/index.html` всё ещё нет —
+  так и должно было быть: сборка идёт цепочкой `shared → api → web`, и падение
+  на `api` не давало дойти до фронтенда. Повторный `npm run build` соберёт всё.
 - **Сборка упала где-то посередине** → `npm run build` собирает три части
   подряд, и по сообщению не всегда понятно, какая именно сломалась.
   Прогоните их по одной, в этом порядке (`shared` обязательно первым — от
@@ -1215,8 +1239,9 @@ sudo systemctl start aurum-backup.service
 # 2. Забрать новый код
 sudo -u aurum git pull
 
-# 3. Пересобрать
+# 3. Пересобрать (generate до build — типы Prisma нужны компилятору)
 sudo -u aurum npm ci
+sudo -u aurum npm run prisma:generate
 sudo -u aurum npm run build
 
 # 4. Применить миграции БД
@@ -1242,7 +1267,9 @@ sudo systemctl stop aurum-api
 cd /opt/aurum-panel
 sudo -u aurum git log --oneline -5          # найдите предыдущий коммит
 sudo -u aurum git checkout <хеш-коммита>
-sudo -u aurum npm ci && sudo -u aurum npm run build
+sudo -u aurum npm ci
+sudo -u aurum npm run prisma:generate
+sudo -u aurum npm run build
 
 # Если миграции испортили данные — восстановиться из дампа:
 sudo -u aurum /opt/aurum-panel/deploy/scripts/restore-db.sh \
