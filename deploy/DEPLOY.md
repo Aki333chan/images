@@ -1063,12 +1063,20 @@ sudo certbot certificates
 
 ```bash
 sudo install -m 0644 /opt/aurum-panel/deploy/nginx/aurum-limits.conf /etc/nginx/conf.d/
+sudo install -m 0644 /opt/aurum-panel/deploy/nginx/aurum-security-headers.inc /etc/nginx/conf.d/
 sudo install -m 0644 /opt/aurum-panel/deploy/nginx/manage.aurumgg.ovh.conf \
   /etc/nginx/sites-available/manage.aurumgg.ovh.conf
 
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+Три файла, а не один: `aurum-limits.conf` задаёт зону ограничения попыток
+входа (она работает только на верхнем уровне, внутрь server-блока её положить
+нельзя), `aurum-security-headers.inc` — набор заголовков безопасности,
+который подключается в несколько мест конфига. Расширение `.inc` не
+случайно: nginx сам подхватывает из `conf.d` только файлы `*.conf`, а этот
+должен подключаться вручную.
 
 Правил фаервола для 80/443 добавлять не нужно — они уже открыты под Pterodactyl.
 
@@ -1086,6 +1094,10 @@ curl -sI https://panel.aurumgg.ovh/ | head -1           # HTTP/2 200
 
 # Внутренний путь закрыт снаружи
 curl -sI https://manage.aurumgg.ovh/api/internal/x | head -1   # HTTP/2 404
+
+# Заголовки безопасности на месте — должно быть ровно 5 строк
+curl -sI https://manage.aurumgg.ovh/ \
+  | grep -icE 'strict-transport|content-security|x-frame|x-content-type|referrer-policy'
 ```
 
 Автопродление сертификатов (проверка без реального выпуска):
@@ -1099,8 +1111,19 @@ sudo certbot renew --dry-run
 
 ### Если не получилось
 
+- **`nginx -t`: `unknown directive "http2"`** → на сервере nginx старше
+  1.25.1, где `http2 on;` отдельной строкой ещё не поддерживается. В нашем
+  конфиге используется совместимая форма `listen 443 ssl http2;`; если
+  ошибка всё же появилась, значит конфиг не обновлён — сделайте
+  `git pull` в `/opt/aurum-panel` и повторите установку файла.
 - **`nginx -t` ругается на `limit_req zone=aurum_login`** → не установлен
   файл `aurum-limits.conf`. Повторите первую команду шага 5.3.
+- **`nginx -t`: `open() ".../aurum-security-headers.inc" failed`** → не
+  установлен файл заголовков. Повторите вторую команду шага 5.3.
+- **Проверка заголовков вернула меньше 5** → конфиг подключает
+  `aurum-security-headers.inc` не во всех location. Не добавляйте
+  `add_header` внутрь location, не подключив рядом этот файл: в nginx свой
+  `add_header` в location отменяет все заголовки, заданные уровнем выше.
 - **certbot: `Timeout during connect`** → домен не указывает на этот сервер
   (вернитесь к шагу 0.5) или порт 80 закрыт.
 - **certbot: `unauthorized ... 404`** → каталог `/var/www/certbot` не создан
