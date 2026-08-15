@@ -70,6 +70,20 @@ export class ServersController {
     return this.clientApi.getResources(server.pteroIdentifier);
   }
 
+  /**
+   * Токен и адрес WebSocket-консоли Wings. Консоль — возможность ядра:
+   * игровые модули объявляют capability `console`, но своей реализации не имеют.
+   * Токен короткоживущий, поэтому фронт запрашивает его перед подключением
+   * и повторно — по событию Wings «token expiring».
+   */
+  @Get(':serverId/console-token')
+  @RequirePermission('servers.view')
+  @ServerScoped('serverId')
+  async consoleToken(@Param('serverId') serverId: string) {
+    const server = await this.prisma.server.findUniqueOrThrow({ where: { id: serverId } });
+    return this.clientApi.getConsoleWebsocket(server.pteroIdentifier);
+  }
+
   @Post(':serverId/power')
   @RequirePermission('servers.power')
   @ServerScoped('serverId')

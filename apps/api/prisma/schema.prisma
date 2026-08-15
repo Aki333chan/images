@@ -75,8 +75,9 @@ model Server {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  access  UserServerAccess[]
-  tickets Ticket[]
+  access        UserServerAccess[]
+  tickets       Ticket[]
+  minecraftBans MinecraftBan[]
 
   @@map("servers")
 }
@@ -116,6 +117,29 @@ model Ticket {
   @@index([serverId, status])
   @@index([status])
   @@map("tickets")
+}
+
+/// Баны модуля Minecraft. Источник истины о причине, сроке и модераторе;
+/// на самом сервере бан ставится RCON-командой для мгновенного эффекта.
+model MinecraftBan {
+  id           String    @id @default(uuid())
+  serverId     String    @map("server_id")
+  server       Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerName   String    @map("player_name")
+  playerUuid   String?   @map("player_uuid")
+  reason       String
+  /// null — бан навсегда
+  expiresAt    DateTime? @map("expires_at")
+  createdById  String?   @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  /// проставляется при снятии вручную или кроном по истечении срока
+  pardonedAt   DateTime? @map("pardoned_at")
+  /// null при автоснятии по сроку
+  pardonedById String?   @map("pardoned_by_id")
+
+  @@index([serverId, pardonedAt])
+  @@index([pardonedAt, expiresAt])
+  @@map("mod_minecraft_bans")
 }
 
 model AuditLog {

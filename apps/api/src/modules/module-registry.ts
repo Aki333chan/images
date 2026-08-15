@@ -21,10 +21,11 @@ export interface BackendGameModule {
 }
 
 import { testDummyModule } from './test-dummy/test-dummy.def';
+import { minecraftModule } from './minecraft/minecraft.def';
 import { ENABLED_MODULE_IDS } from './modules.config';
 
 /** Полный реестр известных модулей (включённые выбираются в modules.config.ts). */
-const ALL_MODULES: BackendGameModule[] = [testDummyModule];
+const ALL_MODULES: BackendGameModule[] = [testDummyModule, minecraftModule];
 
 export function getEnabledModules(): BackendGameModule[] {
   const byId = new Map(ALL_MODULES.map((m) => [m.manifest.id, m]));

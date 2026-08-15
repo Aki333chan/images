@@ -10,7 +10,11 @@ import { TestDummyModule } from './test-dummy.module';
 export const testDummyManifest: GameModuleManifest = {
   id: 'test-dummy',
   displayName: 'Тестовый модуль',
-  capabilities: ['console', 'playerList', 'quickCommands', 'tickets'],
+  capabilities: {
+    playerList: true,
+    quickCommands: true,
+    tickets: true,
+  },
   permissions: [
     {
       key: 'test-dummy.console',
