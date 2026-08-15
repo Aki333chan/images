@@ -58,7 +58,16 @@ export class MinecraftService {
     const raw = await this.runCommand(serverId, 'list');
     const parsed = parsePlayerList(raw);
     return {
-      players: parsed.names.map((name) => ({ name, uuid: null, ping: null })),
+      // По RCON доступны только ники — остальное умеет отдать плагин.
+      players: parsed.names.map((name) => ({
+        name,
+        uuid: null,
+        ping: null,
+        health: null,
+        maxHealth: null,
+        world: null,
+        position: null,
+      })),
       online: parsed.online,
       max: parsed.max,
       source: 'rcon',

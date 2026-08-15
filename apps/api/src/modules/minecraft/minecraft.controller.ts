@@ -3,11 +3,12 @@ import {
   MINECRAFT_PERMISSIONS,
   type MinecraftCommandResultDto,
   type MinecraftConfigStatusDto,
+  type MinecraftInventoryStatusDto,
 } from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../../auth/decorators';
 import { AuditRedactBody } from '../../audit/audit.decorators';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
-import { CompanionService } from './companion.service';
+import { COMPANION_DOCS_URL, CompanionService } from './companion.service';
 import { MinecraftConfigService } from './minecraft-config.service';
 import { MinecraftService } from './minecraft.service';
 import {
@@ -150,6 +151,21 @@ export class MinecraftController {
   }
 
   // ---------- Инвентарь ----------
+
+  /**
+   * Доступен ли инвентарь на этом сервере. Отдельный роут нужен, чтобы вкладка
+   * могла отличить «плагин не установлен» от «этот игрок офлайн», не спрашивая
+   * инвентарь наугад. Секретов не содержит и доступен всем, кто видит инвентарь.
+   */
+  @Get('inventory-status')
+  @RequirePermission(MINECRAFT_PERMISSIONS.inventoryView)
+  @ServerScoped('serverId')
+  async inventoryStatus(@Param('serverId') serverId: string): Promise<MinecraftInventoryStatusDto> {
+    return {
+      companionConfigured: await this.companion.isConfigured(serverId),
+      docsUrl: COMPANION_DOCS_URL,
+    };
+  }
 
   @Get('inventory/:name')
   @RequirePermission(MINECRAFT_PERMISSIONS.inventoryView)

@@ -4,12 +4,14 @@ import { TicketDto, TicketMessage } from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../ws/events.gateway';
 import { EffectivePermissions } from '../rbac/permissions.service';
+import { TicketDeliveryRegistry } from './ticket-delivery.registry';
 
 @Injectable()
 export class TicketsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ws: EventsGateway,
+    private readonly delivery: TicketDeliveryRegistry,
   ) {}
 
   private toDto(t: Ticket & { server?: { name: string } }): TicketDto {
@@ -87,6 +89,11 @@ export class TicketsService {
     return this.toDto(ticket);
   }
 
+  /** Открытый тикет пары (сервер, игрок) или null. */
+  async findOpenTicket(serverId: string, playerUuid: string): Promise<Ticket | null> {
+    return this.prisma.ticket.findFirst({ where: { serverId, playerUuid, status: 'OPEN' } });
+  }
+
   async list(eff: EffectivePermissions, status: 'OPEN' | 'CLOSED' = 'OPEN'): Promise<TicketDto[]> {
     const tickets = await this.prisma.ticket.findMany({
       where: {
@@ -127,9 +134,22 @@ export class TicketsService {
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: { messages: messages as unknown as Prisma.InputJsonValue },
-      include: { server: { select: { name: true } } },
+      include: { server: { select: { name: true, moduleId: true } } },
     });
     this.ws.emitTicketsUpdated({ serverId: updated.serverId, ticketId, action: 'message' });
+
+    // Доставка ответа в игру — best-effort и не блокирует ответ API:
+    // игрок может быть оффлайн, а игровой сервер выключен.
+    // catch обязателен: необработанный reject в фоне уронил бы весь процесс.
+    void this.delivery
+      .deliver(updated.server.moduleId, {
+        serverId: updated.serverId,
+        playerUuid: updated.playerUuid,
+        playerName: updated.playerNameCached,
+        text,
+      })
+      .catch(() => undefined);
+
     return this.toDto(updated);
   }
 

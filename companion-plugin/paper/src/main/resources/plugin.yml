@@ -1,0 +1,11 @@
+name: AurumCompanion
+version: '${version}'
+main: ovh.aurumgg.companion.paper.AurumCompanionPlugin
+# Формат версии Paper с 26.1: год.выпуск (раньше было 1.21.x).
+api-version: '26.2'
+description: Companion-плагин Aurum Panel — инвентарь, список игроков и тикеты игроков.
+author: Aurum
+commands:
+  ticket:
+    description: Отправить сообщение администрации
+    usage: /ticket <сообщение>

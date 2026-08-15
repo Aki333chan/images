@@ -10,6 +10,11 @@ export interface MinecraftPlayerDto {
   uuid: string | null;
   /** Пинг в мс — только от companion-плагина. */
   ping: number | null;
+  /** Здоровье и позиция — только от companion-плагина. */
+  health: number | null;
+  maxHealth: number | null;
+  world: string | null;
+  position: { x: number; y: number; z: number } | null;
 }
 
 export interface MinecraftPlayersResponse {
@@ -66,10 +71,30 @@ export interface MinecraftInventoryItemDto {
   id: string;
   count: number;
   displayName: string | null;
+  /** Зачарования: ключ (напр. minecraft:sharpness) -> уровень. */
+  enchantments: Record<string, number>;
+  lore: string[];
+}
+
+/**
+ * Почему инвентарь недоступен. Машиночитаемый код нужен, чтобы интерфейс не
+ * путал «плагин не установлен» (показываем инструкцию) с «игрок сейчас офлайн»
+ * (обычное сообщение).
+ */
+export type MinecraftInventoryUnavailableCode =
+  | 'no-plugin'
+  | 'player-offline'
+  | 'plugin-unreachable';
+
+/** Доступен ли инвентарь на этом сервере — без секретов, для любой роли с правом просмотра. */
+export interface MinecraftInventoryStatusDto {
+  companionConfigured: boolean;
+  docsUrl: string;
 }
 
 export interface MinecraftInventoryResponse {
   available: boolean;
+  code?: MinecraftInventoryUnavailableCode;
   /** Причина недоступности, если available = false. */
   reason?: string;
   docsUrl?: string;

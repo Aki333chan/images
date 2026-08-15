@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MinecraftBanDto,
+  MinecraftInventoryItemDto,
   MinecraftInventoryResponse,
+  MinecraftInventoryStatusDto,
   MinecraftPlayersResponse,
   MinecraftQuickCommandDto,
   MinecraftWhitelistResponse,
@@ -32,6 +34,20 @@ function PlayerAvatar({ uuid, name }: { uuid: string | null; name: string }) {
       className="rounded"
       loading="lazy"
     />
+  );
+}
+
+/** Полоска здоровья: числа в «сердцах» понятнее, чем 18.5 очков. */
+function HealthBar({ health, maxHealth }: { health: number; maxHealth: number }) {
+  const ratio = maxHealth > 0 ? Math.max(0, Math.min(1, health / maxHealth)) : 0;
+  const color = ratio > 0.5 ? 'bg-emerald-500' : ratio > 0.25 ? 'bg-amber-500' : 'bg-red-500';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
+        <div className={`h-full ${color}`} style={{ width: `${ratio * 100}%` }} />
+      </div>
+      <span className="text-xs">{(health / 2).toFixed(1)} ♥</span>
+    </div>
   );
 }
 
@@ -93,6 +109,8 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
           <thead className="text-left text-xs text-muted">
             <tr>
               <th className="pb-2">Игрок</th>
+              <th className="pb-2">Здоровье</th>
+              <th className="pb-2">Положение</th>
               <th className="pb-2">Пинг</th>
               <th className="pb-2 text-right">Действия</th>
             </tr>
@@ -105,6 +123,18 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
                     <PlayerAvatar uuid={p.uuid} name={p.name} />
                     <span className="font-medium">{p.name}</span>
                   </div>
+                </td>
+                <td className="py-2 text-muted">
+                  {p.health !== null ? (
+                    <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td className="py-2 text-xs text-muted">
+                  {p.position
+                    ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
+                    : '—'}
                 </td>
                 <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
                 <td className="py-2 text-right">
@@ -339,26 +369,46 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
 
 // ------------------------------------------------------------- Инвентарь
 
+/** Подсказка при наведении: имя, количество, зачарования и описание. */
+function describeItem(item: MinecraftInventoryItemDto): string {
+  const lines = [`${item.displayName ?? item.id} ×${item.count}`];
+  const enchantments = Object.entries(item.enchantments ?? {});
+  for (const [key, level] of enchantments) {
+    lines.push(`${key.replace(/^minecraft:/, '')} ${level}`);
+  }
+  for (const line of item.lore ?? []) lines.push(line);
+  return lines.join('\n');
+}
+
 function InventoryGrid({
   items,
   size,
   cols,
+  slotOffset = 0,
 }: {
   items: MinecraftInventoryResponse['items'];
   size: number;
   cols: number;
+  /** Номер слота первой ячейки: основной инвентарь начинается с 9, а не с 0. */
+  slotOffset?: number;
 }) {
   const bySlot = new Map((items ?? []).map((i) => [i.slot, i]));
   return (
     <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {Array.from({ length: size }, (_, slot) => {
+      {Array.from({ length: size }, (_, cell) => {
+        const slot = cell + slotOffset;
         const item = bySlot.get(slot);
+        const enchantCount = item ? Object.keys(item.enchantments ?? {}).length : 0;
         return (
           <div
             key={slot}
-            title={item ? `${item.displayName ?? item.id} ×${item.count}` : `Слот ${slot}`}
+            title={item ? describeItem(item) : `Слот ${slot}`}
             className={`relative flex aspect-square items-center justify-center rounded border text-[10px] ${
-              item ? 'border-primary/40 bg-primary/10' : 'border-border bg-black/30'
+              item
+                ? enchantCount > 0
+                  ? 'border-fuchsia-400/50 bg-fuchsia-500/10'
+                  : 'border-primary/40 bg-primary/10'
+                : 'border-border bg-black/30'
             }`}
           >
             {item && (
@@ -368,6 +418,10 @@ function InventoryGrid({
                 </span>
                 {item.count > 1 && (
                   <span className="absolute bottom-0 right-1 font-bold">{item.count}</span>
+                )}
+                {/* Зачарованные предметы помечаем — как блеск в самой игре. */}
+                {enchantCount > 0 && (
+                  <span className="absolute left-0.5 top-0.5 text-fuchsia-300">✦</span>
                 )}
               </>
             )}
@@ -380,17 +434,17 @@ function InventoryGrid({
 
 export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
   const [player, setPlayer] = useState('');
+  const [status, setStatus] = useState<MinecraftInventoryStatusDto | null>(null);
   const [data, setData] = useState<MinecraftInventoryResponse | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Проверяем доступность плагина сразу, чтобы показать инструкцию без запроса.
+  // Отдельный статус-роут: по ответу на конкретного игрока нельзя отличить
+  // «плагина нет» от «этот игрок сейчас офлайн».
   useEffect(() => {
-    void api<MinecraftInventoryResponse>(`${base(serverId)}/inventory/Notch`)
-      .then((r) => {
-        if (!r.available) setData(r);
-      })
-      .catch(() => undefined);
+    void api<MinecraftInventoryStatusDto>(`${base(serverId)}/inventory-status`)
+      .then(setStatus)
+      .catch((e: Error) => setError(e.message));
   }, [serverId]);
 
   async function load() {
@@ -406,27 +460,26 @@ export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
     }
   }
 
+  if (!status) return <Spinner />;
+
   // Плагина нет — показываем инструкцию, а не пустую сетку.
-  if (data && !data.available) {
+  if (!status.companionConfigured) {
     return (
       <Card className="space-y-3">
         <h3 className="font-semibold">Нужен companion-плагин</h3>
-        <p className="text-sm text-muted">{data.reason}</p>
         <p className="text-sm text-muted">
           Инвентарь нельзя получить по RCON: ванильный сервер не отдаёт содержимое
           инвентаря в текстовом виде. Установите companion-плагин на игровой сервер
           и укажите его адрес в настройках модуля.
         </p>
-        {data.docsUrl && (
-          <a
-            className="inline-block text-sm text-primary underline"
-            href={data.docsUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Инструкция по установке плагина
-          </a>
-        )}
+        <a
+          className="inline-block text-sm text-primary underline"
+          href={status.docsUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Инструкция по установке плагина
+        </a>
       </Card>
     );
   }
@@ -449,14 +502,22 @@ export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
       </div>
       <ErrorText>{error}</ErrorText>
 
+      {/* Игрок офлайн или плагин не ответил — обычное сообщение, без инструкции. */}
+      {data && !data.available && <p className="text-sm text-muted">{data.reason}</p>}
+
       {data?.available && (
         <div className="space-y-4">
           <div>
-            <p className="mb-1 text-xs text-muted">Инвентарь (слоты 9–35)</p>
-            <InventoryGrid items={data.items?.filter((i) => i.slot >= 9)} size={27} cols={9} />
+            <p className="mb-1 text-xs text-muted">Инвентарь (слоты 9-35)</p>
+            <InventoryGrid
+              items={data.items?.filter((i) => i.slot >= 9)}
+              size={27}
+              cols={9}
+              slotOffset={9}
+            />
           </div>
           <div>
-            <p className="mb-1 text-xs text-muted">Хотбар (слоты 0–8)</p>
+            <p className="mb-1 text-xs text-muted">Хотбар (слоты 0-8)</p>
             <InventoryGrid items={data.items?.filter((i) => i.slot < 9)} size={9} cols={9} />
           </div>
           <div className="flex gap-6">
@@ -466,7 +527,7 @@ export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
             </div>
             <div className="w-8">
               <p className="mb-1 text-xs text-muted">Рука</p>
-              <InventoryGrid items={data.offhand ? [data.offhand] : []} size={1} cols={1} />
+              <InventoryGrid items={data.offhand ? [{ ...data.offhand, slot: 0 }] : []} size={1} cols={1} />
             </div>
           </div>
         </div>
