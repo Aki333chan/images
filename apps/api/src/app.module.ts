@@ -15,6 +15,7 @@ import { PterodactylModule } from './pterodactyl/pterodactyl.module';
 import { ServersModule } from './servers/servers.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
+import { HealthModule } from './health/health.module';
 import { GameModulesModule } from './modules/game-modules.module';
 
 @Module({
@@ -30,6 +31,7 @@ import { GameModulesModule } from './modules/game-modules.module';
     ServersModule,
     TicketsModule,
     UsersModule,
+    HealthModule,
     GameModulesModule.forRoot(),
   ],
   providers: [

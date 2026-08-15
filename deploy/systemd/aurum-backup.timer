@@ -1,0 +1,14 @@
+[Unit]
+Description=Ежедневный бэкап PostgreSQL панели Aurum
+
+[Timer]
+# Каждый день в 04:20 — время, когда на серверах обычно тихо.
+OnCalendar=*-*-* 04:20:00
+# Разброс, чтобы бэкап не стартовал ровно в одну секунду с другими задачами.
+RandomizedDelaySec=10m
+# Если машина была выключена в момент запуска — сделать бэкап после старта.
+Persistent=true
+Unit=aurum-backup.service
+
+[Install]
+WantedBy=timers.target

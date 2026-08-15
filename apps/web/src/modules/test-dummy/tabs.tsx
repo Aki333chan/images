@@ -4,24 +4,12 @@ import { api } from '../../lib/api';
 import { Button, Card, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
 
-/** Вкладки фейкового модуля — проверяют механизм динамического рендера по capabilities. */
-
-export function DummyConsoleTab({ serverId }: ModuleTabProps) {
-  const [lines, setLines] = useState<string[] | null>(null);
-  useEffect(() => {
-    void api<{ lines: string[] }>(`/api/modules/test-dummy/servers/${serverId}/console`).then((r) =>
-      setLines(r.lines),
-    );
-  }, [serverId]);
-  if (!lines) return <Spinner />;
-  return (
-    <Card className="bg-black/60 font-mono text-xs text-emerald-300">
-      {lines.map((l, i) => (
-        <div key={i}>{l}</div>
-      ))}
-    </Card>
-  );
-}
+/**
+ * Вкладки фейкового модуля — проверяют механизм динамического рендера по capabilities.
+ *
+ * Своей консоли у модуля нет намеренно: capability `console` реализует ядро
+ * (WebSocket Pterodactyl), и дублировать её в модуле не нужно.
+ */
 
 export function DummyPlayersTab({ serverId }: ModuleTabProps) {
   const [players, setPlayers] = useState<{ uuid: string; name: string; online: boolean }[] | null>(

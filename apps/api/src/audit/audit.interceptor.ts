@@ -1,7 +1,9 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Observable, tap } from 'rxjs';
 import { AuthUser } from '../auth/decorators';
 import { AuditService } from './audit.service';
+import { AUDIT_REDACT_BODY } from './audit.decorators';
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /** Роуты, которые не аудируем (шумные/несущественные или содержат секреты). */
@@ -24,7 +26,10 @@ function sanitize(value: unknown, depth = 0): unknown {
  */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    private readonly reflector: Reflector,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') return next.handle();
@@ -35,6 +40,11 @@ export class AuditInterceptor implements NestInterceptor {
     if (!MUTATING_METHODS.has(method) || SKIP_PATHS.some((re) => re.test(req.url.split('?')[0]))) {
       return next.handle();
     }
+
+    const redactBody = this.reflector.getAllAndOverride<boolean>(AUDIT_REDACT_BODY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
     return next.handle().pipe(
       tap({
@@ -49,7 +59,10 @@ export class AuditInterceptor implements NestInterceptor {
               action: `${method} ${path}`,
               targetType: this.targetTypeFromPath(path),
               targetId,
-              metadata: { params, body: sanitize(req.body) },
+              metadata: {
+                params,
+                body: redactBody ? '[redacted: секретный payload]' : sanitize(req.body),
+              },
             })
             .catch(() => undefined); // аудит не должен ломать основной запрос
         },

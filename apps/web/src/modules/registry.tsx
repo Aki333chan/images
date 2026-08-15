@@ -1,41 +1,92 @@
 import type { ComponentType } from 'react';
-import type { ModuleCapability } from '@aurum/shared';
+import type { CapabilityState, ModuleCapability } from '@aurum/shared';
+import { ConsoleTab } from '../components/ConsoleTab';
 import {
-  DummyConsoleTab,
   DummyPlayersTab,
   DummyQuickCommandsTab,
   DummyTicketsTab,
 } from './test-dummy/tabs';
+import {
+  MinecraftBansTab,
+  MinecraftInventoryTab,
+  MinecraftPlayersTab,
+  MinecraftQuickCommandsWidget,
+  MinecraftWhitelistTab,
+} from './minecraft/tabs';
 
 export interface ModuleTabProps {
   serverId: string;
   moduleId: string;
+  /** Состояние capability из манифеста: true или 'requires-plugin'. */
+  capabilityState: CapabilityState;
 }
 
-interface CapabilityTab {
+export interface CapabilityTab {
   label: string;
   /** Право, необходимое для показа вкладки (null — достаточно servers.view). */
   permission: string | null;
   component: ComponentType<ModuleTabProps>;
 }
 
+export interface ModuleFrontend {
+  tabs: Partial<Record<ModuleCapability, CapabilityTab>>;
+  /** Блок, который рисуется на дашборде сервера над вкладками. */
+  dashboard?: { permission: string | null; component: ComponentType<ModuleTabProps> };
+}
+
 /**
- * Фронтенд-реестр модулей: id модуля -> компоненты вкладок по capability.
- * Вкладки на ServerDetail рендерятся пересечением: capabilities манифеста
- * активного модуля ∩ зарегистрированные компоненты ∩ права пользователя.
+ * Вкладки, которые ядро предоставляет само. Модулю достаточно объявить
+ * capability в манифесте — своей реализации он не пишет (консоль идёт
+ * через WebSocket Pterodactyl, а не через RCON модуля).
  */
-export const MODULE_TAB_REGISTRY: Record<
-  string,
-  Partial<Record<ModuleCapability, CapabilityTab>>
-> = {
-  'test-dummy': {
-    console: { label: 'Консоль', permission: 'test-dummy.console', component: DummyConsoleTab },
-    playerList: { label: 'Игроки', permission: 'test-dummy.players', component: DummyPlayersTab },
-    quickCommands: {
-      label: 'Быстрые команды',
-      permission: 'test-dummy.quick-commands',
-      component: DummyQuickCommandsTab,
+const CORE_TABS: Partial<Record<ModuleCapability, CapabilityTab>> = {
+  console: { label: 'Консоль', permission: 'servers.view', component: ConsoleTab },
+};
+
+/**
+ * Фронтенд-реестр модулей: id модуля -> вкладки по capability и виджет дашборда.
+ * Вкладки на ServerDetail = capabilities манифеста ∩ (вкладки модуля ∪ вкладки
+ * ядра) ∩ права пользователя.
+ */
+export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
+  minecraft: {
+    tabs: {
+      playerList: {
+        label: 'Игроки',
+        permission: 'minecraft.players.view',
+        component: MinecraftPlayersTab,
+      },
+      banKick: { label: 'Баны', permission: 'minecraft.ban', component: MinecraftBansTab },
+      whitelist: {
+        label: 'Whitelist',
+        permission: 'minecraft.whitelist',
+        component: MinecraftWhitelistTab,
+      },
+      inventory: {
+        label: 'Инвентарь',
+        permission: 'minecraft.inventory.view',
+        component: MinecraftInventoryTab,
+      },
     },
-    tickets: { label: 'Тикеты', permission: 'tickets.view', component: DummyTicketsTab },
+    dashboard: {
+      permission: 'minecraft.quick-commands',
+      component: MinecraftQuickCommandsWidget,
+    },
+  },
+  'test-dummy': {
+    tabs: {
+      playerList: { label: 'Игроки', permission: 'test-dummy.players', component: DummyPlayersTab },
+      quickCommands: {
+        label: 'Быстрые команды',
+        permission: 'test-dummy.quick-commands',
+        component: DummyQuickCommandsTab,
+      },
+      tickets: { label: 'Тикеты', permission: 'tickets.view', component: DummyTicketsTab },
+    },
   },
 };
+
+/** Вкладка для capability: сначала своя у модуля, иначе — общая из ядра. */
+export function resolveTab(moduleId: string, capability: ModuleCapability): CapabilityTab | null {
+  return MODULE_REGISTRY[moduleId]?.tabs[capability] ?? CORE_TABS[capability] ?? null;
+}

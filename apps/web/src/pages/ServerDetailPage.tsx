@@ -4,7 +4,8 @@ import type { ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, Select, Spinner, Tabs } from '../components/ui';
-import { MODULE_TAB_REGISTRY } from '../modules/registry';
+import { MODULE_REGISTRY, resolveTab } from '../modules/registry';
+import { listCapabilities } from '@aurum/shared';
 
 export function ServerDetailPage() {
   const { serverId = '' } = useParams();
@@ -37,13 +38,21 @@ export function ServerDetailPage() {
   /** Вкладки: capabilities активного модуля ∩ реестр компонентов ∩ права. */
   const tabs = useMemo(() => {
     if (!manifest) return [];
-    const registry = MODULE_TAB_REGISTRY[manifest.id] ?? {};
-    return manifest.capabilities.flatMap((cap) => {
-      const tab = registry[cap];
+    return listCapabilities(manifest).flatMap(({ capability, state }) => {
+      const tab = resolveTab(manifest.id, capability);
       if (!tab) return [];
       if (tab.permission && !hasPermission(tab.permission)) return [];
-      return [{ id: cap, label: tab.label, component: tab.component }];
+      return [{ id: capability, label: tab.label, component: tab.component, state }];
     });
+  }, [manifest, hasPermission]);
+
+  /** Виджет модуля на дашборде сервера (напр. быстрые команды Minecraft). */
+  const dashboard = useMemo(() => {
+    if (!manifest) return null;
+    const widget = MODULE_REGISTRY[manifest.id]?.dashboard;
+    if (!widget) return null;
+    if (widget.permission && !hasPermission(widget.permission)) return null;
+    return widget.component;
   }, [manifest, hasPermission]);
 
   useEffect(() => {
@@ -55,7 +64,9 @@ export function ServerDetailPage() {
   if (error) return <p className="text-red-400">{error}</p>;
   if (!server) return <Spinner />;
 
-  const ActiveComponent = tabs.find((t) => t.id === activeTab)?.component;
+  const active = tabs.find((t) => t.id === activeTab);
+  const ActiveComponent = active?.component;
+  const DashboardWidget = dashboard;
 
   return (
     <div className="space-y-4">
@@ -100,6 +111,10 @@ export function ServerDetailPage() {
         </Card>
       )}
 
+      {manifest && DashboardWidget && (
+        <DashboardWidget serverId={server.id} moduleId={manifest.id} capabilityState={true} />
+      )}
+
       {!manifest ? (
         <p className="text-muted">
           Модуль не назначен или выключен — вкладки недоступны.
@@ -110,7 +125,13 @@ export function ServerDetailPage() {
       ) : (
         <>
           <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
-          {ActiveComponent && <ActiveComponent serverId={server.id} moduleId={manifest.id} />}
+          {ActiveComponent && active && (
+            <ActiveComponent
+              serverId={server.id}
+              moduleId={manifest.id}
+              capabilityState={active.state}
+            />
+          )}
         </>
       )}
     </div>
