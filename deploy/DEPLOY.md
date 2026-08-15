@@ -634,6 +634,10 @@ sudo -u aurum git checkout claude/pterodactyl-admin-panel-core-984zye
 - **`destination path '/opt/aurum-panel' already exists and is not an empty
   directory`** → каталог создан с `--create-home` по старой версии инструкции.
   Как починить — блок ниже.
+- **`fatal: Unable to read current working directory: No such file or
+  directory`** → оболочка стоит в каталоге, который был удалён. Выполните
+  `cd /opt/aurum-panel` (войти заново по тому же пути) и повторите `git clone`.
+  Подробнее — во врезке ниже.
 - **`detected dubious ownership in repository`** при последующих командах
   `git` → вы запускаете git от root в каталоге, который принадлежит `aurum`.
   Не «чините» это через `safe.directory`, просто добавляйте `sudo -u aurum`
@@ -651,9 +655,21 @@ ls -la /opt/aurum-panel
 заготовки из `/etc/skel`, они не нужны. Пересоздаём каталог:
 
 ```bash
+cd /opt                                  # ← не пропускайте эту строку
 sudo rm -rf /opt/aurum-panel
 sudo install -d -o aurum -g aurum -m 0755 /opt/aurum-panel
 ```
+
+> **Почему `cd /opt` обязателен.** Если оболочка находится внутри каталога,
+> который вы удаляете, её рабочий каталог остаётся указывать на удалённый
+> объект — и не «переезжает» в новый каталог с тем же именем. Все следующие
+> команды тогда падают с `Unable to read current working directory`.
+> Приглашение при этом продолжает показывать прежний путь: bash хранит его
+> строкой и не проверяет, существует ли он ещё. Выглядит так, будто сломался
+> git, хотя дело только в оболочке.
+>
+> Если уже попались — лечится одной командой: `cd /opt/aurum-panel`
+> (заново войти в каталог по тому же пути), после чего повторить `git clone`.
 
 Если внутри есть что-то ещё — остановитесь и разберитесь, что это, прежде
 чем удалять.
