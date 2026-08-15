@@ -8,6 +8,12 @@
 Description=Redis for Aurum Panel (отдельно от Pterodactyl)
 After=network.target
 
+# Ограничение перезапусков задаётся именно здесь: в секции [Service]
+# современный systemd эти ключи игнорирует. Без них ошибка в конфиге
+# уводит сервис в бесконечный цикл рестартов вместо явного failed.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
 [Service]
 Type=notify
 ExecStart=/usr/bin/redis-server /etc/redis/aurum.conf --supervised systemd
@@ -20,11 +26,26 @@ Group=redis
 RuntimeDirectory=redis-aurum
 RuntimeDirectoryMode=0755
 
+# Логи уходят в журнал: journalctl -u aurum-redis -f
+# В aurum.conf стоит logfile "" — Redis пишет в stdout, systemd в журнал.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-redis
+
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+# ВАЖНО: ProtectSystem=strict делает ВСЮ файловую систему доступной только
+# на чтение, кроме путей ниже (и кроме /run/redis-aurum, который создаёт
+# RuntimeDirectory). Любой путь, куда Redis попробует писать и которого тут
+# нет, даст «Read-only file system» и отказ на старте.
+#   /var/lib/redis-aurum — снапшоты RDB (dir в aurum.conf).
+#   /var/log/redis — на случай, если в aurum.conf вернут logfile с путём.
+#     Префикс «-» означает «пропустить, если каталога нет»: без него юнит
+#     не стартовал бы на машине, где каталога не существует.
 ReadWritePaths=/var/lib/redis-aurum
+ReadWritePaths=-/var/log/redis
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 [Install]

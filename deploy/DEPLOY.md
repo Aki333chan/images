@@ -517,18 +517,68 @@ redis-cli -p 6380 ping    # наш новый
 redis-cli -p 6379 ping    # Pterodactyl, как работал, так и работает
 ```
 
+Отдельного файла с логом у этого Redis нет — он пишет в системный журнал:
+
+```bash
+sudo journalctl -u aurum-redis -n 30 --no-pager
+```
+
+В нормальном выводе последняя строка — `Ready to accept connections`.
+Строка `Could not create server TCP listening socket ::1:6380` в начале —
+не ошибка: это IPv6-адрес, которого на машине может не быть, и он помечен
+в конфиге как необязательный.
+
 ### Если не получилось
 
+- **`Can't open the log file: Read-only file system` в журнале, сервис
+  бесконечно перезапускается** → это была ошибка в юните до 15.08.2026.
+  Обновите файлы и перезапустите (см. блок «Если уже словили» ниже).
 - **`redis-cli -p 6380` не отвечает** → посмотрите журнал:
   `sudo journalctl -u aurum-redis -n 30 --no-pager`.
-  Частая причина — не создан каталог `/var/lib/redis-aurum` или у него не тот
-  владелец. Повторите команду `install -d` из блока выше.
+- **`>>> 'dir /var/lib/redis-aurum'` / `No such file or directory`** → не создан
+  каталог данных или у него не тот владелец. Повторите команду `install -d`
+  из блока выше и перезапустите сервис.
 - **`Address already in use`** → порт 6380 занят. Выберите другой (6381),
   поменяйте его в `/etc/redis/aurum.conf`, в юните `aurum-redis.service`
   (строка `ExecStop`) и позже в `REDIS_URL`.
 - **`redis-cli -p 6379` перестал отвечать** → это серьёзно, задет Redis
   Pterodactyl. Проверьте `systemctl status redis-server` и запустите:
   `sudo systemctl start redis-server`.
+
+### Если уже словили «Read-only file system»
+
+Обновите код и переустановите оба файла:
+
+```bash
+cd /tmp/aurum-tmp        # каталог из шага 0.1
+git pull origin claude/pterodactyl-admin-panel-core-984zye
+
+sudo install -m 0644 deploy/redis/aurum.conf /etc/redis/aurum.conf
+sudo install -m 0644 deploy/systemd/aurum-redis.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl reset-failed aurum-redis
+sudo systemctl restart aurum-redis
+```
+
+`reset-failed` нужен потому, что после серии неудачных попыток systemd
+считает сервис «безнадёжным» и отказывается запускать его снова, пока
+счётчик не сброшен.
+
+Проверка:
+
+```bash
+redis-cli -p 6380 ping    # ожидаем PONG
+redis-cli -p 6379 ping    # Pterodactyl не задет — тоже PONG
+```
+
+**В чём была причина.** В юните стоит `ProtectSystem=strict` — это защита,
+которая делает всю файловую систему доступной процессу только на чтение,
+кроме явно перечисленных путей. В списке был только каталог данных
+`/var/lib/redis-aurum`, а конфиг просил Redis писать лог в
+`/var/log/redis/aurum.log`. Redis не смог создать файл и отказался
+стартовать. Теперь лог уходит в системный журнал, писать в файл не нужно
+вообще. Pterodactyl и её Redis на 6379 этой ошибкой не задеты ни в какой
+момент — падал только новый сервис.
 
 ---
 
