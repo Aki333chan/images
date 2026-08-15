@@ -55,7 +55,9 @@ export const env = {
   APP_ENCRYPTION_KEY: isTest
     ? Buffer.alloc(32).toString('base64')
     : required('APP_ENCRYPTION_KEY'),
-  PTERO_BASE_URL: optional('PTERO_BASE_URL', 'http://127.0.0.1'),
+  // Схема важна: если nginx панели уводит http на https, обращение по
+  // http://127.0.0.1 вернёт HTML-заглушку редиректа вместо JSON.
+  PTERO_BASE_URL: optional('PTERO_BASE_URL', 'https://panel.aurumgg.ovh'),
   PTERO_APP_API_KEY: optional('PTERO_APP_API_KEY'),
   PTERO_CLIENT_API_KEY: optional('PTERO_CLIENT_API_KEY'),
 };

@@ -1224,8 +1224,57 @@ sudo -u postgres dropdb aurum_restore_test
 
 Меню **Серверы** → кнопка **Синхронизировать с Pterodactyl**.
 
-Появятся все серверы из Pterodactyl. Если список пуст — проверьте
-`PTERO_APP_API_KEY` и журнал: `journalctl -u aurum-api -n 50 --no-pager`.
+Появятся все серверы из Pterodactyl.
+
+### Если не получилось
+
+Сначала посмотрите журнал — сообщение называет причину:
+
+```bash
+sudo journalctl -u aurum-api -n 30 --no-pager
+```
+
+- **`ответ 301 (редирект на ...)` или `вместо JSON вернулся text/html`** →
+  в `PTERO_BASE_URL` указан не тот адрес. Самая частая причина:
+  `http://127.0.0.1`, хотя nginx панели принудительно уводит `http` на
+  `https`. Ответом приходит HTML-заглушка редиректа, а не JSON. Пойти по
+  редиректу нельзя — он ведёт на `https://127.0.0.1`, а сертификат выписан
+  на доменное имя, не на IP. Правильное значение:
+
+  ```bash
+  sudo nano /etc/aurum-panel/api.env
+  # PTERO_BASE_URL=https://panel.aurumgg.ovh
+  sudo systemctl restart aurum-api
+  ```
+
+  Трафик машину при этом не покидает — домен указывает на её же адрес.
+  Если хотите замкнуть его на loopback наверняка, добавьте в `/etc/hosts`
+  строку `127.0.0.1 panel.aurumgg.ovh`. Продлению сертификатов это не
+  мешает: проверка Let's Encrypt приходит снаружи.
+
+- **`-> 401`** → ключ не принят. Проверьте, что в `PTERO_APP_API_KEY` лежит
+  **Application** API key (начинается на `ptla_`), а не Client (`ptlc_`).
+- **`-> 403`** → ключ верный, но у него нет прав на чтение серверов.
+  Пересоздайте его в Pterodactyl: **Admin → Application API**.
+- **Список пуст, ошибок нет** → ключ работает, но серверов не видно.
+  Проверьте, что в Pterodactyl они действительно есть.
+
+Проверить связь с Pterodactyl можно и напрямую, не заглядывая в ключ:
+
+```bash
+set -a; . /etc/aurum-panel/api.env; set +a
+curl -sS -o /tmp/ptero-check.txt \
+  -w 'код=%{http_code}  редирект=%{redirect_url}\n' \
+  -H "Authorization: Bearer $PTERO_APP_API_KEY" \
+  -H 'Accept: application/json' \
+  "$PTERO_BASE_URL/api/application/servers"
+head -c 200 /tmp/ptero-check.txt; echo
+rm -f /tmp/ptero-check.txt
+```
+
+Ожидаемо: `код=200` и начало JSON вида `{"object":"list",...`.
+Если видите `код=301` и заполненный `редирект` — это ровно тот случай,
+что разобран выше. Ключ команда на экран не выводит.
 
 ### 7.4. Настроить сервер
 

@@ -9,7 +9,7 @@
 
 | Компонент | Где живёт | Как обращаемся |
 | --- | --- | --- |
-| Pterodactyl Panel | VDS, `panel.aurumgg.ovh` | локально по `http://127.0.0.1` (не через публичный домен) |
+| Pterodactyl Panel | VDS, `panel.aurumgg.ovh` | `https://panel.aurumgg.ovh` — её nginx уводит http на https, поэтому по IP не выйдет; трафик всё равно не покидает машину |
 | MariaDB Pterodactyl | тот же VDS | `127.0.0.1:3306` |
 | Aurum Panel (этот проект) | тот же VDS, `manage.aurumgg.ovh` | nginx → API + статика веба |
 | PostgreSQL 16 (наш) | тот же VDS | `127.0.0.1:5432` |

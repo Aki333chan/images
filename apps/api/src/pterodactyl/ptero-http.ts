@@ -26,10 +26,50 @@ export async function pteroRequest<T>(
 
   if (res.statusCode === 204) return undefined as T;
   const text = await res.body.text();
+
+  // Редиректы undici сам не следует, а 3xx не попадает в проверку >= 400 ниже.
+  // Без этой ветки тело редиректа (HTML-заглушка nginx) уходило в JSON.parse,
+  // и вместо понятной причины получалась ошибка «Unexpected token '<'».
+  // Типичный случай: PTERO_BASE_URL начинается с http://, а nginx панели
+  // принудительно уводит на https. Следовать такому редиректу нельзя:
+  // он ведёт на тот же адрес по https, а сертификат выписан на домен, не на IP.
+  if (res.statusCode >= 300 && res.statusCode < 400) {
+    const location = res.headers.location;
+    throw new ServiceUnavailableException(
+      `Pterodactyl API ${method} ${path}: ответ ${res.statusCode} (редирект на ${
+        typeof location === 'string' ? location : 'адрес не указан'
+      }). Проверьте PTERO_BASE_URL (сейчас ${env.PTERO_BASE_URL}) — обычно нужен https и доменное имя панели.`,
+    );
+  }
+
   if (res.statusCode >= 400) {
     throw new ServiceUnavailableException(
       `Pterodactyl API ${method} ${path} -> ${res.statusCode}: ${text.slice(0, 300)}`,
     );
   }
-  return text ? (JSON.parse(text) as T) : (undefined as T);
+
+  if (!text) return undefined as T;
+
+  // Успешный ответ, но не JSON — значит запрос попал не в API, а на страницу
+  // панели. Сообщаем об этом прямо, а не через сбой разбора.
+  const contentType = String(res.headers['content-type'] ?? '');
+  if (!contentType.includes('json')) {
+    throw new ServiceUnavailableException(
+      `Pterodactyl API ${method} ${path}: вместо JSON вернулся «${
+        contentType || 'ответ без content-type'
+      }» со статусом ${res.statusCode}. Проверьте PTERO_BASE_URL (сейчас ${
+        env.PTERO_BASE_URL
+      }). Начало ответа: ${text.slice(0, 200)}`,
+    );
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ServiceUnavailableException(
+      `Pterodactyl API ${method} ${path}: ответ помечен как JSON, но не разбирается (статус ${
+        res.statusCode
+      }). Начало ответа: ${text.slice(0, 200)}`,
+    );
+  }
 }
