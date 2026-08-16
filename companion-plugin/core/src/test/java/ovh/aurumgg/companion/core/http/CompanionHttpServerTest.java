@@ -241,6 +241,61 @@ class CompanionHttpServerTest {
         assertEquals(Boolean.TRUE, second.get("enabled"));
     }
 
+    // ------------------------------------------------- Автодополнение команд
+
+    @Test
+    @DisplayName("GET /complete отдаёт варианты для незавершённого слова")
+    void completesCommandName() throws Exception {
+        HttpResponse<String> response = get("/complete?line=g", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(List.of("gamemode", "give"), body.get("suggestions"));
+    }
+
+    @Test
+    @DisplayName("Ведущий слэш срезается: CommandMap ждёт строку без него")
+    void stripsLeadingSlash() throws Exception {
+        assertEquals(200, get("/complete?line=%2Fg", TOKEN).statusCode());
+        assertEquals(List.of("g"), bridge.completedLines);
+    }
+
+    @Test
+    @DisplayName("Пустая строка — это все команды, а не ошибка")
+    void completesEmptyLine() throws Exception {
+        HttpResponse<String> response = get("/complete?line=", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(4, ((List<?>) body.get("suggestions")).size());
+        assertEquals(List.of(""), bridge.completedLines);
+    }
+
+    @Test
+    @DisplayName("Аргумент команды дополняется силами сервера (ники онлайна)")
+    void completesArgument() throws Exception {
+        HttpResponse<String> response = get("/complete?line=gamemode%20creative%20", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("Steve"), JsonParser.parseObject(response.body()).get("suggestions"));
+        // Пробелы важны: по ним сервер понимает, какой аргумент набирается.
+        assertEquals(List.of("gamemode creative "), bridge.completedLines);
+    }
+
+    @Test
+    @DisplayName("Автодополнение закрыто токеном, как и всё остальное")
+    void completionRequiresToken() throws Exception {
+        assertEquals(401, get("/complete?line=g", null).statusCode());
+        assertTrue(bridge.completedLines.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Простыня вместо команды обрезается до 256 символов")
+    void limitsCompletionLineLength() throws Exception {
+        assertEquals(200, get("/complete?line=" + "a".repeat(1000), TOKEN).statusCode());
+        assertEquals(256, bridge.completedLines.get(0).length());
+    }
+
     // ------------------------------------------------------ Права (LuckPerms)
 
     @Test

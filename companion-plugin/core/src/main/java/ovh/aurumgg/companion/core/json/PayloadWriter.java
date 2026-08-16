@@ -72,6 +72,13 @@ public final class PayloadWriter {
         return Json.object(root);
     }
 
+    /** Варианты автодополнения. */
+    public static String suggestions(List<String> suggestions) {
+        List<String> items = new ArrayList<>(suggestions.size());
+        for (String suggestion : suggestions) items.add(Json.string(suggestion));
+        return Json.object(Map.of("suggestions", Json.array(items)));
+    }
+
     /**
      * Ошибка с машиночитаемым кодом. Панель по коду решает, что показать:
      * «поставьте LuckPerms» — это не то же самое, что «игрок не найден»,

@@ -69,6 +69,27 @@ public final class FakeGameBridge implements GameBridge {
         messages.add(playerUuid + ":" + message);
     }
 
+    /** Строки, с которыми звали автодополнение — по ним проверяется нормализация. */
+    public final List<String> completedLines = new ArrayList<>();
+
+    /** Подставные команды «сервера»: реального Bukkit в тестах нет. */
+    private static final List<String> COMMANDS = List.of("gamemode", "give", "heal", "help");
+
+    @Override
+    public List<String> completeCommand(String line) {
+        completedLines.add(line);
+        int space = line.indexOf(' ');
+        if (space < 0) {
+            List<String> result = new ArrayList<>();
+            for (String command : COMMANDS) {
+                if (command.startsWith(line)) result.add(command);
+            }
+            return result;
+        }
+        // Аргумент: подсказываем игроков онлайн, как это делает настоящий сервер.
+        return steveOnline ? List.of("Steve") : List.of();
+    }
+
     @Override
     public List<PluginInfo> installedPlugins() {
         return List.copyOf(plugins);

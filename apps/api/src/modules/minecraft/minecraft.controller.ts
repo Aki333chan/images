@@ -13,6 +13,8 @@ import {
   MINECRAFT_PERMISSIONS,
   type MinecraftCommandResultDto,
   type MinecraftConfigStatusDto,
+  type MinecraftConsoleCompletionDto,
+  type MinecraftConsoleDictionaryDto,
   type MinecraftPerformanceDto,
   type MinecraftPermissionsDto,
   type MinecraftPluginsDto,
@@ -152,6 +154,37 @@ export class MinecraftController {
     // показываются, только если те действительно установлены.
     const installed = await this.minecraft.installedPluginNames(serverId);
     return { commands: this.minecraft.listQuickCommands(installed) };
+  }
+
+  // ---------- Автодополнение в консоли ----------
+  //
+  // Оба роута под servers.power — тем же правом закрыт ввод команд в консоль.
+  // Тому, кто не может отправить команду, дополнять нечего.
+
+  /**
+   * Словарь для базового уровня: панель забирает его один раз при открытии
+   * консоли и дальше дополняет локально, без запроса на каждое нажатие Tab.
+   */
+  @Get('console/dictionary')
+  @RequirePermission('servers.power')
+  @ServerScoped('serverId')
+  consoleDictionary(@Param('serverId') serverId: string): Promise<MinecraftConsoleDictionaryDto> {
+    return this.minecraft.getConsoleDictionary(serverId);
+  }
+
+  /**
+   * Продвинутый уровень: настоящее автодополнение от Bukkit через
+   * companion-плагин. Без плагина отвечает available:false — панель тогда
+   * остаётся на словаре.
+   */
+  @Get('console/complete')
+  @RequirePermission('servers.power')
+  @ServerScoped('serverId')
+  consoleComplete(
+    @Param('serverId') serverId: string,
+    @Query('line') line?: string,
+  ): Promise<MinecraftConsoleCompletionDto> {
+    return this.minecraft.completeConsoleCommand(serverId, line ?? '');
   }
 
   /** Что из известного панели стоит на этом сервере. */

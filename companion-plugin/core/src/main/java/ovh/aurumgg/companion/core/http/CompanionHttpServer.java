@@ -35,6 +35,10 @@ import ovh.aurumgg.companion.core.model.PlayerInfo;
  *   GET  /players
  *   GET  /players/{uuid}/inventory
  *   POST /players/{uuid}/inventory/{slot}
+ *   GET  /players/{uuid}/permissions
+ *   POST /players/{uuid}/permissions
+ *   GET  /plugins
+ *   GET  /complete?line=...
  */
 public final class CompanionHttpServer {
 
@@ -112,6 +116,14 @@ public final class CompanionHttpServer {
         // GET /plugins — что вообще установлено на этом сервере
         if (parts.length == 1 && parts[0].equals("plugins") && method.equals("GET")) {
             respond(exchange, 200, PayloadWriter.plugins(bridge.installedPlugins()));
+            return;
+        }
+
+        // GET /complete?line=gamemo — автодополнение силами самого сервера
+        if (parts.length == 1 && parts[0].equals("complete") && method.equals("GET")) {
+            String line = normalizeCompletionLine(queryParam(exchange, "line"));
+            List<String> suggestions = bridge.completeCommand(line);
+            respond(exchange, 200, PayloadWriter.suggestions(limit(suggestions, MAX_SUGGESTIONS)));
             return;
         }
 
@@ -215,6 +227,28 @@ public final class CompanionHttpServer {
 
     /** Имя InvSee++ в Bukkit — именно такое, «InvSee++» не зарегистрирован. */
     static final String INVSEE_PLUGIN = "InvSeePlusPlus";
+
+    /** Больше сотни вариантов в выпадающем списке всё равно бесполезны. */
+    private static final int MAX_SUGGESTIONS = 100;
+
+    /** Строка длиннее этого — заведомо не команда, а вставленный кусок текста. */
+    private static final int MAX_COMPLETION_LINE = 256;
+
+    /**
+     * Приведение строки к тому виду, которого ждёт CommandMap#tabComplete:
+     * без ведущего слэша (в консоли его не пишут, но из панели он мог приехать)
+     * и разумной длины.
+     */
+    static String normalizeCompletionLine(String raw) {
+        String line = raw == null ? "" : raw;
+        while (line.startsWith("/")) line = line.substring(1);
+        return line.length() > MAX_COMPLETION_LINE ? line.substring(0, MAX_COMPLETION_LINE) : line;
+    }
+
+    private static List<String> limit(List<String> values, int max) {
+        if (values == null) return List.of();
+        return values.size() <= max ? values : List.copyOf(values.subList(0, max));
+    }
 
     private boolean hasPlugin(String name) {
         return bridge.installedPlugins().stream().anyMatch(p -> p.name().equalsIgnoreCase(name));

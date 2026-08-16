@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   MinecraftBanDto,
+  MinecraftConsoleCompletionDto,
+  MinecraftConsoleDictionaryDto,
   MinecraftInventoryResponse,
   MinecraftPerformanceDto,
   MinecraftPlayersResponse,
@@ -8,11 +10,13 @@ import type {
   MinecraftQuickCommandDto,
   MinecraftWhitelistResponse,
 } from '@aurum/shared';
+import { MINECRAFT_SERVER_COMMANDS } from '@aurum/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionService } from './companion.service';
 import { MinecraftConfigService } from './minecraft-config.service';
 import { KNOWN_PLUGINS } from '@aurum/shared';
 import {
+  escapeForJsonLiteral,
   isValidNickname,
   looksLikeUnknownCommand,
   parseMspt,
@@ -21,7 +25,11 @@ import {
   parseWhitelist,
   sanitizeCommandArgument,
 } from './minecraft-parsers';
-import { MINECRAFT_QUICK_COMMANDS, NICKNAME_ARG_NAMES } from './quick-commands.config';
+import {
+  MINECRAFT_QUICK_COMMANDS,
+  NICKNAME_ARG_NAMES,
+  catalogConsoleCommands,
+} from './quick-commands.config';
 import { RconService } from './rcon/rcon.service';
 
 @Injectable()
@@ -249,6 +257,64 @@ export class MinecraftService {
     }));
   }
 
+  // ---------- Автодополнение в консоли ----------
+
+  /**
+   * Словарь для базового автодополнения: команды сервера + команды плагинов
+   * из каталога + ники игроков онлайн.
+   *
+   * Панель забирает его один раз при открытии консоли и дополняет локально,
+   * поэтому Tab срабатывает мгновенно и не зависит от того, жив ли игровой
+   * сервер. Всё, что можно не знать, здесь не фатально: и список плагинов,
+   * и список игроков могут не получиться — словарь всё равно вернётся.
+   */
+  async getConsoleDictionary(serverId: string): Promise<MinecraftConsoleDictionaryDto> {
+    const installed = await this.installedPluginNames(serverId).catch(() => null);
+    const known = new Set(installed?.map((name) => name.toLowerCase()) ?? []);
+
+    // Команды плагинов показываем, только если плагин действительно стоит.
+    // Когда список плагинов недоступен (нет companion-плагина), фильтровать
+    // нечем — тогда лучше предложить лишнее, чем не предложить нужное:
+    // в консоли неверная подсказка стоит одной строки «Unknown command».
+    const fromCatalog = catalogConsoleCommands().filter(
+      (c) => installed === null || (c.plugin !== null && known.has(c.plugin.toLowerCase())),
+    );
+
+    const serverCommandNames = new Set(MINECRAFT_SERVER_COMMANDS.map((c) => c.name));
+    const commands = [
+      ...MINECRAFT_SERVER_COMMANDS,
+      ...fromCatalog.filter((c) => !serverCommandNames.has(c.name)),
+    ].sort((a, b) => a.name.localeCompare(b.name));
+
+    const players = await this.getPlayers(serverId)
+      .then((r) => r.players.map((p) => p.name))
+      .catch(() => [] as string[]);
+
+    return {
+      commands,
+      players,
+      companionAvailable: await this.companion.isConfigured(serverId),
+    };
+  }
+
+  /**
+   * Продвинутое автодополнение: спрашиваем у самого Bukkit через
+   * companion-плагин. Работает так же, как Tab в игре, — знает и команды
+   * сторонних плагинов, и их аргументы (миры, киты, зачарования).
+   *
+   * Если плагина нет или он не ответил, возвращаем available:false, а не
+   * ошибку: панель в этом случае просто остаётся на словаре.
+   */
+  async completeConsoleCommand(
+    serverId: string,
+    line: string,
+  ): Promise<MinecraftConsoleCompletionDto> {
+    // Ограничение длины — от случайной вставки простыни текста в поле ввода.
+    const suggestions = await this.companion.complete(serverId, line.slice(0, 256));
+    if (!suggestions) return { available: false, suggestions: [], source: 'static' };
+    return { available: true, suggestions, source: 'companion' };
+  }
+
   /**
    * Плагины сервера: что стоит на самом деле и что из известного панели
    * доступно. Работает и без companion-плагина — тогда честно говорит,
@@ -360,16 +426,4 @@ export class MinecraftService {
     this.assertNickname(player);
     return this.companion.getInventory(serverId, player);
   }
-}
-
-/**
- * Экранирование для вставки внутрь JSON-строки.
- *
- * sanitizeCommandArgument уже вырезал управляющие символы и переводы строк,
- * поэтому остаётся закрыть кавычку и обратный слэш. Через JSON.stringify —
- * чтобы не воспроизводить правила экранирования вручную; кавычки по краям
- * срезаем, они уже есть в шаблоне.
- */
-function escapeForJsonLiteral(value: string): string {
-  return JSON.stringify(value).slice(1, -1);
 }

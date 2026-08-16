@@ -146,3 +146,115 @@ describe('MinecraftService.buildQuickCommand', () => {
     expect(ids).not.toContain('gamemode-survival');
   });
 });
+
+describe('MinecraftService: словарь и автодополнение консоли', () => {
+  /** Сервис с подменёнными зависимостями: ни RCON, ни плагина в тестах нет. */
+  function setup(options: {
+    plugins?: { name: string; version: string; enabled: boolean }[] | null;
+    players?: string[];
+    playersFail?: boolean;
+    companionConfigured?: boolean;
+    complete?: string[] | null;
+  }) {
+    const companion = {
+      getInstalledPlugins: () => Promise.resolve(options.plugins ?? null),
+      getPlayers: () => Promise.resolve(null),
+      isConfigured: () => Promise.resolve(options.companionConfigured ?? false),
+      complete: () => Promise.resolve(options.complete ?? null),
+    } as unknown as CompanionService;
+
+    const service = new MinecraftService(
+      {} as PrismaService,
+      {} as MinecraftConfigService,
+      {
+        execute: () =>
+          options.playersFail
+            ? Promise.reject(new Error('RCON недоступен'))
+            : Promise.resolve(
+                `There are ${(options.players ?? []).length} of a max of 20 players online: ` +
+                  (options.players ?? []).join(', '),
+              ),
+      } as unknown as RconService,
+      companion,
+    );
+    // requireRcon/markSeen нужны runCommand — подменяем на минимум.
+    (service as unknown as { config: unknown }).config = {
+      requireRcon: () => Promise.resolve({ host: '10.0.0.2', port: 25575, password: 'x' }),
+      markSeen: () => Promise.resolve(),
+    };
+    return service;
+  }
+
+  it('в словаре есть команды сервера и ники игроков онлайн', async () => {
+    const dictionary = await setup({ players: ['Steve', 'Alex'] }).getConsoleDictionary('s1');
+
+    expect(dictionary.commands.some((c) => c.name === 'gamemode')).toBe(true);
+    expect(dictionary.players).toEqual(['Steve', 'Alex']);
+  });
+
+  it('команды плагина появляются, только если плагин установлен', async () => {
+    const withEssentials = await setup({
+      plugins: [{ name: 'Essentials', version: '2.0', enabled: true }],
+    }).getConsoleDictionary('s1');
+    expect(withEssentials.commands.some((c) => c.name === 'heal')).toBe(true);
+
+    const withLuckPerms = await setup({
+      plugins: [{ name: 'LuckPerms', version: '5.4', enabled: true }],
+    }).getConsoleDictionary('s1');
+    expect(withLuckPerms.commands.some((c) => c.name === 'heal')).toBe(false);
+  });
+
+  // В консоли цена лишней подсказки — одна строка «Unknown command», а цена
+  // недостающей — человек не нашёл нужную команду. Поэтому когда проверить
+  // нечем, предлагаем всё. Это осознанно противоположно кнопкам быстрых
+  // действий, где нерабочая кнопка вводит в заблуждение.
+  it('без списка плагинов предлагаются все известные команды', async () => {
+    const dictionary = await setup({ plugins: null }).getConsoleDictionary('s1');
+    expect(dictionary.commands.some((c) => c.name === 'heal')).toBe(true);
+  });
+
+  it('недоступный RCON не ломает словарь — команды остаются', async () => {
+    const dictionary = await setup({ playersFail: true }).getConsoleDictionary('s1');
+
+    expect(dictionary.players).toEqual([]);
+    expect(dictionary.commands.length).toBeGreaterThan(0);
+  });
+
+  it('имена команд в словаре не повторяются', async () => {
+    // gamemode есть и в ванили, и в каталоге EssentialsX — дважды его быть
+    // не должно, иначе Tab предложит один и тот же вариант два раза.
+    const dictionary = await setup({
+      plugins: [{ name: 'Essentials', version: '2.0', enabled: true }],
+    }).getConsoleDictionary('s1');
+
+    const names = dictionary.commands.map((c) => c.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('сообщает, доступен ли продвинутый уровень', async () => {
+    expect((await setup({}).getConsoleDictionary('s1')).companionAvailable).toBe(false);
+    expect(
+      (await setup({ companionConfigured: true }).getConsoleDictionary('s1')).companionAvailable,
+    ).toBe(true);
+  });
+
+  it('без companion-плагина продвинутое автодополнение честно недоступно', async () => {
+    const result = await setup({ complete: null }).completeConsoleCommand('s1', 'gam');
+
+    expect(result).toEqual({ available: false, suggestions: [], source: 'static' });
+  });
+
+  it('с companion-плагином отдаются его варианты', async () => {
+    const result = await setup({ complete: ['gamemode'] }).completeConsoleCommand('s1', 'gam');
+
+    expect(result).toEqual({ available: true, suggestions: ['gamemode'], source: 'companion' });
+  });
+
+  it('пустой ответ плагина — это ответ, а не отказ', async () => {
+    // available:true с пустым списком означает «сервер знает и предлагать
+    // нечего». Панель на этом останавливается и не догадывает по словарю.
+    const result = await setup({ complete: [] }).completeConsoleCommand('s1', 'zzz');
+
+    expect(result).toEqual({ available: true, suggestions: [], source: 'companion' });
+  });
+});

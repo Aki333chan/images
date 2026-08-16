@@ -158,3 +158,17 @@ export function sanitizeCommandArgument(value: string, maxLength = 200): string 
       .slice(0, maxLength)
   );
 }
+
+/**
+ * Экранирование значения для вставки внутрь JSON-строки команды.
+ *
+ * sanitizeCommandArgument уже вырезал управляющие символы и переводы строк,
+ * поэтому остаётся закрыть кавычку и обратный слэш. Через JSON.stringify —
+ * чтобы не воспроизводить правила экранирования вручную; кавычки по краям
+ * срезаем, они уже есть в шаблоне.
+ *
+ * Без этого кавычка в тексте разрывает JSON, и сервер отвергает всю команду.
+ */
+export function escapeForJsonLiteral(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
+}

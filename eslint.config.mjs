@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import prettier from 'eslint-config-prettier';
@@ -16,6 +17,12 @@ export default tseslint.config(
       ],
       '@typescript-eslint/explicit-module-boundary-types': 'off',
     },
+  },
+  {
+    // Файлы .cjs — CommonJS: там есть module и require, и ругаться на них
+    // как на необъявленные глобальные переменные не за что.
+    files: ['**/*.cjs'],
+    languageOptions: { globals: globals.node, sourceType: 'commonjs' },
   },
   {
     files: ['apps/web/**/*.{ts,tsx}'],

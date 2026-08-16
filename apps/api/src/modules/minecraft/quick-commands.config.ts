@@ -1,4 +1,9 @@
-import { MINECRAFT_PERMISSIONS, type MinecraftQuickCommandArg } from '@aurum/shared';
+import {
+  MINECRAFT_PERMISSIONS,
+  type MinecraftCommandArgKind,
+  type MinecraftConsoleCommandDto,
+  type MinecraftQuickCommandArg,
+} from '@aurum/shared';
 
 /**
  * Каталог быстрых действий: label → шаблон RCON-команды.
@@ -271,3 +276,55 @@ export const MINECRAFT_QUICK_COMMANDS: QuickCommandDefinition[] = [...VANILLA, .
 
 /** Имена аргументов, которые обязаны быть валидным ником Minecraft. */
 export const NICKNAME_ARG_NAMES = new Set(['player', 'target', 'nick']);
+
+/**
+ * Имена команд каталога — для автодополнения в консоли.
+ *
+ * Второго списка команд плагинов нет и быть не должно: он бы разъехался с
+ * каталогом при первом же добавлении кнопки. Поэтому имена выводятся прямо
+ * из шаблонов — первое слово шаблона и есть команда, — а виды аргументов
+ * восстанавливаются по объявленным args: где аргумент назван ником
+ * (NICKNAME_ARG_NAMES), панель подставит игроков онлайн.
+ *
+ * Ванильные команды каталога отбрасываются: они уже есть в
+ * MINECRAFT_SERVER_COMMANDS, причём с более полным описанием аргументов.
+ */
+export function catalogConsoleCommands(): MinecraftConsoleCommandDto[] {
+  const byName = new Map<string, MinecraftConsoleCommandDto>();
+
+  for (const definition of MINECRAFT_QUICK_COMMANDS) {
+    if (definition.plugin === null) continue;
+    const lines = Array.isArray(definition.template) ? definition.template : [definition.template];
+    for (const line of lines) {
+      const name = line.trim().split(/\s+/)[0];
+      // Плейсхолдер на месте команды означал бы шаблон вида «{cmd} …» —
+      // такого в каталоге нет, но на всякий случай пропускаем.
+      if (!name || name.startsWith('{')) continue;
+      if (byName.has(name)) continue;
+      byName.set(name, {
+        name,
+        args: argKindsOf(line, definition.args),
+        plugin: definition.plugin,
+      });
+    }
+  }
+
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Виды аргументов по позициям шаблона: {player} → ник, остальное — значение. */
+function argKindsOf(
+  template: string,
+  args: QuickCommandDefinition['args'],
+): MinecraftCommandArgKind[] {
+  const declared = new Map(args.map((a) => [a.name, a]));
+  return template
+    .trim()
+    .split(/\s+/)
+    .slice(1)
+    .map((token) => {
+      const placeholder = /^\{(\w+)\}$/.exec(token)?.[1];
+      if (!placeholder || !declared.has(placeholder)) return 'value' as const;
+      return NICKNAME_ARG_NAMES.has(placeholder) ? ('player' as const) : ('value' as const);
+    });
+}

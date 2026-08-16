@@ -126,6 +126,23 @@ export class CompanionService {
       }));
   }
 
+  /**
+   * Настоящее автодополнение от Bukkit: то же, что видит игрок по Tab в игре,
+   * включая команды и аргументы сторонних плагинов.
+   *
+   * null — companion-плагин не настроен или не ответил; тогда вызывающая
+   * сторона остаётся на статическом словаре, а не показывает ошибку: сломанное
+   * автодополнение не должно мешать вводить команды руками.
+   */
+  async complete(serverId: string, line: string): Promise<string[] | null> {
+    const data = await this.call<{ suggestions?: unknown }>(
+      serverId,
+      `/complete?line=${encodeURIComponent(line)}`,
+    );
+    if (!Array.isArray(data?.suggestions)) return null;
+    return data.suggestions.filter((s): s is string => typeof s === 'string');
+  }
+
   /** Права игрока через LuckPerms. */
   async getPermissions(serverId: string, uuid: string): Promise<MinecraftPermissionsDto> {
     if (!(await this.isConfigured(serverId))) {

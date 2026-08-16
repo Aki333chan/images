@@ -146,6 +146,34 @@ public final class BukkitGameBridge implements GameBridge {
                 false);
     }
 
+    /**
+     * Автодополнение силами самого сервера.
+     *
+     * Bukkit.getServer().getCommandMap() отдаёт карту команд, а её tabComplete
+     * делает ровно то же, что происходит по Tab в клиенте: одно слово — имена
+     * команд, дальше — аргументы конкретной команды, включая команды плагинов.
+     * Строка передаётся без ведущего слэша — так требует контракт метода.
+     *
+     * Отправитель — консоль сервера: команды из панели выполняются от её имени,
+     * и подсказки должны совпадать с тем, что консоли реально доступно. Права
+     * учитываются самим tabComplete (testPermissionSilent), поэтому список
+     * ничего лишнего не покажет.
+     *
+     * Обязательно в основном потоке: обход карты команд и вызовы
+     * TabCompleter плагинов не потокобезопасны. Вернуть может null — это
+     * штатный ответ «команда не найдена», а не ошибка.
+     */
+    @Override
+    public List<String> completeCommand(String line) {
+        return callSync(
+                () -> {
+                    List<String> completions =
+                            Bukkit.getServer().getCommandMap().tabComplete(Bukkit.getConsoleSender(), line);
+                    return completions == null ? List.<String>of() : List.copyOf(completions);
+                },
+                List.of());
+    }
+
     // ---------- Интеграции со сторонними плагинами ----------
 
     @Override
