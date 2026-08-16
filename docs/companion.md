@@ -40,11 +40,36 @@
 Сборку можно делать где угодно — хоть на своём ноутбуке, хоть на VDS.
 Готовый файл потом просто загрузите через браузер.
 
-### 1.1. Поставить JDK 25
+### 1.1. Проверить Java
 
-Paper 26.x собран под Java 25, поэтому и плагин нужно компилировать ею.
-В стандартных репозиториях Ubuntu 24.04 такой версии нет — берём из Adoptium
-(это официальная сборка OpenJDK от Eclipse Foundation).
+**Собираете на Windows?** Отдельная пошаговая инструкция:
+[`companion-plugin/BUILD-WINDOWS.md`](../companion-plugin/BUILD-WINDOWS.md).
+Дальше здесь — про Linux и macOS.
+
+Gradle ставить не нужно: в репозитории лежит обёртка `gradlew`, она скачает
+нужную версию сама.
+
+Модуль `paper` компилируется **JDK 25** — Paper 26.x собран под него, и
+компилятор постарше не прочитает его class-файлы. Но качать этот JDK вручную
+не обязательно: в `settings.gradle.kts` подключён резолвер тулчейнов, и
+Gradle достанет JDK 25 сам. Достаточно, чтобы в системе была любая Java 17+,
+на которой запустится сама сборка:
+
+```bash
+java -version
+```
+
+Если Java нет вовсе:
+
+```bash
+sudo apt-get install -y openjdk-21-jdk-headless
+```
+
+<details>
+<summary>Если Gradle не смог скачать JDK 25 сам (нет интернета, мешает прокси)</summary>
+
+Поставьте JDK 25 вручную из Adoptium — это официальная сборка OpenJDK от
+Eclipse Foundation:
 
 ```bash
 sudo apt-get install -y wget apt-transport-https gpg
@@ -59,25 +84,20 @@ sudo apt-get update
 sudo apt-get install -y temurin-25-jdk
 ```
 
-Проверка:
+На Ubuntu 24.04 подойдёт и штатный пакет: `sudo apt-get install -y openjdk-25-jdk-headless`.
+
+Если пакет не находится — есть [SDKMAN](https://sdkman.io/)
+(`sdk install java 25-tem`) или архив с [adoptium.net](https://adoptium.net/).
+
+Проверить, какие Java видит сборка:
 
 ```bash
-java -version
+./gradlew -q javaToolchains
 ```
 
-Ожидаемо: строка с `25` в начале, например `openjdk version "25.0.x"`.
+В списке должна быть запись `Language Version: 25`.
 
-**Если пакет `temurin-25-jdk` не находится** — возможны варианты: поставьте
-JDK 25 через [SDKMAN](https://sdkman.io/) (`sdk install java 25-tem`) или
-скачайте архив с [adoptium.net](https://adoptium.net/) и распакуйте вручную.
-
-**Если на машине уже есть другая Java**, переключите активную:
-
-```bash
-sudo update-alternatives --config java
-```
-
-и выберите пункт с 25.
+</details>
 
 ### 1.2. Собрать
 
@@ -100,8 +120,11 @@ ls -lh paper/build/libs/
 
 ### Если не получилось
 
-- **`error: invalid source release: 25`** → активна старая Java.
-  Проверьте `java -version` и переключите через `update-alternatives`.
+- **`Cannot find a Java installation … matching {languageVersion=25}`** →
+  Gradle не нашёл JDK 25 и не смог его скачать. Поставьте вручную —
+  см. развёрнутый блок в шаге 1.1.
+- **`error: invalid source release: 25`** → сборка взяла старую Java.
+  Посмотрите `./gradlew -q javaToolchains`: в списке должна быть 25.
 - **`Could not resolve io.papermc.paper:paper-api`** → нет доступа к
   `repo.papermc.io`. Проверьте интернет и что не мешает корпоративный прокси.
 - **`Permission denied: ./gradlew`** → `chmod +x gradlew` и повторите.

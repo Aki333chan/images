@@ -1433,6 +1433,7 @@ Paper/Spigot. На ванильном сервере в этих полях бу
 
 Даёт инвентарь игроков, их координаты и команду `/ticket` в игре.
 Инструкция: [`docs/companion.md`](../docs/companion.md).
+Сборка на Windows: [`companion-plugin/BUILD-WINDOWS.md`](../companion-plugin/BUILD-WINDOWS.md).
 
 ---
 
