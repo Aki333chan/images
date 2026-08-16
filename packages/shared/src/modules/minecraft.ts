@@ -59,6 +59,59 @@ export interface MinecraftQuickCommandDto {
   /** Право, необходимое для запуска (кроме него всегда нужен доступ к серверу). */
   permission: string;
   args: MinecraftQuickCommandArg[];
+  /**
+   * Плагин, командой которого является действие. `null` — ванильная команда,
+   * работает везде. Иначе кнопка показывается, только если этот плагин
+   * действительно установлен на сервере (см. MinecraftPluginsDto).
+   */
+  plugin: string | null;
+  /** Показать подтверждение перед запуском: действие заметно для игрока. */
+  destructive: boolean;
+}
+
+/** Плагины, о которых панель знает и умеет что-то полезное. */
+export interface KnownPluginDto {
+  /** Имя, под которым плагин регистрируется в Bukkit. */
+  id: string;
+  /** Человеческое название — оно нередко другое, чем id. */
+  displayName: string;
+  /** Что панель умеет, если плагин установлен. */
+  gives: string;
+  installed: boolean;
+  /** Версия с сервера; null, если не установлен. */
+  version: string | null;
+}
+
+export interface MinecraftPluginsDto {
+  /**
+   * false — companion-плагин не настроен, список получить неоткуда.
+   * Тогда known заполнен, но installed везде false, и это честно показано.
+   */
+  available: boolean;
+  reason?: string;
+  /** Всё, что стоит на сервере. Пусто, если available = false. */
+  installed: { name: string; version: string; enabled: boolean }[];
+  /** Плагины, поддерживаемые панелью, с отметкой «есть/нет». */
+  known: KnownPluginDto[];
+}
+
+/** Права игрока, как их отдаёт LuckPerms. */
+export interface MinecraftPermissionsDto {
+  available: boolean;
+  /** Причина недоступности: нет companion-плагина либо нет LuckPerms. */
+  reason?: string;
+  code?: 'no-companion' | 'requires-luckperms' | 'error';
+  primaryGroup?: string;
+  groups?: string[];
+  permissions?: { permission: string; value: boolean }[];
+}
+
+/** Одно изменение прав: панель шлёт их по одному, чтобы аудит был читаемым. */
+export interface MinecraftPermissionChangeDto {
+  kind: 'group' | 'permission';
+  key: string;
+  value?: boolean;
+  remove?: boolean;
 }
 
 export interface MinecraftCommandResultDto {
@@ -114,6 +167,34 @@ export interface MinecraftConfigStatusDto {
   lastSeenAt: string | null;
 }
 
+/**
+ * Сторонние плагины, с которыми панель умеет работать.
+ *
+ * id — имя, под которым плагин регистрируется в Bukkit, и оно совпадает не
+ * всегда: EssentialsX зовётся Essentials (наследие старого Essentials),
+ * InvSee++ — InvSeePlusPlus. Сверка идёт именно по id, поэтому менять их
+ * нельзя, не сверившись с plugin.yml соответствующего плагина.
+ */
+export const KNOWN_PLUGINS = [
+  {
+    id: 'LuckPerms',
+    displayName: 'LuckPerms',
+    gives: 'вкладка «Права» у игрока: группы и права через API плагина',
+  },
+  {
+    id: 'Essentials',
+    displayName: 'EssentialsX',
+    gives: 'быстрые действия: heal, god, fly, kit, режим игры, телепорт',
+  },
+  {
+    id: 'InvSeePlusPlus',
+    displayName: 'InvSee++',
+    gives: 'инвентари игроков, которых нет в сети',
+  },
+] as const;
+
+export type KnownPluginId = (typeof KNOWN_PLUGINS)[number]['id'];
+
 export const MINECRAFT_PERMISSIONS = {
   playersView: 'minecraft.players.view',
   kick: 'minecraft.kick',
@@ -124,6 +205,8 @@ export const MINECRAFT_PERMISSIONS = {
   commandRaw: 'minecraft.command.raw',
   inventoryView: 'minecraft.inventory.view',
   configure: 'minecraft.configure',
+  permissionsView: 'minecraft.permissions.view',
+  permissionsEdit: 'minecraft.permissions.edit',
 } as const;
 
 /**

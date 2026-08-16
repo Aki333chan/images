@@ -220,4 +220,152 @@ class CompanionHttpServerTest {
         assertFalse(response.body().contains(TOKEN));
         assertNotNull(response.body());
     }
+
+    // ---------------------------------------------- Каталог плагинов сервера
+
+    @Test
+    @DisplayName("GET /plugins отдаёт имя, версию и признак включённости")
+    void listsInstalledPlugins() throws Exception {
+        bridge.install("LuckPerms");
+
+        HttpResponse<String> response = get("/plugins", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        List<?> plugins = (List<?>) body.get("plugins");
+        assertEquals(2, plugins.size());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> second = (Map<String, Object>) plugins.get(1);
+        assertEquals("LuckPerms", second.get("name"));
+        assertEquals("1.0.0", second.get("version"));
+        assertEquals(Boolean.TRUE, second.get("enabled"));
+    }
+
+    // ------------------------------------------------------ Права (LuckPerms)
+
+    @Test
+    @DisplayName("без LuckPerms права отвечают кодом requires-luckperms, а не падают")
+    void permissionsWithoutLuckPerms() throws Exception {
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/permissions", TOKEN);
+
+        assertEquals(404, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("requires-luckperms", body.get("code"));
+    }
+
+    @Test
+    @DisplayName("с LuckPerms отдаётся основная группа, группы и ноды")
+    void permissionsWithLuckPerms() throws Exception {
+        bridge.install("LuckPerms");
+
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/permissions", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("default", body.get("primaryGroup"));
+        assertEquals(List.of("default"), body.get("groups"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> node = (Map<String, Object>) ((List<?>) body.get("permissions")).get(0);
+        assertEquals("essentials.fly", node.get("permission"));
+        assertEquals(Boolean.TRUE, node.get("value"));
+    }
+
+    @Test
+    @DisplayName("изменение прав применяется и сразу возвращает актуальное состояние")
+    void appliesPermissionChange() throws Exception {
+        bridge.install("LuckPerms");
+
+        HttpResponse<String> response = post(
+                "/players/" + FakeGameBridge.STEVE + "/permissions",
+                TOKEN,
+                "{\"kind\":\"group\",\"key\":\"vip\",\"value\":true}");
+
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("add:GROUP:vip=true"), bridge.permissionWrites);
+        // В ответе — состояние прав, а не просто {"ok":true}.
+        assertTrue(response.body().contains("primaryGroup"));
+    }
+
+    @Test
+    @DisplayName("несуществующая группа отклоняется с 409 и причиной, а не молча")
+    void rejectsUnknownGroup() throws Exception {
+        bridge.install("LuckPerms");
+
+        HttpResponse<String> response = post(
+                "/players/" + FakeGameBridge.STEVE + "/permissions",
+                TOKEN,
+                "{\"kind\":\"group\",\"key\":\"nosuchgroup\"}");
+
+        assertEquals(409, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("rejected", body.get("code"));
+        assertTrue(((String) body.get("error")).contains("nosuchgroup"));
+        assertTrue(bridge.permissionWrites.isEmpty());
+    }
+
+    @Test
+    @DisplayName("кривой kind и кривой key отклоняются до обращения к игре")
+    void validatesPermissionBody() throws Exception {
+        bridge.install("LuckPerms");
+
+        assertEquals(400, post("/players/" + FakeGameBridge.STEVE + "/permissions", TOKEN,
+                "{\"kind\":\"wat\",\"key\":\"vip\"}").statusCode());
+        // Пробел в ноде — верный признак, что кто-то передал не то.
+        assertEquals(400, post("/players/" + FakeGameBridge.STEVE + "/permissions", TOKEN,
+                "{\"kind\":\"permission\",\"key\":\"essentials fly\"}").statusCode());
+        assertTrue(bridge.permissionWrites.isEmpty());
+    }
+
+    // ------------------------------------------- Инвентарь офлайн (InvSee++)
+
+    @Test
+    @DisplayName("офлайн-игрок без InvSee++ — понятный код, а не пустой 404")
+    void offlineInventoryWithoutInvsee() throws Exception {
+        bridge.steveOnline = false;
+
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/inventory", TOKEN);
+
+        assertEquals(404, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("offline-requires-invsee", body.get("code"));
+    }
+
+    @Test
+    @DisplayName("с InvSee++ инвентарь офлайн-игрока читается")
+    void offlineInventoryWithInvsee() throws Exception {
+        bridge.steveOnline = false;
+        bridge.install("InvSeePlusPlus");
+
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/inventory", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("minecraft:bread"));
+    }
+
+    @Test
+    @DisplayName("если InvSee++ стоит, но данных нет — код другой")
+    void offlineInventoryNoData() throws Exception {
+        bridge.steveOnline = false;
+        bridge.install("InvSeePlusPlus");
+        String unknown = "00000000-0000-4000-8000-000000000000";
+
+        HttpResponse<String> response = get("/players/" + unknown + "/inventory", TOKEN);
+
+        assertEquals(404, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("offline-no-data", body.get("code"));
+    }
+
+    @Test
+    @DisplayName("живой инвентарь по-прежнему идёт через Paper, InvSee++ не трогается")
+    void onlineInventoryStillUsesPaper() throws Exception {
+        bridge.install("InvSeePlusPlus");
+
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/inventory", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        // Хлеб отдаёт только офлайн-ветка; здесь должен быть живой инвентарь.
+        assertFalse(response.body().contains("minecraft:bread"));
+        assertTrue(response.body().contains("minecraft:diamond_sword"));
+    }
 }

@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, Select, Spinner, Tabs } from '../components/ui';
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { ServerStats } from '../components/ServerStats';
+import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
 import { listCapabilities } from '@aurum/shared';
 
 /** Не пересекается с id capability: те приходят из манифеста модуля. */
@@ -157,6 +158,10 @@ export function ServerDetailPage() {
               capabilityState={active.state}
             />
           )}
+          {/* Под вкладками, а не внутри одной из них: список отвечает на
+              вопрос «почему у меня нет такой-то кнопки», который возникает
+              на любой вкладке. */}
+          {manifest.id === 'minecraft' && <PluginsPanel serverId={server.id} />}
         </>
       )}
     </div>

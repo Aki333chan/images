@@ -63,6 +63,17 @@ export const minecraftManifest: GameModuleManifest = {
       defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {
+      key: MINECRAFT_PERMISSIONS.permissionsView,
+      description: 'Просмотр прав игрока (нужны companion-плагин и LuckPerms)',
+      defaultRoles: ['ADMIN', 'MODERATOR'],
+    },
+    {
+      // Выдача прав — это раздача власти на сервере, модератору её не даём.
+      key: MINECRAFT_PERMISSIONS.permissionsEdit,
+      description: 'Изменение групп и прав игрока через LuckPerms',
+      defaultRoles: ['ADMIN'],
+    },
+    {
       // Пустой список — право есть только у ГМ: здесь задаются RCON-пароль
       // и адрес companion-плагина.
       key: MINECRAFT_PERMISSIONS.configure,

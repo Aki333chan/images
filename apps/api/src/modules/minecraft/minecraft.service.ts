@@ -4,12 +4,14 @@ import type {
   MinecraftInventoryResponse,
   MinecraftPerformanceDto,
   MinecraftPlayersResponse,
+  MinecraftPluginsDto,
   MinecraftQuickCommandDto,
   MinecraftWhitelistResponse,
 } from '@aurum/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionService } from './companion.service';
 import { MinecraftConfigService } from './minecraft-config.service';
+import { KNOWN_PLUGINS } from '@aurum/shared';
 import {
   isValidNickname,
   looksLikeUnknownCommand,
@@ -224,14 +226,75 @@ export class MinecraftService {
 
   // ---------- Быстрые команды ----------
 
-  listQuickCommands(): MinecraftQuickCommandDto[] {
-    return MINECRAFT_QUICK_COMMANDS.map(({ id, label, description, permission, args }) => ({
+  /**
+   * Каталог быстрых действий.
+   *
+   * @param installedPlugins имена плагинов, реально стоящих на сервере;
+   *   null — список получить не удалось (нет companion-плагина или он молчит).
+   *   В этом случае показываем только ванильные действия: кнопка, ведущая в
+   *   «Unknown command», хуже, чем её отсутствие.
+   */
+  listQuickCommands(installedPlugins: string[] | null): MinecraftQuickCommandDto[] {
+    const installed = new Set((installedPlugins ?? []).map((name) => name.toLowerCase()));
+    return MINECRAFT_QUICK_COMMANDS.filter(
+      (c) => c.plugin === null || installed.has(c.plugin.toLowerCase()),
+    ).map(({ id, label, description, permission, args, plugin, destructive }) => ({
       id,
       label,
       description,
       permission,
       args,
+      plugin,
+      destructive,
     }));
+  }
+
+  /**
+   * Плагины сервера: что стоит на самом деле и что из известного панели
+   * доступно. Работает и без companion-плагина — тогда честно говорит,
+   * что проверить нечем.
+   */
+  async getPlugins(serverId: string): Promise<MinecraftPluginsDto> {
+    const installed = await this.companion.getInstalledPlugins(serverId);
+    if (!installed) {
+      return {
+        available: false,
+        reason:
+          'Список плагинов отдаёт companion-плагин. Пока он не настроен или не отвечает, ' +
+          'проверить установленное невозможно.',
+        installed: [],
+        known: KNOWN_PLUGINS.map((p) => ({
+          id: p.id,
+          displayName: p.displayName,
+          gives: p.gives,
+          installed: false,
+          version: null,
+        })),
+      };
+    }
+
+    const byName = new Map(installed.map((p) => [p.name.toLowerCase(), p]));
+    return {
+      available: true,
+      installed,
+      known: KNOWN_PLUGINS.map((p) => {
+        const match = byName.get(p.id.toLowerCase());
+        return {
+          id: p.id,
+          displayName: p.displayName,
+          gives: p.gives,
+          // Выключенный плагин командой не отзовётся — считаем неустановленным.
+          installed: !!match && match.enabled,
+          version: match?.version ?? null,
+        };
+      }),
+    };
+  }
+
+  /** Имена установленных плагинов или null. Нужен для фильтрации действий. */
+  async installedPluginNames(serverId: string): Promise<string[] | null> {
+    const installed = await this.companion.getInstalledPlugins(serverId);
+    return installed ? installed.filter((p) => p.enabled).map((p) => p.name) : null;
   }
 
   /** Подставляет аргументы в шаблон. Ники валидируются, остальное санитизируется. */

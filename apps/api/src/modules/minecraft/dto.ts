@@ -1,4 +1,6 @@
 import {
+  IsBoolean,
+  IsIn,
   IsInt,
   IsISO8601,
   IsObject,
@@ -6,6 +8,7 @@ import {
   IsString,
   IsUrl,
   Max,
+  Matches,
   MaxLength,
   Min,
   MinLength,
@@ -76,4 +79,34 @@ export class CompanionConfigDto {
   @IsString()
   @MaxLength(300)
   token?: string | null;
+}
+
+/**
+ * Одно изменение прав игрока.
+ *
+ * Ноды LuckPerms — ASCII без пробелов. Проверяем это здесь, а не только в
+ * плагине: панель не должна отправлять на игровой сервер заведомо негодное
+ * значение, а сообщение об ошибке человеку понятнее прямо в форме.
+ */
+export class PermissionChangeDto {
+  @IsIn(['group', 'permission'])
+  kind!: 'group' | 'permission';
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  @Matches(/^[A-Za-z0-9_.*:-]+$/, {
+    message: 'Допустимы только латиница, цифры и символы . _ - * :',
+  })
+  key!: string;
+
+  /** Знак ноды: true — выдать, false — явный запрет. По умолчанию выдать. */
+  @IsOptional()
+  @IsBoolean()
+  value?: boolean;
+
+  /** true — снять ноду вместо добавления. */
+  @IsOptional()
+  @IsBoolean()
+  remove?: boolean;
 }

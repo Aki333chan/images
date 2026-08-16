@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,8 @@ import ovh.aurumgg.companion.core.json.JsonParser;
 import ovh.aurumgg.companion.core.json.PayloadWriter;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
+import ovh.aurumgg.companion.core.model.PermissionChange;
+import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 
 /**
@@ -106,18 +109,87 @@ public final class CompanionHttpServer {
             return;
         }
 
-        // GET /players/{uuid}/inventory
+        // GET /plugins — что вообще установлено на этом сервере
+        if (parts.length == 1 && parts[0].equals("plugins") && method.equals("GET")) {
+            respond(exchange, 200, PayloadWriter.plugins(bridge.installedPlugins()));
+            return;
+        }
+
+        // GET /players/{uuid}/inventory[?name=Steve]
+        //
+        // Сначала пробуем живой инвентарь через Paper. Если игрока нет в сети,
+        // пробуем InvSee++ — и только если и его нет, отвечаем отказом с кодом,
+        // по которому панель напишет, чего именно не хватает.
         if (parts.length == 3
                 && parts[0].equals("players")
                 && parts[2].equals("inventory")
                 && method.equals("GET")) {
             UUID uuid = parseUuid(parts[1]);
             Optional<InventoryInfo> inventory = bridge.inventory(uuid);
-            if (inventory.isEmpty()) {
-                respond(exchange, 404, PayloadWriter.error("Игрок не в сети"));
+            if (inventory.isPresent()) {
+                respond(exchange, 200, PayloadWriter.inventory(inventory.get()));
                 return;
             }
-            respond(exchange, 200, PayloadWriter.inventory(inventory.get()));
+
+            String name = queryParam(exchange, "name");
+            Optional<InventoryInfo> offline = bridge.offlineInventory(uuid, name);
+            if (offline.isPresent()) {
+                respond(exchange, 200, PayloadWriter.inventory(offline.get()));
+                return;
+            }
+
+            boolean invseeInstalled = hasPlugin(INVSEE_PLUGIN);
+            if (invseeInstalled) {
+                respond(exchange, 404, PayloadWriter.error(
+                        "Игрок не в сети, и InvSee++ не нашёл сохранённых данных о нём",
+                        "offline-no-data"));
+            } else {
+                respond(exchange, 404, PayloadWriter.error(
+                        "Игрок не в сети. Для офлайн-инвентарей нужен плагин InvSee++",
+                        "offline-requires-invsee"));
+            }
+            return;
+        }
+
+        // GET /players/{uuid}/permissions — через LuckPerms
+        if (parts.length == 3
+                && parts[0].equals("players")
+                && parts[2].equals("permissions")
+                && method.equals("GET")) {
+            UUID uuid = parseUuid(parts[1]);
+            Optional<PermissionsInfo> permissions = bridge.permissions(uuid);
+            if (permissions.isEmpty()) {
+                respond(exchange, 404, PayloadWriter.error(
+                        "Управление правами требует плагина LuckPerms", "requires-luckperms"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.permissions(permissions.get()));
+            return;
+        }
+
+        // POST /players/{uuid}/permissions — одно изменение за запрос
+        if (parts.length == 3
+                && parts[0].equals("players")
+                && parts[2].equals("permissions")
+                && method.equals("POST")) {
+            UUID uuid = parseUuid(parts[1]);
+            PermissionChange change = parsePermissionChange(readBody(exchange));
+            Optional<PermissionChange.Result> result = bridge.applyPermission(uuid, change);
+            if (result.isEmpty()) {
+                respond(exchange, 404, PayloadWriter.error(
+                        "Управление правами требует плагина LuckPerms", "requires-luckperms"));
+                return;
+            }
+            if (!result.get().applied()) {
+                // 409, а не 400: запрос корректен, но состояние сервера не даёт
+                // его выполнить — нет такой группы, право уже стоит и т.п.
+                respond(exchange, 409, PayloadWriter.error(result.get().reason(), "rejected"));
+                return;
+            }
+            // Возвращаем актуальное состояние: панели не нужен второй запрос,
+            // и она не покажет то, что уже устарело.
+            Optional<PermissionsInfo> updated = bridge.permissions(uuid);
+            respond(exchange, 200, updated.map(PayloadWriter::permissions).orElseGet(PayloadWriter::ok));
             return;
         }
 
@@ -139,6 +211,68 @@ public final class CompanionHttpServer {
         }
 
         respond(exchange, 404, PayloadWriter.error("Неизвестный маршрут"));
+    }
+
+    /** Имя InvSee++ в Bukkit — именно такое, «InvSee++» не зарегистрирован. */
+    static final String INVSEE_PLUGIN = "InvSeePlusPlus";
+
+    private boolean hasPlugin(String name) {
+        return bridge.installedPlugins().stream().anyMatch(p -> p.name().equalsIgnoreCase(name));
+    }
+
+    /** Значение параметра строки запроса или null. */
+    private static String queryParam(HttpExchange exchange, String key) {
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query == null || query.isBlank()) return null;
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq < 0) continue;
+            if (!URLDecoder.decode(pair.substring(0, eq), StandardCharsets.UTF_8).equals(key)) continue;
+            String value = URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+            return value.isBlank() ? null : value;
+        }
+        return null;
+    }
+
+    /**
+     * Тело: {"kind":"group","key":"vip","value":true,"remove":false}
+     *
+     * kind    — group либо permission
+     * key     — имя группы или право вида essentials.fly
+     * value   — знак ноды: true выдать, false явно запретить
+     * remove  — снять ноду вместо добавления
+     */
+    static PermissionChange parsePermissionChange(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("Пустое тело запроса");
+        }
+        Map<String, Object> parsed = JsonParser.parseObject(body);
+
+        Object rawKind = parsed.get("kind");
+        if (!(rawKind instanceof String kindString)) {
+            throw new IllegalArgumentException("Поле kind должно быть строкой");
+        }
+        PermissionChange.Kind kind;
+        switch (kindString) {
+            case "group" -> kind = PermissionChange.Kind.GROUP;
+            case "permission" -> kind = PermissionChange.Kind.PERMISSION;
+            default -> throw new IllegalArgumentException("kind должен быть group или permission");
+        }
+
+        Object rawKey = parsed.get("key");
+        if (!(rawKey instanceof String key) || key.isBlank()) {
+            throw new IllegalArgumentException("Поле key обязательно");
+        }
+        // Ноды LuckPerms — ASCII без пробелов; проверяем здесь, чтобы кривое
+        // значение не уехало в постоянное хранилище прав.
+        if (!key.matches("[A-Za-z0-9_.*:\\-]{1,120}")) {
+            throw new IllegalArgumentException(
+                    "key может содержать только латиницу, цифры и символы . _ - * :");
+        }
+
+        boolean value = !Boolean.FALSE.equals(parsed.get("value"));
+        boolean remove = Boolean.TRUE.equals(parsed.get("remove"));
+        return new PermissionChange(kind, key, value, remove);
     }
 
     private static String[] splitPath(String path) {

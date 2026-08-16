@@ -1,9 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import {
   MINECRAFT_PERMISSIONS,
   type MinecraftCommandResultDto,
   type MinecraftConfigStatusDto,
   type MinecraftPerformanceDto,
+  type MinecraftPermissionsDto,
+  type MinecraftPluginsDto,
   type MinecraftInventoryStatusDto,
 } from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../../auth/decorators';
@@ -16,6 +28,7 @@ import {
   BanDto,
   CompanionConfigDto,
   KickDto,
+  PermissionChangeDto,
   QuickCommandRunDto,
   RawCommandDto,
   RconConfigDto,
@@ -134,8 +147,42 @@ export class MinecraftController {
   @Get('quick-commands')
   @RequirePermission(MINECRAFT_PERMISSIONS.quickCommands)
   @ServerScoped('serverId')
-  quickCommands() {
-    return { commands: this.minecraft.listQuickCommands() };
+  async quickCommands(@Param('serverId') serverId: string) {
+    // Список плагинов спрашиваем у сервера: действия чужих плагинов
+    // показываются, только если те действительно установлены.
+    const installed = await this.minecraft.installedPluginNames(serverId);
+    return { commands: this.minecraft.listQuickCommands(installed) };
+  }
+
+  /** Что из известного панели стоит на этом сервере. */
+  @Get('plugins')
+  @RequirePermission('servers.view')
+  @ServerScoped('serverId')
+  plugins(@Param('serverId') serverId: string): Promise<MinecraftPluginsDto> {
+    return this.minecraft.getPlugins(serverId);
+  }
+
+  // ---------- Права игрока (LuckPerms) ----------
+
+  @Get('players/:uuid/permissions')
+  @RequirePermission(MINECRAFT_PERMISSIONS.permissionsView)
+  @ServerScoped('serverId')
+  permissions(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<MinecraftPermissionsDto> {
+    return this.companion.getPermissions(serverId, uuid);
+  }
+
+  @Post('players/:uuid/permissions')
+  @RequirePermission(MINECRAFT_PERMISSIONS.permissionsEdit)
+  @ServerScoped('serverId')
+  changePermission(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: PermissionChangeDto,
+  ): Promise<MinecraftPermissionsDto> {
+    return this.companion.changePermission(serverId, uuid, dto);
   }
 
   @Post('quick-commands/:commandId')

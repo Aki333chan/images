@@ -21,7 +21,10 @@ import ovh.aurumgg.companion.core.GameBridge;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
+import ovh.aurumgg.companion.core.model.PermissionChange;
+import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
+import ovh.aurumgg.companion.core.model.PluginInfo;
 
 /**
  * Реализация моста поверх Bukkit API.
@@ -98,56 +101,20 @@ public final class BukkitGameBridge implements GameBridge {
 
                     List<ItemInfo> items = new ArrayList<>();
                     for (int slot = 0; slot < 36; slot++) {
-                        ItemInfo info = describe(inv.getItem(slot), slot);
+                        ItemInfo info = ItemMapper.describe(slot, inv.getItem(slot));
                         if (info != null) items.add(info);
                     }
 
                     List<ItemInfo> armor = new ArrayList<>();
                     ItemStack[] armorContents = inv.getArmorContents();
                     for (int slot = 0; slot < armorContents.length; slot++) {
-                        ItemInfo info = describe(armorContents[slot], slot);
+                        ItemInfo info = ItemMapper.describe(slot, armorContents[slot]);
                         if (info != null) armor.add(info);
                     }
 
-                    return Optional.of(new InventoryInfo(items, armor, describe(inv.getItemInOffHand(), 0)));
+                    return Optional.of(new InventoryInfo(items, armor, ItemMapper.describe(0, inv.getItemInOffHand())));
                 },
                 Optional.empty());
-    }
-
-    /** null для пустого слота — пустые слоты в JSON не передаются. */
-    private static ItemInfo describe(ItemStack stack, int slot) {
-        if (stack == null || stack.getType() == Material.AIR || stack.getAmount() <= 0) {
-            return null;
-        }
-        String displayName = null;
-        List<String> lore = List.of();
-        Map<String, Integer> enchantments = new LinkedHashMap<>();
-
-        if (stack.hasItemMeta()) {
-            ItemMeta meta = stack.getItemMeta();
-            if (meta != null) {
-                if (meta.hasDisplayName()) {
-                    displayName = org.bukkit.ChatColor.stripColor(meta.getDisplayName());
-                }
-                if (meta.hasLore() && meta.getLore() != null) {
-                    List<String> plain = new ArrayList<>();
-                    for (String line : meta.getLore()) {
-                        plain.add(org.bukkit.ChatColor.stripColor(line));
-                    }
-                    lore = plain;
-                }
-            }
-        }
-        stack.getEnchantments()
-                .forEach((enchantment, level) -> enchantments.put(enchantment.getKey().toString(), level));
-
-        return new ItemInfo(
-                slot,
-                stack.getType().getKey().toString(),
-                stack.getAmount(),
-                displayName,
-                enchantments,
-                lore);
     }
 
     @Override
@@ -177,5 +144,48 @@ public final class BukkitGameBridge implements GameBridge {
                     return true;
                 },
                 false);
+    }
+
+    // ---------- Интеграции со сторонними плагинами ----------
+
+    @Override
+    public List<PluginInfo> installedPlugins() {
+        // Чтение списка плагинов основного потока не требует, но делаем это
+        // через callSync для единообразия: PluginManager может меняться при
+        // горячей перезагрузке, и снимок из основного потока согласован.
+        return callSync(
+                () -> {
+                    List<PluginInfo> result = new ArrayList<>();
+                    for (Plugin installed : Bukkit.getPluginManager().getPlugins()) {
+                        result.add(new PluginInfo(
+                                installed.getName(),
+                                installed.getPluginMeta().getVersion(),
+                                installed.isEnabled()));
+                    }
+                    result.sort((a, b) -> a.name().compareToIgnoreCase(b.name()));
+                    return result;
+                },
+                List.of());
+    }
+
+    @Override
+    public Optional<PermissionsInfo> permissions(UUID playerUuid) {
+        // LuckPerms потокобезопасен и работает асинхронно сам, поэтому в
+        // основной поток не прыгаем: иначе ожидание его future заблокировало
+        // бы тик сервера.
+        if (!LuckPermsIntegration.isAvailable()) return Optional.empty();
+        return LuckPermsIntegration.read(playerUuid);
+    }
+
+    @Override
+    public Optional<PermissionChange.Result> applyPermission(UUID playerUuid, PermissionChange change) {
+        if (!LuckPermsIntegration.isAvailable()) return Optional.empty();
+        return LuckPermsIntegration.apply(playerUuid, change);
+    }
+
+    @Override
+    public Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName) {
+        if (!InvSeeIntegration.isAvailable()) return Optional.empty();
+        return InvSeeIntegration.read(playerUuid, playerName);
     }
 }

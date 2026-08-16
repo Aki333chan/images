@@ -6,7 +6,9 @@ import java.util.List;
 import java.util.Map;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
+import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
+import ovh.aurumgg.companion.core.model.PluginInfo;
 
 /** Сериализация ответов плагина. Формат зафиксирован в docs/companion.md. */
 public final class PayloadWriter {
@@ -37,6 +39,49 @@ public final class PayloadWriter {
         root.put("armor", itemArray(inventory.armor()));
         root.put("offhand", inventory.offhand() == null ? "null" : item(inventory.offhand()));
         return Json.object(root);
+    }
+
+    public static String plugins(List<PluginInfo> plugins) {
+        List<String> items = new ArrayList<>(plugins.size());
+        for (PluginInfo p : plugins) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("name", Json.string(p.name()));
+            fields.put("version", Json.string(p.version()));
+            fields.put("enabled", p.enabled() ? "true" : "false");
+            items.add(Json.object(fields));
+        }
+        return Json.object(Map.of("plugins", Json.array(items)));
+    }
+
+    public static String permissions(PermissionsInfo info) {
+        Map<String, String> root = new LinkedHashMap<>();
+        root.put("primaryGroup", Json.string(info.primaryGroup()));
+
+        List<String> groups = new ArrayList<>(info.groups().size());
+        for (String group : info.groups()) groups.add(Json.string(group));
+        root.put("groups", Json.array(groups));
+
+        List<String> nodes = new ArrayList<>(info.permissions().size());
+        for (PermissionsInfo.PermissionEntry entry : info.permissions()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("permission", Json.string(entry.permission()));
+            fields.put("value", entry.value() ? "true" : "false");
+            nodes.add(Json.object(fields));
+        }
+        root.put("permissions", Json.array(nodes));
+        return Json.object(root);
+    }
+
+    /**
+     * Ошибка с машиночитаемым кодом. Панель по коду решает, что показать:
+     * «поставьте LuckPerms» — это не то же самое, что «игрок не найден»,
+     * а разбирать русский текст на той стороне никуда не годится.
+     */
+    public static String error(String message, String code) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("error", Json.string(message));
+        fields.put("code", Json.string(code));
+        return Json.object(fields);
     }
 
     public static String error(String message) {

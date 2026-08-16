@@ -54,10 +54,34 @@ describe('MinecraftService.buildQuickCommand', () => {
   });
 
   it('в списке команд для фронта нет самих шаблонов', () => {
-    const commands = service.listQuickCommands();
+    const commands = service.listQuickCommands(['Essentials']);
     expect(commands.length).toBeGreaterThan(0);
     for (const command of commands) {
       expect(command).not.toHaveProperty('template');
     }
+  });
+
+  it('без списка плагинов остаются только ванильные действия', () => {
+    // null = список получить не удалось. Показывать кнопки чужих плагинов
+    // наугад нельзя: они привели бы в «Unknown command».
+    const commands = service.listQuickCommands(null);
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) {
+      expect(command.plugin).toBeNull();
+    }
+  });
+
+  it('действия плагина появляются, только если он установлен', () => {
+    const without = service.listQuickCommands(['LuckPerms']);
+    expect(without.some((c) => c.id === 'ess-heal')).toBe(false);
+
+    const withEssentials = service.listQuickCommands(['LuckPerms', 'Essentials']);
+    expect(withEssentials.some((c) => c.id === 'ess-heal')).toBe(true);
+  });
+
+  it('имя плагина сверяется без учёта регистра', () => {
+    // Bukkit отдаёт имя как есть; полагаться на его регистр не стоит.
+    const commands = service.listQuickCommands(['essentials']);
+    expect(commands.some((c) => c.id === 'ess-heal')).toBe(true);
   });
 });

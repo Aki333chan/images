@@ -5,6 +5,7 @@ import type {
   MinecraftInventoryResponse,
   MinecraftInventoryStatusDto,
   MinecraftPlayersResponse,
+  MinecraftPluginsDto,
   MinecraftQuickCommandDto,
   MinecraftWhitelistResponse,
 } from '@aurum/shared';
@@ -12,10 +13,19 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
-import { PromptModal, PunishModal } from './PlayerModal';
+import { Modal, PromptModal, PunishModal } from './PlayerModal';
+import { PermissionsPanel } from './PermissionsPanel';
 import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 
 const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
+
+/**
+ * Подписи групп действий. Ключ — bukkit-имя плагина, значение — то, как его
+ * знают люди: «Essentials» на кнопке выглядел бы опечаткой.
+ */
+const PLUGIN_LABELS: Record<string, string> = {
+  Essentials: 'EssentialsX',
+};
 
 /** Аватар игрока через Crafatar. Без UUID сервис не работает — рисуем заглушку. */
 function PlayerAvatar({ uuid, name }: { uuid: string | null; name: string }) {
@@ -59,6 +69,20 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
   const [data, setData] = useState<MinecraftPlayersResponse | null>(null);
   const [error, setError] = useState('');
   const [punish, setPunish] = useState<{ player: string; kind: 'kick' | 'ban' } | null>(null);
+  const [rights, setRights] = useState<{ name: string; uuid: string } | null>(null);
+  // Вкладка «Права» показывается, только если LuckPerms реально стоит на
+  // сервере: кнопка, ведущая в «поставьте плагин», — это не помощь.
+  const [luckPerms, setLuckPerms] = useState(false);
+
+  useEffect(() => {
+    api<MinecraftPluginsDto>(`${base(serverId)}/plugins`)
+      .then((plugins) =>
+        setLuckPerms(plugins.known.some((p) => p.id === 'LuckPerms' && p.installed)),
+      )
+      // Не смогли выяснить — считаем, что плагина нет: лучше не показать
+      // кнопку, чем показать неработающую.
+      .catch(() => setLuckPerms(false));
+  }, [serverId]);
 
   const load = useCallback(() => {
     setError('');
@@ -164,6 +188,17 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
                           Бан
                         </Button>
                       )}
+                      {/* UUID приходит только с companion-плагином, а без
+                          него LuckPerms всё равно недоступен. */}
+                      {luckPerms && hasPermission('minecraft.permissions.view') && p.uuid && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRights({ name: p.name, uuid: p.uuid! })}
+                        >
+                          Права
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -193,6 +228,12 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
               await load();
             }}
           />
+        )}
+
+        {rights && (
+          <Modal title={`Права игрока ${rights.name}`} onClose={() => setRights(null)}>
+            <PermissionsPanel serverId={serverId} uuid={rights.uuid} />
+          </Modal>
         )}
       </Card>
 
@@ -612,23 +653,48 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
 
   if (!commands) return null;
 
+  // Группируем по плагину: ванильные первыми, дальше по алфавиту.
+  // Сервер уже отфильтровал действия плагинов, которых на нём нет.
+  const groups = new Map<string, MinecraftQuickCommandDto[]>();
+  for (const command of commands) {
+    const key = command.plugin ?? '';
+    const list = groups.get(key);
+    if (list) list.push(command);
+    else groups.set(key, [command]);
+  }
+  const ordered = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+
   return (
     <Card className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-sm text-muted">Быстрые команды:</span>
-        {commands.map((c) => (
-          <Button
-            key={c.id}
-            size="sm"
-            variant="outline"
-            title={c.description}
-            disabled={busy}
-            onClick={() => (c.args.length === 0 ? void run(c, {}) : setActive(c))}
-          >
-            {c.label}
-          </Button>
-        ))}
-      </div>
+      {ordered.map(([plugin, list]) => (
+        <div key={plugin || 'vanilla'} className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-sm text-muted">
+            {plugin ? (PLUGIN_LABELS[plugin] ?? plugin) : 'Быстрые команды'}:
+          </span>
+          {list.map((c) => (
+            <Button
+              key={c.id}
+              size="sm"
+              variant="outline"
+              title={c.description}
+              disabled={busy}
+              onClick={() => {
+                // Действие с аргументами и так открывает форму — там
+                // человек видит, что именно запускает. Подтверждение нужно
+                // только для заметных действий без аргументов.
+                if (c.args.length > 0) {
+                  setActive(c);
+                  return;
+                }
+                if (c.destructive && !confirm(`${c.description}\n\nВыполнить?`)) return;
+                void run(c, {});
+              }}
+            >
+              {c.label}
+            </Button>
+          ))}
+        </div>
+      ))}
 
       {hasPermission('minecraft.command.raw') && (
         <div className="flex gap-2 border-t border-border pt-3">
