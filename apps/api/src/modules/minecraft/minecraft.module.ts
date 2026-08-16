@@ -1,6 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ServersModule } from '../../servers/servers.module';
+import { ActivityModule } from '../../servers/activity.module';
 import {
   ActivitySamplerProcessor,
   ActivitySamplerScheduler,
@@ -22,7 +22,8 @@ import { RconService } from './rcon/rcon.service';
     BullModule.registerQueue({ name: ACTIVITY_QUEUE }),
     // ActivityService живёт в ядре: график активности — свойство сервера,
     // а не игрового модуля. Модуль только поставляет замеры.
-    ServersModule,
+    // Именно ActivityModule, а не ServersModule: см. пояснение в activity.module.ts.
+    ActivityModule,
   ],
   controllers: [MinecraftController, MinecraftInternalController],
   providers: [
