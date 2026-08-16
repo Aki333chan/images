@@ -23,7 +23,15 @@ export interface QuickCommandDefinition {
   id: string;
   label: string;
   description: string;
-  template: string;
+  /**
+   * Одна команда или несколько, выполняемых по порядку.
+   *
+   * Несколько нужны там, где эффект складывается из пары команд: у /title
+   * подзаголовок показывается только вместе с заголовком и только если
+   * отправлен раньше него. Склеить их в одну строку нельзя — RCON принимает
+   * ровно одну команду за запрос.
+   */
+  template: string | string[];
   permission: string;
   args: MinecraftQuickCommandArg[];
   /** Имя плагина в Bukkit; null — ванильная команда. */
@@ -73,7 +81,7 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'broadcast',
-    label: 'Объявление',
+    label: 'Сообщение в чат',
     description: 'Отправляет сообщение всем игрокам в чат',
     template: 'say {message}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
@@ -90,24 +98,82 @@ const VANILLA: QuickCommandDefinition[] = [
     destructive: true,
   },
   {
-    id: 'tp-spawn',
-    label: 'Телепорт на спавн',
-    description: 'Телепортирует игрока в точку спавна мира',
-    template: 'spawnpoint {player}',
+    id: 'title-announce',
+    label: 'Объявление',
+    description: 'Крупная надпись по центру экрана у всех игроков',
+    // Текстовый компонент, а не голая строка: только так задаются цвет и
+    // начертание. Значения подставляются с JSON-экранированием — иначе
+    // кавычка в тексте разорвала бы литерал.
+    //
+    // Подзаголовок в vanilla показывается ТОЛЬКО вместе с заголовком и
+    // только если отправлен раньше него, поэтому subtitle идёт первой
+    // командой. Пустой — плейсхолдер вычищается, и остаётся один заголовок.
+    template: [
+      // Подзаголовок первым: строка с незаполненным {subtitle} отбрасывается
+      // целиком, и тогда остаётся только заголовок.
+      'title @a subtitle {"text":"{subtitle}","color":"yellow"}',
+      'title @a title {"text":"{message}","color":"gold","bold":true}',
+    ],
     permission: MINECRAFT_PERMISSIONS.quickCommands,
-    args: [PLAYER_ARG],
+    args: [
+      {
+        name: 'message',
+        label: 'Текст объявления',
+        required: true,
+        placeholder: 'Рестарт через 5 минут',
+        escape: 'json',
+      },
+      {
+        name: 'subtitle',
+        label: 'Подзаголовок (необязательно)',
+        required: false,
+        placeholder: 'Сохраните постройки',
+        escape: 'json',
+      },
+    ],
     plugin: null,
-    destructive: false,
+    destructive: true,
   },
   {
-    id: 'gamemode-survival',
-    label: 'Режим выживания',
-    description: 'Переводит игрока в режим выживания',
-    template: 'gamemode survival {player}',
+    id: 'vanilla-gamemode',
+    label: 'Сменить режим игры',
+    description: 'Ванильная команда gamemode — работает без плагинов',
+    template: 'gamemode {mode} {player}',
+    permission: MINECRAFT_PERMISSIONS.quickCommands,
+    args: [
+      {
+        name: 'mode',
+        label: 'Режим',
+        required: true,
+        placeholder: 'survival / creative / adventure / spectator',
+      },
+      PLAYER_ARG,
+    ],
+    plugin: null,
+    destructive: true,
+  },
+  {
+    id: 'vanilla-kill',
+    label: 'Убить игрока',
+    description: 'Ванильная команда kill',
+    template: 'kill {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [PLAYER_ARG],
     plugin: null,
-    destructive: false,
+    destructive: true,
+  },
+  {
+    id: 'vanilla-tp',
+    label: 'Телепорт к игроку',
+    description: 'Ванильная команда tp — работает без плагинов',
+    template: 'tp {player} {target}',
+    permission: MINECRAFT_PERMISSIONS.quickCommands,
+    args: [
+      { name: 'player', label: 'Кого телепортировать', required: true, placeholder: 'Steve' },
+      { name: 'target', label: 'К кому', required: true, placeholder: 'Alex' },
+    ],
+    plugin: null,
+    destructive: true,
   },
 ];
 

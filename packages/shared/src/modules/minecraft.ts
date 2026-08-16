@@ -50,6 +50,14 @@ export interface MinecraftQuickCommandArg {
   label: string;
   required: boolean;
   placeholder?: string;
+  /**
+   * Как готовить значение перед подстановкой в шаблон.
+   *
+   * 'json' — значение попадает внутрь JSON-литерала команды (например, в
+   * текстовый компонент /title). Без экранирования кавычка в тексте
+   * разорвала бы JSON, и сервер отверг бы всю команду.
+   */
+  escape?: 'json';
 }
 
 export interface MinecraftQuickCommandDto {

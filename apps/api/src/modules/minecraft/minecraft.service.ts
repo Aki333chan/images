@@ -301,37 +301,57 @@ export class MinecraftService {
   buildQuickCommand(
     id: string,
     args: Record<string, string>,
-  ): { command: string; permission: string } {
+  ): { commands: string[]; permission: string } {
     const definition = MINECRAFT_QUICK_COMMANDS.find((c) => c.id === id);
     if (!definition) throw new NotFoundException('Быстрая команда не найдена');
 
-    let command = definition.template;
-    for (const arg of definition.args) {
-      const rawValue = args[arg.name];
-      if (!rawValue) {
-        if (arg.required) throw new BadRequestException(`Не заполнено поле «${arg.label}»`);
-        continue;
+    const templates = Array.isArray(definition.template)
+      ? definition.template
+      : [definition.template];
+
+    const filled = templates.map((template) => {
+      let command = template;
+      for (const arg of definition.args) {
+        const rawValue = args[arg.name];
+        if (!rawValue) {
+          if (arg.required) throw new BadRequestException(`Не заполнено поле «${arg.label}»`);
+          continue;
+        }
+        let value = NICKNAME_ARG_NAMES.has(arg.name)
+          ? this.assertNickname(rawValue)
+          : sanitizeCommandArgument(rawValue);
+        // Значение уходит внутрь JSON-литерала команды — экранируем кавычки и
+        // обратные слэши, иначе текст с кавычкой разорвёт JSON и сервер
+        // отвергнет команду целиком.
+        if (arg.escape === 'json') value = escapeForJsonLiteral(value);
+        command = command.replaceAll(`{${arg.name}}`, value);
       }
-      const value = NICKNAME_ARG_NAMES.has(arg.name)
-        ? this.assertNickname(rawValue)
-        : sanitizeCommandArgument(rawValue);
-      command = command.replaceAll(`{${arg.name}}`, value);
+      return command.replace(/\s+/g, ' ').trim();
+    });
+
+    // Строку с незаполненным плейсхолдером выбрасываем целиком, а не
+    // подставляем в неё пустоту: «title @a subtitle с пустым текстом» — это
+    // видимая игроку пустая надпись, а не отсутствие подзаголовка.
+    const commands = filled.filter((command) => !/\{[a-zA-Z0-9_]+\}/.test(command));
+    if (commands.length === 0) {
+      throw new BadRequestException('Нечего выполнять: не заполнено ни одно поле');
     }
-    // Незаполненные необязательные плейсхолдеры не должны утечь в команду.
-    command = command
-      .replace(/\{[a-zA-Z0-9_]+\}/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return { command, permission: definition.permission };
+    return { commands, permission: definition.permission };
   }
 
+  /** Выполняет быстрое действие: одну команду или пару, по порядку. */
   async runQuickCommand(
     serverId: string,
     id: string,
     args: Record<string, string>,
   ): Promise<string> {
-    const { command } = this.buildQuickCommand(id, args);
-    return this.runCommand(serverId, command);
+    const { commands } = this.buildQuickCommand(id, args);
+    // По порядку и последовательно: у команд, идущих парой, порядок значим.
+    const outputs: string[] = [];
+    for (const command of commands) {
+      outputs.push(await this.runCommand(serverId, command));
+    }
+    return outputs.filter((o) => o.trim().length > 0).join('\n');
   }
 
   // ---------- Инвентарь ----------
@@ -340,4 +360,16 @@ export class MinecraftService {
     this.assertNickname(player);
     return this.companion.getInventory(serverId, player);
   }
+}
+
+/**
+ * Экранирование для вставки внутрь JSON-строки.
+ *
+ * sanitizeCommandArgument уже вырезал управляющие символы и переводы строк,
+ * поэтому остаётся закрыть кавычку и обратный слэш. Через JSON.stringify —
+ * чтобы не воспроизводить правила экранирования вручную; кавычки по краям
+ * срезаем, они уже есть в шаблоне.
+ */
+function escapeForJsonLiteral(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
 }

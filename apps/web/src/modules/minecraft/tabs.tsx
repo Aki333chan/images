@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MinecraftBanDto,
-  MinecraftInventoryItemDto,
-  MinecraftInventoryResponse,
-  MinecraftInventoryStatusDto,
   MinecraftPlayersResponse,
   MinecraftPluginsDto,
   MinecraftQuickCommandDto,
@@ -14,7 +11,7 @@ import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
 import { Modal, PromptModal, PunishModal } from './PlayerModal';
-import { PermissionsPanel } from './PermissionsPanel';
+import { PlayerDetail } from './PlayerDetail';
 import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 
 const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
@@ -65,23 +62,22 @@ function HealthBar({ health, maxHealth }: { health: number; maxHealth: number })
 // ---------------------------------------------------------------- Игроки
 
 export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
-  const { hasPermission } = useAuth();
   const [data, setData] = useState<MinecraftPlayersResponse | null>(null);
   const [error, setError] = useState('');
   const [punish, setPunish] = useState<{ player: string; kind: 'kick' | 'ban' } | null>(null);
-  const [rights, setRights] = useState<{ name: string; uuid: string } | null>(null);
-  // Вкладка «Права» показывается, только если LuckPerms реально стоит на
-  // сервере: кнопка, ведущая в «поставьте плагин», — это не помощь.
-  const [luckPerms, setLuckPerms] = useState(false);
+  /** Открытая карточка игрока. */
+  const [selected, setSelected] = useState<string | null>(null);
+  /**
+   * Список плагинов сервера. Грузится один раз на вкладку и передаётся в
+   * карточку: по нему решается, какие действия доступны, а какие показать
+   * серыми с подсказкой. null — выяснить не удалось.
+   */
+  const [plugins, setPlugins] = useState<MinecraftPluginsDto | null>(null);
 
   useEffect(() => {
     api<MinecraftPluginsDto>(`${base(serverId)}/plugins`)
-      .then((plugins) =>
-        setLuckPerms(plugins.known.some((p) => p.id === 'LuckPerms' && p.installed)),
-      )
-      // Не смогли выяснить — считаем, что плагина нет: лучше не показать
-      // кнопку, чем показать неработающую.
-      .catch(() => setLuckPerms(false));
+      .then(setPlugins)
+      .catch(() => setPlugins(null));
   }, [serverId]);
 
   const load = useCallback(() => {
@@ -114,6 +110,10 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
     );
   }
   if (!data) return <Spinner />;
+
+  // Именно поиск по имени, а не сохранённый объект: список перезапрашивается
+  // каждые 15 секунд, и статистика в карточке должна обновляться вместе с ним.
+  const selectedPlayer = selected ? (data.players.find((p) => p.name === selected) ?? null) : null;
 
   return (
     <div className="space-y-4">
@@ -148,7 +148,11 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
             </thead>
             <tbody>
               {data.players.map((p) => (
-                <tr key={p.name} className="border-t border-border">
+                <tr
+                  key={p.name}
+                  className="cursor-pointer border-t border-border hover:bg-white/5"
+                  onClick={() => setSelected(p.name)}
+                >
                   <td className="py-2">
                     <div className="flex items-center gap-2">
                       <PlayerAvatar uuid={p.uuid} name={p.name} />
@@ -169,37 +173,7 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
                   </td>
                   <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
                   <td className="py-2 text-right">
-                    <div className="flex justify-end gap-2">
-                      {hasPermission('minecraft.kick') && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setPunish({ player: p.name, kind: 'kick' })}
-                        >
-                          Кик
-                        </Button>
-                      )}
-                      {hasPermission('minecraft.ban') && (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setPunish({ player: p.name, kind: 'ban' })}
-                        >
-                          Бан
-                        </Button>
-                      )}
-                      {/* UUID приходит только с companion-плагином, а без
-                          него LuckPerms всё равно недоступен. */}
-                      {luckPerms && hasPermission('minecraft.permissions.view') && p.uuid && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setRights({ name: p.name, uuid: p.uuid! })}
-                        >
-                          Права
-                        </Button>
-                      )}
-                    </div>
+                    <span className="text-xs text-muted">подробнее →</span>
                   </td>
                 </tr>
               ))}
@@ -230,9 +204,15 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
           />
         )}
 
-        {rights && (
-          <Modal title={`Права игрока ${rights.name}`} onClose={() => setRights(null)}>
-            <PermissionsPanel serverId={serverId} uuid={rights.uuid} />
+        {selectedPlayer && (
+          <Modal title={`Игрок ${selectedPlayer.name}`} onClose={() => setSelected(null)}>
+            <PlayerDetail
+              serverId={serverId}
+              player={selectedPlayer}
+              plugins={plugins}
+              onChanged={() => void load()}
+              onPunish={(kind) => setPunish({ player: selectedPlayer.name, kind })}
+            />
           </Modal>
         )}
       </Card>
@@ -420,192 +400,13 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
   );
 }
 
-// ------------------------------------------------------------- Инвентарь
-
-/** Подсказка при наведении: имя, количество, зачарования и описание. */
-function describeItem(item: MinecraftInventoryItemDto): string {
-  const lines = [`${item.displayName ?? item.id} ×${item.count}`];
-  const enchantments = Object.entries(item.enchantments ?? {});
-  for (const [key, level] of enchantments) {
-    lines.push(`${key.replace(/^minecraft:/, '')} ${level}`);
-  }
-  for (const line of item.lore ?? []) lines.push(line);
-  return lines.join('\n');
-}
-
-function InventoryGrid({
-  items,
-  size,
-  cols,
-  slotOffset = 0,
-}: {
-  items: MinecraftInventoryResponse['items'];
-  size: number;
-  cols: number;
-  /** Номер слота первой ячейки: основной инвентарь начинается с 9, а не с 0. */
-  slotOffset?: number;
-}) {
-  const bySlot = new Map((items ?? []).map((i) => [i.slot, i]));
-  return (
-    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {Array.from({ length: size }, (_, cell) => {
-        const slot = cell + slotOffset;
-        const item = bySlot.get(slot);
-        const enchantCount = item ? Object.keys(item.enchantments ?? {}).length : 0;
-        return (
-          <div
-            key={slot}
-            title={item ? describeItem(item) : `Слот ${slot}`}
-            className={`relative flex aspect-square items-center justify-center rounded border text-[10px] ${
-              item
-                ? enchantCount > 0
-                  ? 'border-fuchsia-400/50 bg-fuchsia-500/10'
-                  : 'border-primary/40 bg-primary/10'
-                : 'border-border bg-black/30'
-            }`}
-          >
-            {item && (
-              <>
-                <span className="truncate px-1 text-center leading-tight">
-                  {(item.displayName ?? item.id).replace(/^minecraft:/, '')}
-                </span>
-                {item.count > 1 && (
-                  <span className="absolute bottom-0 right-1 font-bold">{item.count}</span>
-                )}
-                {/* Зачарованные предметы помечаем — как блеск в самой игре. */}
-                {enchantCount > 0 && (
-                  <span className="absolute left-0.5 top-0.5 text-fuchsia-300">✦</span>
-                )}
-              </>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
-  const [player, setPlayer] = useState('');
-  const [status, setStatus] = useState<MinecraftInventoryStatusDto | null>(null);
-  const [data, setData] = useState<MinecraftInventoryResponse | null>(null);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  // Отдельный статус-роут: по ответу на конкретного игрока нельзя отличить
-  // «плагина нет» от «этот игрок сейчас офлайн».
-  useEffect(() => {
-    void api<MinecraftInventoryStatusDto>(`${base(serverId)}/inventory-status`)
-      .then(setStatus)
-      .catch((e: Error) => setError(e.message));
-  }, [serverId]);
-
-  async function load() {
-    if (!player.trim()) return;
-    setBusy(true);
-    setError('');
-    try {
-      setData(
-        await api<MinecraftInventoryResponse>(`${base(serverId)}/inventory/${player.trim()}`),
-      );
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!status) return <Spinner />;
-
-  // Плагина нет — показываем инструкцию, а не пустую сетку.
-  if (!status.companionConfigured) {
-    return (
-      <Card className="space-y-3">
-        <h3 className="font-semibold">Нужен companion-плагин</h3>
-        <p className="text-sm text-muted">
-          Инвентарь нельзя получить по RCON: ванильный сервер не отдаёт содержимое инвентаря в
-          текстовом виде. Установите companion-плагин на игровой сервер и укажите его адрес в
-          настройках модуля.
-        </p>
-        <a
-          className="inline-block text-sm text-primary underline"
-          href={status.docsUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Инструкция по установке плагина
-        </a>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="space-y-4">
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <Label>Ник игрока</Label>
-          <Input
-            value={player}
-            onChange={(e) => setPlayer(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void load()}
-            placeholder="Steve"
-          />
-        </div>
-        <Button onClick={() => void load()} disabled={busy || !player.trim()}>
-          Показать
-        </Button>
-      </div>
-      <ErrorText>{error}</ErrorText>
-
-      {/* Игрок офлайн или плагин не ответил — обычное сообщение, без инструкции. */}
-      {data && !data.available && <p className="text-sm text-muted">{data.reason}</p>}
-
-      {data?.available && (
-        <div className="space-y-4">
-          <div>
-            <p className="mb-1 text-xs text-muted">Инвентарь (слоты 9-35)</p>
-            <InventoryGrid
-              items={data.items?.filter((i) => i.slot >= 9)}
-              size={27}
-              cols={9}
-              slotOffset={9}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-muted">Хотбар (слоты 0-8)</p>
-            <InventoryGrid items={data.items?.filter((i) => i.slot < 9)} size={9} cols={9} />
-          </div>
-          <div className="flex gap-6">
-            <div className="w-32">
-              <p className="mb-1 text-xs text-muted">Броня</p>
-              <InventoryGrid items={data.armor} size={4} cols={4} />
-            </div>
-            <div className="w-8">
-              <p className="mb-1 text-xs text-muted">Рука</p>
-              <InventoryGrid
-                items={data.offhand ? [{ ...data.offhand, slot: 0 }] : []}
-                size={1}
-                cols={1}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-// ------------------------------------------------- Быстрые команды (дашборд)
-
 export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
-  const { hasPermission } = useAuth();
   const [commands, setCommands] = useState<MinecraftQuickCommandDto[] | null>(null);
   const [active, setActive] = useState<MinecraftQuickCommandDto | null>(null);
   const [args, setArgs] = useState<Record<string, string>>({});
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [raw, setRaw] = useState('');
 
   useEffect(() => {
     void api<{ commands: MinecraftQuickCommandDto[] }>(`${base(serverId)}/quick-commands`)
@@ -625,25 +426,6 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
       setResult(res.output || `Команда «${command.label}» выполнена`);
       setActive(null);
       setArgs({});
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function runRaw() {
-    if (!raw.trim()) return;
-    setBusy(true);
-    setError('');
-    setResult('');
-    try {
-      const res = await api<{ output: string }>(`${base(serverId)}/command`, {
-        method: 'POST',
-        body: JSON.stringify({ command: raw.trim() }),
-      });
-      setResult(res.output || 'Команда выполнена (сервер ничего не ответил)');
-      setRaw('');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -695,20 +477,6 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
           ))}
         </div>
       ))}
-
-      {hasPermission('minecraft.command.raw') && (
-        <div className="flex gap-2 border-t border-border pt-3">
-          <Input
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void runRaw()}
-            placeholder="Произвольная RCON-команда, напр. difficulty hard"
-          />
-          <Button variant="outline" onClick={() => void runRaw()} disabled={busy || !raw.trim()}>
-            Выполнить
-          </Button>
-        </div>
-      )}
 
       {result && (
         <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-black/40 p-2 font-mono text-xs text-emerald-300">

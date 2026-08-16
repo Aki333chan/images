@@ -8,7 +8,6 @@ import {
 } from './test-dummy/tabs';
 import {
   MinecraftBansTab,
-  MinecraftInventoryTab,
   MinecraftPlayersTab,
   MinecraftQuickCommandsWidget,
   MinecraftWhitelistTab,
@@ -68,11 +67,6 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
         label: 'Whitelist',
         permission: 'minecraft.whitelist',
         component: MinecraftWhitelistTab,
-      },
-      inventory: {
-        label: 'Инвентарь',
-        permission: 'minecraft.inventory.view',
-        component: MinecraftInventoryTab,
       },
     },
     dashboard: {

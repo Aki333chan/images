@@ -15,7 +15,11 @@ describe('каталог быстрых действий', () => {
 
   it('каждый плейсхолдер шаблона объявлен в args, и наоборот', () => {
     for (const command of MINECRAFT_QUICK_COMMANDS) {
-      const placeholders = [...command.template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+      // Шаблон может быть парой команд — склеиваем для проверки плейсхолдеров.
+      const template = Array.isArray(command.template)
+        ? command.template.join(' ')
+        : command.template;
+      const placeholders = [...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
       const declared = command.args.map((a) => a.name);
 
       for (const placeholder of placeholders) {
@@ -28,7 +32,7 @@ describe('каталог быстрых действий', () => {
       // Обратное тоже важно: объявленный, но не используемый аргумент —
       // поле в форме, которое никуда не попадёт.
       for (const name of declared) {
-        expect(`${command.id}:${command.template}`).toContain(`{${name}}`);
+        expect(`${command.id}:${template}`).toContain(`{${name}}`);
       }
     }
   });
