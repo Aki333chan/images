@@ -88,3 +88,40 @@ export interface AuditLogDto {
 export interface ModulesResponse {
   enabled: GameModuleManifest[];
 }
+
+/** Потребление ресурсов сервера — данные Pterodactyl, без игровой специфики. */
+export interface ServerResourcesDto {
+  /** running / offline / starting / stopping. */
+  state: string;
+  cpuPercent: number;
+  memoryBytes: number;
+  /** Лимит из настроек сервера в Pterodactyl; 0 — без ограничения. */
+  memoryLimitBytes: number;
+  diskBytes: number;
+  diskLimitBytes: number;
+  networkRxBytes: number;
+  networkTxBytes: number;
+  /** Аптайм в миллисекундах. */
+  uptimeMs: number;
+}
+
+/**
+ * История онлайна по часам. Сервер отдаёт плоский список замеров во
+ * времени UTC, а раскладку по суткам и часам делает клиент — только он
+ * знает часовой пояс смотрящего. Раскладывать на сервере нельзя: сдвиг
+ * готовой сетки на несколько часов срезал бы данные по краям.
+ */
+export interface ServerActivityDto {
+  /** За сколько суток вернули замеры. */
+  days: number;
+  /** Максимум онлайна за период — по нему нормируется цвет. */
+  peak: number;
+  samples: ServerActivitySampleDto[];
+}
+
+export interface ServerActivitySampleDto {
+  /** Начало часа в UTC, ISO-строка. */
+  bucket: string;
+  /** Пик онлайна за этот час. */
+  online: number;
+}

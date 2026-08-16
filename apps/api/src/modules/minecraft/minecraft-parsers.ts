@@ -44,6 +44,73 @@ export function parsePlayerList(raw: string): ParsedPlayerList {
   return { online: online ?? names.length, max, names };
 }
 
+export interface ParsedPerformance {
+  /** TPS за 1, 5 и 15 минут. null — сервер не отдал это значение. */
+  tps1m: number | null;
+  tps5m: number | null;
+  tps15m: number | null;
+  /** Среднее время тика в миллисекундах. Норма — меньше 50. */
+  mspt: number | null;
+}
+
+/**
+ * Ответ команды `tps` (Paper/Spigot, ванили такой команды нет):
+ *   «TPS from last 1m, 5m, 15m: 20.0, 19.98, 19.5»
+ *   «TPS от последних 1m, 5m, 15m: *20.0, 20.0, 20.0»  — со звёздочкой,
+ *   когда значение округлено вверх, и с переводом на некоторых сборках.
+ *
+ * Разбираем максимально терпимо: берём первые три числа после двоеточия.
+ * Названия меняются от сборки к сборке, а формат чисел — нет.
+ */
+export function parseTps(raw: string): Pick<ParsedPerformance, 'tps1m' | 'tps5m' | 'tps15m'> {
+  const text = stripColorCodes(raw);
+  const colon = text.indexOf(':');
+  const tail = colon >= 0 ? text.slice(colon + 1) : text;
+  // Звёздочка перед числом — пометка Paper, что TPS «подтянут» до 20.
+  const numbers = (tail.match(/\*?\d+(?:[.,]\d+)?/g) ?? [])
+    .map((n) => Number(n.replace('*', '').replace(',', '.')))
+    // TPS выше 20 не бывает; так отсекаем случайные числа из текста.
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 20);
+
+  return {
+    tps1m: numbers[0] ?? null,
+    tps5m: numbers[1] ?? null,
+    tps15m: numbers[2] ?? null,
+  };
+}
+
+/**
+ * Ответ команды `mspt` (Paper):
+ *   «Server tick times (avg/min/max) from last 5s, 10s, 1m:»
+ *   «◴ 1.5/0.8/12.3, 1.6/0.7/40.1, 1.9/0.6/55.0»
+ *
+ * Нас интересует первое среднее — это текущее время тика.
+ */
+export function parseMspt(raw: string): number | null {
+  const text = stripColorCodes(raw);
+  // Первое число после переноса строки со списком значений либо в конце строки.
+  const match = /(\d+(?:[.,]\d+)?)\s*\//.exec(text);
+  if (!match) {
+    // Некоторые сборки отвечают одним числом без слэшей.
+    const single = /(\d+(?:[.,]\d+)?)\s*ms/i.exec(text);
+    const raw = single?.[1];
+    return raw ? Number(raw.replace(',', '.')) : null;
+  }
+  const value = Number((match[1] ?? '').replace(',', '.'));
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Команда не поддерживается сервером (ваниль без Paper и т.п.). */
+export function looksLikeUnknownCommand(raw: string): boolean {
+  const text = stripColorCodes(raw).toLowerCase();
+  return (
+    text.includes('unknown command') ||
+    text.includes('unknown or incomplete command') ||
+    text.includes('неизвестная команда') ||
+    text.trim().length === 0
+  );
+}
+
 /**
  * Ответ команды `whitelist list`:
  *   «There are 2 whitelisted players: Alice, Bob»

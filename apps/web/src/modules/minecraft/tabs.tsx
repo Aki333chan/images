@@ -13,6 +13,7 @@ import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
 import { PromptModal, PunishModal } from './PlayerModal';
+import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 
 const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
 
@@ -75,117 +76,128 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
 
   if (error) {
     return (
-      <Card>
-        <ErrorText>{error}</ErrorText>
-        <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
-          Повторить
-        </Button>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <ErrorText>{error}</ErrorText>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
+            Повторить
+          </Button>
+        </Card>
+        {/* История онлайна лежит в нашей БД, поэтому график остаётся
+            доступен, даже когда живой список получить не удалось. */}
+        <ActivityHeatmap serverId={serverId} />
+      </div>
     );
   }
   if (!data) return <Spinner />;
 
   return (
-    <Card>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm text-muted">
-          Онлайн: {data.online}
-          {data.max !== null && ` / ${data.max}`}
-          {data.source === 'rcon' && (
-            <span className="ml-2 text-xs">
-              (данные по RCON — UUID и пинг доступны с companion-плагином)
-            </span>
-          )}
+    <div className="space-y-4">
+      <Card>
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-sm text-muted">
+            Онлайн: {data.online}
+            {data.max !== null && ` / ${data.max}`}
+            {data.source === 'rcon' && (
+              <span className="ml-2 text-xs">
+                (данные по RCON — UUID и пинг доступны с companion-плагином)
+              </span>
+            )}
+          </div>
+          <Button size="sm" variant="outline" onClick={() => void load()}>
+            Обновить
+          </Button>
         </div>
-        <Button size="sm" variant="outline" onClick={() => void load()}>
-          Обновить
-        </Button>
-      </div>
 
-      {data.players.length === 0 ? (
-        <p className="text-muted">Сейчас никого нет онлайн.</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted">
-            <tr>
-              <th className="pb-2">Игрок</th>
-              <th className="pb-2">Здоровье</th>
-              <th className="pb-2">Положение</th>
-              <th className="pb-2">Пинг</th>
-              <th className="pb-2 text-right">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.players.map((p) => (
-              <tr key={p.name} className="border-t border-border">
-                <td className="py-2">
-                  <div className="flex items-center gap-2">
-                    <PlayerAvatar uuid={p.uuid} name={p.name} />
-                    <span className="font-medium">{p.name}</span>
-                  </div>
-                </td>
-                <td className="py-2 text-muted">
-                  {p.health !== null ? (
-                    <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className="py-2 text-xs text-muted">
-                  {p.position
-                    ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
-                    : '—'}
-                </td>
-                <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
-                <td className="py-2 text-right">
-                  <div className="flex justify-end gap-2">
-                    {hasPermission('minecraft.kick') && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPunish({ player: p.name, kind: 'kick' })}
-                      >
-                        Кик
-                      </Button>
-                    )}
-                    {hasPermission('minecraft.ban') && (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => setPunish({ player: p.name, kind: 'ban' })}
-                      >
-                        Бан
-                      </Button>
-                    )}
-                  </div>
-                </td>
+        {data.players.length === 0 ? (
+          <p className="text-muted">Сейчас никого нет онлайн.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted">
+              <tr>
+                <th className="pb-2">Игрок</th>
+                <th className="pb-2">Здоровье</th>
+                <th className="pb-2">Положение</th>
+                <th className="pb-2">Пинг</th>
+                <th className="pb-2 text-right">Действия</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {data.players.map((p) => (
+                <tr key={p.name} className="border-t border-border">
+                  <td className="py-2">
+                    <div className="flex items-center gap-2">
+                      <PlayerAvatar uuid={p.uuid} name={p.name} />
+                      <span className="font-medium">{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="py-2 text-muted">
+                    {p.health !== null ? (
+                      <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="py-2 text-xs text-muted">
+                    {p.position
+                      ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
+                      : '—'}
+                  </td>
+                  <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
+                  <td className="py-2 text-right">
+                    <div className="flex justify-end gap-2">
+                      {hasPermission('minecraft.kick') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPunish({ player: p.name, kind: 'kick' })}
+                        >
+                          Кик
+                        </Button>
+                      )}
+                      {hasPermission('minecraft.ban') && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setPunish({ player: p.name, kind: 'ban' })}
+                        >
+                          Бан
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
 
-      {punish && (
-        <PunishModal
-          player={punish.player}
-          kind={punish.kind}
-          onClose={() => setPunish(null)}
-          onSubmit={async (reason, expiresAt) => {
-            const path =
-              punish.kind === 'kick'
-                ? `${base(serverId)}/players/${punish.player}/kick`
-                : `${base(serverId)}/players/${punish.player}/ban`;
-            await api(path, {
-              method: 'POST',
-              body: JSON.stringify(
-                punish.kind === 'kick' ? { reason } : { reason, ...(expiresAt ? { expiresAt } : {}) },
-              ),
-            });
-            await load();
-          }}
-        />
-      )}
-    </Card>
+        {punish && (
+          <PunishModal
+            player={punish.player}
+            kind={punish.kind}
+            onClose={() => setPunish(null)}
+            onSubmit={async (reason, expiresAt) => {
+              const path =
+                punish.kind === 'kick'
+                  ? `${base(serverId)}/players/${punish.player}/kick`
+                  : `${base(serverId)}/players/${punish.player}/ban`;
+              await api(path, {
+                method: 'POST',
+                body: JSON.stringify(
+                  punish.kind === 'kick'
+                    ? { reason }
+                    : { reason, ...(expiresAt ? { expiresAt } : {}) },
+                ),
+              });
+              await load();
+            }}
+          />
+        )}
+      </Card>
+
+      <ActivityHeatmap serverId={serverId} />
+    </div>
   );
 }
 
@@ -452,7 +464,9 @@ export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
     setBusy(true);
     setError('');
     try {
-      setData(await api<MinecraftInventoryResponse>(`${base(serverId)}/inventory/${player.trim()}`));
+      setData(
+        await api<MinecraftInventoryResponse>(`${base(serverId)}/inventory/${player.trim()}`),
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -468,9 +482,9 @@ export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
       <Card className="space-y-3">
         <h3 className="font-semibold">Нужен companion-плагин</h3>
         <p className="text-sm text-muted">
-          Инвентарь нельзя получить по RCON: ванильный сервер не отдаёт содержимое
-          инвентаря в текстовом виде. Установите companion-плагин на игровой сервер
-          и укажите его адрес в настройках модуля.
+          Инвентарь нельзя получить по RCON: ванильный сервер не отдаёт содержимое инвентаря в
+          текстовом виде. Установите companion-плагин на игровой сервер и укажите его адрес в
+          настройках модуля.
         </p>
         <a
           className="inline-block text-sm text-primary underline"
@@ -527,7 +541,11 @@ export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
             </div>
             <div className="w-8">
               <p className="mb-1 text-xs text-muted">Рука</p>
-              <InventoryGrid items={data.offhand ? [{ ...data.offhand, slot: 0 }] : []} size={1} cols={1} />
+              <InventoryGrid
+                items={data.offhand ? [{ ...data.offhand, slot: 0 }] : []}
+                size={1}
+                cols={1}
+              />
             </div>
           </div>
         </div>

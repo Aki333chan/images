@@ -1,5 +1,11 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { ServersModule } from '../../servers/servers.module';
+import {
+  ActivitySamplerProcessor,
+  ActivitySamplerScheduler,
+  ACTIVITY_QUEUE,
+} from './activity-sampler.processor';
 import { BanExpiryProcessor, BanExpiryScheduler, BAN_EXPIRY_QUEUE } from './ban-expiry.processor';
 import { CompanionService } from './companion.service';
 import { CompanionTokenGuard } from './companion-token.guard';
@@ -11,7 +17,13 @@ import { MinecraftService } from './minecraft.service';
 import { RconService } from './rcon/rcon.service';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: BAN_EXPIRY_QUEUE })],
+  imports: [
+    BullModule.registerQueue({ name: BAN_EXPIRY_QUEUE }),
+    BullModule.registerQueue({ name: ACTIVITY_QUEUE }),
+    // ActivityService живёт в ядре: график активности — свойство сервера,
+    // а не игрового модуля. Модуль только поставляет замеры.
+    ServersModule,
+  ],
   controllers: [MinecraftController, MinecraftInternalController],
   providers: [
     RconService,
@@ -22,6 +34,8 @@ import { RconService } from './rcon/rcon.service';
     MinecraftTicketDelivery,
     BanExpiryScheduler,
     BanExpiryProcessor,
+    ActivitySamplerScheduler,
+    ActivitySamplerProcessor,
   ],
 })
 export class MinecraftModule {}

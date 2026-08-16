@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ROLE_LABELS, ROLES, type Role, type ServerDto, type UserAdminDto } from '@aurum/shared';
 import { api } from '../lib/api';
-import { Badge, Button, Card, Select, Spinner } from '../components/ui';
+import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 
 /**
  * Экран управления доступом (только ГМ): смена ролей и привязка серверов.
@@ -49,6 +49,7 @@ export function AccessControlPage() {
   return (
     <div>
       <h1 className="mb-4 text-xl font-bold">Управление доступом</h1>
+      <CreateUserForm onCreated={(user) => setUsers((prev) => [...(prev ?? []), user])} />
       <div className="space-y-4">
         {users.map((user) => (
           <Card key={user.id}>
@@ -76,7 +77,8 @@ export function AccessControlPage() {
             {user.role !== 'OWNER' && (
               <div className="mt-3 border-t border-border pt-3">
                 <p className="mb-2 text-xs text-muted">
-                  Доступные сервера ({user.serverIds.length === 0 ? 'нет доступа' : user.serverIds.length}):
+                  Доступные сервера (
+                  {user.serverIds.length === 0 ? 'нет доступа' : user.serverIds.length}):
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {servers.map((s) => {
@@ -100,5 +102,121 @@ export function AccessControlPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Создание пользователя. Пароль задаёт ГМ и передаёт человеку сам —
+ * почтовой рассылки в панели нет, и заводить её ради трёх друзей незачем.
+ */
+function CreateUserForm({ onCreated }: { onCreated: (user: UserAdminDto) => void }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<Role>('MODERATOR');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit() {
+    setBusy(true);
+    setError('');
+    try {
+      const user = await api<UserAdminDto>('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: email.trim(),
+          displayName: displayName.trim(),
+          password,
+          role,
+        }),
+      });
+      onCreated(user);
+      setEmail('');
+      setDisplayName('');
+      setPassword('');
+      setOpen(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="mb-4">
+        <Button onClick={() => setOpen(true)}>Добавить пользователя</Button>
+      </div>
+    );
+  }
+
+  // Требование бэкенда — не меньше 8 символов; проверяем здесь же,
+  // чтобы не гонять заведомо неверную форму на сервер.
+  const passwordOk = password.length >= 8;
+  const canSubmit = email.includes('@') && displayName.trim() && passwordOk && !busy;
+
+  return (
+    <Card className="mb-4 space-y-3">
+      <h2 className="font-semibold">Новый пользователь</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label>Email (логин)</Label>
+          <Input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="off"
+            placeholder="friend@example.com"
+          />
+        </div>
+        <div>
+          <Label>Отображаемое имя</Label>
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Как показывать в панели"
+          />
+        </div>
+        <div>
+          <Label>Пароль</Label>
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            placeholder="минимум 8 символов"
+          />
+          {password.length > 0 && !passwordOk && <ErrorText>Минимум 8 символов</ErrorText>}
+        </div>
+        <div>
+          <Label>Роль</Label>
+          <Select
+            value={role}
+            onChange={(v) => setRole(v as Role)}
+            options={ROLES.filter((r) => r !== 'OWNER').map((r) => ({
+              value: r,
+              label: ROLE_LABELS[r],
+            }))}
+          />
+        </div>
+      </div>
+
+      {error && <ErrorText>{error}</ErrorText>}
+
+      <p className="text-xs text-muted">
+        Пароль передайте человеку сами — писем панель не шлёт. Сменить его он сможет в меню
+        «Безопасность». Доступ к серверам выдаётся ниже, после создания: по умолчанию его нет ни к
+        одному.
+      </p>
+
+      <div className="flex gap-2">
+        <Button onClick={() => void submit()} disabled={!canSubmit}>
+          {busy ? 'Создаём…' : 'Создать'}
+        </Button>
+        <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+          Отмена
+        </Button>
+      </div>
+    </Card>
   );
 }

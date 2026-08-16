@@ -72,14 +72,40 @@ model Server {
   moduleId        String?  @map("module_id")
   /// AES-256-GCM-шифрованный JSON с доп. кредами (RCON и т.п.)
   credentialsEnc  String?  @map("credentials_enc")
+  /// Лимиты из Pterodactyl, обновляются при синке. 0 — без ограничения.
+  /// Нужны, чтобы показывать «занято из», а не голое число байт.
+  memoryLimitMb   Int?     @map("memory_limit_mb")
+  diskLimitMb     Int?     @map("disk_limit_mb")
+  cpuLimitPercent Int?     @map("cpu_limit_percent")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  access        UserServerAccess[]
-  tickets       Ticket[]
-  minecraftBans MinecraftBan[]
+  access          UserServerAccess[]
+  tickets         Ticket[]
+  minecraftBans   MinecraftBan[]
+  activitySamples ServerActivitySample[]
 
   @@map("servers")
+}
+
+/// Замер числа игроков онлайн: по ним строится график активности.
+/// Один ряд на сервер и часовой слот — повторные замеры внутри часа
+/// усредняются на месте, чтобы таблица не росла линейно по времени.
+model ServerActivitySample {
+  serverId  String   @map("server_id")
+  /// Начало часа в UTC, к которому относится замер.
+  bucket    DateTime
+  /// Среднее число игроков за час.
+  avgOnline Float    @map("avg_online")
+  /// Пик за час — по нему видно, что «в среднем двое» это 0 и 4.
+  maxOnline Int      @map("max_online")
+  /// Сколько замеров усреднено: нужно для пересчёта среднего без хранения истории.
+  samples   Int      @default(1)
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@id([serverId, bucket])
+  @@index([serverId, bucket])
+  @@map("server_activity_samples")
 }
 
 /// Server-scoped доступ: Admin/Moderator видит только привязанные сервера.

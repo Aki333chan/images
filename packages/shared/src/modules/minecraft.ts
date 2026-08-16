@@ -82,9 +82,7 @@ export interface MinecraftInventoryItemDto {
  * (обычное сообщение).
  */
 export type MinecraftInventoryUnavailableCode =
-  | 'no-plugin'
-  | 'player-offline'
-  | 'plugin-unreachable';
+  'no-plugin' | 'player-offline' | 'plugin-unreachable';
 
 /** Доступен ли инвентарь на этом сервере — без секретов, для любой роли с правом просмотра. */
 export interface MinecraftInventoryStatusDto {
@@ -127,3 +125,19 @@ export const MINECRAFT_PERMISSIONS = {
   inventoryView: 'minecraft.inventory.view',
   configure: 'minecraft.configure',
 } as const;
+
+/**
+ * Производительность игрового сервера: TPS и время тика.
+ * Команды `tps` и `mspt` есть в Paper/Spigot; на ванильном сервере их нет,
+ * поэтому поля обнуляются, а `supported` показывает, что именно недоступно.
+ */
+export interface MinecraftPerformanceDto {
+  tps1m: number | null;
+  tps5m: number | null;
+  tps15m: number | null;
+  /** Среднее время тика, мс. Норма — меньше 50. */
+  mspt: number | null;
+  /** false — сервер не знает команду (не Paper/Spigot). */
+  tpsSupported: boolean;
+  msptSupported: boolean;
+}

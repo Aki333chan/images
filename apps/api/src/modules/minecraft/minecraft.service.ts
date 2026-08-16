@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type {
   MinecraftBanDto,
   MinecraftInventoryResponse,
+  MinecraftPerformanceDto,
   MinecraftPlayersResponse,
   MinecraftQuickCommandDto,
   MinecraftWhitelistResponse,
@@ -11,7 +12,10 @@ import { CompanionService } from './companion.service';
 import { MinecraftConfigService } from './minecraft-config.service';
 import {
   isValidNickname,
+  looksLikeUnknownCommand,
+  parseMspt,
   parsePlayerList,
+  parseTps,
   parseWhitelist,
   sanitizeCommandArgument,
 } from './minecraft-parsers';
@@ -71,6 +75,29 @@ export class MinecraftService {
       online: parsed.online,
       max: parsed.max,
       source: 'rcon',
+    };
+  }
+
+  /**
+   * TPS и время тика. Команды есть только в Paper/Spigot — на ванильном
+   * сервере они неизвестны, и это не ошибка: возвращаем флаги поддержки,
+   * чтобы интерфейс мог сказать «недоступно», а не показывать пустоту.
+   */
+  async getPerformance(serverId: string): Promise<MinecraftPerformanceDto> {
+    const [tpsRaw, msptRaw] = await Promise.all([
+      this.runCommand(serverId, 'tps'),
+      this.runCommand(serverId, 'mspt').catch(() => ''),
+    ]);
+
+    const tpsSupported = !looksLikeUnknownCommand(tpsRaw);
+    const msptSupported = !looksLikeUnknownCommand(msptRaw);
+    const tps = tpsSupported ? parseTps(tpsRaw) : { tps1m: null, tps5m: null, tps15m: null };
+
+    return {
+      ...tps,
+      mspt: msptSupported ? parseMspt(msptRaw) : null,
+      tpsSupported,
+      msptSupported,
     };
   }
 
@@ -208,7 +235,10 @@ export class MinecraftService {
   }
 
   /** Подставляет аргументы в шаблон. Ники валидируются, остальное санитизируется. */
-  buildQuickCommand(id: string, args: Record<string, string>): { command: string; permission: string } {
+  buildQuickCommand(
+    id: string,
+    args: Record<string, string>,
+  ): { command: string; permission: string } {
     const definition = MINECRAFT_QUICK_COMMANDS.find((c) => c.id === id);
     if (!definition) throw new NotFoundException('Быстрая команда не найдена');
 
@@ -225,11 +255,18 @@ export class MinecraftService {
       command = command.replaceAll(`{${arg.name}}`, value);
     }
     // Незаполненные необязательные плейсхолдеры не должны утечь в команду.
-    command = command.replace(/\{[a-zA-Z0-9_]+\}/g, '').replace(/\s+/g, ' ').trim();
+    command = command
+      .replace(/\{[a-zA-Z0-9_]+\}/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     return { command, permission: definition.permission };
   }
 
-  async runQuickCommand(serverId: string, id: string, args: Record<string, string>): Promise<string> {
+  async runQuickCommand(
+    serverId: string,
+    id: string,
+    args: Record<string, string>,
+  ): Promise<string> {
     const { command } = this.buildQuickCommand(id, args);
     return this.runCommand(serverId, command);
   }

@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, Select, Spinner, Tabs } from '../components/ui';
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
+import { ServerStats } from '../components/ServerStats';
 import { listCapabilities } from '@aurum/shared';
 
 /** Не пересекается с id capability: те приходят из манифеста модуля. */
@@ -128,6 +129,12 @@ export function ServerDetailPage() {
           />
         </Card>
       )}
+
+      <ServerStats
+        serverId={server.id}
+        moduleId={server.moduleId ?? null}
+        canSeePerformance={hasPermission('minecraft.players.view')}
+      />
 
       {manifest && DashboardWidget && (
         <DashboardWidget serverId={server.id} moduleId={manifest.id} capabilityState={true} />

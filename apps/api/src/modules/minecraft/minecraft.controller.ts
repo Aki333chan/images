@@ -3,6 +3,7 @@ import {
   MINECRAFT_PERMISSIONS,
   type MinecraftCommandResultDto,
   type MinecraftConfigStatusDto,
+  type MinecraftPerformanceDto,
   type MinecraftInventoryStatusDto,
 } from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../../auth/decorators';
@@ -172,6 +173,14 @@ export class MinecraftController {
   @ServerScoped('serverId')
   inventory(@Param('serverId') serverId: string, @Param('name') name: string) {
     return this.minecraft.getInventory(serverId, name);
+  }
+
+  /** TPS и время тика. Право то же, что на просмотр игроков. */
+  @Get('performance')
+  @RequirePermission(MINECRAFT_PERMISSIONS.playersView)
+  @ServerScoped('serverId')
+  performance(@Param('serverId') serverId: string): Promise<MinecraftPerformanceDto> {
+    return this.minecraft.getPerformance(serverId);
   }
 
   // ---------- Настройки подключения ----------

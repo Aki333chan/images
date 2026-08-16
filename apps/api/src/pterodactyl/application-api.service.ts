@@ -10,6 +10,8 @@ export interface PteroApplicationServer {
   description: string;
   node: number;
   suspended: boolean;
+  /** memory и disk — в МиБ, cpu — в процентах (100 = одно ядро). 0 = без лимита. */
+  limits?: { memory: number; disk: number; cpu: number };
 }
 
 interface ListResponse {
