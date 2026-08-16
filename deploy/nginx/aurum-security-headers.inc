@@ -21,5 +21,20 @@ add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
 add_header Referrer-Policy "same-origin" always;
 
-# Аватары игроков грузятся с crafatar.com — иначе их заблокирует CSP.
-add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://crafatar.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'" always;
+# CSP. Два места здесь зависят от вашей установки:
+#
+#   img-src     — аватары игроков грузятся с crafatar.com.
+#   connect-src — консоль сервера открывает WebSocket НАПРЯМУЮ к Wings, а это
+#                 другой домен (узел Pterodactyl), не наш. С одним 'self'
+#                 браузер такое соединение запрещает, и вкладка «Консоль»
+#                 показывает «Не удалось подключиться к консоли Wings» без
+#                 каких-либо следов в логах сервера — причина видна только в
+#                 консоли браузера (F12).
+#
+# ВАЖНО: в CSP порт — часть источника. wss://node.aurumgg.ovh разрешает
+# только порт 443; если Wings отвечает на 8080, нужен отдельный источник с
+# портом. Ниже перечислены оба варианта — лишний просто ни на что не влияет.
+#
+# Какой адрес у вас на самом деле, показывает шаг 7.4 в DEPLOY.md.
+# Поменяли — не забудьте: sudo nginx -t && sudo systemctl reload nginx
+add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://crafatar.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' wss://node.aurumgg.ovh wss://node.aurumgg.ovh:8080; frame-ancestors 'none'" always;

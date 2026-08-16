@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { CapabilityState, ModuleCapability } from '@aurum/shared';
+import { MINECRAFT_PERMISSIONS, type CapabilityState, type ModuleCapability } from '@aurum/shared';
 import { ConsoleTab } from '../components/ConsoleTab';
 import {
   DummyPlayersTab,
@@ -13,6 +13,7 @@ import {
   MinecraftQuickCommandsWidget,
   MinecraftWhitelistTab,
 } from './minecraft/tabs';
+import { MinecraftSettingsTab } from './minecraft/SettingsTab';
 
 export interface ModuleTabProps {
   serverId: string;
@@ -32,6 +33,12 @@ export interface ModuleFrontend {
   tabs: Partial<Record<ModuleCapability, CapabilityTab>>;
   /** Блок, который рисуется на дашборде сервера над вкладками. */
   dashboard?: { permission: string | null; component: ComponentType<ModuleTabProps> };
+  /**
+   * Экран настроек подключения модуля. Отдельно от tabs: настройки — не
+   * capability из манифеста, а свойство самого модуля, и показываются они
+   * по праву настройки, а не по праву просмотра данных.
+   */
+  settings?: { label: string; permission: string; component: ComponentType<ModuleTabProps> };
 }
 
 /**
@@ -72,6 +79,11 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       permission: 'minecraft.quick-commands',
       component: MinecraftQuickCommandsWidget,
     },
+    settings: {
+      label: 'Настройки',
+      permission: MINECRAFT_PERMISSIONS.configure,
+      component: MinecraftSettingsTab,
+    },
   },
   'test-dummy': {
     tabs: {
@@ -85,6 +97,11 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
     },
   },
 };
+
+/** Экран настроек модуля, если он у него есть. */
+export function resolveSettings(moduleId: string): ModuleFrontend['settings'] | null {
+  return MODULE_REGISTRY[moduleId]?.settings ?? null;
+}
 
 /** Вкладка для capability: сначала своя у модуля, иначе — общая из ядра. */
 export function resolveTab(moduleId: string, capability: ModuleCapability): CapabilityTab | null {

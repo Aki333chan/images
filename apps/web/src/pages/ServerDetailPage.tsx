@@ -4,8 +4,11 @@ import type { ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, Select, Spinner, Tabs } from '../components/ui';
-import { MODULE_REGISTRY, resolveTab } from '../modules/registry';
+import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { listCapabilities } from '@aurum/shared';
+
+/** Не пересекается с id capability: те приходят из манифеста модуля. */
+const SETTINGS_TAB_ID = '__settings';
 
 export function ServerDetailPage() {
   const { serverId = '' } = useParams();
@@ -38,12 +41,27 @@ export function ServerDetailPage() {
   /** Вкладки: capabilities активного модуля ∩ реестр компонентов ∩ права. */
   const tabs = useMemo(() => {
     if (!manifest) return [];
-    return listCapabilities(manifest).flatMap(({ capability, state }) => {
+    const capabilityTabs = listCapabilities(manifest).flatMap(({ capability, state }) => {
       const tab = resolveTab(manifest.id, capability);
       if (!tab) return [];
       if (tab.permission && !hasPermission(tab.permission)) return [];
-      return [{ id: capability, label: tab.label, component: tab.component, state }];
+      // id как string: ниже к списку добавляется вкладка настроек,
+      // которой в перечислении capability нет.
+      return [{ id: capability as string, label: tab.label, component: tab.component, state }];
     });
+
+    // Настройки идут последними: пользуются ими редко, а место в ряду
+    // вкладок нужнее тем, с чем работают каждый день.
+    const settings = resolveSettings(manifest.id);
+    if (settings && hasPermission(settings.permission)) {
+      capabilityTabs.push({
+        id: SETTINGS_TAB_ID,
+        label: settings.label,
+        component: settings.component,
+        state: true,
+      });
+    }
+    return capabilityTabs;
   }, [manifest, hasPermission]);
 
   /** Виджет модуля на дашборде сервера (напр. быстрые команды Minecraft). */

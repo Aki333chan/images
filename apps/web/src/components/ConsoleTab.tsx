@@ -16,6 +16,8 @@ export function ConsoleTab({ serverId }: { serverId: string; moduleId: string })
   const [lines, setLines] = useState<string[]>([]);
   const [state, setState] = useState<'connecting' | 'online' | 'error'>('connecting');
   const [error, setError] = useState('');
+  /** Адрес узла Wings — показываем в подсказке, чтобы было что искать в CSP. */
+  const [socketUrl, setSocketUrl] = useState('');
   const [command, setCommand] = useState('');
   const socketRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -69,7 +71,11 @@ export function ConsoleTab({ serverId }: { serverId: string; moduleId: string })
         };
         socket.onerror = () => {
           setState('error');
+          // Браузер намеренно не сообщает JS причину отказа — блокировку по CSP
+          // и недоступный узел здесь не различить. Поэтому подсказка ниже
+          // перечисляет обе, а точную причину показывает консоль браузера.
           setError('Не удалось подключиться к консоли Wings');
+          setSocketUrl(url);
         };
         socket.onclose = () => {
           if (!closed) setState('error');
@@ -104,9 +110,25 @@ export function ConsoleTab({ serverId }: { serverId: string; moduleId: string })
       {state === 'error' && (
         <Card className="border-destructive/50">
           <p className="text-sm text-red-400">{error || 'Консоль недоступна'}</p>
-          <p className="mt-1 text-xs text-muted">
-            Проверьте, что служебный пользователь Pterodactyl имеет доступ к этому серверу.
-          </p>
+          <div className="mt-1 space-y-1 text-xs text-muted">
+            <p>Три частые причины, по порядку проверки:</p>
+            <ol className="ml-4 list-decimal space-y-1">
+              <li>
+                Соединение запретил браузер по Content-Security-Policy. Консоль идёт напрямую к
+                узлу Wings, а это другой домен, и его нужно перечислить в{' '}
+                <code>connect-src</code> на стороне nginx. Откройте консоль браузера (F12): при
+                блокировке там будет строка «Refused to connect».
+                {socketUrl && (
+                  <>
+                    {' '}
+                    Адрес узла: <code className="break-all">{socketUrl}</code>
+                  </>
+                )}
+              </li>
+              <li>Узел Wings выключен или недоступен — проверьте его в Pterodactyl.</li>
+              <li>У служебного пользователя Pterodactyl нет доступа к этому серверу.</li>
+            </ol>
+          </div>
         </Card>
       )}
       <Card className="h-[420px] overflow-y-auto bg-black/70 font-mono text-xs leading-5 text-neutral-200">
