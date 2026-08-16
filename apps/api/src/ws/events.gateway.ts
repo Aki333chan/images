@@ -7,6 +7,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import {
+  MessagesUpdatedPayload,
   PermissionsUpdatedPayload,
   TicketsUpdatedPayload,
   WS_EVENTS,
@@ -60,5 +61,13 @@ export class EventsGateway implements OnGatewayConnection {
 
   emitTicketsUpdated(payload: TicketsUpdatedPayload) {
     this.server.emit(WS_EVENTS.TICKETS_UPDATED, payload);
+  }
+
+  /**
+   * Личные сообщения — только адресно, в комнату конкретного пользователя.
+   * Широковещательно нельзя: сам факт переписки приватен не меньше её текста.
+   */
+  emitMessagesUpdated(userId: string, payload: MessagesUpdatedPayload) {
+    this.server.to(`user:${userId}`).emit(WS_EVENTS.MESSAGES_UPDATED, payload);
   }
 }

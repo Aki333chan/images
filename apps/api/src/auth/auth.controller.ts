@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UnauthorizedException,
@@ -18,7 +19,9 @@ import { PermissionsService } from '../rbac/permissions.service';
 import { AuthService } from './auth.service';
 import { TokensService } from './tokens.service';
 import { CurrentUser, Public, AuthUser } from './decorators';
-import { LoginDto, TotpDisableDto, TotpEnableDto, TwoFactorDto } from './dto';
+import { LoginDto, OnboardingDto, TotpDisableDto, TotpEnableDto, TwoFactorDto } from './dto';
+import { OnboardingService } from '../users/onboarding.service';
+import { AuditRedactBody } from '../audit/audit.decorators';
 
 const REFRESH_COOKIE = 'aurum_refresh';
 
@@ -29,6 +32,7 @@ export class AuthController {
     private readonly tokens: TokensService,
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionsService,
+    private readonly onboarding: OnboardingService,
   ) {}
 
   private setRefreshCookie(res: Response, refreshToken: string) {
@@ -112,6 +116,32 @@ export class AuthController {
   @Get('me')
   async me(@CurrentUser() user: AuthUser): Promise<MeResponse> {
     return this.permissions.buildMeResponse(user.id);
+  }
+
+  /**
+   * Завершение онбординга: постоянный пароль и ник сотрудника.
+   *
+   * Живёт в auth, а не в users: это действие пользователя над собой, и
+   * никаких прав, кроме аутентификации, для него не нужно.
+   */
+  @Post('onboarding')
+  @AuditRedactBody() // в теле два пароля
+  async completeOnboarding(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: OnboardingDto,
+  ): Promise<MeResponse> {
+    await this.onboarding.complete(user.id, user.sessionId, dto);
+    return this.permissions.buildMeResponse(user.id);
+  }
+
+  /** Проверка ника на занятость — для подсказки прямо в форме. */
+  @Get('onboarding/nickname-available')
+  async nicknameAvailable(
+    @CurrentUser() user: AuthUser,
+    @Query('nickname') nickname?: string,
+  ): Promise<{ available: boolean }> {
+    if (!nickname?.trim()) return { available: false };
+    return { available: await this.onboarding.isNicknameAvailable(nickname, user.id) };
   }
 
   @Get('sessions')

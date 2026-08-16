@@ -17,13 +17,16 @@ interface NavItem {
  * появляются/исчезают без перезагрузки страницы.
  */
 export function Layout() {
-  const { me, ticketsBadge, hasPermission, logout } = useAuth();
+  const { me, ticketsBadge, messagesBadge, hasPermission, logout } = useAuth();
   if (!me) return null;
 
   const items: NavItem[] = [
     { to: '/servers', label: 'Серверы', permission: 'servers.view' },
     { to: '/tickets', label: 'Тикеты', permission: 'tickets.view', badge: ticketsBadge },
-    { to: '/access', label: 'Доступы', permission: 'users.manage' },
+    { to: '/messages', label: 'Сообщения', permission: null, badge: messagesBadge },
+    // Доступы видны и Админу: у него есть право заводить Модераторов.
+    { to: '/access', label: 'Доступы', permission: 'users.create.moderator' },
+    { to: '/settings', label: 'Настройки', permission: 'users.manage' },
     { to: '/audit', label: 'Аудит', permission: 'audit.view' },
     { to: '/security', label: 'Безопасность', permission: null },
   ];
@@ -34,7 +37,8 @@ export function Layout() {
         <div className="mb-6">
           <div className="text-lg font-bold text-primary">Aurum Panel</div>
           <div className="mt-1 text-xs text-muted">
-            {me.user.displayName} · <Badge variant="outline">{ROLE_LABELS[me.user.role]}</Badge>
+            {me.user.nickname ?? me.user.displayName} ·{' '}
+            <Badge variant="outline">{ROLE_LABELS[me.user.role]}</Badge>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1">

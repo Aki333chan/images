@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ROLE_LABELS, ROLES, type Role, type ServerDto, type UserAdminDto } from '@aurum/shared';
+import {
+  ROLE_LABELS,
+  ROLES,
+  type CreateUserResultDto,
+  type Role,
+  type ServerDto,
+  type UserAdminDto,
+} from '@aurum/shared';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 
 /**
@@ -9,13 +17,19 @@ import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '.
  * (permissions.updated) — без релогина.
  */
 export function AccessControlPage() {
+  const { hasPermission } = useAuth();
   const [users, setUsers] = useState<UserAdminDto[] | null>(null);
   const [servers, setServers] = useState<ServerDto[] | null>(null);
 
+  // Списком и ролями распоряжается только ГМ. Админ сюда попадает ради
+  // одной кнопки — завести Модератора, — и запрашивать список ему нечем.
+  const canManage = hasPermission('users.manage');
+
   useEffect(() => {
+    if (!canManage) return;
     void api<UserAdminDto[]>('/api/users').then(setUsers);
     void api<ServerDto[]>('/api/servers').then(setServers);
-  }, []);
+  }, [canManage]);
 
   async function setRole(user: UserAdminDto, role: Role) {
     const updated = await api<UserAdminDto>(`/api/users/${user.id}`, {
@@ -44,12 +58,25 @@ export function AccessControlPage() {
     setUsers((prev) => prev?.map((u) => (u.id === user.id ? updated : u)) ?? null);
   }
 
+  if (!canManage) {
+    return (
+      <div>
+        <h1 className="mb-4 text-xl font-bold">Управление доступом</h1>
+        <CreateUserForm canManage={false} onCreated={() => undefined} />
+        <p className="mt-3 text-xs text-muted">
+          Вы можете заводить учётные записи с ролью Модератор. Список сотрудников и выдача доступов
+          к серверам — за ГМ.
+        </p>
+      </div>
+    );
+  }
+
   if (!users || !servers) return <Spinner />;
 
   return (
     <div>
       <h1 className="mb-4 text-xl font-bold">Управление доступом</h1>
-      <CreateUserForm onCreated={(user) => setUsers((prev) => [...(prev ?? []), user])} />
+      <CreateUserForm canManage onCreated={(user) => setUsers((prev) => [...(prev ?? []), user])} />
       <div className="space-y-4">
         {users.map((user) => (
           <Card key={user.id}>
@@ -106,36 +133,59 @@ export function AccessControlPage() {
 }
 
 /**
- * Создание пользователя. Пароль задаёт ГМ и передаёт человеку сам —
- * почтовой рассылки в панели нет, и заводить её ради трёх друзей незачем.
+ * Создание учётной записи.
+ *
+ * Пароль здесь не вводится: панель генерирует одноразовый и отправляет его
+ * письмом. Так пароль не проходит через руки создающего и не оседает в
+ * переписке, а при первом входе человек всё равно задаёт свой.
  */
-function CreateUserForm({ onCreated }: { onCreated: (user: UserAdminDto) => void }) {
+function CreateUserForm({
+  canManage,
+  onCreated,
+}: {
+  /** true — полное право (ГМ): можно выбрать роль. */
+  canManage: boolean;
+  onCreated: (user: UserAdminDto) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('MODERATOR');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   async function submit() {
     setBusy(true);
     setError('');
+    setNotice('');
     try {
-      const user = await api<UserAdminDto>('/api/users', {
+      const result = await api<CreateUserResultDto>('/api/users', {
         method: 'POST',
         body: JSON.stringify({
           email: email.trim(),
           displayName: displayName.trim(),
-          password,
-          role,
+          // Админ заводит только Модераторов — селектора у него нет.
+          role: canManage ? role : 'MODERATOR',
         }),
       });
-      onCreated(user);
+
+      if (!result.activated) {
+        setNotice(
+          'Заявка отправлена ГМ. Аккаунт заработает и письмо с паролем уйдёт после подтверждения.',
+        );
+      } else if (result.emailSent) {
+        setNotice(`Аккаунт создан, письмо с временным паролем отправлено на ${email.trim()}.`);
+      } else {
+        setNotice(
+          `Аккаунт создан, но письмо не ушло: ${result.emailError ?? 'проверьте настройки почты'}. ` +
+            'Настройте почту в разделе «Настройки» и выдайте пароль повторно.',
+        );
+      }
+
+      if (result.activated) onCreated(result.user);
       setEmail('');
       setDisplayName('');
-      setPassword('');
-      setOpen(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -145,16 +195,14 @@ function CreateUserForm({ onCreated }: { onCreated: (user: UserAdminDto) => void
 
   if (!open) {
     return (
-      <div className="mb-4">
+      <div className="mb-4 space-y-2">
         <Button onClick={() => setOpen(true)}>Добавить пользователя</Button>
+        {notice && <p className="text-xs text-emerald-400">{notice}</p>}
       </div>
     );
   }
 
-  // Требование бэкенда — не меньше 8 символов; проверяем здесь же,
-  // чтобы не гонять заведомо неверную форму на сервер.
-  const passwordOk = password.length >= 8;
-  const canSubmit = email.includes('@') && displayName.trim() && passwordOk && !busy;
+  const canSubmit = email.includes('@') && displayName.trim().length > 0 && !busy;
 
   return (
     <Card className="mb-4 space-y-3">
@@ -178,35 +226,31 @@ function CreateUserForm({ onCreated }: { onCreated: (user: UserAdminDto) => void
           />
         </div>
         <div>
-          <Label>Пароль</Label>
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            placeholder="минимум 8 символов"
-          />
-          {password.length > 0 && !passwordOk && <ErrorText>Минимум 8 символов</ErrorText>}
-        </div>
-        <div>
           <Label>Роль</Label>
-          <Select
-            value={role}
-            onChange={(v) => setRole(v as Role)}
-            options={ROLES.filter((r) => r !== 'OWNER').map((r) => ({
-              value: r,
-              label: ROLE_LABELS[r],
-            }))}
-          />
+          {canManage ? (
+            <Select
+              value={role}
+              onChange={(v) => setRole(v as Role)}
+              options={ROLES.filter((r) => r !== 'OWNER').map((r) => ({
+                value: r,
+                label: ROLE_LABELS[r],
+              }))}
+            />
+          ) : (
+            <div className="pt-1 text-sm">
+              {ROLE_LABELS.MODERATOR}
+              <span className="ml-2 text-xs text-muted">роли выше выдаёт ГМ</span>
+            </div>
+          )}
         </div>
       </div>
 
       {error && <ErrorText>{error}</ErrorText>}
 
       <p className="text-xs text-muted">
-        Пароль передайте человеку сами — писем панель не шлёт. Сменить его он сможет в меню
-        «Безопасность». Доступ к серверам выдаётся ниже, после создания: по умолчанию его нет ни к
-        одному.
+        Пароль придумывать не нужно: панель сгенерирует временный и отправит его письмом. При первом
+        входе человек задаст свой пароль и выберет ник. Доступ к серверам выдаётся ниже, после
+        создания: по умолчанию его нет ни к одному.
       </p>
 
       <div className="flex gap-2">

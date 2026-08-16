@@ -46,6 +46,8 @@ export const env = {
    */
   TRUST_PROXY: optional('TRUST_PROXY', ''),
   WEB_ORIGIN: optional('WEB_ORIGIN', 'http://localhost:5173'),
+  /** Адрес панели для ссылок в письмах. По умолчанию совпадает с WEB_ORIGIN. */
+  PANEL_URL: optional('PANEL_URL', optional('WEB_ORIGIN', 'http://localhost:5173')),
   DATABASE_URL: isTest ? optional('DATABASE_URL') : required('DATABASE_URL'),
   REDIS_URL: optional('REDIS_URL', 'redis://localhost:6379'),
   JWT_ACCESS_SECRET: isTest ? 'test-access' : required('JWT_ACCESS_SECRET'),

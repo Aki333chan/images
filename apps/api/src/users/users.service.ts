@@ -1,5 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import * as argon2 from 'argon2';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Role, UserAdminDto } from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../ws/events.gateway';
@@ -33,34 +32,26 @@ export class UsersService {
     };
   }
 
+  /** Минимум данных для выдачи одноразового пароля. */
+  async getForProvisioning(userId: string): Promise<{
+    id: string;
+    email: string;
+    displayName: string;
+  }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, displayName: true },
+    });
+    if (!user) throw new NotFoundException('Пользователь не найден');
+    return user;
+  }
+
   async list(): Promise<UserAdminDto[]> {
     const users = await this.prisma.user.findMany({
       include: { serverAccess: { select: { serverId: true } } },
       orderBy: { createdAt: 'asc' },
     });
     return users.map((u) => this.toDto(u));
-  }
-
-  async create(input: {
-    email: string;
-    password: string;
-    displayName: string;
-    role: Role;
-  }): Promise<UserAdminDto> {
-    const email = input.email.toLowerCase();
-    if (await this.prisma.user.findUnique({ where: { email } })) {
-      throw new ConflictException('Пользователь с таким email уже существует');
-    }
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        passwordHash: await argon2.hash(input.password),
-        displayName: input.displayName,
-        role: input.role,
-      },
-      include: { serverAccess: { select: { serverId: true } } },
-    });
-    return this.toDto(user);
   }
 
   async update(

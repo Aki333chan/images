@@ -138,4 +138,39 @@ describe('PermissionsGuard (RBAC по состоянию БД)', () => {
     });
     await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });
+
+  // Регрессия: декоратор стал принимать несколько прав и кладёт массив.
+  // Страж обязан понимать обе формы — иначе метаданные-строка привели бы
+  // к падению вместо проверки, а это отказ в обслуживании на ровном месте.
+  it('понимает и одиночную строку, и массив прав', async () => {
+    const moderator: UserRow = { id: 'u2', role: 'MODERATOR', isActive: true, serverAccess: [] };
+
+    await expect(guardFor({ [PERMISSION_KEY]: ['tickets.respond'] }, moderator)).resolves.toBe(true);
+    await expect(guardFor({ [PERMISSION_KEY]: 'tickets.respond' }, moderator)).resolves.toBe(true);
+  });
+
+  it('из нескольких прав достаточно любого', async () => {
+    const moderator: UserRow = { id: 'u2', role: 'MODERATOR', isActive: true, serverAccess: [] };
+
+    // users.manage у модератора нет, tickets.respond — есть.
+    await expect(
+      guardFor({ [PERMISSION_KEY]: ['users.manage', 'tickets.respond'] }, moderator),
+    ).resolves.toBe(true);
+
+    // Ни одного из перечисленных — отказ.
+    await expect(
+      guardFor({ [PERMISSION_KEY]: ['users.manage', 'users.create.moderator'] }, moderator),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('ADMIN может заводить модераторов, но не распоряжаться учётками', async () => {
+    const admin: UserRow = { id: 'u3', role: 'ADMIN', isActive: true, serverAccess: [] };
+
+    await expect(
+      guardFor({ [PERMISSION_KEY]: ['users.create.moderator'] }, admin),
+    ).resolves.toBe(true);
+    await expect(guardFor({ [PERMISSION_KEY]: ['users.manage'] }, admin)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
 });

@@ -15,6 +15,8 @@ import { PterodactylModule } from './pterodactyl/pterodactyl.module';
 import { ServersModule } from './servers/servers.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
+import { SettingsModule } from './settings/settings.module';
+import { MessagesModule } from './messages/messages.module';
 import { HealthModule } from './health/health.module';
 import { GameModulesModule } from './modules/game-modules.module';
 
@@ -24,6 +26,8 @@ import { GameModulesModule } from './modules/game-modules.module';
     CryptoModule,
     BullModule.forRoot({ connection: { url: env.REDIS_URL } }),
     RbacModule,
+    // Global: даёт SettingsService и MailService всем, кто их просит.
+    SettingsModule,
     AuthModule,
     WsModule,
     AuditModule,
@@ -31,6 +35,7 @@ import { GameModulesModule } from './modules/game-modules.module';
     ServersModule,
     TicketsModule,
     UsersModule,
+    MessagesModule,
     HealthModule,
     GameModulesModule.forRoot(),
   ],

@@ -24,22 +24,75 @@ enum ActorType {
   ai
 }
 
+/// Состояние учётной записи.
+/// pending_approval — создана Админом и ждёт решения ГМ; вход невозможен,
+/// письмо с паролем не отправлено. rejected — ГМ отказал.
+enum UserStatus {
+  active
+  pending_approval
+  rejected
+}
+
 model User {
   id            String   @id @default(uuid())
   email         String   @unique
   passwordHash  String   @map("password_hash")
   displayName   String   @map("display_name")
+  /// Ник СОТРУДНИКА панели: для внутренних сообщений и аудита.
+  /// К нику игрока в Minecraft отношения не имеет — это разные сущности.
+  /// Уникален по всей панели; null, пока не пройден онбординг.
+  nickname      String?  @unique
   role          Role     @default(VIEWER)
   isActive      Boolean  @default(true) @map("is_active")
+  status        UserStatus @default(active)
+  /// Кто создал запись. Нужен, чтобы показать ГМ автора заявки.
+  createdById   String?  @map("created_by_id")
+  /// Пароль одноразовый: до смены пускаем только на экран онбординга.
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  /// Срок годности одноразового пароля. После него вход невозможен.
+  passwordExpiresAt  DateTime? @map("password_expires_at")
   totpSecretEnc String?  @map("totp_secret_enc")
   totpEnabled   Boolean  @default(false) @map("totp_enabled")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  sessions     Session[]
-  serverAccess UserServerAccess[]
+  sessions         Session[]
+  serverAccess     UserServerAccess[]
+  sentMessages     StaffMessage[] @relation("StaffMessageFrom")
+  receivedMessages StaffMessage[] @relation("StaffMessageTo")
 
+  @@index([status])
   @@map("users")
+}
+
+/// Личное сообщение между сотрудниками панели.
+///
+/// Приватность обеспечивается на уровне запросов: выборка всегда идёт с
+/// условием «текущий пользователь — отправитель либо получатель». Роли на
+/// это не влияют: ГМ не видит чужую переписку так же, как и все остальные.
+model StaffMessage {
+  id         String    @id @default(uuid())
+  fromUserId String    @map("from_user_id")
+  toUserId   String    @map("to_user_id")
+  from       User      @relation("StaffMessageFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to         User      @relation("StaffMessageTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  text       String
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  /// Выборка диалога и счёт непрочитанных идут по этим парам.
+  @@index([toUserId, readAt])
+  @@index([fromUserId, toUserId, createdAt])
+  @@map("staff_messages")
+}
+
+/// Настройки панели, не являющиеся секретами (секреты — в integration_secrets).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
 }
 
 model Session {

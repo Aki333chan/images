@@ -17,15 +17,20 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const required = this.reflector.getAllAndOverride<string | undefined>(PERMISSION_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const rawRequired = this.reflector.getAllAndOverride<string | string[] | undefined>(
+      PERMISSION_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    // Декоратор кладёт массив, но принимаем и одиночную строку: если где-то
+    // метаданные проставят напрямую через SetMetadata, страж должен проверить
+    // право, а не молча пропустить всех, не найдя у строки метода some.
+    const required =
+      rawRequired === undefined ? undefined : Array.isArray(rawRequired) ? rawRequired : [rawRequired];
     const scopeParam = this.reflector.getAllAndOverride<string | undefined>(SERVER_SCOPE_PARAM, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!required && !scopeParam) return true;
+    if ((!required || required.length === 0) && !scopeParam) return true;
 
     const req = context.switchToHttp().getRequest();
     const user: AuthUser | undefined = req.user;
@@ -34,8 +39,9 @@ export class PermissionsGuard implements CanActivate {
     const eff = await this.permissions.getEffectivePermissions(user.id);
     req.effectivePermissions = eff;
 
-    if (required && !eff.permissions.has(required)) {
-      throw new ForbiddenException(`Недостаточно прав (${required})`);
+    // Достаточно любого из перечисленных прав.
+    if (required?.length && !required.some((key) => eff.permissions.has(key))) {
+      throw new ForbiddenException(`Недостаточно прав (${required.join(' или ')})`);
     }
     if (scopeParam) {
       const serverId: string | undefined = req.params?.[scopeParam];

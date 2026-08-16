@@ -8,6 +8,12 @@ export type PermissionKey = string;
 
 export const CORE_PERMISSIONS = [
   'users.manage',
+  /**
+   * Создание учётных записей только с ролью Модератор.
+   * Отдельно от users.manage: Админ может завести модератора, но не
+   * может менять роли, деактивировать людей и раздавать доступы.
+   */
+  'users.create.moderator',
   'servers.view',
   'servers.manage',
   'servers.power',
@@ -25,6 +31,7 @@ export type CorePermission = (typeof CORE_PERMISSIONS)[number];
 export const CORE_ROLE_PERMISSIONS: Record<Role, readonly CorePermission[] | '*'> = {
   OWNER: '*',
   ADMIN: [
+    'users.create.moderator',
     'servers.view',
     'servers.manage',
     'servers.power',

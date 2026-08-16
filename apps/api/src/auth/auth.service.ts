@@ -32,8 +32,26 @@ export class AuthService {
       throw new UnauthorizedException('Неверный email или пароль');
     }
     if (!user.isActive) throw new UnauthorizedException('Учётная запись деактивирована');
+    if (user.status === 'pending_approval') {
+      throw new UnauthorizedException('Учётная запись ещё не подтверждена ГМ');
+    }
+    if (user.status === 'rejected') {
+      throw new UnauthorizedException('Учётная запись деактивирована');
+    }
     const ok = await argon2.verify(user.passwordHash, password);
     if (!ok) throw new UnauthorizedException('Неверный email или пароль');
+
+    // Одноразовый пароль протух: пускать нельзя, но и молчать нельзя —
+    // иначе человек будет думать, что ошибся при вводе.
+    if (
+      user.mustChangePassword &&
+      user.passwordExpiresAt &&
+      user.passwordExpiresAt.getTime() < Date.now()
+    ) {
+      throw new UnauthorizedException(
+        'Срок действия временного пароля истёк — попросите выдать новый',
+      );
+    }
 
     if (user.totpEnabled) {
       const twoFactorToken = await this.jwt.signAsync(

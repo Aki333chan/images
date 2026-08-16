@@ -8,8 +8,15 @@ export interface MeResponse {
     id: string;
     email: string;
     displayName: string;
+    /** Ник сотрудника панели; null — онбординг ещё не пройден. */
+    nickname: string | null;
     role: Role;
     totpEnabled: boolean;
+    /**
+     * true — вход был по одноразовому паролю. Пока не пройден онбординг,
+     * остальные разделы панели недоступны.
+     */
+    mustChangePassword: boolean;
   };
   permissions: PermissionKey[];
   /** null — доступ ко всем серверам (OWNER или незскоупленная роль). */
@@ -124,4 +131,83 @@ export interface ServerActivitySampleDto {
   bucket: string;
   /** Пик онлайна за этот час. */
   online: number;
+}
+
+// ---------------------------------------------------------- Учётные записи
+
+export type UserStatusDto = 'active' | 'pending_approval' | 'rejected';
+
+/** Заявка на аккаунт, созданная Админом и ждущая решения ГМ. */
+export interface PendingUserDto {
+  id: string;
+  email: string;
+  displayName: string;
+  role: Role;
+  createdAt: string;
+  /** Кто подал заявку. */
+  createdBy: { id: string; displayName: string; nickname: string | null } | null;
+}
+
+/** Что вернуть после создания аккаунта — по этому фронт понимает, что сказать. */
+export interface CreateUserResultDto {
+  user: UserAdminDto;
+  /** true — аккаунт активен, письмо с паролем отправлено. */
+  activated: boolean;
+  /** false — SMTP не настроен либо письмо не ушло; пароль нужно передать лично. */
+  emailSent: boolean;
+  /** Причина, если письмо не ушло. Самого пароля здесь нет никогда. */
+  emailError?: string;
+}
+
+// ------------------------------------------------------------- Настройки ГМ
+
+export interface AppSettingsDto {
+  /**
+   * Пока включено, аккаунт, созданный Админом, ждёт подтверждения ГМ.
+   * Выключено — активируется сразу, как будто его создал ГМ.
+   */
+  requireGmApprovalForAdminCreatedAccounts: boolean;
+}
+
+/** Настройки SMTP. Пароль наружу не отдаётся никогда — только флаг. */
+export interface SmtpSettingsDto {
+  configured: boolean;
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  from: string;
+  /** true — пароль сохранён; само значение не возвращается. */
+  hasPassword: boolean;
+}
+
+export interface SmtpTestResultDto {
+  ok: boolean;
+  /** Текст ошибки от SMTP-сервера, если не удалось. */
+  error?: string;
+}
+
+// ------------------------------------------------- Внутренние сообщения
+
+export interface StaffMessageDto {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  text: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+/** Строка списка диалогов. */
+export interface ConversationDto {
+  peer: { id: string; displayName: string; nickname: string | null };
+  lastMessage: { text: string; createdAt: string; outgoing: boolean };
+  unread: number;
+}
+
+/** Сотрудник для автодополнения при отправке сообщения. */
+export interface StaffContactDto {
+  id: string;
+  nickname: string;
+  displayName: string;
 }
