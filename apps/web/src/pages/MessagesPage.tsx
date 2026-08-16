@@ -100,8 +100,15 @@ export function MessagesPage() {
 
       {error && <ErrorText>{error}</ErrorText>}
 
+      {/*
+        На десктопе две колонки рядом. На телефоне так не помещается: список
+        диалогов и переписка друг под другом означают, что до сообщений надо
+        каждый раз прокручивать мимо списка. Поэтому ниже md показывается
+        что-то одно — список либо открытый диалог с кнопкой «назад», как в
+        обычном мессенджере.
+      */}
       <div className="grid gap-4 md:grid-cols-[260px_1fr]">
-        <Card className="space-y-1 p-2">
+        <Card className={`space-y-1 p-2 ${peer ? 'hidden md:block' : ''}`}>
           {conversations.length === 0 && (
             <p className="p-2 text-xs text-muted">
               Переписки пока нет. Нажмите «Написать» и выберите коллегу по нику.
@@ -111,7 +118,7 @@ export function MessagesPage() {
             <button
               key={c.peer.id}
               onClick={() => setPeerId(c.peer.id)}
-              className={`w-full rounded px-2 py-2 text-left ${
+              className={`w-full rounded px-2 py-2.5 text-left ${
                 c.peer.id === peerId ? 'bg-white/10' : 'hover:bg-white/5'
               }`}
             >
@@ -129,14 +136,29 @@ export function MessagesPage() {
           ))}
         </Card>
 
-        <Card className="flex h-[540px] flex-col">
+        {/* Высота: на телефоне от высоты экрана, на десктопе — как было.
+            Фиксированные 540 px на экране высотой 667 px не оставили бы
+            места ни на заголовок, ни на список. */}
+        <Card
+          className={`flex h-[65vh] flex-col md:h-[540px] ${peer ? '' : 'hidden md:flex'}`}
+        >
           {!peer ? (
             <p className="m-auto text-sm text-muted">Выберите диалог слева</p>
           ) : (
             <>
-              <div className="border-b border-border pb-2 text-sm font-medium">
-                {peer.nickname ?? peer.displayName}
-                <span className="ml-2 text-xs text-muted">{peer.displayName}</span>
+              <div className="flex items-center gap-2 border-b border-border pb-2 text-sm font-medium">
+                <button
+                  type="button"
+                  onClick={() => setPeerId(null)}
+                  aria-label="К списку диалогов"
+                  className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted hover:bg-white/5 md:hidden"
+                >
+                  ←
+                </button>
+                <span className="min-w-0 truncate">
+                  {peer.nickname ?? peer.displayName}
+                  <span className="ml-2 text-xs text-muted">{peer.displayName}</span>
+                </span>
               </div>
 
               <div className="flex-1 space-y-2 overflow-y-auto py-3">
@@ -210,7 +232,9 @@ function NewConversation({ onStarted }: { onStarted: (contact: StaffContactDto) 
         placeholder="Ник коллеги"
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
-      <div className="absolute right-0 z-10 mt-1 w-64 rounded border border-border bg-card p-1 shadow-lg">
+      {/* inset-x-0 вместо фиксированных 256 px: на узком экране список
+          подсказок повторяет ширину поля и не вылезает за край. */}
+      <div className="absolute inset-x-0 z-10 mt-1 min-w-[14rem] rounded border border-border bg-card p-1 shadow-lg sm:left-auto sm:right-0 sm:w-64">
         {contacts.length === 0 && (
           <div className="p-2 text-xs text-muted">
             Никого не нашлось. Ник появляется у сотрудника после первого входа.
@@ -219,7 +243,7 @@ function NewConversation({ onStarted }: { onStarted: (contact: StaffContactDto) 
         {contacts.map((c) => (
           <button
             key={c.id}
-            className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-white/10"
+            className="block w-full rounded px-2 py-2.5 text-left text-sm hover:bg-white/10 sm:py-1.5"
             onClick={() => {
               onStarted(c);
               setOpen(false);

@@ -260,7 +260,9 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
           </div>
         </Card>
       )}
-      <Card className="h-[420px] overflow-y-auto bg-black/70 font-mono text-xs leading-5 text-neutral-200">
+      {/* Высота от экрана на телефоне: жёсткие 420 px занимали бы почти всю
+          высоту вместе с шапкой и полем ввода. */}
+      <Card className="h-[45vh] overflow-y-auto bg-black/70 font-mono text-xs leading-5 text-neutral-200 sm:h-[420px]">
         {lines.length === 0 && (
           <p className="text-muted">
             {state === 'connecting' ? 'Подключение к консоли…' : 'Вывода пока нет'}
@@ -276,7 +278,8 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
       {hasPermission('servers.power') && (
         <div className="space-y-1">
           {suggestions.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1 text-xs">
+            // gap-1.5 и крупнее подложка: варианты кликают и пальцем тоже.
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
               {suggestions.slice(0, VISIBLE_SUGGESTIONS).map((option, i) => (
                 <button
                   key={option}
@@ -289,8 +292,10 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
                     setCommand(head + option + ' ');
                     cycleRef.current = null;
                   }}
-                  className={`rounded px-1.5 py-0.5 font-mono ${
-                    i === suggestionIndex ? 'bg-primary/20 text-primary' : 'text-muted hover:bg-white/5'
+                  className={`rounded px-2 py-1.5 font-mono sm:px-1.5 sm:py-0.5 ${
+                    i === suggestionIndex
+                      ? 'bg-primary/20 text-primary'
+                      : 'text-muted hover:bg-white/5'
                   }`}
                 >
                   {option}
@@ -330,17 +335,20 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
                   cycleRef.current = null;
                 }
               }}
-              placeholder={
-                completionEnabled
-                  ? 'Команда в консоль сервера… (Tab — автодополнение)'
-                  : 'Команда в консоль сервера…'
-              }
+              placeholder="Команда в консоль сервера…"
               disabled={state !== 'online'}
             />
             <Button onClick={sendCommand} disabled={state !== 'online' || !command.trim()}>
               Отправить
             </Button>
           </div>
+          {/* Подсказка про Tab — только там, где эта клавиша есть.
+              На телефоне варианты выбирают, нажимая на них. */}
+          {completionEnabled && (
+            <p className="hidden text-[11px] text-muted sm:block">
+              Tab — автодополнение, повторный Tab перебирает варианты
+            </p>
+          )}
         </div>
       )}
     </div>

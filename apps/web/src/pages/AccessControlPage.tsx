@@ -111,7 +111,14 @@ export function AccessControlPage() {
                   {servers.map((s) => {
                     const attached = user.serverIds.includes(s.id);
                     return (
-                      <button key={s.id} onClick={() => void toggleServer(user, s.id)}>
+                      // Плашка сама по себе высотой 24 px — это переключатель
+                      // доступа к серверу, и промахнуться по нему нельзя.
+                      // Область нажатия увеличена до 40 px, вид плашки прежний.
+                      <button
+                        key={s.id}
+                        className="flex min-h-10 items-center rounded-md px-1 hover:bg-white/5 sm:min-h-0 sm:px-0"
+                        onClick={() => void toggleServer(user, s.id)}
+                      >
                         <Badge variant={attached ? 'default' : 'outline'}>
                           {attached ? '✓ ' : ''}
                           {s.name}

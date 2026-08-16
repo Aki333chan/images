@@ -111,7 +111,9 @@ export function PlayerDetail({
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`px-3 py-1.5 text-sm ${
+            // flex-1 на телефоне: три вкладки делят ширину поровну, и в
+            // каждую удобно попасть пальцем.
+            className={`min-h-11 flex-1 whitespace-nowrap px-2 text-sm sm:min-h-0 sm:flex-none sm:px-3 sm:py-1.5 ${
               tab === id ? 'border-b-2 border-primary font-medium' : 'text-muted'
             }`}
           >
@@ -291,7 +293,9 @@ function PlayerActions({
             value={target}
             onChange={(e) => setTarget(e.target.value)}
             placeholder="Ник, к кому телепортировать"
-            className="max-w-[220px]"
+            // На телефоне поле занимает строку целиком, на десктопе —
+            // прежняя узкая колонка рядом с кнопкой.
+            className="min-w-0 flex-1 sm:max-w-[220px] sm:flex-none"
           />
           <ActionButton
             label="Переместить"

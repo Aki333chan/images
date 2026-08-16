@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  /*
+   * Запрет автоматического укрупнения текста в WebKit.
+   *
+   * iOS сам увеличивает шрифт в блоках, которые считает слишком широкими,
+   * и делает это неравномерно — разные абзацы получают разный масштаб.
+   * Со стороны это выглядит как «скачущие размеры шрифта».
+   *
+   * Tailwind ставит это же правило в preflight, но дублируем явно: правило
+   * из preflight легко потерять, отключив его в конфиге, а вернуть потом
+   * будет непонятно откуда — симптом на iPhone, а причина в сборке.
+   */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   @apply bg-background text-neutral-100 antialiased;
+  /*
+   * Учитываем «чёлку» и полосу жестов iPhone. Работает вместе с
+   * viewport-fit=cover в index.html: без него значения env() равны нулю,
+   * то есть на устройствах без выреза ничего не меняется.
+   */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/*
+ * Плавная инерционная прокрутка внутри блоков со своим скроллом
+ * (консоль, ряд вкладок, переписка) — на iOS без этого прокрутка рывками.
+ */
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
 }

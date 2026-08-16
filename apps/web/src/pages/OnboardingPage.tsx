@@ -139,7 +139,12 @@ export function OnboardingPage() {
           <Button onClick={() => void submit()} disabled={!canSubmit}>
             {busy ? 'Сохраняем…' : 'Готово'}
           </Button>
-          <button className="text-xs text-muted underline" onClick={() => void logout()}>
+          {/* Ссылка высотой в строку текста пальцем не берётся —
+              область нажатия расширена отступами, вид прежний. */}
+          <button
+            className="-mr-2 flex min-h-11 items-center px-2 text-xs text-muted underline"
+            onClick={() => void logout()}
+          >
             Выйти
           </button>
         </div>

@@ -136,49 +136,92 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
         {data.players.length === 0 ? (
           <p className="text-muted">Сейчас никого нет онлайн.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-muted">
-              <tr>
-                <th className="pb-2">Игрок</th>
-                <th className="pb-2">Здоровье</th>
-                <th className="pb-2">Положение</th>
-                <th className="pb-2">Пинг</th>
-                <th className="pb-2 text-right">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.players.map((p) => (
-                <tr
-                  key={p.name}
-                  className="cursor-pointer border-t border-border hover:bg-white/5"
-                  onClick={() => setSelected(p.name)}
-                >
-                  <td className="py-2">
-                    <div className="flex items-center gap-2">
-                      <PlayerAvatar uuid={p.uuid} name={p.name} />
-                      <span className="font-medium">{p.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-2 text-muted">
-                    {p.health !== null ? (
-                      <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="py-2 text-xs text-muted">
-                    {p.position
-                      ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
-                      : '—'}
-                  </td>
-                  <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
-                  <td className="py-2 text-right">
-                    <span className="text-xs text-muted">подробнее →</span>
-                  </td>
+          <>
+            {/* Таблица — только с md. На узком экране пять колонок либо
+                сжимаются до нечитаемого, либо уезжают в горизонтальную
+                прокрутку, где половина данных всегда за краем. */}
+            <table className="hidden w-full text-sm md:table">
+              <thead className="text-left text-xs text-muted">
+                <tr>
+                  <th className="pb-2">Игрок</th>
+                  <th className="pb-2">Здоровье</th>
+                  <th className="pb-2">Положение</th>
+                  <th className="pb-2">Пинг</th>
+                  <th className="pb-2 text-right">Действия</th>
                 </tr>
+              </thead>
+              <tbody>
+                {data.players.map((p) => (
+                  <tr
+                    key={p.name}
+                    className="cursor-pointer border-t border-border hover:bg-white/5"
+                    onClick={() => setSelected(p.name)}
+                  >
+                    <td className="py-2">
+                      <div className="flex items-center gap-2">
+                        <PlayerAvatar uuid={p.uuid} name={p.name} />
+                        <span className="font-medium">{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 text-muted">
+                      {p.health !== null ? (
+                        <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="py-2 text-xs text-muted">
+                      {p.position
+                        ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
+                        : '—'}
+                    </td>
+                    <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
+                    <td className="py-2 text-right">
+                      <span className="text-xs text-muted">подробнее →</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Тот же список карточками: те же данные, но в два ряда и без
+                прокрутки вбок. Вся карточка — одна кнопка, открывающая игрока. */}
+            <ul className="space-y-2 md:hidden">
+              {data.players.map((p) => (
+                <li key={p.name}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(p.name)}
+                    className="flex w-full items-center gap-3 rounded-md border border-border p-3 text-left hover:bg-white/5"
+                  >
+                    <PlayerAvatar uuid={p.uuid} name={p.name} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">{p.name}</span>
+                        <span className="shrink-0 text-xs text-muted">
+                          {p.ping !== null ? `${p.ping} мс` : ''}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                        {p.health !== null && (
+                          <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
+                        )}
+                        {p.position && (
+                          <span className="truncate">
+                            {p.world ?? '?'} · {Math.round(p.position.x)}, {Math.round(p.position.y)}
+                            , {Math.round(p.position.z)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span aria-hidden className="shrink-0 text-muted">
+                      →
+                    </span>
+                  </button>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          </>
         )}
 
         {punish && (
@@ -274,45 +317,82 @@ export function MinecraftBansTab({ serverId }: ModuleTabProps) {
       {bans && bans.length === 0 ? (
         <p className="text-muted">Банов нет.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted">
-            <tr>
-              <th className="pb-2">Игрок</th>
-              <th className="pb-2">Причина</th>
-              <th className="pb-2">Срок</th>
-              <th className="pb-2">Кем</th>
-              <th className="pb-2 text-right">Статус</th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          <table className="hidden w-full text-sm md:table">
+            <thead className="text-left text-xs text-muted">
+              <tr>
+                <th className="pb-2">Игрок</th>
+                <th className="pb-2">Причина</th>
+                <th className="pb-2">Срок</th>
+                <th className="pb-2">Кем</th>
+                <th className="pb-2 text-right">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bans?.map((b) => (
+                <tr key={b.id} className="border-t border-border align-top">
+                  <td className="py-2 font-medium">{b.playerName}</td>
+                  <td className="py-2 text-muted">{b.reason}</td>
+                  <td className="py-2 text-xs text-muted">
+                    {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
+                  </td>
+                  <td className="py-2 text-xs text-muted">{b.createdByName ?? '—'}</td>
+                  <td className="py-2 text-right">
+                    {b.active ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Badge variant="destructive">активен</Badge>
+                        {hasPermission('minecraft.ban.pardon') && (
+                          <Button size="sm" variant="outline" onClick={() => void pardon(b.id)}>
+                            Снять
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <Badge variant="outline">
+                        {b.pardonedByName ? `снял ${b.pardonedByName}` : 'снят'}
+                      </Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Карточки вместо таблицы на узком экране. Причина бана —
+              свободный текст произвольной длины, в колонке таблицы она
+              на телефоне превращается в столбик по одному слову. */}
+          <ul className="space-y-2 md:hidden">
             {bans?.map((b) => (
-              <tr key={b.id} className="border-t border-border align-top">
-                <td className="py-2 font-medium">{b.playerName}</td>
-                <td className="py-2 text-muted">{b.reason}</td>
-                <td className="py-2 text-xs text-muted">
-                  {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
-                </td>
-                <td className="py-2 text-xs text-muted">{b.createdByName ?? '—'}</td>
-                <td className="py-2 text-right">
+              <li key={b.id} className="rounded-md border border-border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 truncate font-medium">{b.playerName}</span>
                   {b.active ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <Badge variant="destructive">активен</Badge>
-                      {hasPermission('minecraft.ban.pardon') && (
-                        <Button size="sm" variant="outline" onClick={() => void pardon(b.id)}>
-                          Снять
-                        </Button>
-                      )}
-                    </div>
+                    <Badge variant="destructive">активен</Badge>
                   ) : (
                     <Badge variant="outline">
                       {b.pardonedByName ? `снял ${b.pardonedByName}` : 'снят'}
                     </Badge>
                   )}
-                </td>
-              </tr>
+                </div>
+                <p className="mt-1 break-words text-sm text-muted">{b.reason}</p>
+                <p className="mt-1 text-xs text-muted">
+                  до {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
+                  {b.createdByName ? ` · ${b.createdByName}` : ''}
+                </p>
+                {b.active && hasPermission('minecraft.ban.pardon') && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() => void pardon(b.id)}
+                  >
+                    Снять бан
+                  </Button>
+                )}
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        </>
       )}
     </Card>
   );
@@ -366,13 +446,17 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
           {players?.map((name) => (
             <span
               key={name}
-              className="flex items-center gap-2 rounded-md border border-border px-3 py-1 text-sm"
+              className="flex items-center gap-1 rounded-md border border-border py-1 pl-3 text-sm"
             >
               {name}
+              {/* Крестик был 12×20 — в него не попасть пальцем. Увеличен до
+                  минимальных 40×40 за счёт отступов: сам символ остался
+                  прежнего размера, выросла область нажатия. */}
               <button
-                className="text-muted hover:text-red-400"
+                className="flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-white/5 hover:text-red-400 sm:h-8 sm:w-8"
                 onClick={() => void remove(name)}
                 title="Убрать из whitelist"
+                aria-label={`Убрать ${name} из whitelist`}
               >
                 ✕
               </button>
@@ -486,36 +570,32 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
       <ErrorText>{error}</ErrorText>
 
       {active && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setActive(null)}
-        >
-          <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <Card className="space-y-3">
-              <h3 className="font-semibold">{active.label}</h3>
-              <p className="text-xs text-muted">{active.description}</p>
-              {active.args.map((arg) => (
-                <div key={arg.name}>
-                  <Label>{arg.label}</Label>
-                  <Input
-                    value={args[arg.name] ?? ''}
-                    onChange={(e) => setArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
-                    placeholder={arg.placeholder}
-                    autoFocus
-                  />
-                </div>
-              ))}
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setActive(null)} disabled={busy}>
-                  Отмена
-                </Button>
-                <Button onClick={() => void run(active, args)} disabled={busy}>
-                  Выполнить
-                </Button>
+        // Та же модалка, что и у карточки игрока: на мобильном — на весь
+        // экран, на десктопе — окно по центру.
+        <Modal title={active.label} onClose={() => setActive(null)}>
+          <div className="space-y-3">
+            <p className="text-xs text-muted">{active.description}</p>
+            {active.args.map((arg) => (
+              <div key={arg.name}>
+                <Label>{arg.label}</Label>
+                <Input
+                  value={args[arg.name] ?? ''}
+                  onChange={(e) => setArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
+                  placeholder={arg.placeholder}
+                  autoFocus
+                />
               </div>
-            </Card>
+            ))}
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="ghost" onClick={() => setActive(null)} disabled={busy}>
+                Отмена
+              </Button>
+              <Button onClick={() => void run(active, args)} disabled={busy}>
+                Выполнить
+              </Button>
+            </div>
           </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );

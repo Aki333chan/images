@@ -32,13 +32,23 @@ export function AuditPage() {
     <div>
       <h1 className="mb-4 text-xl font-bold">Аудит-лог</h1>
       <Card className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
+        {/* min-w-0 + flex-1: поля делят строку на десктопе и занимают всю
+            ширину на телефоне, а не вылезают за край фиксированной шириной. */}
+        <div className="min-w-[12rem] flex-1">
           <p className="mb-1 text-xs text-muted">Действие содержит</p>
-          <Input value={action} onChange={(e) => setAction(e.target.value)} placeholder="POST /api/tickets" />
+          <Input
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+            placeholder="POST /api/tickets"
+          />
         </div>
-        <div>
+        <div className="min-w-[12rem] flex-1">
           <p className="mb-1 text-xs text-muted">Тип объекта</p>
-          <Input value={targetType} onChange={(e) => setTargetType(e.target.value)} placeholder="servers" />
+          <Input
+            value={targetType}
+            onChange={(e) => setTargetType(e.target.value)}
+            placeholder="servers"
+          />
         </div>
         <Button
           size="sm"
@@ -51,45 +61,72 @@ export function AuditPage() {
         </Button>
       </Card>
 
-      <Card className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted">
-            <tr>
-              <th className="pb-2 pr-4">Время</th>
-              <th className="pb-2 pr-4">Актор</th>
-              <th className="pb-2 pr-4">Действие</th>
-              <th className="pb-2 pr-4">Объект</th>
-              <th className="pb-2">Метаданные</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((row) => (
-              <tr key={row.id} className="border-t border-border align-top">
-                <td className="whitespace-nowrap py-2 pr-4 text-xs text-muted">
-                  {new Date(row.createdAt).toLocaleString('ru-RU')}
-                </td>
-                <td className="py-2 pr-4">
-                  {row.actorType === 'ai' ? '🤖 AI' : (row.actorEmail ?? row.actorId ?? 'система')}
-                </td>
-                <td className="py-2 pr-4 font-mono text-xs">{row.action}</td>
-                <td className="py-2 pr-4 text-xs">
-                  {row.targetType ?? '—'}
-                  {row.targetId ? ` / ${row.targetId.slice(0, 8)}` : ''}
-                </td>
-                <td className="max-w-md truncate py-2 font-mono text-[10px] text-muted">
-                  {row.metadata ? JSON.stringify(row.metadata) : ''}
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
+      <Card>
+        {items.length === 0 && <p className="py-4 text-center text-muted">Записей нет</p>}
+
+        {/* Пять колонок, из которых три — технические строки: на телефоне
+            такая таблица читается только прокруткой вбок. С lg показываем
+            её как есть, ниже — карточками. */}
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted">
               <tr>
-                <td colSpan={5} className="py-4 text-center text-muted">
-                  Записей нет
-                </td>
+                <th className="pb-2 pr-4">Время</th>
+                <th className="pb-2 pr-4">Актор</th>
+                <th className="pb-2 pr-4">Действие</th>
+                <th className="pb-2 pr-4">Объект</th>
+                <th className="pb-2">Метаданные</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((row) => (
+                <tr key={row.id} className="border-t border-border align-top">
+                  <td className="whitespace-nowrap py-2 pr-4 text-xs text-muted">
+                    {new Date(row.createdAt).toLocaleString('ru-RU')}
+                  </td>
+                  <td className="py-2 pr-4">
+                    {row.actorType === 'ai' ? '🤖 AI' : (row.actorEmail ?? row.actorId ?? 'система')}
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-xs">{row.action}</td>
+                  <td className="py-2 pr-4 text-xs">
+                    {row.targetType ?? '—'}
+                    {row.targetId ? ` / ${row.targetId.slice(0, 8)}` : ''}
+                  </td>
+                  <td className="max-w-md truncate py-2 font-mono text-[10px] text-muted">
+                    {row.metadata ? JSON.stringify(row.metadata) : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <ul className="space-y-2 lg:hidden">
+          {items.map((row) => (
+            <li key={row.id} className="rounded-md border border-border p-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                <span className="break-all font-mono text-xs">{row.action}</span>
+                <span className="shrink-0 text-[11px] text-muted">
+                  {new Date(row.createdAt).toLocaleString('ru-RU')}
+                </span>
+              </div>
+              <p className="mt-1 break-all text-xs text-muted">
+                {row.actorType === 'ai' ? '🤖 AI' : (row.actorEmail ?? row.actorId ?? 'система')}
+                {row.targetType ? ` → ${row.targetType}` : ''}
+                {row.targetId ? ` / ${row.targetId.slice(0, 8)}` : ''}
+              </p>
+              {/* Именно != null, а не просто row.metadata: тип поля — unknown,
+                  и в JSX такое значение попасть не может. */}
+              {row.metadata != null && (
+                // break-all и перенос: метаданные — это JSON одной строкой,
+                // и без переноса он растянул бы страницу по горизонтали.
+                <p className="mt-1 whitespace-pre-wrap break-all font-mono text-[10px] text-muted">
+                  {JSON.stringify(row.metadata)}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
       </Card>
 
       <div className="mt-3 flex items-center gap-3 text-sm text-muted">

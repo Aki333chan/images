@@ -90,14 +90,16 @@ export function ServerDetailPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">{server.name}</h1>
-          <p className="text-xs text-muted">
+      {/* Название и кнопки питания в столбик на телефоне: три кнопки плюс
+          значок статуса в одну строку с заголовком не помещаются. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-bold">{server.name}</h1>
+          <p className="truncate text-xs text-muted">
             {server.pteroIdentifier} · нода {server.node ?? '—'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant={server.status === 'active' ? 'success' : 'outline'}>
             {server.status ?? '—'}
           </Badge>
@@ -118,9 +120,10 @@ export function ServerDetailPage() {
       </div>
 
       {hasPermission('servers.manage') && (
-        <Card className="flex items-center gap-3">
+        <Card className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-sm text-muted">Игровой модуль:</span>
           <Select
+            className="min-w-0 flex-1 sm:flex-none"
             value={server.moduleId ?? ''}
             onChange={(v) => void setModule(v || null)}
             options={[

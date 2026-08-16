@@ -2,7 +2,21 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      width=device-width + initial-scale=1 — обязательный минимум, без него
+      iOS рисует страницу в виртуальном окне 980 px и ужимает её целиком.
+      Здесь он был и раньше, так что причина проблем на iPhone была не в нём.
+
+      viewport-fit=cover включает env(safe-area-inset-*) в CSS: без него
+      значения нулевые и отступы под «чёлку» не работают.
+
+      Максимальный масштаб намеренно НЕ ограничен: user-scalable=no и
+      maximum-scale ломают возможность приблизить экран тем, кому это нужно
+      по зрению. Автозум при фокусе в поле лечится размером шрифта 16 px
+      (см. ui.tsx), а не запретом масштабирования.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
     <title>Aurum Panel</title>
   </head>
   <body>

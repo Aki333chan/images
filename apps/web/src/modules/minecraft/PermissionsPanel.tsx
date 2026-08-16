@@ -82,21 +82,32 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
         <Label>Группы</Label>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {data.groups?.length === 0 && <span className="text-xs text-muted">групп нет</span>}
-          {data.groups?.map((group) => (
-            <Badge key={group} variant="default">
-              {group}
-              {canEdit && (
+          {data.groups?.map((group) =>
+            canEdit ? (
+              // Своя «плашка» вместо Badge: крестик внутри Badge получался
+              // 10×16 — в него не попасть пальцем. Здесь у него отдельная
+              // область нажатия 40×40 на мобильном, а вид чипа сохранён.
+              <span
+                key={group}
+                className="inline-flex items-center rounded-full bg-primary/15 py-0.5 pl-2.5 text-xs font-medium text-primary"
+              >
+                {group}
                 <button
-                  className="ml-1.5 opacity-70 hover:opacity-100"
+                  className="ml-0.5 flex h-10 w-10 items-center justify-center rounded-full text-base opacity-70 hover:bg-white/10 hover:opacity-100 sm:h-6 sm:w-6 sm:text-xs"
                   title={`Убрать из группы ${group}`}
+                  aria-label={`Убрать из группы ${group}`}
                   disabled={busy}
                   onClick={() => void change({ kind: 'group', key: group, remove: true })}
                 >
                   ×
                 </button>
-              )}
-            </Badge>
-          ))}
+              </span>
+            ) : (
+              <Badge key={group} variant="default">
+                {group}
+              </Badge>
+            ),
+          )}
         </div>
         {canEdit && (
           <div className="mt-2 flex gap-2">

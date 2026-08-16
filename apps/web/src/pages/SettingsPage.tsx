@@ -61,10 +61,12 @@ function AccountRules() {
   return (
     <Card className="space-y-3">
       <h2 className="font-semibold">Создание учётных записей</h2>
-      <label className="flex items-start gap-3">
+      {/* Вся строка — цель нажатия: нажать в текст так же надёжно, как
+          в саму галочку (13×13 пальцем не берётся). */}
+      <label className="-mx-2 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-white/5">
         <input
           type="checkbox"
-          className="mt-1"
+          className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
           checked={on}
           disabled={busy}
           onChange={(e) => void toggle(e.target.checked)}
@@ -300,14 +302,19 @@ function SmtpSettings() {
         </p>
       )}
 
-      <div className="flex items-center gap-2">
+      {/* flex-wrap: две кнопки и пояснение в одну строку на телефоне не
+          помещаются, и без переноса пояснение сжималось в столбик по слову
+          у самого края. Пояснение уводим на свою строку — basis-full. */}
+      <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => void save()} disabled={busy}>
           {busy ? 'Сохраняем…' : 'Сохранить'}
         </Button>
         <Button variant="outline" onClick={() => void runTest()} disabled={busy}>
           Проверить соединение
         </Button>
-        <span className="text-xs text-muted">Проверка не отправляет письмо.</span>
+        <span className="basis-full text-xs text-muted sm:basis-auto">
+          Проверка не отправляет письмо.
+        </span>
       </div>
     </Card>
   );

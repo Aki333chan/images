@@ -23,7 +23,9 @@ export function DummyPlayersTab({ serverId }: ModuleTabProps) {
   if (!players) return <Spinner />;
   return (
     <Card>
-      <table className="w-full text-sm">
+      {/* Как и в модуле Minecraft: таблица с md, ниже — карточки.
+          UUID в 36 символов сам по себе шире экрана телефона. */}
+      <table className="hidden w-full text-sm md:table">
         <thead className="text-left text-xs text-muted">
           <tr>
             <th className="pb-2">Игрок</th>
@@ -41,6 +43,20 @@ export function DummyPlayersTab({ serverId }: ModuleTabProps) {
           ))}
         </tbody>
       </table>
+
+      <ul className="space-y-2 md:hidden">
+        {players.map((p) => (
+          <li key={p.uuid} className="rounded-md border border-border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate font-medium">{p.name}</span>
+              <span className="shrink-0 text-xs text-muted">
+                {p.online ? 'в сети' : 'офлайн'}
+              </span>
+            </div>
+            <p className="mt-1 break-all font-mono text-[11px] text-muted">{p.uuid}</p>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

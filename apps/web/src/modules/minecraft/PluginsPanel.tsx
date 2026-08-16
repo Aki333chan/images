@@ -63,8 +63,10 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
 
       {data.available && data.installed.length > 0 && (
         <div>
+          {/* Ссылка-переключатель высотой в строку текста (16 px) в палец не
+              попадает. Область нажатия увеличена отступами, вид не изменился. */}
           <button
-            className="text-xs text-muted underline underline-offset-2"
+            className="-mx-2 flex min-h-11 items-center px-2 text-xs text-muted underline underline-offset-2 sm:mx-0 sm:min-h-0 sm:px-0"
             onClick={() => setShowAll((v) => !v)}
           >
             {showAll ? 'Скрыть' : 'Показать'} все плагины сервера
