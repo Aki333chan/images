@@ -1306,14 +1306,15 @@ rm -f /tmp/ptero-check.txt
   (см. шаг 1.1 и находку 2 в `AUDIT-FINDINGS.md`): игровые сервера работают
   в Docker, и без allocation порт наружу из контейнера не публикуется.
 - **Вкладка «Консоль»: «Не удалось подключиться к консоли Wings»** →
-  чаще всего это **не** права служебного пользователя, а запрет браузера.
-  Консоль подключается напрямую к узлу Wings, а это другой домен, и его
-  нужно явно разрешить в CSP. Откройте консоль браузера (**F12** →
-  Console): при блокировке там будет строка
-  `Refused to connect to 'wss://...' because it violates ... connect-src`.
+  причин две, и различает их только консоль браузера (**F12** → Console).
+  В логах панели ни той, ни другой не видно: браузер соединяется с узлом
+  Wings напрямую, панель в этом обмене не участвует.
 
-  Посмотрите, какой адрес возвращает Pterodactyl (команда печатает только
-  адрес, не токен — подставьте идентификатор сервера вместо `abc123`):
+  **Причина 1 — запрет браузера по CSP.** В консоли будет строка
+  `Refused to connect to 'wss://...' because it violates ... connect-src`.
+  Значит адрес узла не перечислен в `connect-src`. Посмотрите, какой адрес
+  отдаёт Pterodactyl (команда печатает только адрес, не токен — подставьте
+  идентификатор своего сервера вместо `abc123`):
 
   ```bash
   set -a; . /etc/aurum-panel/api.env; set +a
@@ -1324,16 +1325,74 @@ rm -f /tmp/ptero-check.txt
   ```
 
   Полученный адрес (схема, домен и **порт**, если он не 443) должен быть в
-  директиве `connect-src` файла `aurum-security-headers.inc`. В CSP порт —
-  часть источника: `wss://node.aurumgg.ovh` разрешает только 443, для 8080
-  нужен отдельный источник. После правки:
+  `connect-src` файла `/etc/nginx/conf.d/aurum-security-headers.inc`.
+  В CSP порт — часть источника: `wss://node.aurumgg.ovh` разрешает только
+  443, для 8080 нужен отдельный источник. После правки —
+  `sudo nginx -t && sudo systemctl reload nginx` и обновление страницы через
+  Ctrl+Shift+R: CSP кэшируется вместе с ответом.
+
+  **Причина 2 — Wings отклоняет рукопожатие.** В консоли только
+  `WebSocket connection to 'wss://...' failed.` без упоминания CSP.
+
+  Wings проверяет заголовок `Origin` и по умолчанию пускает лишь адрес самой
+  Pterodactyl. Наша панель живёт на другом домене, поэтому её нужно
+  разрешить явно — иначе рукопожатие отклоняется с HTTP 403, а браузер
+  показывает просто «failed».
+
+  Убедиться, что дело именно в этом, можно **не меняя ничего**. Выполните с
+  VDS две команды, подставив UUID своего сервера:
 
   ```bash
-  sudo nano /etc/nginx/conf.d/aurum-security-headers.inc
-  sudo nginx -t && sudo systemctl reload nginx
+  probe() {
+    curl -sS -o /dev/null -m 5 -w "%{http_code}\n" \
+      -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+      -H 'Sec-WebSocket-Version: 13' \
+      -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+      -H "Origin: $1" \
+      "https://node.aurumgg.ovh/api/servers/ВАШ-UUID/ws" 2>/dev/null
+  }
+  probe https://panel.aurumgg.ovh    # Origin Pterodactyl
+  probe https://manage.aurumgg.ovh   # Origin нашей панели
   ```
 
-  Затем обновите страницу с Ctrl+Shift+R — CSP кэшируется вместе с ответом.
+  Диагноз подтверждён, если первая команда **не** вернула 403 (она может
+  подвиснуть на несколько секунд и упереться в таймаут — это нормально,
+  значит Origin принят и Wings начал апгрейд), а вторая вернула **403**.
+
+  Лечится добавлением адреса панели в конфиг Wings **на домашнем сервере**:
+
+  ```bash
+  sudo cp /etc/pterodactyl/config.yml /etc/pterodactyl/config.yml.bak
+  sudo nano /etc/pterodactyl/config.yml
+  ```
+
+  Добавьте на самый верхний уровень (без отступа, не внутрь другой секции):
+
+  ```yaml
+  allowed_origins:
+    - https://manage.aurumgg.ovh
+  ```
+
+  Если ключ `allowed_origins` уже есть — допишите строку в его список, а не
+  заводите второй ключ. Затем:
+
+  ```bash
+  sudo systemctl restart wings
+  sudo systemctl status wings --no-pager | head -5
+  ```
+
+  > **Про игроков.** Это единственное место во всей инструкции, где нужно
+  > тронуть домашний сервер. Перезапуск Wings игровые сервера **не
+  > останавливает**: они работают в отдельных Docker-контейнерах, Wings при
+  > старте к ним заново подключается, а разорванные консольные подключения
+  > восстанавливаются сами. Тем не менее делайте это в спокойное время и
+  > держите рядом резервную копию конфига, сделанную первой командой.
+  >
+  > Откат, если что-то пошло не так:
+  > `sudo cp /etc/pterodactyl/config.yml.bak /etc/pterodactyl/config.yml && sudo systemctl restart wings`
+
+  После перезапуска обновите страницу панели. Повторите проверку `probe` —
+  теперь и второй вызов не должен возвращать 403.
 
 ### 7.4a. Что видно на карточке сервера
 

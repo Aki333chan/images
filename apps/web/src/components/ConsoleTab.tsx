@@ -111,23 +111,31 @@ export function ConsoleTab({ serverId }: { serverId: string; moduleId: string })
         <Card className="border-destructive/50">
           <p className="text-sm text-red-400">{error || 'Консоль недоступна'}</p>
           <div className="mt-1 space-y-1 text-xs text-muted">
-            <p>Три частые причины, по порядку проверки:</p>
+            <p>
+              Точную причину показывает консоль браузера (<b>F12</b> → Console). Что искать, по
+              порядку:
+            </p>
             <ol className="ml-4 list-decimal space-y-1">
               <li>
-                Соединение запретил браузер по Content-Security-Policy. Консоль идёт напрямую к
-                узлу Wings, а это другой домен, и его нужно перечислить в{' '}
-                <code>connect-src</code> на стороне nginx. Откройте консоль браузера (F12): при
-                блокировке там будет строка «Refused to connect».
-                {socketUrl && (
-                  <>
-                    {' '}
-                    Адрес узла: <code className="break-all">{socketUrl}</code>
-                  </>
-                )}
+                <b>«Refused to connect… violates… connect-src»</b> — соединение запретил браузер по
+                Content-Security-Policy. Консоль идёт напрямую к узлу Wings, а это другой домен, и
+                его нужно перечислить в <code>connect-src</code> на стороне nginx.
+              </li>
+              <li>
+                <b>«WebSocket connection… failed»</b> без упоминания CSP — рукопожатие отклонил сам
+                Wings. Он сверяет заголовок <code>Origin</code> и по умолчанию пускает только
+                Pterodactyl; адрес этой панели нужно добавить в <code>allowed_origins</code> в{' '}
+                <code>config.yml</code> Wings и перезапустить его. Отказ выглядит как HTTP 403 и в
+                логах панели не виден — она в этом обмене не участвует.
               </li>
               <li>Узел Wings выключен или недоступен — проверьте его в Pterodactyl.</li>
               <li>У служебного пользователя Pterodactyl нет доступа к этому серверу.</li>
             </ol>
+            {socketUrl && (
+              <p>
+                Адрес узла: <code className="break-all">{socketUrl}</code>
+              </p>
+            )}
           </div>
         </Card>
       )}
