@@ -197,13 +197,31 @@ function SmtpSettings() {
   if (!settings) return null;
 
   async function save() {
+    // Снимок состояния: внутри асинхронной функции TypeScript уже не может
+    // ручаться, что settings не обнулился.
+    const current = settings;
+    if (!current) return;
     setBusy(true);
     setError('');
     setTest(null);
     try {
+      // Отправляем ровно те поля, которые принимает эндпоинт, а не весь
+      // объект настроек. В ответе GET есть ещё configured и hasPassword —
+      // это состояние, доступное только на чтение, и API отвергает запрос
+      // целиком, если они в него попадают («property configured should not
+      // exist»). Перечисляем поля явно, чтобы новое поле в ответе GET
+      // снова молча не сломало сохранение.
       const next = await api<SmtpSettingsDto>('/api/settings/smtp', {
         method: 'PUT',
-        body: JSON.stringify({ ...settings, password: password || undefined }),
+        body: JSON.stringify({
+          host: current.host.trim(),
+          port: current.port,
+          secure: current.secure,
+          user: current.user.trim(),
+          from: current.from.trim(),
+          // Пустое поле означает «оставить сохранённый пароль».
+          ...(password ? { password } : {}),
+        }),
       });
       setSettings(next);
       setPassword('');

@@ -11,7 +11,8 @@ class AppSettingsPatchDto {
   requireGmApprovalForAdminCreatedAccounts!: boolean;
 }
 
-class SmtpPatchDto {
+/** Экспортируется ради теста валидации: см. settings.dto.spec.ts. */
+export class SmtpPatchDto {
   @IsString()
   @MaxLength(255)
   host!: string;
@@ -35,7 +36,13 @@ class SmtpPatchDto {
   @MaxLength(255)
   password?: string;
 
-  @IsEmail()
+  /**
+   * Адрес отправителя. Допускается и голый адрес, и форма с именем —
+   * «Aurum Panel <panel@aurumgg.ovh>»: именно её советуют интерфейс и
+   * инструкция, и именно её понимает nodemailer. Без allow_display_name
+   * такое значение отвергалось бы как «from must be an email».
+   */
+  @IsEmail({ allow_display_name: true })
   from!: string;
 }
 

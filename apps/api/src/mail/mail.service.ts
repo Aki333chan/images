@@ -33,9 +33,13 @@ export class MailService {
       host: config.host,
       port: config.port,
       // secure=true — TLS с первого байта (обычно порт 465).
-      // false — открытое соединение с обязательным STARTTLS (587).
+      // false — открытое соединение, дальше STARTTLS.
       secure: config.secure,
-      requireTLS: !config.secure,
+      // Требовать STARTTLS везде, кроме порта 25: в интерфейсе он подписан
+      // «без шифрования» и нужен для почтового сервера на той же машине.
+      // Требовать TLS там, где мы сами обещали обойтись без него, значит
+      // отвергать корректную настройку с невнятной ошибкой.
+      requireTLS: !config.secure && config.port !== 25,
       auth: config.user ? { user: config.user, pass: config.password } : undefined,
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
