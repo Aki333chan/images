@@ -136,6 +136,7 @@ model Server {
   access          UserServerAccess[]
   tickets         Ticket[]
   minecraftBans   MinecraftBan[]
+  palworldBans    PalworldBan[]
   activitySamples ServerActivitySample[]
 
   @@map("servers")
@@ -219,6 +220,32 @@ model MinecraftBan {
   @@index([serverId, pardonedAt])
   @@index([pardonedAt, expiresAt])
   @@map("mod_minecraft_bans")
+}
+
+/// Баны Palworld.
+///
+/// Своя таблица нужна потому, что REST API Palworld умеет банить и
+/// разбанивать, но НЕ умеет отдавать список банов. Без неё вкладка банов
+/// могла бы только «забанить в пустоту»: ни причины, ни кто забанил, ни
+/// возможности снять бан по списку.
+///
+/// Срока у бана нет намеренно: сам сервер временных банов не поддерживает,
+/// а показывать срок, который никто не соблюдает, значит врать.
+model PalworldBan {
+  id           String    @id @default(uuid())
+  serverId     String    @map("server_id")
+  server       Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerName   String    @map("player_name")
+  /// userId платформы (напр. steam_011...) — то, чем оперирует сам сервер.
+  userId       String    @map("user_id")
+  reason       String
+  createdById  String?   @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  pardonedAt   DateTime? @map("pardoned_at")
+  pardonedById String?   @map("pardoned_by_id")
+
+  @@index([serverId, pardonedAt])
+  @@map("mod_palworld_bans")
 }
 
 model AuditLog {

@@ -1,5 +1,10 @@
 import type { ComponentType } from 'react';
-import { MINECRAFT_PERMISSIONS, type CapabilityState, type ModuleCapability } from '@aurum/shared';
+import {
+  MINECRAFT_PERMISSIONS,
+  PALWORLD_PERMISSIONS,
+  type CapabilityState,
+  type ModuleCapability,
+} from '@aurum/shared';
 import { ConsoleTab } from '../components/ConsoleTab';
 import {
   DummyPlayersTab,
@@ -13,6 +18,12 @@ import {
   MinecraftWhitelistTab,
 } from './minecraft/tabs';
 import { MinecraftSettingsTab } from './minecraft/SettingsTab';
+import {
+  PalworldBansTab,
+  PalworldPlayersTab,
+  PalworldQuickActionsWidget,
+} from './palworld/tabs';
+import { PalworldSettingsTab } from './palworld/SettingsTab';
 
 export interface ModuleTabProps {
   serverId: string;
@@ -77,6 +88,32 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       label: 'Настройки',
       permission: MINECRAFT_PERMISSIONS.configure,
       component: MinecraftSettingsTab,
+    },
+  },
+  /**
+   * Palworld. Вкладок две — по числу реальных возможностей REST API игры.
+   * Консоль берётся из ядра (CORE_TABS), своей реализации модуль не пишет.
+   * Whitelist, инвентаря и тикетов у Palworld нет вовсе — см. манифест.
+   */
+  palworld: {
+    tabs: {
+      playerList: {
+        label: 'Игроки',
+        permission: PALWORLD_PERMISSIONS.playersView,
+        component: PalworldPlayersTab,
+      },
+      banKick: { label: 'Баны', permission: PALWORLD_PERMISSIONS.ban, component: PalworldBansTab },
+    },
+    dashboard: {
+      // Право проверяет сам виджет: действия под разными правами, и одного
+      // ключа на весь блок не хватает.
+      permission: null,
+      component: PalworldQuickActionsWidget,
+    },
+    settings: {
+      label: 'Настройки',
+      permission: PALWORLD_PERMISSIONS.configure,
+      component: PalworldSettingsTab,
     },
   },
   'test-dummy': {
