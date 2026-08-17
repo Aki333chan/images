@@ -8,10 +8,11 @@ import type {
 } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
+import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
 import { Modal, PromptModal, PunishModal } from './PlayerModal';
 import { PlayerDetail } from './PlayerDetail';
+import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 
 const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
@@ -484,6 +485,17 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
   );
 }
 
+/** Значения по умолчанию: у аргумента со списком — его первый вариант. */
+function defaultArgs(command: MinecraftQuickCommandDto): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const arg of command.args) {
+    // Иначе выпадающий список показывал бы первый вариант, а на сервер
+    // уходило бы пустое значение — «не заполнено поле «Режим»».
+    if (arg.options?.[0]) values[arg.name] = arg.options[0].value;
+  }
+  return values;
+}
+
 export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
   const [commands, setCommands] = useState<MinecraftQuickCommandDto[] | null>(null);
   const [active, setActive] = useState<MinecraftQuickCommandDto | null>(null);
@@ -491,6 +503,11 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Список онлайна нужен, только когда открыто действие, спрашивающее ник:
+  // лишний поход к игровому серверу на каждый показ дашборда ни к чему.
+  const needsPlayers = !!active?.args.some((a) => a.suggest === 'online-players');
+  const onlinePlayers = useOnlinePlayers(serverId, needsPlayers);
 
   useEffect(() => {
     void api<{ commands: MinecraftQuickCommandDto[] }>(`${base(serverId)}/quick-commands`)
@@ -549,6 +566,7 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
                 // человек видит, что именно запускает. Подтверждение нужно
                 // только для заметных действий без аргументов.
                 if (c.args.length > 0) {
+                  setArgs(defaultArgs(c));
                   setActive(c);
                   return;
                 }
@@ -575,15 +593,36 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
         <Modal title={active.label} onClose={() => setActive(null)}>
           <div className="space-y-3">
             <p className="text-xs text-muted">{active.description}</p>
-            {active.args.map((arg) => (
+            {active.args.map((arg, index) => (
               <div key={arg.name}>
                 <Label>{arg.label}</Label>
-                <Input
-                  value={args[arg.name] ?? ''}
-                  onChange={(e) => setArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
-                  placeholder={arg.placeholder}
-                  autoFocus
-                />
+                {arg.options ? (
+                  // Закрытый список значений — режим игры и подобное.
+                  <Select
+                    className="w-full"
+                    value={args[arg.name] ?? arg.options[0]?.value ?? ''}
+                    onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
+                    options={arg.options}
+                  />
+                ) : arg.suggest === 'online-players' ? (
+                  // Ник: подсказываем тех, кто в сети, но ввод не ограничиваем.
+                  <PlayerPicker
+                    value={args[arg.name] ?? ''}
+                    onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
+                    players={onlinePlayers}
+                    placeholder={arg.placeholder}
+                    autoFocus={index === 0}
+                  />
+                ) : (
+                  <Input
+                    value={args[arg.name] ?? ''}
+                    onChange={(e) => setArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
+                    placeholder={arg.placeholder}
+                    // Фокус только в первое поле: с autoFocus на всех
+                    // курсор оказывался в последнем.
+                    autoFocus={index === 0}
+                  />
+                )}
               </div>
             ))}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -80,6 +80,30 @@ describe('каталог быстрых действий', () => {
     }
   });
 
+  // Ввод ника и режима руками — источник опечаток («adventrue», «Steeve»),
+  // каждая из которых стоит одного невыполненного действия.
+  it('режим игры задан закрытым списком, а не свободным вводом', () => {
+    const withMode = MINECRAFT_QUICK_COMMANDS.filter((c) => c.args.some((a) => a.name === 'mode'));
+    expect(withMode.length).toBeGreaterThan(0);
+    for (const command of withMode) {
+      const mode = command.args.find((a) => a.name === 'mode')!;
+      expect({ id: command.id, options: mode.options?.map((o) => o.value) }).toEqual({
+        id: command.id,
+        options: ['survival', 'creative', 'adventure', 'spectator'],
+      });
+    }
+  });
+
+  it('у вариантов режима есть человеческие подписи', () => {
+    const mode = MINECRAFT_QUICK_COMMANDS.find((c) => c.id === 'vanilla-gamemode')!.args.find(
+      (a) => a.name === 'mode',
+    )!;
+    for (const option of mode.options ?? []) {
+      expect(option.label).not.toBe(option.value);
+      expect(option.label.length).toBeGreaterThan(0);
+    }
+  });
+
   it('действия, заметные для игрока, помечены как требующие подтверждения', () => {
     const byId = new Map(MINECRAFT_QUICK_COMMANDS.map((c) => [c.id, c]));
     for (const id of ['broadcast', 'ess-god', 'ess-fly', 'ess-kit']) {

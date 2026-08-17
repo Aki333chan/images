@@ -6,6 +6,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import type { MinecraftConfigService } from './minecraft-config.service';
 import type { RconService } from './rcon/rcon.service';
 import type { CompanionService } from './companion.service';
+import { NICKNAME_ARG_NAMES } from './quick-commands.config';
 
 describe('MinecraftService.buildQuickCommand', () => {
   const service = new MinecraftService(
@@ -137,6 +138,30 @@ describe('MinecraftService.buildQuickCommand', () => {
     });
     expect(commands).toHaveLength(1);
     expect(commands[0]).not.toContain('\n');
+  });
+
+  // Подсказка «здесь ожидается ник» и валидация ника должны относиться к
+  // одним и тем же полям. Разъедутся — панель начнёт подставлять игроков
+  // туда, где ник не проверяется, или наоборот.
+  it('поля с ником помечены для подстановки игроков онлайн', () => {
+    const commands = service.listQuickCommands(['Essentials']);
+    const nicknameArgs = commands.flatMap((c) =>
+      c.args.filter((a) => NICKNAME_ARG_NAMES.has(a.name)).map((a) => ({ id: c.id, arg: a })),
+    );
+    expect(nicknameArgs.length).toBeGreaterThan(0);
+    for (const { id, arg } of nicknameArgs) {
+      expect({ id, name: arg.name, suggest: arg.suggest }).toEqual({
+        id,
+        name: arg.name,
+        suggest: 'online-players',
+      });
+    }
+  });
+
+  it('поля со свободным текстом подсказок игроков не получают', () => {
+    // Текст объявления — не ник, подставлять туда игроков бессмысленно.
+    const broadcast = service.listQuickCommands(null).find((c) => c.id === 'broadcast')!;
+    for (const arg of broadcast.args) expect(arg.suggest).toBeUndefined();
   });
 
   it('убранные действия больше не предлагаются', () => {

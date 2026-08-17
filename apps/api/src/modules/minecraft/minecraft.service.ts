@@ -250,8 +250,14 @@ export class MinecraftService {
       id,
       label,
       description,
+      // Пометку «здесь ожидается ник» выводим из того же набора имён, по
+      // которому аргумент проходит валидацию ника. Так подсказка не может
+      // разойтись с проверкой: поле, куда панель подставляет игроков, — это
+      // ровно то поле, значение которого потом обязано быть валидным ником.
+      args: args.map((arg) =>
+        NICKNAME_ARG_NAMES.has(arg.name) ? { ...arg, suggest: 'online-players' as const } : arg,
+      ),
       permission,
-      args,
       plugin,
       destructive,
     }));

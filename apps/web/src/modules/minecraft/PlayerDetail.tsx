@@ -6,9 +6,10 @@ import type {
 } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../../components/ui';
+import { Badge, Button, Card, ErrorText, Label, Select, Spinner } from '../../components/ui';
 import { InventoryGrid } from './InventoryGrid';
 import { PermissionsPanel } from './PermissionsPanel';
+import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 
 const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
 
@@ -207,6 +208,9 @@ function PlayerActions({
   const [result, setResult] = useState('');
   const [mode, setMode] = useState('survival');
   const [target, setTarget] = useState('');
+  // Кого предлагать в поле телепорта. Себя из списка убираем: «телепорт
+  // Steve к Steve» — не действие, а недоразумение.
+  const online = useOnlinePlayers(serverId, true).filter((n) => n !== player.name);
 
   async function runQuick(id: string, args: Record<string, string>) {
     setBusy(true);
@@ -289,13 +293,14 @@ function PlayerActions({
       <div className="space-y-2">
         <Label>Телепорт</Label>
         <div className="flex flex-wrap items-center gap-2">
-          <Input
+          <PlayerPicker
             value={target}
-            onChange={(e) => setTarget(e.target.value)}
+            onChange={setTarget}
+            players={online}
             placeholder="Ник, к кому телепортировать"
             // На телефоне поле занимает строку целиком, на десктопе —
             // прежняя узкая колонка рядом с кнопкой.
-            className="min-w-0 flex-1 sm:max-w-[220px] sm:flex-none"
+            className="min-w-0 flex-1 sm:w-[220px] sm:flex-none"
           />
           <ActionButton
             label="Переместить"

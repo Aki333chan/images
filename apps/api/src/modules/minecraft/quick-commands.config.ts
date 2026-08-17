@@ -52,6 +52,27 @@ const PLAYER_ARG: MinecraftQuickCommandArg = {
   placeholder: 'Steve',
 };
 
+/**
+ * Режимы игры. Значения — то, что понимает команда gamemode; подписи —
+ * то, как их называют по-русски.
+ *
+ * Закрытым списком, а не текстовым полем: вариантов четыре, они не меняются,
+ * а опечатка в «adventure» даёт «Unknown game mode» вместо действия.
+ */
+const GAMEMODE_OPTIONS = [
+  { value: 'survival', label: 'Выживание' },
+  { value: 'creative', label: 'Творческий' },
+  { value: 'adventure', label: 'Приключение' },
+  { value: 'spectator', label: 'Наблюдатель' },
+];
+
+const MODE_ARG: MinecraftQuickCommandArg = {
+  name: 'mode',
+  label: 'Режим',
+  required: true,
+  options: GAMEMODE_OPTIONS,
+};
+
 /** Ванильные команды: работают на любом сервере, плагинов не требуют. */
 const VANILLA: QuickCommandDefinition[] = [
   {
@@ -145,15 +166,7 @@ const VANILLA: QuickCommandDefinition[] = [
     description: 'Ванильная команда gamemode — работает без плагинов',
     template: 'gamemode {mode} {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
-    args: [
-      {
-        name: 'mode',
-        label: 'Режим',
-        required: true,
-        placeholder: 'survival / creative / adventure / spectator',
-      },
-      PLAYER_ARG,
-    ],
+    args: [MODE_ARG, PLAYER_ARG],
     plugin: null,
     destructive: true,
   },
@@ -245,15 +258,7 @@ const ESSENTIALS_X: QuickCommandDefinition[] = [
     description: 'EssentialsX: survival, creative, adventure или spectator',
     template: 'gamemode {mode} {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
-    args: [
-      {
-        name: 'mode',
-        label: 'Режим',
-        required: true,
-        placeholder: 'survival / creative / adventure / spectator',
-      },
-      PLAYER_ARG,
-    ],
+    args: [MODE_ARG, PLAYER_ARG],
     plugin: 'Essentials',
     destructive: true,
   },
