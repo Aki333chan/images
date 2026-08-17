@@ -7,6 +7,7 @@ import type {
 } from '@aurum/shared';
 import { ROLE_LABELS } from '@aurum/shared';
 import { api } from '../lib/api';
+import { AiSettingsCard } from './AiSettingsCard';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 
 /**
@@ -23,6 +24,7 @@ export function SettingsPage() {
       <AccountRules />
       <PendingApprovals />
       <SmtpSettings />
+      <AiSettingsCard />
     </div>
   );
 }

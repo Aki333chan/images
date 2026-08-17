@@ -6,6 +6,14 @@ import { PrismaService } from '../prisma/prisma.service';
 export interface AuditEntry {
   actorId: string | null;
   actorType?: 'user' | 'ai';
+  /**
+   * От чьего имени действовал не-человек. Для actorType='ai' — id сотрудника,
+   * который вёл диалог с ассистентом и подтвердил действие.
+   *
+   * Обязательно для действий ИИ: без этого поля в журнале остаётся «сделал
+   * ИИ», и разобраться, кто именно инициировал, уже нельзя.
+   */
+  onBehalfOf?: string | null;
   action: string;
   targetType?: string | null;
   targetId?: string | null;
@@ -21,6 +29,7 @@ export class AuditService {
       data: {
         actorId: entry.actorId,
         actorType: entry.actorType ?? 'user',
+        onBehalfOf: entry.onBehalfOf ?? null,
         action: entry.action,
         targetType: entry.targetType ?? null,
         targetId: entry.targetId ?? null,
@@ -58,7 +67,16 @@ export class AuditService {
       this.prisma.auditLog.count({ where }),
     ]);
 
-    const actorIds = [...new Set(rows.map((r) => r.actorId).filter((v): v is string => !!v))];
+    // В набор берём и onBehalfOf: у действий ИИ актор — сам ИИ, а человек,
+    // от чьего имени он действовал, указан именно там, и его тоже надо
+    // показать по-человечески, а не идентификатором.
+    const actorIds = [
+      ...new Set(
+        rows
+          .flatMap((r) => [r.actorId, r.onBehalfOf])
+          .filter((v): v is string => !!v),
+      ),
+    ];
     const actors = await this.prisma.user.findMany({
       where: { id: { in: actorIds } },
       select: { id: true, email: true },
@@ -72,6 +90,8 @@ export class AuditService {
         actorId: r.actorId,
         actorEmail: r.actorId ? (emailById.get(r.actorId) ?? null) : null,
         actorType: r.actorType,
+        onBehalfOf: r.onBehalfOf,
+        onBehalfOfEmail: r.onBehalfOf ? (emailById.get(r.onBehalfOf) ?? null) : null,
         action: r.action,
         targetType: r.targetType,
         targetId: r.targetId,

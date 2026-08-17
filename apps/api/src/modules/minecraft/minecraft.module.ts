@@ -38,5 +38,9 @@ import { RconService } from './rcon/rcon.service';
     ActivitySamplerScheduler,
     ActivitySamplerProcessor,
   ],
+  // MinecraftService нужен AI-ассистенту: его инструменты — тонкие обёртки
+  // над этим же сервисом, чтобы не заводить вторую реализацию правил.
+  // Зависимость односторонняя: модуль про ассистента не знает.
+  exports: [MinecraftService],
 })
 export class MinecraftModule {}

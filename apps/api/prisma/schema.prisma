@@ -252,6 +252,10 @@ model AuditLog {
   id         BigInt    @id @default(autoincrement())
   actorId    String?   @map("actor_id")
   actorType  ActorType @default(user) @map("actor_type")
+  /// От чьего имени действовал не-человек. Для actor_type=ai — id сотрудника,
+  /// который вёл диалог с ассистентом и подтвердил действие. Без этого поля
+  /// в журнале осталось бы «сделал ИИ», и концов не найти.
+  onBehalfOf String?   @map("on_behalf_of")
   action     String
   targetType String?   @map("target_type")
   targetId   String?   @map("target_id")
@@ -260,5 +264,57 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([actorId])
+  @@index([onBehalfOf])
   @@map("audit_log")
+}
+
+/// Расход на обращения к DeepSeek: по нему считаются лимиты и деньги.
+model AiUsageLog {
+  id               BigInt   @id @default(autoincrement())
+  userId           String   @map("user_id")
+  model            String
+  promptTokens     Int      @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  /// Сколько инструментов вызвано за обращение — видно, кто «гоняет» модель.
+  toolCalls        Int      @default(0) @map("tool_calls")
+  /// Текст ошибки, если обращение не удалось. null — успех.
+  error            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("ai_usage_log")
+}
+
+/// Разрушительное действие, предложенное моделью и ждущее решения человека.
+///
+/// Хранится на сервере, а не в браузере: подтверждение должно исполнять
+/// ровно то, что предложила модель. Если бы аргументы приезжали с клиента
+/// вместе с подтверждением, «подтверждение» ничего бы не гарантировало.
+model AiPendingAction {
+  id        String   @id @default(uuid())
+  /// Кто вёл диалог. Только он может подтвердить или отклонить.
+  userId    String   @map("user_id")
+  tool      String
+  /// Аргументы вызова как их вернула модель.
+  args      Json
+  /// true — предложение появилось после того, как в контекст попали данные
+  /// из игры (ники, тикеты, вывод консоли). Интерфейс предупреждает об этом
+  /// отдельно: такой ввод недоверенный.
+  fromUntrustedInput Boolean @default(false) @map("from_untrusted_input")
+  status    AiActionStatus @default(pending)
+  result    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  @@index([userId, status])
+  @@map("ai_pending_actions")
+}
+
+enum AiActionStatus {
+  pending
+  approved
+  rejected
+  failed
+  /// Истекло по времени — старое предложение исполнять нельзя.
+  expired
 }

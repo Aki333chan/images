@@ -85,6 +85,9 @@ export interface AuditLogDto {
   actorId: string | null;
   actorEmail?: string | null;
   actorType: 'user' | 'ai';
+  /** Для actorType='ai' — сотрудник, от чьего имени выполнено действие. */
+  onBehalfOf?: string | null;
+  onBehalfOfEmail?: string | null;
   action: string;
   targetType: string | null;
   targetId: string | null;

@@ -4,6 +4,7 @@ import { ROLE_LABELS } from '@aurum/shared';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/cn';
 import { Badge, Button } from './ui';
+import { AiAssistant } from './AiAssistant';
 
 interface NavItem {
   to: string;
@@ -168,6 +169,11 @@ export function Layout() {
       <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-6">
         <Outlet />
       </main>
+
+      {/* Ассистент живёт в раскладке, а не на странице: кнопка должна быть
+          видна на всех экранах панели. Сам компонент прячется, если у роли
+          нет права ai.chat. */}
+      <AiAssistant />
     </div>
   );
 }

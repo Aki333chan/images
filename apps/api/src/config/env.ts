@@ -26,6 +26,8 @@ function intVar(name: string, def: number): number {
   return n;
 }
 
+import { DEEPSEEK_BASE_URL as DEEPSEEK_BASE_URL_DEFAULT } from '@aurum/shared';
+
 const isTest = process.env.NODE_ENV === 'test';
 
 export const env = {
@@ -62,4 +64,12 @@ export const env = {
   PTERO_BASE_URL: optional('PTERO_BASE_URL', 'https://panel.aurumgg.ovh'),
   PTERO_APP_API_KEY: optional('PTERO_APP_API_KEY'),
   PTERO_CLIENT_API_KEY: optional('PTERO_CLIENT_API_KEY'),
+  /**
+   * Адрес API DeepSeek. По умолчанию официальный.
+   *
+   * Переопределяется для двух случаев: корпоративный или self-hosted
+   * шлюз, совместимый с OpenAI, и подстановка подставного сервера в
+   * тестах. Имя модели и ключ при этом остаются настройками панели.
+   */
+  DEEPSEEK_BASE_URL: optional('DEEPSEEK_BASE_URL', DEEPSEEK_BASE_URL_DEFAULT),
 };
