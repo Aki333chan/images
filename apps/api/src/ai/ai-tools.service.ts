@@ -1,11 +1,20 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { MINECRAFT_PERMISSIONS, type AiToolInfoDto, type AiToolKind } from '@aurum/shared';
+import {
+  ASCII_ART_LIMITS,
+  MINECRAFT_PERMISSIONS,
+  validateAsciiArt,
+  wrapAsciiArt,
+  type AiToolInfoDto,
+  type AiToolKind,
+} from '@aurum/shared';
 import { AuditService } from '../audit/audit.service';
 import { PermissionsService, type EffectivePermissions } from '../rbac/permissions.service';
 import { ServersService } from '../servers/servers.service';
+import { MessagesService } from '../messages/messages.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { CompanionService } from '../modules/minecraft/companion.service';
 import { MinecraftService } from '../modules/minecraft/minecraft.service';
+import { findAsciiArt } from './ascii-art.catalog';
 import type { DeepseekTool } from './deepseek.client';
 
 /**
@@ -51,6 +60,15 @@ interface ToolDefinition {
   description: string;
   kind: AiToolKind;
   permission: string | null;
+  /**
+   * Не писать аргументы в журнал аудита.
+   *
+   * Нужно ровно для личной переписки: аудит читают администраторы, а
+   * содержимое чужих сообщений им видеть не положено — это записано в
+   * MessagesService и не должно обходиться через ассистента. В журнал попадёт
+   * сам факт вызова, но без текста и без адресата.
+   */
+  redactArgs?: boolean;
   parameters: Record<string, unknown>;
   /** Краткое описание для карточки подтверждения и журнала. */
   summary: (args: Record<string, unknown>) => string;
@@ -64,6 +82,7 @@ interface ToolDefinition {
 interface ToolDeps {
   servers: ServersService;
   tickets: TicketsService;
+  messages: MessagesService;
   minecraft: MinecraftService;
   companion: CompanionService;
 }
@@ -340,6 +359,51 @@ const TOOLS: ToolDefinition[] = [
     },
   },
 
+  {
+    name: 'list_staff',
+    description:
+      'Коллеги, которым можно написать в личные сообщения: их ники. ' +
+      'Переписку читать нельзя — только узнать, кому можно отправить.',
+    kind: 'safe',
+    permission: null,
+    parameters: { type: 'object', properties: {} },
+    summary: () => 'Посмотреть список коллег',
+    run: async (ctx, _args, deps) => {
+      const contacts = await deps.messages.contacts(ctx.userId);
+      return {
+        content: JSON.stringify(contacts.map((c) => c.nickname)),
+        untrusted: false,
+      };
+    },
+  },
+  {
+    name: 'find_ascii_art',
+    description:
+      'Найти готовый ASCII-арт по теме в каталоге панели. Вызывай ПЕРЕД тем, как рисовать самому: ' +
+      'готовый арт заведомо ровный, а нарисованный моделью часто разъезжается по ширине. ' +
+      'Пустой запрос вернёт весь каталог. Если подходящего нет — рисуй сам.',
+    kind: 'safe',
+    permission: null,
+    parameters: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'тема: кот, крипер, праздник…' } },
+    },
+    summary: (a) => `Найти ASCII-арт: ${str(a, 'query') || 'весь каталог'}`,
+    run: async (_ctx, args) => {
+      const found = findAsciiArt(str(args, 'query'));
+      if (found.length === 0) {
+        return {
+          content: 'В каталоге ничего не нашлось — нарисуй арт сам и следи за одинаковой шириной строк.',
+          untrusted: false,
+        };
+      }
+      return {
+        content: JSON.stringify(found.map((e) => ({ id: e.id, title: e.title, art: e.art }))),
+        untrusted: false,
+      };
+    },
+  },
+
   // --------------------------------------------------- разрушительные
   //
   // Всё, что меняет состояние. Модель их не выполняет: она возвращает
@@ -545,6 +609,37 @@ const TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'send_ascii_art',
+    description:
+      'Отправить ASCII-арт коллеге в личные сообщения — от имени собеседника, а не от имени ИИ. ' +
+      'Адресат указывается НИКОМ (см. list_staff). Арт передавай как есть, со всеми пробелами: ' +
+      'они и составляют рисунок, выравнивание менять нельзя. ' +
+      `Не больше ${ASCII_ART_LIMITS.maxLines} строк и ${ASCII_ART_LIMITS.maxLineLength} символов в строке.`,
+    kind: 'destructive',
+    // Личная переписка: содержимое и адресат в журнал не попадают.
+    redactArgs: true,
+    permission: null,
+    parameters: {
+      type: 'object',
+      properties: {
+        nickname: { type: 'string', description: 'ник коллеги из list_staff' },
+        art: { type: 'string', description: 'сам арт, построчно, с сохранением пробелов' },
+        caption: { type: 'string', description: 'короткая подпись перед артом, необязательно' },
+      },
+      required: ['nickname', 'art'],
+    },
+    summary: (a) => `Отправить ASCII-арт для ${str(a, 'nickname')}`,
+    run: async (ctx, args, deps) => {
+      const checked = validateAsciiArt(str(args, 'art'));
+      if (!checked.ok) return { content: `Арт не подошёл: ${checked.reason}`, untrusted: false };
+
+      const caption = str(args, 'caption').trim();
+      const text = [caption, wrapAsciiArt(checked.art)].filter(Boolean).join('\n');
+      await deps.messages.send(ctx.userId, { nickname: str(args, 'nickname'), text });
+      return { content: 'Арт отправлен', untrusted: false };
+    },
+  },
+  {
     name: 'run_quick_command',
     description:
       'Выполнить быстрое действие из каталога панели (вылечить, сменить режим игры, телепорт и т.п.). ' +
@@ -596,6 +691,7 @@ export class AiToolsService {
     private readonly tickets: TicketsService,
     private readonly minecraft: MinecraftService,
     private readonly companion: CompanionService,
+    private readonly messages: MessagesService,
   ) {}
 
   /** Описания инструментов в формате DeepSeek — только доступные по правам. */
@@ -709,7 +805,12 @@ export class AiToolsService {
         action: `ai:${tool.name}`,
         targetType: 'server',
         targetId: serverId || null,
-        metadata: { args, summary: tool.summary(args), ok, ...(error ? { error } : {}) },
+        metadata: tool.redactArgs
+          ? // Личная переписка: в журнале остаётся факт вызова, но ни текста,
+            // ни адресата. Аудит читают администраторы, а чужие сообщения им
+            // видеть не положено — через ассистента это правило тоже действует.
+            { redacted: 'личная переписка', ok, ...(error ? { error } : {}) }
+          : { args, summary: tool.summary(args), ok, ...(error ? { error } : {}) },
       });
 
     try {
@@ -718,6 +819,7 @@ export class AiToolsService {
         tickets: this.tickets,
         minecraft: this.minecraft,
         companion: this.companion,
+        messages: this.messages,
       });
       if (tool.kind === 'destructive') await logAttempt(true);
       return result;

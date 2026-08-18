@@ -10,5 +10,9 @@ import { MessagesService } from './messages.service';
 @Module({
   controllers: [MessagesController],
   providers: [MessagesService],
+  // MessagesService нужен AI-ассистенту: он отправляет ASCII-арт от имени
+  // собеседника тем же кодом, что и кнопка «Отправить» в чате. Приватность
+  // от этого не страдает — сообщение уходит от человека, а не от ИИ.
+  exports: [MessagesService],
 })
 export class MessagesModule {}

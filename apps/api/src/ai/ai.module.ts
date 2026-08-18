@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { ServersModule } from '../servers/servers.module';
+import { MessagesModule } from '../messages/messages.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { MinecraftModule } from '../modules/minecraft/minecraft.module';
 import { AiController } from './ai.controller';
@@ -23,7 +24,7 @@ import { DeepseekClient } from './deepseek.client';
  * ассистент не импортировал каждый модуль поимённо.
  */
 @Module({
-  imports: [RbacModule, AuditModule, ServersModule, TicketsModule, MinecraftModule],
+  imports: [RbacModule, AuditModule, ServersModule, TicketsModule, MessagesModule, MinecraftModule],
   controllers: [AiController],
   providers: [AiSettingsService, AiToolsService, AiService, DeepseekClient],
 })

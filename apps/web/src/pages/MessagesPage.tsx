@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConversationDto, StaffContactDto, StaffMessageDto } from '@aurum/shared';
+import { hasAsciiArt, parseMessageSegments } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Badge, Button, Card, ErrorText, Input, Spinner } from '../components/ui';
+import { Badge, Button, Card, ErrorText, Input, Spinner, Textarea } from '../components/ui';
 
 function formatTime(iso: string): string {
   const date = new Date(iso);
@@ -14,6 +15,43 @@ function formatTime(iso: string): string {
   return sameDay
     ? date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     : date.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' });
+}
+
+/**
+ * Тело сообщения: обычный текст и моноширинные блоки.
+ *
+ * Блок рисуется <pre> с whitespace-pre и СОБСТВЕННОЙ горизонтальной
+ * прокруткой. Именно так, а не переносом по ширине: в ASCII-арте пробелы —
+ * это сам рисунок, и перенос строки превращает кота в кашу из скобок. Пусть
+ * широкий арт лучше прокручивается вбок, чем разваливается.
+ *
+ * Размер шрифта мельче обычного намеренно: чем он меньше, тем больше рисунка
+ * влезает без прокрутки. Правило про 16 px здесь не действует — оно про поля
+ * ВВОДА и автозум iOS, а <pre> сфокусировать нельзя.
+ */
+function MessageBody({ text }: { text: string }) {
+  const segments = parseMessageSegments(text);
+
+  return (
+    <>
+      {segments.map((segment, i) =>
+        segment.kind === 'art' ? (
+          <pre
+            key={i}
+            className="my-1 overflow-x-auto rounded bg-black/30 p-2 font-mono text-[11px] leading-[1.15]"
+            // whitespace-pre без break: ни переносов, ни схлопывания пробелов.
+            style={{ whiteSpace: 'pre' }}
+          >
+            {segment.content}
+          </pre>
+        ) : (
+          <div key={i} className="whitespace-pre-wrap break-words">
+            {segment.content}
+          </div>
+        ),
+      )}
+    </>
+  );
 }
 
 /**
@@ -143,7 +181,7 @@ export function MessagesPage() {
               </div>
               <div className="truncate text-xs text-muted">
                 {c.lastMessage.outgoing && 'вы: '}
-                {c.lastMessage.text}
+                {previewOf(c.lastMessage.text)}
               </div>
             </button>
           ))}
@@ -174,14 +212,17 @@ export function MessagesPage() {
               <div className="flex-1 space-y-2 overflow-y-auto py-3">
                 {thread.map((m) => {
                   const outgoing = m.fromUserId === me?.user.id;
+                  // Пузырь с артом шире обычного: 75 % ширины колонки режут
+                  // рисунок пополам, и прокручивать пришлось бы каждую строку.
+                  const wide = hasAsciiArt(m.text);
                   return (
                     <div key={m.id} className={`flex ${outgoing ? 'justify-end' : 'justify-start'}`}>
                       <div
-                        className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                          outgoing ? 'bg-primary/25' : 'bg-white/10'
-                        }`}
+                        className={`min-w-0 rounded-lg px-3 py-2 text-sm ${
+                          wide ? 'max-w-full' : 'max-w-[75%]'
+                        } ${outgoing ? 'bg-primary/25' : 'bg-white/10'}`}
                       >
-                        <div className="whitespace-pre-wrap break-words">{m.text}</div>
+                        <MessageBody text={m.text} />
                         <div className="mt-1 text-right text-[10px] text-muted">
                           {formatTime(m.createdAt)}
                           {/* Галочка только у своих: знать, прочитал ли
@@ -195,13 +236,30 @@ export function MessagesPage() {
                 <div ref={bottomRef} />
               </div>
 
-              <div className="flex gap-2 border-t border-border pt-3">
-                <Input
+              <div className="flex items-end gap-2 border-t border-border pt-3">
+                {/*
+                  Textarea, а не Input: в однострочное поле не вставить
+                  многострочный арт — браузер выбрасывает переводы строк, и
+                  рисунок склеивается в одну строку ещё до отправки.
+                  Enter отправляет, Shift+Enter — новая строка.
+                */}
+                <Textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void send()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      void send();
+                    }
+                  }}
+                  // Подсказка про Shift+Enter — в title, а не в placeholder:
+                  // на узком экране она не помещается в одну строку и обрезается
+                  // по высоте поля, из-за чего поле выглядит сломанным.
                   placeholder="Сообщение…"
+                  title="Enter — отправить, Shift+Enter — новая строка"
                   disabled={busy}
+                  rows={1}
+                  className="max-h-40 min-h-[44px] resize-y"
                 />
                 <Button onClick={() => void send()} disabled={busy || !text.trim()}>
                   Отправить
@@ -213,6 +271,19 @@ export function MessagesPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * Строка предпросмотра в списке диалогов.
+ *
+ * Ограждения и сам рисунок там показывать нечего: в одну строку арт всё равно
+ * не поместится, а «```» вместо текста выглядит как сбой.
+ */
+function previewOf(text: string): string {
+  const segments = parseMessageSegments(text);
+  const firstText = segments.find((s) => s.kind === 'text')?.content;
+  if (firstText) return firstText;
+  return segments.some((s) => s.kind === 'art') ? 'ASCII-арт' : text;
 }
 
 /** Начать диалог: поиск коллеги по нику с автодополнением. */
