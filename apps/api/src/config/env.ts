@@ -26,6 +26,8 @@ function intVar(name: string, def: number): number {
   return n;
 }
 
+import { DEEPSEEK_BASE_URL as DEEPSEEK_BASE_URL_DEFAULT } from '@aurum/shared';
+
 const isTest = process.env.NODE_ENV === 'test';
 
 export const env = {
@@ -46,6 +48,8 @@ export const env = {
    */
   TRUST_PROXY: optional('TRUST_PROXY', ''),
   WEB_ORIGIN: optional('WEB_ORIGIN', 'http://localhost:5173'),
+  /** Адрес панели для ссылок в письмах. По умолчанию совпадает с WEB_ORIGIN. */
+  PANEL_URL: optional('PANEL_URL', optional('WEB_ORIGIN', 'http://localhost:5173')),
   DATABASE_URL: isTest ? optional('DATABASE_URL') : required('DATABASE_URL'),
   REDIS_URL: optional('REDIS_URL', 'redis://localhost:6379'),
   JWT_ACCESS_SECRET: isTest ? 'test-access' : required('JWT_ACCESS_SECRET'),
@@ -55,7 +59,17 @@ export const env = {
   APP_ENCRYPTION_KEY: isTest
     ? Buffer.alloc(32).toString('base64')
     : required('APP_ENCRYPTION_KEY'),
-  PTERO_BASE_URL: optional('PTERO_BASE_URL', 'http://127.0.0.1'),
+  // Схема важна: если nginx панели уводит http на https, обращение по
+  // http://127.0.0.1 вернёт HTML-заглушку редиректа вместо JSON.
+  PTERO_BASE_URL: optional('PTERO_BASE_URL', 'https://panel.aurumgg.ovh'),
   PTERO_APP_API_KEY: optional('PTERO_APP_API_KEY'),
   PTERO_CLIENT_API_KEY: optional('PTERO_CLIENT_API_KEY'),
+  /**
+   * Адрес API DeepSeek. По умолчанию официальный.
+   *
+   * Переопределяется для двух случаев: корпоративный или self-hosted
+   * шлюз, совместимый с OpenAI, и подстановка подставного сервера в
+   * тестах. Имя модели и ключ при этом остаются настройками панели.
+   */
+  DEEPSEEK_BASE_URL: optional('DEEPSEEK_BASE_URL', DEEPSEEK_BASE_URL_DEFAULT),
 };

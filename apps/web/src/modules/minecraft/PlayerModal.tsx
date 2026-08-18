@@ -1,30 +1,10 @@
-import { useState, type ReactNode } from 'react';
-import { Button, Card, ErrorText, Input, Label, Select, Textarea } from '../../components/ui';
+import { useState } from 'react';
+import { Button, ErrorText, Input, Label, Select, Textarea } from '../../components/ui';
+import { Modal } from '../../components/Modal';
 
-/** Простая модалка: используется для причины кика и бана. */
-export function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <Card>
-          <h3 className="mb-3 font-semibold">{title}</h3>
-          {children}
-        </Card>
-      </div>
-    </div>
-  );
-}
+// Modal переехал в components/Modal.tsx — им пользуются и другие модули.
+// Реэкспорт, чтобы не править импорты во всех местах модуля Minecraft.
+export { Modal };
 
 const BAN_DURATIONS = [
   { value: '', label: 'Навсегда' },
@@ -85,7 +65,9 @@ export function PunishModal({
           </div>
         )}
         <ErrorText>{error}</ErrorText>
-        <div className="flex justify-end gap-2">
+        {/* На узком экране кнопки в столбик и во всю ширину: так в них
+            попадают пальцем, и подтверждающая оказывается сверху. */}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Отмена
           </Button>
@@ -143,7 +125,9 @@ export function PromptModal({
           />
         </div>
         <ErrorText>{error}</ErrorText>
-        <div className="flex justify-end gap-2">
+        {/* На узком экране кнопки в столбик и во всю ширину: так в них
+            попадают пальцем, и подтверждающая оказывается сверху. */}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Отмена
           </Button>

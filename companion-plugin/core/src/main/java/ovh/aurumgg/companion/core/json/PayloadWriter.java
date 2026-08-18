@@ -4,9 +4,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
+import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
+import ovh.aurumgg.companion.core.model.PluginInfo;
 
 /** Сериализация ответов плагина. Формат зафиксирован в docs/companion.md. */
 public final class PayloadWriter {
@@ -37,6 +42,101 @@ public final class PayloadWriter {
         root.put("armor", itemArray(inventory.armor()));
         root.put("offhand", inventory.offhand() == null ? "null" : item(inventory.offhand()));
         return Json.object(root);
+    }
+
+    public static String plugins(List<PluginInfo> plugins) {
+        List<String> items = new ArrayList<>(plugins.size());
+        for (PluginInfo p : plugins) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("name", Json.string(p.name()));
+            fields.put("version", Json.string(p.version()));
+            fields.put("enabled", p.enabled() ? "true" : "false");
+            items.add(Json.object(fields));
+        }
+        return Json.object(Map.of("plugins", Json.array(items)));
+    }
+
+    public static String permissions(PermissionsInfo info) {
+        Map<String, String> root = new LinkedHashMap<>();
+        root.put("primaryGroup", Json.string(info.primaryGroup()));
+
+        List<String> groups = new ArrayList<>(info.groups().size());
+        for (String group : info.groups()) groups.add(Json.string(group));
+        root.put("groups", Json.array(groups));
+
+        List<String> nodes = new ArrayList<>(info.permissions().size());
+        for (PermissionsInfo.PermissionEntry entry : info.permissions()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("permission", Json.string(entry.permission()));
+            fields.put("value", entry.value() ? "true" : "false");
+            nodes.add(Json.object(fields));
+        }
+        root.put("permissions", Json.array(nodes));
+        return Json.object(root);
+    }
+
+    public static String balance(BalanceInfo info) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("balance", Json.number(info.balance()));
+        fields.put("formatted", Json.string(info.formatted()));
+        fields.put("currency", Json.string(info.currency()));
+        return Json.object(fields);
+    }
+
+    /**
+     * Результат начисления или списания.
+     *
+     * ok = false — это не HTTP-ошибка: провайдер вправе отказать (не хватило
+     * денег, отрицательная сумма), и панели нужен именно его текст отказа,
+     * а не подменённый нами.
+     */
+    public static String balanceChange(BalanceChange change) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("ok", change.ok() ? "true" : "false");
+        fields.put("error", Json.string(change.error()));
+        fields.put("balanceBefore", Json.number(change.before()));
+        fields.put("balanceAfter", Json.number(change.after()));
+        fields.put("formatted", Json.string(change.formatted()));
+        return Json.object(fields);
+    }
+
+    public static String economy(EconomySummary summary) {
+        Map<String, String> root = new LinkedHashMap<>();
+        root.put("total", Json.number(summary.total()));
+        root.put("totalFormatted", Json.string(summary.totalFormatted()));
+        root.put("currency", Json.string(summary.currency()));
+        root.put("playersCounted", Json.number(summary.playersCounted()));
+
+        List<String> top = new ArrayList<>(summary.top().size());
+        for (EconomySummary.TopEntry entry : summary.top()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("name", Json.string(entry.name()));
+            fields.put("uuid", Json.string(entry.uuid()));
+            fields.put("balance", Json.number(entry.balance()));
+            fields.put("formatted", Json.string(entry.formatted()));
+            top.add(Json.object(fields));
+        }
+        root.put("top", Json.array(top));
+        return Json.object(root);
+    }
+
+    /** Варианты автодополнения. */
+    public static String suggestions(List<String> suggestions) {
+        List<String> items = new ArrayList<>(suggestions.size());
+        for (String suggestion : suggestions) items.add(Json.string(suggestion));
+        return Json.object(Map.of("suggestions", Json.array(items)));
+    }
+
+    /**
+     * Ошибка с машиночитаемым кодом. Панель по коду решает, что показать:
+     * «поставьте LuckPerms» — это не то же самое, что «игрок не найден»,
+     * а разбирать русский текст на той стороне никуда не годится.
+     */
+    public static String error(String message, String code) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("error", Json.string(message));
+        fields.put("code", Json.string(code));
+        return Json.object(fields);
     }
 
     public static String error(String message) {

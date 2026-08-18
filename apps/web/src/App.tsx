@@ -8,6 +8,9 @@ import { TicketsPage } from './pages/TicketsPage';
 import { AccessControlPage } from './pages/AccessControlPage';
 import { AuditPage } from './pages/AuditPage';
 import { SecurityPage } from './pages/SecurityPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { MessagesPage } from './pages/MessagesPage';
+import { OnboardingPage } from './pages/OnboardingPage';
 import { Spinner } from './components/ui';
 
 /** Роут, требующий права; при live-потере права редиректит на /servers. */
@@ -21,6 +24,11 @@ function Shell() {
   const { me, loading } = useAuth();
   if (loading) return <Spinner />;
   if (!me) return <LoginPage />;
+
+  // Вход был по одноразовому паролю: до онбординга остальная панель закрыта.
+  // Отдельным экраном без Layout — навигации здесь быть не должно, иначе
+  // человек начнёт ходить по разделам с временным паролём.
+  if (me.user.mustChangePassword) return <OnboardingPage />;
 
   return (
     <Routes>
@@ -66,7 +74,12 @@ function Shell() {
             </Guarded>
           }
         />
+        <Route path="/messages" element={<MessagesPage />} />
         <Route path="/security" element={<SecurityPage />} />
+        {/* Настройки доступны всем: там же лежат личные — свой ник и пароль.
+            Блоки для ГМ (правила аккаунтов, почта, ассистент) внутри страницы
+            показываются по праву users.manage. */}
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/servers" replace />} />
       </Route>
     </Routes>

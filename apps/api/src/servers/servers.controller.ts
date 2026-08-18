@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
+import type { ServerActivityDto, ServerResourcesDto } from '@aurum/shared';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 import type { Request } from 'express';
 import { RequirePermission, ServerScoped } from '../rbac/rbac.decorators';
@@ -7,6 +8,7 @@ import { EffectivePermissions, PermissionsService } from '../rbac/permissions.se
 import { ClientApiService } from '../pterodactyl/client-api.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ServersService } from './servers.service';
+import { ActivityService } from './activity.service';
 
 class PowerDto {
   @IsIn(['start', 'stop', 'restart', 'kill'])
@@ -26,6 +28,7 @@ export class ServersController {
     private readonly permissions: PermissionsService,
     private readonly clientApi: ClientApiService,
     private readonly prisma: PrismaService,
+    private readonly activityService: ActivityService,
   ) {}
 
   private eff(req: Request): Promise<EffectivePermissions> {
@@ -65,9 +68,36 @@ export class ServersController {
   @Get(':serverId/resources')
   @RequirePermission('servers.view')
   @ServerScoped('serverId')
-  async resources(@Param('serverId') serverId: string) {
+  async resources(@Param('serverId') serverId: string): Promise<ServerResourcesDto> {
     const server = await this.prisma.server.findUniqueOrThrow({ where: { id: serverId } });
-    return this.clientApi.getResources(server.pteroIdentifier);
+    const raw = await this.clientApi.getResources(server.pteroIdentifier);
+    const MIB = 1024 * 1024;
+    return {
+      state: raw.current_state,
+      cpuPercent: raw.resources.cpu_absolute,
+      memoryBytes: raw.resources.memory_bytes,
+      // Лимиты приходят из Pterodactyl в МиБ и обновляются при синке.
+      memoryLimitBytes: (server.memoryLimitMb ?? 0) * MIB,
+      diskBytes: raw.resources.disk_bytes,
+      diskLimitBytes: (server.diskLimitMb ?? 0) * MIB,
+      networkRxBytes: raw.resources.network_rx_bytes,
+      networkTxBytes: raw.resources.network_tx_bytes,
+      uptimeMs: raw.resources.uptime,
+    };
+  }
+
+  /**
+   * История онлайна по часам за последние `days` суток.
+   * Данные копит сборщик игрового модуля; без модуля сетка будет пустой.
+   */
+  @Get(':serverId/activity')
+  @RequirePermission('servers.view')
+  @ServerScoped('serverId')
+  activity(
+    @Param('serverId') serverId: string,
+    @Query('days') days?: string,
+  ): Promise<ServerActivityDto> {
+    return this.activityService.history(serverId, Number(days) || 7);
   }
 
   /**

@@ -141,3 +141,80 @@ describe('TicketsService.respond — доставка ответа в игру',
     expect(result.messages[1]?.text).toBe('Ответ');
   });
 });
+
+describe('TicketsService.resolveId', () => {
+  const FULL = '58d581d9-4c9e-4f30-9a7e-1f2b3c4d5e6f';
+
+  function setup(options: { exact?: unknown; matches?: { id: string }[] } = {}) {
+    const prisma = {
+      ticket: {
+        findFirst: jest.fn().mockResolvedValue(options.exact ?? null),
+        findMany: jest.fn().mockResolvedValue(options.matches ?? []),
+      },
+    };
+    const service = new TicketsService(
+      prisma as unknown as PrismaService,
+      { emitTicketsUpdated: jest.fn() } as unknown as EventsGateway,
+      { deliver: jest.fn() } as unknown as TicketDeliveryRegistry,
+    );
+    return { service, prisma };
+  }
+
+  const owner = {
+    userId: 'u1',
+    role: 'OWNER' as const,
+    permissions: new Set<never>(),
+    allowedServerIds: null,
+    isOwner: true,
+  };
+
+  it('полный id возвращается как есть', async () => {
+    const { service, prisma } = setup({ exact: { id: FULL } });
+
+    await expect(service.resolveId(owner, FULL)).resolves.toBe(FULL);
+    // Второй запрос не нужен: точное совпадение нашлось сразу.
+    expect(prisma.ticket.findMany).not.toHaveBeenCalled();
+  });
+
+  it('обрезанный id разрешается по началу — на этом спотыкался ассистент', async () => {
+    // Именно так модель пересказывает список тикетов человеку: «58d581d9…».
+    const { service } = setup({ matches: [{ id: FULL }] });
+
+    await expect(service.resolveId(owner, '58d581d9')).resolves.toBe(FULL);
+  });
+
+  it('многоточие и пробелы в конце не мешают', async () => {
+    const { service, prisma } = setup({ matches: [{ id: FULL }] });
+
+    await expect(service.resolveId(owner, ' 58d581d9… ')).resolves.toBe(FULL);
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { startsWith: '58d581d9' } }) }),
+    );
+  });
+
+  it('слишком короткое начало отвергается, а не угадывается', async () => {
+    const { service, prisma } = setup();
+
+    await expect(service.resolveId(owner, '58d5')).rejects.toThrow(/целиком/);
+    expect(prisma.ticket.findMany).not.toHaveBeenCalled();
+  });
+
+  it('неоднозначное начало — ошибка со списком, а не «первый попавшийся»', async () => {
+    const { service } = setup({ matches: [{ id: `${FULL}` }, { id: '58d581d9-0000-0000-0000-000000000000' }] });
+
+    await expect(service.resolveId(owner, '58d581d9')).rejects.toThrow(/нескольким тикетам/);
+  });
+
+  it('поиск ограничен серверами, к которым есть доступ', async () => {
+    const { service, prisma } = setup({ matches: [{ id: FULL }] });
+    const moderator = { ...owner, isOwner: false, allowedServerIds: new Set(['srv-1']) };
+
+    await service.resolveId(moderator, '58d581d9');
+
+    expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ serverId: { in: ['srv-1'] } }),
+      }),
+    );
+  });
+});

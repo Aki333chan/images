@@ -4,8 +4,13 @@ import type { ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, Select, Spinner, Tabs } from '../components/ui';
-import { MODULE_REGISTRY, resolveTab } from '../modules/registry';
+import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
+import { ServerStats } from '../components/ServerStats';
+import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
 import { listCapabilities } from '@aurum/shared';
+
+/** Не пересекается с id capability: те приходят из манифеста модуля. */
+const SETTINGS_TAB_ID = '__settings';
 
 export function ServerDetailPage() {
   const { serverId = '' } = useParams();
@@ -38,12 +43,27 @@ export function ServerDetailPage() {
   /** Вкладки: capabilities активного модуля ∩ реестр компонентов ∩ права. */
   const tabs = useMemo(() => {
     if (!manifest) return [];
-    return listCapabilities(manifest).flatMap(({ capability, state }) => {
+    const capabilityTabs = listCapabilities(manifest).flatMap(({ capability, state }) => {
       const tab = resolveTab(manifest.id, capability);
       if (!tab) return [];
       if (tab.permission && !hasPermission(tab.permission)) return [];
-      return [{ id: capability, label: tab.label, component: tab.component, state }];
+      // id как string: ниже к списку добавляется вкладка настроек,
+      // которой в перечислении capability нет.
+      return [{ id: capability as string, label: tab.label, component: tab.component, state }];
     });
+
+    // Настройки идут последними: пользуются ими редко, а место в ряду
+    // вкладок нужнее тем, с чем работают каждый день.
+    const settings = resolveSettings(manifest.id);
+    if (settings && hasPermission(settings.permission)) {
+      capabilityTabs.push({
+        id: SETTINGS_TAB_ID,
+        label: settings.label,
+        component: settings.component,
+        state: true,
+      });
+    }
+    return capabilityTabs;
   }, [manifest, hasPermission]);
 
   /** Виджет модуля на дашборде сервера (напр. быстрые команды Minecraft). */
@@ -70,14 +90,16 @@ export function ServerDetailPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">{server.name}</h1>
-          <p className="text-xs text-muted">
+      {/* Название и кнопки питания в столбик на телефоне: три кнопки плюс
+          значок статуса в одну строку с заголовком не помещаются. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-bold">{server.name}</h1>
+          <p className="truncate text-xs text-muted">
             {server.pteroIdentifier} · нода {server.node ?? '—'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant={server.status === 'active' ? 'success' : 'outline'}>
             {server.status ?? '—'}
           </Badge>
@@ -98,9 +120,10 @@ export function ServerDetailPage() {
       </div>
 
       {hasPermission('servers.manage') && (
-        <Card className="flex items-center gap-3">
+        <Card className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-sm text-muted">Игровой модуль:</span>
           <Select
+            className="min-w-0 flex-1 sm:flex-none"
             value={server.moduleId ?? ''}
             onChange={(v) => void setModule(v || null)}
             options={[
@@ -110,6 +133,12 @@ export function ServerDetailPage() {
           />
         </Card>
       )}
+
+      <ServerStats
+        serverId={server.id}
+        moduleId={server.moduleId ?? null}
+        canSeePerformance={hasPermission('minecraft.players.view')}
+      />
 
       {manifest && DashboardWidget && (
         <DashboardWidget serverId={server.id} moduleId={manifest.id} capabilityState={true} />
@@ -132,6 +161,10 @@ export function ServerDetailPage() {
               capabilityState={active.state}
             />
           )}
+          {/* Под вкладками, а не внутри одной из них: список отвечает на
+              вопрос «почему у меня нет такой-то кнопки», который возникает
+              на любой вкладке. */}
+          {manifest.id === 'minecraft' && <PluginsPanel serverId={server.id} />}
         </>
       )}
     </div>

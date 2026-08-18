@@ -40,7 +40,9 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    // p-4: без отступа карточка на 375 px прижималась к обоим краям экрана
+    // вплотную — max-w-sm (384 px) шире самого экрана.
+    <div className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <h1 className="mb-4 text-center text-xl font-bold text-primary">Aurum Panel</h1>
         <form onSubmit={submit} className="space-y-3">

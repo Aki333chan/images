@@ -33,7 +33,10 @@ export function ServersPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      {/* flex-wrap: «Синхронизировать с Pterodactyl» — 228 px, и вместе с
+          заголовком в 375 px не влезает; без переноса кнопка вылезала за
+          край экрана. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Серверы</h1>
         {hasPermission('servers.manage') && (
           <Button size="sm" variant="outline" onClick={() => void sync()} disabled={syncing}>

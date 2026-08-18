@@ -78,9 +78,11 @@ export class PermissionsService {
       user: {
         id: user.id,
         email: user.email,
-        displayName: user.displayName,
+        nickname: user.nickname,
+        nicknameChangeAllowed: user.nicknameChangeAllowed,
         role: user.role,
         totpEnabled: user.totpEnabled,
+        mustChangePassword: user.mustChangePassword,
       },
       permissions: [...eff.permissions].sort(),
       allowedServerIds: eff.allowedServerIds === null ? null : [...eff.allowedServerIds],

@@ -3,9 +3,15 @@ package ovh.aurumgg.companion.core;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
+import ovh.aurumgg.companion.core.model.PermissionChange;
+import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
+import ovh.aurumgg.companion.core.model.PluginInfo;
 
 /**
  * Единственная точка соприкосновения с игровым сервером.
@@ -30,4 +36,84 @@ public interface GameBridge {
 
     /** Отправляет игроку сообщение в чат. Тихо игнорируется, если он оффлайн. */
     void sendMessage(UUID playerUuid, String message);
+
+    /**
+     * Автодополнение команды так, как его делает сам сервер.
+     *
+     * Строка — как её набирают в консоли, БЕЗ ведущего слэша. Возвращаются
+     * варианты целиком для последнего (незавершённого) слова: если слово
+     * одно — имена команд, дальше — аргументы конкретной команды.
+     *
+     * Смысл этого метода в том, что он знает то, чего панель знать не может:
+     * команды установленных плагинов и их аргументы — имена миров, китов,
+     * зачарований. Пустой список — не ошибка, а «нечего предложить».
+     */
+    List<String> completeCommand(String line);
+
+    // ---------- Интеграции со сторонними плагинами ----------
+    //
+    // Все три метода ниже устроены одинаково: если нужного плагина на сервере
+    // нет, они возвращают «пусто», а не бросают исключение. Ответственность за
+    // формулировку «нужен такой-то плагин» лежит на HTTP-слое — так текст
+    // ошибки один на все реализации.
+
+    /** Все установленные плагины сервера: имя, версия, включён ли. */
+    List<PluginInfo> installedPlugins();
+
+    /**
+     * Права игрока через LuckPerms.
+     *
+     * @return пусто, если LuckPerms на сервере нет
+     */
+    Optional<PermissionsInfo> permissions(UUID playerUuid);
+
+    /**
+     * Применяет одно изменение прав через LuckPerms.
+     *
+     * @return пусто, если LuckPerms нет; иначе результат с причиной отказа
+     */
+    Optional<PermissionChange.Result> applyPermission(UUID playerUuid, PermissionChange change);
+
+    /**
+     * Инвентарь игрока, которого нет в сети, — через InvSee++.
+     *
+     * @return пусто, если InvSee++ не установлен либо данных по игроку нет
+     */
+    Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName);
+
+    // ---------- Экономика (Vault) ----------
+    //
+    // Vault сам денег не хранит: это прослойка, за которой стоит настоящий
+    // плагин экономики. Поэтому «пусто» здесь означает одно из двух — нет
+    // самого Vault или у него не зарегистрирован Economy-провайдер. Различать
+    // эти случаи для панели не нужно: и там, и там блок «Валюта» не работает,
+    // а формулировку даёт HTTP-слой.
+
+    /**
+     * Баланс игрока. Работает и для тех, кого нет в сети: Vault оперирует
+     * OfflinePlayer, а не живым игроком.
+     *
+     * @return пусто, если экономики на сервере нет
+     */
+    Optional<BalanceInfo> balance(UUID playerUuid);
+
+    /**
+     * Начисление (amount &gt; 0) или списание (amount &lt; 0 не передаётся —
+     * для списания есть отдельный метод, чтобы знак не терялся по дороге).
+     *
+     * @return пусто, если экономики нет; иначе результат с балансом до и после
+     */
+    Optional<BalanceChange> deposit(UUID playerUuid, double amount);
+
+    /** Списание. Симметрично deposit. */
+    Optional<BalanceChange> withdraw(UUID playerUuid, double amount);
+
+    /**
+     * Экономика сервера целиком: сумма по всем, кто когда-либо заходил, и
+     * доска богатства.
+     *
+     * @param topLimit сколько строк вернуть в доске богатства
+     * @return пусто, если экономики нет
+     */
+    Optional<EconomySummary> economySummary(int topLimit);
 }

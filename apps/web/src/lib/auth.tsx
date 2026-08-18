@@ -17,6 +17,10 @@ interface AuthState {
   modules: ModulesResponse | null;
   loading: boolean;
   ticketsBadge: number;
+  /** Непрочитанные личные сообщения — живой счётчик в навигации. */
+  messagesBadge: number;
+  /** Инкрементируется на каждое messages.updated: экран переписки слушает его. */
+  messagesVersion: number;
   hasPermission: (key: string) => boolean;
   canSeeServer: (serverId: string) => boolean;
   loginDone: (accessToken: string, me: MeResponse) => void;
@@ -33,6 +37,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [modules, setModules] = useState<ModulesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [ticketsBadge, setTicketsBadge] = useState(0);
+  const [messagesBadge, setMessagesBadge] = useState(0);
+  const [messagesVersion, setMessagesVersion] = useState(0);
   const [ticketsVersion, setTicketsVersion] = useState(0);
   const socketRef = useRef<Socket | null>(null);
 
@@ -92,6 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     socket.on(WS_EVENTS.TICKETS_UPDATED, () => {
       setTicketsVersion((v) => v + 1);
     });
+    socket.on(WS_EVENTS.MESSAGES_UPDATED, () => {
+      setMessagesVersion((v) => v + 1);
+    });
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -103,6 +112,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (me) void refreshBadge(me.permissions);
   }, [ticketsVersion, me, refreshBadge]);
 
+  // Счётчик непрочитанных сообщений. Прав для него не нужно: переписка
+  // доступна всем ролям, каждому — только своя.
+  useEffect(() => {
+    if (!me) {
+      setMessagesBadge(0);
+      return;
+    }
+    // Пока не пройден онбординг, у человека нет ника и переписки быть не может.
+    if (me.user.mustChangePassword) return;
+    void api<{ unread: number }>('/api/messages/unread')
+      .then((r) => setMessagesBadge(r.unread))
+      .catch(() => undefined);
+  }, [messagesVersion, me]);
+
   const value = useMemo<AuthState>(
     () => ({
       me,
@@ -110,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       ticketsBadge,
       ticketsVersion,
+      messagesBadge,
+      messagesVersion,
       hasPermission: (key) => !!me?.permissions.includes(key),
       canSeeServer: (serverId) =>
         !!me && (me.allowedServerIds === null || me.allowedServerIds.includes(serverId)),
@@ -127,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       refreshMe,
     }),
-    [me, modules, loading, ticketsBadge, ticketsVersion, refreshMe],
+    [me, modules, loading, ticketsBadge, ticketsVersion, messagesBadge, messagesVersion, refreshMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

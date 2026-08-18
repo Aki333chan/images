@@ -75,6 +75,9 @@ export class ServersService {
           description: srv.description || null,
           node: String(srv.node),
           status: srv.suspended ? 'suspended' : 'active',
+          memoryLimitMb: srv.limits?.memory ?? null,
+          diskLimitMb: srv.limits?.disk ?? null,
+          cpuLimitPercent: srv.limits?.cpu ?? null,
         },
         update: {
           pteroIdentifier: srv.identifier,
@@ -83,6 +86,9 @@ export class ServersService {
           description: srv.description || null,
           node: String(srv.node),
           status: srv.suspended ? 'suspended' : 'active',
+          memoryLimitMb: srv.limits?.memory ?? null,
+          diskLimitMb: srv.limits?.disk ?? null,
+          cpuLimitPercent: srv.limits?.cpu ?? null,
         },
       });
     }

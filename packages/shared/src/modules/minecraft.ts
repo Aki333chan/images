@@ -1,5 +1,5 @@
 /**
- * Контракт модуля Minecraft (Java Edition) между apps/api и apps/web.
+ * Контракт модуля Minecraft (Paper) между apps/api и apps/web.
  * ВАЖНО: здесь намеренно нет ни RCON-пароля, ни хоста, ни адреса
  * companion-плагина — эти данные никогда не покидают бэкенд.
  */
@@ -50,6 +50,31 @@ export interface MinecraftQuickCommandArg {
   label: string;
   required: boolean;
   placeholder?: string;
+  /**
+   * Как готовить значение перед подстановкой в шаблон.
+   *
+   * 'json' — значение попадает внутрь JSON-литерала команды (например, в
+   * текстовый компонент /title). Без экранирования кавычка в тексте
+   * разорвала бы JSON, и сервер отверг бы всю команду.
+   */
+  escape?: 'json';
+  /**
+   * Закрытый список допустимых значений — панель рисует выпадающий список.
+   * Ровно то, что нужно режиму игры: вариантов четыре, и вводить их руками
+   * значит регулярно опечатываться в «adventure».
+   */
+  options?: { value: string; label: string }[];
+  /**
+   * Что подсказывать при вводе. 'online-players' — ники тех, кто сейчас
+   * в сети.
+   *
+   * Именно подсказка, а не закрытый список: список онлайна берётся с
+   * игрового сервера и может не получиться (RCON молчит, сервер
+   * перезапускается). Строгий выпадающий список в этом случае заблокировал
+   * бы действие целиком, а подсказка просто не появится — ник можно
+   * дописать руками.
+   */
+  suggest?: 'online-players';
 }
 
 export interface MinecraftQuickCommandDto {
@@ -59,6 +84,59 @@ export interface MinecraftQuickCommandDto {
   /** Право, необходимое для запуска (кроме него всегда нужен доступ к серверу). */
   permission: string;
   args: MinecraftQuickCommandArg[];
+  /**
+   * Плагин, командой которого является действие. `null` — ванильная команда,
+   * работает везде. Иначе кнопка показывается, только если этот плагин
+   * действительно установлен на сервере (см. MinecraftPluginsDto).
+   */
+  plugin: string | null;
+  /** Показать подтверждение перед запуском: действие заметно для игрока. */
+  destructive: boolean;
+}
+
+/** Плагины, о которых панель знает и умеет что-то полезное. */
+export interface KnownPluginDto {
+  /** Имя, под которым плагин регистрируется в Bukkit. */
+  id: string;
+  /** Человеческое название — оно нередко другое, чем id. */
+  displayName: string;
+  /** Что панель умеет, если плагин установлен. */
+  gives: string;
+  installed: boolean;
+  /** Версия с сервера; null, если не установлен. */
+  version: string | null;
+}
+
+export interface MinecraftPluginsDto {
+  /**
+   * false — companion-плагин не настроен, список получить неоткуда.
+   * Тогда known заполнен, но installed везде false, и это честно показано.
+   */
+  available: boolean;
+  reason?: string;
+  /** Всё, что стоит на сервере. Пусто, если available = false. */
+  installed: { name: string; version: string; enabled: boolean }[];
+  /** Плагины, поддерживаемые панелью, с отметкой «есть/нет». */
+  known: KnownPluginDto[];
+}
+
+/** Права игрока, как их отдаёт LuckPerms. */
+export interface MinecraftPermissionsDto {
+  available: boolean;
+  /** Причина недоступности: нет companion-плагина либо нет LuckPerms. */
+  reason?: string;
+  code?: 'no-companion' | 'requires-luckperms' | 'error';
+  primaryGroup?: string;
+  groups?: string[];
+  permissions?: { permission: string; value: boolean }[];
+}
+
+/** Одно изменение прав: панель шлёт их по одному, чтобы аудит был читаемым. */
+export interface MinecraftPermissionChangeDto {
+  kind: 'group' | 'permission';
+  key: string;
+  value?: boolean;
+  remove?: boolean;
 }
 
 export interface MinecraftCommandResultDto {
@@ -82,9 +160,7 @@ export interface MinecraftInventoryItemDto {
  * (обычное сообщение).
  */
 export type MinecraftInventoryUnavailableCode =
-  | 'no-plugin'
-  | 'player-offline'
-  | 'plugin-unreachable';
+  'no-plugin' | 'player-offline' | 'plugin-unreachable';
 
 /** Доступен ли инвентарь на этом сервере — без секретов, для любой роли с правом просмотра. */
 export interface MinecraftInventoryStatusDto {
@@ -116,6 +192,42 @@ export interface MinecraftConfigStatusDto {
   lastSeenAt: string | null;
 }
 
+/**
+ * Сторонние плагины, с которыми панель умеет работать.
+ *
+ * id — имя, под которым плагин регистрируется в Bukkit, и оно совпадает не
+ * всегда: EssentialsX зовётся Essentials (наследие старого Essentials),
+ * InvSee++ — InvSeePlusPlus. Сверка идёт именно по id, поэтому менять их
+ * нельзя, не сверившись с plugin.yml соответствующего плагина.
+ */
+export const KNOWN_PLUGINS = [
+  {
+    id: 'LuckPerms',
+    displayName: 'LuckPerms',
+    gives: 'вкладка «Права» у игрока: группы и права через API плагина',
+  },
+  {
+    id: 'Essentials',
+    displayName: 'EssentialsX',
+    gives: 'быстрые действия: heal, god, fly, kit, режим игры, телепорт',
+  },
+  {
+    id: 'InvSeePlusPlus',
+    displayName: 'InvSee++',
+    gives: 'инвентари игроков, которых нет в сети',
+  },
+  {
+    // Vault сам по себе экономику не ведёт — он прослойка между плагинами.
+    // Панели важен именно он: через него берётся Economy-провайдер, каким
+    // бы плагином тот ни предоставлялся (EssentialsX, CMI, любой другой).
+    id: 'Vault',
+    displayName: 'Vault',
+    gives: 'блок «Валюта» у игрока и баланс сервера: начисления и списания через Economy-провайдер',
+  },
+] as const;
+
+export type KnownPluginId = (typeof KNOWN_PLUGINS)[number]['id'];
+
 export const MINECRAFT_PERMISSIONS = {
   playersView: 'minecraft.players.view',
   kick: 'minecraft.kick',
@@ -126,4 +238,75 @@ export const MINECRAFT_PERMISSIONS = {
   commandRaw: 'minecraft.command.raw',
   inventoryView: 'minecraft.inventory.view',
   configure: 'minecraft.configure',
+  permissionsView: 'minecraft.permissions.view',
+  permissionsEdit: 'minecraft.permissions.edit',
+  economyView: 'minecraft.economy.view',
+  economyEdit: 'minecraft.economy.edit',
 } as const;
+
+/**
+ * Производительность игрового сервера: TPS и время тика.
+ * Команды `tps` и `mspt` есть в Paper/Spigot; на ванильном сервере их нет,
+ * поэтому поля обнуляются, а `supported` показывает, что именно недоступно.
+ */
+export interface MinecraftPerformanceDto {
+  tps1m: number | null;
+  tps5m: number | null;
+  tps15m: number | null;
+  /** Среднее время тика, мс. Норма — меньше 50. */
+  mspt: number | null;
+  /** false — сервер не знает команду (не Paper/Spigot). */
+  tpsSupported: boolean;
+  msptSupported: boolean;
+}
+
+// ------------------------------------------------------------- Экономика
+//
+// Работает через Vault — прослойку, за которой может стоять любой плагин
+// экономики (EssentialsX, CMI и прочие). Панель с конкретным плагином не
+// разговаривает и знать про него не обязана.
+
+/** Баланс игрока. */
+export interface MinecraftBalanceDto {
+  available: boolean;
+  /** Почему недоступно: нет companion-плагина, нет Vault, нет провайдера. */
+  reason?: string;
+  code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
+  balance?: number;
+  /** Отформатированная провайдером строка: «1 234,50 монет». */
+  formatted?: string;
+  /** Название валюты во множественном числе — для подписей полей. */
+  currency?: string;
+}
+
+/** Результат начисления или списания. */
+export interface MinecraftBalanceChangeDto {
+  ok: boolean;
+  /** Текст ошибки от провайдера, если не вышло. */
+  error?: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  formatted?: string;
+}
+
+/** Экономика сервера целиком: общий объём денег и самые богатые. */
+export interface MinecraftEconomyDto {
+  available: boolean;
+  reason?: string;
+  code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
+  /** Сумма балансов всех, кто когда-либо заходил на сервер. */
+  total?: number;
+  totalFormatted?: string;
+  currency?: string;
+  /** Сколько игроков учтено в сумме. */
+  playersCounted?: number;
+  /** Доска богатства: топ по балансу. */
+  top?: { name: string; uuid: string; balance: number; formatted: string }[];
+  /**
+   * Когда посчитано, ISO-строка. Значение кэшируется: пересчёт обходит всех
+   * игроков сервера, и делать это на каждое открытие страницы незачем.
+   */
+  calculatedAt?: string;
+  /** true — отдана закэшированная величина, а не свежий пересчёт. */
+  cached?: boolean;
+}

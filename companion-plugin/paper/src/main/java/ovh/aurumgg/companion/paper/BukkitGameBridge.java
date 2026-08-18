@@ -18,10 +18,16 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.Plugin;
 import ovh.aurumgg.companion.core.GameBridge;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
+import ovh.aurumgg.companion.core.model.PermissionChange;
+import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
+import ovh.aurumgg.companion.core.model.PluginInfo;
 
 /**
  * Реализация моста поверх Bukkit API.
@@ -35,6 +41,14 @@ public final class BukkitGameBridge implements GameBridge {
 
     private static final long SYNC_TIMEOUT_SECONDS = 3;
 
+    /**
+     * Отдельный таймаут для подсчёта экономики сервера. Обход всех, кто
+     * когда-либо заходил, у некоторых провайдеров означает поход в базу на
+     * каждого игрока, и на сервере с тысячами записей трёх секунд не хватит.
+     * Считается это редко (панель кэширует результат), так что запас уместен.
+     */
+    private static final long ECONOMY_TIMEOUT_SECONDS = 30;
+
     private final Plugin plugin;
 
     public BukkitGameBridge(Plugin plugin) {
@@ -42,6 +56,10 @@ public final class BukkitGameBridge implements GameBridge {
     }
 
     private <T> T callSync(Callable<T> callable, T fallback) {
+        return callSync(callable, fallback, SYNC_TIMEOUT_SECONDS);
+    }
+
+    private <T> T callSync(Callable<T> callable, T fallback, long timeoutSeconds) {
         // Если мы уже в основном потоке, лишний прыжок не нужен.
         if (Bukkit.isPrimaryThread()) {
             try {
@@ -53,7 +71,7 @@ public final class BukkitGameBridge implements GameBridge {
         }
         Future<T> future = Bukkit.getScheduler().callSyncMethod(plugin, callable);
         try {
-            return future.get(SYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             future.cancel(true);
             plugin.getLogger().warning("Основной поток не ответил вовремя: " + e);
@@ -98,56 +116,20 @@ public final class BukkitGameBridge implements GameBridge {
 
                     List<ItemInfo> items = new ArrayList<>();
                     for (int slot = 0; slot < 36; slot++) {
-                        ItemInfo info = describe(inv.getItem(slot), slot);
+                        ItemInfo info = ItemMapper.describe(slot, inv.getItem(slot));
                         if (info != null) items.add(info);
                     }
 
                     List<ItemInfo> armor = new ArrayList<>();
                     ItemStack[] armorContents = inv.getArmorContents();
                     for (int slot = 0; slot < armorContents.length; slot++) {
-                        ItemInfo info = describe(armorContents[slot], slot);
+                        ItemInfo info = ItemMapper.describe(slot, armorContents[slot]);
                         if (info != null) armor.add(info);
                     }
 
-                    return Optional.of(new InventoryInfo(items, armor, describe(inv.getItemInOffHand(), 0)));
+                    return Optional.of(new InventoryInfo(items, armor, ItemMapper.describe(0, inv.getItemInOffHand())));
                 },
                 Optional.empty());
-    }
-
-    /** null для пустого слота — пустые слоты в JSON не передаются. */
-    private static ItemInfo describe(ItemStack stack, int slot) {
-        if (stack == null || stack.getType() == Material.AIR || stack.getAmount() <= 0) {
-            return null;
-        }
-        String displayName = null;
-        List<String> lore = List.of();
-        Map<String, Integer> enchantments = new LinkedHashMap<>();
-
-        if (stack.hasItemMeta()) {
-            ItemMeta meta = stack.getItemMeta();
-            if (meta != null) {
-                if (meta.hasDisplayName()) {
-                    displayName = org.bukkit.ChatColor.stripColor(meta.getDisplayName());
-                }
-                if (meta.hasLore() && meta.getLore() != null) {
-                    List<String> plain = new ArrayList<>();
-                    for (String line : meta.getLore()) {
-                        plain.add(org.bukkit.ChatColor.stripColor(line));
-                    }
-                    lore = plain;
-                }
-            }
-        }
-        stack.getEnchantments()
-                .forEach((enchantment, level) -> enchantments.put(enchantment.getKey().toString(), level));
-
-        return new ItemInfo(
-                slot,
-                stack.getType().getKey().toString(),
-                stack.getAmount(),
-                displayName,
-                enchantments,
-                lore);
     }
 
     @Override
@@ -177,5 +159,104 @@ public final class BukkitGameBridge implements GameBridge {
                     return true;
                 },
                 false);
+    }
+
+    /**
+     * Автодополнение силами самого сервера.
+     *
+     * Bukkit.getServer().getCommandMap() отдаёт карту команд, а её tabComplete
+     * делает ровно то же, что происходит по Tab в клиенте: одно слово — имена
+     * команд, дальше — аргументы конкретной команды, включая команды плагинов.
+     * Строка передаётся без ведущего слэша — так требует контракт метода.
+     *
+     * Отправитель — консоль сервера: команды из панели выполняются от её имени,
+     * и подсказки должны совпадать с тем, что консоли реально доступно. Права
+     * учитываются самим tabComplete (testPermissionSilent), поэтому список
+     * ничего лишнего не покажет.
+     *
+     * Обязательно в основном потоке: обход карты команд и вызовы
+     * TabCompleter плагинов не потокобезопасны. Вернуть может null — это
+     * штатный ответ «команда не найдена», а не ошибка.
+     */
+    @Override
+    public List<String> completeCommand(String line) {
+        return callSync(
+                () -> {
+                    List<String> completions =
+                            Bukkit.getServer().getCommandMap().tabComplete(Bukkit.getConsoleSender(), line);
+                    return completions == null ? List.<String>of() : List.copyOf(completions);
+                },
+                List.of());
+    }
+
+    // ---------- Интеграции со сторонними плагинами ----------
+
+    @Override
+    public List<PluginInfo> installedPlugins() {
+        // Чтение списка плагинов основного потока не требует, но делаем это
+        // через callSync для единообразия: PluginManager может меняться при
+        // горячей перезагрузке, и снимок из основного потока согласован.
+        return callSync(
+                () -> {
+                    List<PluginInfo> result = new ArrayList<>();
+                    for (Plugin installed : Bukkit.getPluginManager().getPlugins()) {
+                        result.add(new PluginInfo(
+                                installed.getName(),
+                                installed.getPluginMeta().getVersion(),
+                                installed.isEnabled()));
+                    }
+                    result.sort((a, b) -> a.name().compareToIgnoreCase(b.name()));
+                    return result;
+                },
+                List.of());
+    }
+
+    @Override
+    public Optional<PermissionsInfo> permissions(UUID playerUuid) {
+        // LuckPerms потокобезопасен и работает асинхронно сам, поэтому в
+        // основной поток не прыгаем: иначе ожидание его future заблокировало
+        // бы тик сервера.
+        if (!LuckPermsIntegration.isAvailable()) return Optional.empty();
+        return LuckPermsIntegration.read(playerUuid);
+    }
+
+    @Override
+    public Optional<PermissionChange.Result> applyPermission(UUID playerUuid, PermissionChange change) {
+        if (!LuckPermsIntegration.isAvailable()) return Optional.empty();
+        return LuckPermsIntegration.apply(playerUuid, change);
+    }
+
+    @Override
+    public Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName) {
+        if (!InvSeeIntegration.isAvailable()) return Optional.empty();
+        return InvSeeIntegration.read(playerUuid, playerName);
+    }
+
+    // ---------- Экономика (Vault) ----------
+    //
+    // В основной поток прыгаем сознательно: Vault — только интерфейс, а за
+    // ним стоит произвольный плагин экономики. Часть провайдеров (тот же
+    // EssentialsX) держит балансы в структурах, рассчитанных на обращение из
+    // основного потока, и потокобезопасность здесь никем не обещана.
+
+    @Override
+    public Optional<BalanceInfo> balance(UUID playerUuid) {
+        return callSync(() -> VaultEconomyIntegration.balance(playerUuid), Optional.empty());
+    }
+
+    @Override
+    public Optional<BalanceChange> deposit(UUID playerUuid, double amount) {
+        return callSync(() -> VaultEconomyIntegration.change(playerUuid, amount, true), Optional.empty());
+    }
+
+    @Override
+    public Optional<BalanceChange> withdraw(UUID playerUuid, double amount) {
+        return callSync(() -> VaultEconomyIntegration.change(playerUuid, amount, false), Optional.empty());
+    }
+
+    @Override
+    public Optional<EconomySummary> economySummary(int topLimit) {
+        return callSync(
+                () -> VaultEconomyIntegration.summary(topLimit), Optional.empty(), ECONOMY_TIMEOUT_SECONDS);
     }
 }

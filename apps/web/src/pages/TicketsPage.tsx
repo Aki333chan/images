@@ -49,8 +49,11 @@ export function TicketsPage() {
   return (
     <div>
       <h1 className="mb-4 text-xl font-bold">Тикеты</h1>
+      {/* Ниже lg показывается что-то одно: список тикетов либо открытый
+          тикет с кнопкой «назад». Иначе до переписки пришлось бы каждый раз
+          прокручивать весь список. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-2">
+        <div className={`space-y-2 ${selected ? 'hidden lg:block' : ''}`}>
           {tickets.length === 0 && <p className="text-muted">Открытых тикетов нет 🎉</p>}
           {tickets.map((t) => (
             <button key={t.id} className="w-full text-left" onClick={() => setSelectedId(t.id)}>
@@ -74,16 +77,26 @@ export function TicketsPage() {
 
         {selected ? (
           <Card className="flex flex-col">
-            <div className="mb-3 flex items-center justify-between border-b border-border pb-3">
-              <div>
-                <div className="font-semibold">{selected.playerNameCached}</div>
-                <div className="text-xs text-muted">
+            <div className="mb-3 flex items-start justify-between gap-2 border-b border-border pb-3">
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                aria-label="К списку тикетов"
+                className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted hover:bg-white/5 lg:hidden"
+              >
+                ←
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-semibold">{selected.playerNameCached}</div>
+                {/* break-all: UUID в 36 символов иначе растягивает карточку
+                    шире экрана телефона. */}
+                <div className="break-all text-xs text-muted">
                   {selected.serverName} · {selected.playerUuid}
                 </div>
               </div>
               {hasPermission('tickets.close') && (
                 <Button size="sm" variant="destructive" onClick={() => void close()}>
-                  Закрыть тикет
+                  Закрыть
                 </Button>
               )}
             </div>
@@ -107,13 +120,19 @@ export function TicketsPage() {
               ))}
             </div>
             {hasPermission('tickets.respond') && (
-              <div className="mt-3 flex gap-2 border-t border-border pt-3">
+              // На телефоне кнопка под полем и во всю ширину: рядом с
+              // текстовой областью на неё остаётся полоска в полсотни пикселей.
+              <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row">
                 <Textarea
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
                   placeholder="Ответ игроку…"
                 />
-                <Button onClick={() => void respond()} disabled={busy || !reply.trim()}>
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={() => void respond()}
+                  disabled={busy || !reply.trim()}
+                >
                   Отправить
                 </Button>
               </div>

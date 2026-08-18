@@ -1,20 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MinecraftBanDto,
-  MinecraftInventoryItemDto,
-  MinecraftInventoryResponse,
-  MinecraftInventoryStatusDto,
   MinecraftPlayersResponse,
+  MinecraftPluginsDto,
   MinecraftQuickCommandDto,
   MinecraftWhitelistResponse,
 } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
+import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
-import { PromptModal, PunishModal } from './PlayerModal';
+import { Modal, PromptModal, PunishModal } from './PlayerModal';
+import { PlayerDetail } from './PlayerDetail';
+import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
+import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 
 const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
+
+/**
+ * Подписи групп действий. Ключ — bukkit-имя плагина, значение — то, как его
+ * знают люди: «Essentials» на кнопке выглядел бы опечаткой.
+ */
+const PLUGIN_LABELS: Record<string, string> = {
+  Essentials: 'EssentialsX',
+};
 
 /** Аватар игрока через Crafatar. Без UUID сервис не работает — рисуем заглушку. */
 function PlayerAvatar({ uuid, name }: { uuid: string | null; name: string }) {
@@ -54,10 +63,23 @@ function HealthBar({ health, maxHealth }: { health: number; maxHealth: number })
 // ---------------------------------------------------------------- Игроки
 
 export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
-  const { hasPermission } = useAuth();
   const [data, setData] = useState<MinecraftPlayersResponse | null>(null);
   const [error, setError] = useState('');
   const [punish, setPunish] = useState<{ player: string; kind: 'kick' | 'ban' } | null>(null);
+  /** Открытая карточка игрока. */
+  const [selected, setSelected] = useState<string | null>(null);
+  /**
+   * Список плагинов сервера. Грузится один раз на вкладку и передаётся в
+   * карточку: по нему решается, какие действия доступны, а какие показать
+   * серыми с подсказкой. null — выяснить не удалось.
+   */
+  const [plugins, setPlugins] = useState<MinecraftPluginsDto | null>(null);
+
+  useEffect(() => {
+    api<MinecraftPluginsDto>(`${base(serverId)}/plugins`)
+      .then(setPlugins)
+      .catch(() => setPlugins(null));
+  }, [serverId]);
 
   const load = useCallback(() => {
     setError('');
@@ -75,117 +97,172 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
 
   if (error) {
     return (
-      <Card>
-        <ErrorText>{error}</ErrorText>
-        <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
-          Повторить
-        </Button>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <ErrorText>{error}</ErrorText>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
+            Повторить
+          </Button>
+        </Card>
+        {/* История онлайна лежит в нашей БД, поэтому график остаётся
+            доступен, даже когда живой список получить не удалось. */}
+        <ActivityHeatmap serverId={serverId} />
+      </div>
     );
   }
   if (!data) return <Spinner />;
 
+  // Именно поиск по имени, а не сохранённый объект: список перезапрашивается
+  // каждые 15 секунд, и статистика в карточке должна обновляться вместе с ним.
+  const selectedPlayer = selected ? (data.players.find((p) => p.name === selected) ?? null) : null;
+
   return (
-    <Card>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm text-muted">
-          Онлайн: {data.online}
-          {data.max !== null && ` / ${data.max}`}
-          {data.source === 'rcon' && (
-            <span className="ml-2 text-xs">
-              (данные по RCON — UUID и пинг доступны с companion-плагином)
-            </span>
-          )}
+    <div className="space-y-4">
+      <Card>
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-sm text-muted">
+            Онлайн: {data.online}
+            {data.max !== null && ` / ${data.max}`}
+            {data.source === 'rcon' && (
+              <span className="ml-2 text-xs">
+                (данные по RCON — UUID и пинг доступны с companion-плагином)
+              </span>
+            )}
+          </div>
+          <Button size="sm" variant="outline" onClick={() => void load()}>
+            Обновить
+          </Button>
         </div>
-        <Button size="sm" variant="outline" onClick={() => void load()}>
-          Обновить
-        </Button>
-      </div>
 
-      {data.players.length === 0 ? (
-        <p className="text-muted">Сейчас никого нет онлайн.</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted">
-            <tr>
-              <th className="pb-2">Игрок</th>
-              <th className="pb-2">Здоровье</th>
-              <th className="pb-2">Положение</th>
-              <th className="pb-2">Пинг</th>
-              <th className="pb-2 text-right">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.players.map((p) => (
-              <tr key={p.name} className="border-t border-border">
-                <td className="py-2">
-                  <div className="flex items-center gap-2">
+        {data.players.length === 0 ? (
+          <p className="text-muted">Сейчас никого нет онлайн.</p>
+        ) : (
+          <>
+            {/* Таблица — только с md. На узком экране пять колонок либо
+                сжимаются до нечитаемого, либо уезжают в горизонтальную
+                прокрутку, где половина данных всегда за краем. */}
+            <table className="hidden w-full text-sm md:table">
+              <thead className="text-left text-xs text-muted">
+                <tr>
+                  <th className="pb-2">Игрок</th>
+                  <th className="pb-2">Здоровье</th>
+                  <th className="pb-2">Положение</th>
+                  <th className="pb-2">Пинг</th>
+                  <th className="pb-2 text-right">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.players.map((p) => (
+                  <tr
+                    key={p.name}
+                    className="cursor-pointer border-t border-border hover:bg-white/5"
+                    onClick={() => setSelected(p.name)}
+                  >
+                    <td className="py-2">
+                      <div className="flex items-center gap-2">
+                        <PlayerAvatar uuid={p.uuid} name={p.name} />
+                        <span className="font-medium">{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 text-muted">
+                      {p.health !== null ? (
+                        <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="py-2 text-xs text-muted">
+                      {p.position
+                        ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
+                        : '—'}
+                    </td>
+                    <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
+                    <td className="py-2 text-right">
+                      <span className="text-xs text-muted">подробнее →</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Тот же список карточками: те же данные, но в два ряда и без
+                прокрутки вбок. Вся карточка — одна кнопка, открывающая игрока. */}
+            <ul className="space-y-2 md:hidden">
+              {data.players.map((p) => (
+                <li key={p.name}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(p.name)}
+                    className="flex w-full items-center gap-3 rounded-md border border-border p-3 text-left hover:bg-white/5"
+                  >
                     <PlayerAvatar uuid={p.uuid} name={p.name} />
-                    <span className="font-medium">{p.name}</span>
-                  </div>
-                </td>
-                <td className="py-2 text-muted">
-                  {p.health !== null ? (
-                    <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className="py-2 text-xs text-muted">
-                  {p.position
-                    ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
-                    : '—'}
-                </td>
-                <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
-                <td className="py-2 text-right">
-                  <div className="flex justify-end gap-2">
-                    {hasPermission('minecraft.kick') && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPunish({ player: p.name, kind: 'kick' })}
-                      >
-                        Кик
-                      </Button>
-                    )}
-                    {hasPermission('minecraft.ban') && (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => setPunish({ player: p.name, kind: 'ban' })}
-                      >
-                        Бан
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">{p.name}</span>
+                        <span className="shrink-0 text-xs text-muted">
+                          {p.ping !== null ? `${p.ping} мс` : ''}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                        {p.health !== null && (
+                          <HealthBar health={p.health} maxHealth={p.maxHealth ?? 20} />
+                        )}
+                        {p.position && (
+                          <span className="truncate">
+                            {p.world ?? '?'} · {Math.round(p.position.x)}, {Math.round(p.position.y)}
+                            , {Math.round(p.position.z)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span aria-hidden className="shrink-0 text-muted">
+                      →
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
-      {punish && (
-        <PunishModal
-          player={punish.player}
-          kind={punish.kind}
-          onClose={() => setPunish(null)}
-          onSubmit={async (reason, expiresAt) => {
-            const path =
-              punish.kind === 'kick'
-                ? `${base(serverId)}/players/${punish.player}/kick`
-                : `${base(serverId)}/players/${punish.player}/ban`;
-            await api(path, {
-              method: 'POST',
-              body: JSON.stringify(
-                punish.kind === 'kick' ? { reason } : { reason, ...(expiresAt ? { expiresAt } : {}) },
-              ),
-            });
-            await load();
-          }}
-        />
-      )}
-    </Card>
+        {punish && (
+          <PunishModal
+            player={punish.player}
+            kind={punish.kind}
+            onClose={() => setPunish(null)}
+            onSubmit={async (reason, expiresAt) => {
+              const path =
+                punish.kind === 'kick'
+                  ? `${base(serverId)}/players/${punish.player}/kick`
+                  : `${base(serverId)}/players/${punish.player}/ban`;
+              await api(path, {
+                method: 'POST',
+                body: JSON.stringify(
+                  punish.kind === 'kick'
+                    ? { reason }
+                    : { reason, ...(expiresAt ? { expiresAt } : {}) },
+                ),
+              });
+              await load();
+            }}
+          />
+        )}
+
+        {selectedPlayer && (
+          <Modal title={`Игрок ${selectedPlayer.name}`} onClose={() => setSelected(null)}>
+            <PlayerDetail
+              serverId={serverId}
+              player={selectedPlayer}
+              plugins={plugins}
+              onChanged={() => void load()}
+              onPunish={(kind) => setPunish({ player: selectedPlayer.name, kind })}
+            />
+          </Modal>
+        )}
+      </Card>
+
+      <ActivityHeatmap serverId={serverId} />
+    </div>
   );
 }
 
@@ -241,45 +318,82 @@ export function MinecraftBansTab({ serverId }: ModuleTabProps) {
       {bans && bans.length === 0 ? (
         <p className="text-muted">Банов нет.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted">
-            <tr>
-              <th className="pb-2">Игрок</th>
-              <th className="pb-2">Причина</th>
-              <th className="pb-2">Срок</th>
-              <th className="pb-2">Кем</th>
-              <th className="pb-2 text-right">Статус</th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          <table className="hidden w-full text-sm md:table">
+            <thead className="text-left text-xs text-muted">
+              <tr>
+                <th className="pb-2">Игрок</th>
+                <th className="pb-2">Причина</th>
+                <th className="pb-2">Срок</th>
+                <th className="pb-2">Кем</th>
+                <th className="pb-2 text-right">Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bans?.map((b) => (
+                <tr key={b.id} className="border-t border-border align-top">
+                  <td className="py-2 font-medium">{b.playerName}</td>
+                  <td className="py-2 text-muted">{b.reason}</td>
+                  <td className="py-2 text-xs text-muted">
+                    {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
+                  </td>
+                  <td className="py-2 text-xs text-muted">{b.createdByName ?? '—'}</td>
+                  <td className="py-2 text-right">
+                    {b.active ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Badge variant="destructive">активен</Badge>
+                        {hasPermission('minecraft.ban.pardon') && (
+                          <Button size="sm" variant="outline" onClick={() => void pardon(b.id)}>
+                            Снять
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <Badge variant="outline">
+                        {b.pardonedByName ? `снял ${b.pardonedByName}` : 'снят'}
+                      </Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Карточки вместо таблицы на узком экране. Причина бана —
+              свободный текст произвольной длины, в колонке таблицы она
+              на телефоне превращается в столбик по одному слову. */}
+          <ul className="space-y-2 md:hidden">
             {bans?.map((b) => (
-              <tr key={b.id} className="border-t border-border align-top">
-                <td className="py-2 font-medium">{b.playerName}</td>
-                <td className="py-2 text-muted">{b.reason}</td>
-                <td className="py-2 text-xs text-muted">
-                  {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
-                </td>
-                <td className="py-2 text-xs text-muted">{b.createdByName ?? '—'}</td>
-                <td className="py-2 text-right">
+              <li key={b.id} className="rounded-md border border-border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 truncate font-medium">{b.playerName}</span>
                   {b.active ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <Badge variant="destructive">активен</Badge>
-                      {hasPermission('minecraft.ban.pardon') && (
-                        <Button size="sm" variant="outline" onClick={() => void pardon(b.id)}>
-                          Снять
-                        </Button>
-                      )}
-                    </div>
+                    <Badge variant="destructive">активен</Badge>
                   ) : (
                     <Badge variant="outline">
                       {b.pardonedByName ? `снял ${b.pardonedByName}` : 'снят'}
                     </Badge>
                   )}
-                </td>
-              </tr>
+                </div>
+                <p className="mt-1 break-words text-sm text-muted">{b.reason}</p>
+                <p className="mt-1 text-xs text-muted">
+                  до {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
+                  {b.createdByName ? ` · ${b.createdByName}` : ''}
+                </p>
+                {b.active && hasPermission('minecraft.ban.pardon') && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() => void pardon(b.id)}
+                  >
+                    Снять бан
+                  </Button>
+                )}
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        </>
       )}
     </Card>
   );
@@ -333,13 +447,17 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
           {players?.map((name) => (
             <span
               key={name}
-              className="flex items-center gap-2 rounded-md border border-border px-3 py-1 text-sm"
+              className="flex items-center gap-1 rounded-md border border-border py-1 pl-3 text-sm"
             >
               {name}
+              {/* Крестик был 12×20 — в него не попасть пальцем. Увеличен до
+                  минимальных 40×40 за счёт отступов: сам символ остался
+                  прежнего размера, выросла область нажатия. */}
               <button
-                className="text-muted hover:text-red-400"
+                className="flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-white/5 hover:text-red-400 sm:h-8 sm:w-8"
                 onClick={() => void remove(name)}
                 title="Убрать из whitelist"
+                aria-label={`Убрать ${name} из whitelist`}
               >
                 ✕
               </button>
@@ -367,186 +485,29 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
   );
 }
 
-// ------------------------------------------------------------- Инвентарь
-
-/** Подсказка при наведении: имя, количество, зачарования и описание. */
-function describeItem(item: MinecraftInventoryItemDto): string {
-  const lines = [`${item.displayName ?? item.id} ×${item.count}`];
-  const enchantments = Object.entries(item.enchantments ?? {});
-  for (const [key, level] of enchantments) {
-    lines.push(`${key.replace(/^minecraft:/, '')} ${level}`);
+/** Значения по умолчанию: у аргумента со списком — его первый вариант. */
+function defaultArgs(command: MinecraftQuickCommandDto): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const arg of command.args) {
+    // Иначе выпадающий список показывал бы первый вариант, а на сервер
+    // уходило бы пустое значение — «не заполнено поле «Режим»».
+    if (arg.options?.[0]) values[arg.name] = arg.options[0].value;
   }
-  for (const line of item.lore ?? []) lines.push(line);
-  return lines.join('\n');
+  return values;
 }
-
-function InventoryGrid({
-  items,
-  size,
-  cols,
-  slotOffset = 0,
-}: {
-  items: MinecraftInventoryResponse['items'];
-  size: number;
-  cols: number;
-  /** Номер слота первой ячейки: основной инвентарь начинается с 9, а не с 0. */
-  slotOffset?: number;
-}) {
-  const bySlot = new Map((items ?? []).map((i) => [i.slot, i]));
-  return (
-    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {Array.from({ length: size }, (_, cell) => {
-        const slot = cell + slotOffset;
-        const item = bySlot.get(slot);
-        const enchantCount = item ? Object.keys(item.enchantments ?? {}).length : 0;
-        return (
-          <div
-            key={slot}
-            title={item ? describeItem(item) : `Слот ${slot}`}
-            className={`relative flex aspect-square items-center justify-center rounded border text-[10px] ${
-              item
-                ? enchantCount > 0
-                  ? 'border-fuchsia-400/50 bg-fuchsia-500/10'
-                  : 'border-primary/40 bg-primary/10'
-                : 'border-border bg-black/30'
-            }`}
-          >
-            {item && (
-              <>
-                <span className="truncate px-1 text-center leading-tight">
-                  {(item.displayName ?? item.id).replace(/^minecraft:/, '')}
-                </span>
-                {item.count > 1 && (
-                  <span className="absolute bottom-0 right-1 font-bold">{item.count}</span>
-                )}
-                {/* Зачарованные предметы помечаем — как блеск в самой игре. */}
-                {enchantCount > 0 && (
-                  <span className="absolute left-0.5 top-0.5 text-fuchsia-300">✦</span>
-                )}
-              </>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-export function MinecraftInventoryTab({ serverId }: ModuleTabProps) {
-  const [player, setPlayer] = useState('');
-  const [status, setStatus] = useState<MinecraftInventoryStatusDto | null>(null);
-  const [data, setData] = useState<MinecraftInventoryResponse | null>(null);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  // Отдельный статус-роут: по ответу на конкретного игрока нельзя отличить
-  // «плагина нет» от «этот игрок сейчас офлайн».
-  useEffect(() => {
-    void api<MinecraftInventoryStatusDto>(`${base(serverId)}/inventory-status`)
-      .then(setStatus)
-      .catch((e: Error) => setError(e.message));
-  }, [serverId]);
-
-  async function load() {
-    if (!player.trim()) return;
-    setBusy(true);
-    setError('');
-    try {
-      setData(await api<MinecraftInventoryResponse>(`${base(serverId)}/inventory/${player.trim()}`));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!status) return <Spinner />;
-
-  // Плагина нет — показываем инструкцию, а не пустую сетку.
-  if (!status.companionConfigured) {
-    return (
-      <Card className="space-y-3">
-        <h3 className="font-semibold">Нужен companion-плагин</h3>
-        <p className="text-sm text-muted">
-          Инвентарь нельзя получить по RCON: ванильный сервер не отдаёт содержимое
-          инвентаря в текстовом виде. Установите companion-плагин на игровой сервер
-          и укажите его адрес в настройках модуля.
-        </p>
-        <a
-          className="inline-block text-sm text-primary underline"
-          href={status.docsUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Инструкция по установке плагина
-        </a>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="space-y-4">
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <Label>Ник игрока</Label>
-          <Input
-            value={player}
-            onChange={(e) => setPlayer(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void load()}
-            placeholder="Steve"
-          />
-        </div>
-        <Button onClick={() => void load()} disabled={busy || !player.trim()}>
-          Показать
-        </Button>
-      </div>
-      <ErrorText>{error}</ErrorText>
-
-      {/* Игрок офлайн или плагин не ответил — обычное сообщение, без инструкции. */}
-      {data && !data.available && <p className="text-sm text-muted">{data.reason}</p>}
-
-      {data?.available && (
-        <div className="space-y-4">
-          <div>
-            <p className="mb-1 text-xs text-muted">Инвентарь (слоты 9-35)</p>
-            <InventoryGrid
-              items={data.items?.filter((i) => i.slot >= 9)}
-              size={27}
-              cols={9}
-              slotOffset={9}
-            />
-          </div>
-          <div>
-            <p className="mb-1 text-xs text-muted">Хотбар (слоты 0-8)</p>
-            <InventoryGrid items={data.items?.filter((i) => i.slot < 9)} size={9} cols={9} />
-          </div>
-          <div className="flex gap-6">
-            <div className="w-32">
-              <p className="mb-1 text-xs text-muted">Броня</p>
-              <InventoryGrid items={data.armor} size={4} cols={4} />
-            </div>
-            <div className="w-8">
-              <p className="mb-1 text-xs text-muted">Рука</p>
-              <InventoryGrid items={data.offhand ? [{ ...data.offhand, slot: 0 }] : []} size={1} cols={1} />
-            </div>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-// ------------------------------------------------- Быстрые команды (дашборд)
 
 export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
-  const { hasPermission } = useAuth();
   const [commands, setCommands] = useState<MinecraftQuickCommandDto[] | null>(null);
   const [active, setActive] = useState<MinecraftQuickCommandDto | null>(null);
   const [args, setArgs] = useState<Record<string, string>>({});
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [raw, setRaw] = useState('');
+
+  // Список онлайна нужен, только когда открыто действие, спрашивающее ник:
+  // лишний поход к игровому серверу на каждый показ дашборда ни к чему.
+  const needsPlayers = !!active?.args.some((a) => a.suggest === 'online-players');
+  const onlinePlayers = useOnlinePlayers(serverId, needsPlayers);
 
   useEffect(() => {
     void api<{ commands: MinecraftQuickCommandDto[] }>(`${base(serverId)}/quick-commands`)
@@ -573,58 +534,51 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
     }
   }
 
-  async function runRaw() {
-    if (!raw.trim()) return;
-    setBusy(true);
-    setError('');
-    setResult('');
-    try {
-      const res = await api<{ output: string }>(`${base(serverId)}/command`, {
-        method: 'POST',
-        body: JSON.stringify({ command: raw.trim() }),
-      });
-      setResult(res.output || 'Команда выполнена (сервер ничего не ответил)');
-      setRaw('');
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (!commands) return null;
+
+  // Группируем по плагину: ванильные первыми, дальше по алфавиту.
+  // Сервер уже отфильтровал действия плагинов, которых на нём нет.
+  const groups = new Map<string, MinecraftQuickCommandDto[]>();
+  for (const command of commands) {
+    const key = command.plugin ?? '';
+    const list = groups.get(key);
+    if (list) list.push(command);
+    else groups.set(key, [command]);
+  }
+  const ordered = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <Card className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-sm text-muted">Быстрые команды:</span>
-        {commands.map((c) => (
-          <Button
-            key={c.id}
-            size="sm"
-            variant="outline"
-            title={c.description}
-            disabled={busy}
-            onClick={() => (c.args.length === 0 ? void run(c, {}) : setActive(c))}
-          >
-            {c.label}
-          </Button>
-        ))}
-      </div>
-
-      {hasPermission('minecraft.command.raw') && (
-        <div className="flex gap-2 border-t border-border pt-3">
-          <Input
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void runRaw()}
-            placeholder="Произвольная RCON-команда, напр. difficulty hard"
-          />
-          <Button variant="outline" onClick={() => void runRaw()} disabled={busy || !raw.trim()}>
-            Выполнить
-          </Button>
+      {ordered.map(([plugin, list]) => (
+        <div key={plugin || 'vanilla'} className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-sm text-muted">
+            {plugin ? (PLUGIN_LABELS[plugin] ?? plugin) : 'Быстрые команды'}:
+          </span>
+          {list.map((c) => (
+            <Button
+              key={c.id}
+              size="sm"
+              variant="outline"
+              title={c.description}
+              disabled={busy}
+              onClick={() => {
+                // Действие с аргументами и так открывает форму — там
+                // человек видит, что именно запускает. Подтверждение нужно
+                // только для заметных действий без аргументов.
+                if (c.args.length > 0) {
+                  setArgs(defaultArgs(c));
+                  setActive(c);
+                  return;
+                }
+                if (c.destructive && !confirm(`${c.description}\n\nВыполнить?`)) return;
+                void run(c, {});
+              }}
+            >
+              {c.label}
+            </Button>
+          ))}
         </div>
-      )}
+      ))}
 
       {result && (
         <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-black/40 p-2 font-mono text-xs text-emerald-300">
@@ -634,36 +588,53 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
       <ErrorText>{error}</ErrorText>
 
       {active && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setActive(null)}
-        >
-          <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <Card className="space-y-3">
-              <h3 className="font-semibold">{active.label}</h3>
-              <p className="text-xs text-muted">{active.description}</p>
-              {active.args.map((arg) => (
-                <div key={arg.name}>
-                  <Label>{arg.label}</Label>
+        // Та же модалка, что и у карточки игрока: на мобильном — на весь
+        // экран, на десктопе — окно по центру.
+        <Modal title={active.label} onClose={() => setActive(null)}>
+          <div className="space-y-3">
+            <p className="text-xs text-muted">{active.description}</p>
+            {active.args.map((arg, index) => (
+              <div key={arg.name}>
+                <Label>{arg.label}</Label>
+                {arg.options ? (
+                  // Закрытый список значений — режим игры и подобное.
+                  <Select
+                    className="w-full"
+                    value={args[arg.name] ?? arg.options[0]?.value ?? ''}
+                    onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
+                    options={arg.options}
+                  />
+                ) : arg.suggest === 'online-players' ? (
+                  // Ник: подсказываем тех, кто в сети, но ввод не ограничиваем.
+                  <PlayerPicker
+                    value={args[arg.name] ?? ''}
+                    onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
+                    players={onlinePlayers}
+                    placeholder={arg.placeholder}
+                    autoFocus={index === 0}
+                  />
+                ) : (
                   <Input
                     value={args[arg.name] ?? ''}
                     onChange={(e) => setArgs((prev) => ({ ...prev, [arg.name]: e.target.value }))}
                     placeholder={arg.placeholder}
-                    autoFocus
+                    // Фокус только в первое поле: с autoFocus на всех
+                    // курсор оказывался в последнем.
+                    autoFocus={index === 0}
                   />
-                </div>
-              ))}
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setActive(null)} disabled={busy}>
-                  Отмена
-                </Button>
-                <Button onClick={() => void run(active, args)} disabled={busy}>
-                  Выполнить
-                </Button>
+                )}
               </div>
-            </Card>
+            ))}
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="ghost" onClick={() => setActive(null)} disabled={busy}>
+                Отмена
+              </Button>
+              <Button onClick={() => void run(active, args)} disabled={busy}>
+                Выполнить
+              </Button>
+            </div>
           </div>
-        </div>
+        </Modal>
       )}
     </Card>
   );

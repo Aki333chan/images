@@ -1,5 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import * as argon2 from 'argon2';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Role, UserAdminDto } from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../ws/events.gateway';
@@ -14,7 +13,8 @@ export class UsersService {
   private toDto(user: {
     id: string;
     email: string;
-    displayName: string;
+    nickname: string | null;
+    nicknameChangeAllowed: boolean;
     role: Role;
     isActive: boolean;
     totpEnabled: boolean;
@@ -24,13 +24,24 @@ export class UsersService {
     return {
       id: user.id,
       email: user.email,
-      displayName: user.displayName,
+      nickname: user.nickname,
+      nicknameChangeAllowed: user.nicknameChangeAllowed,
       role: user.role,
       isActive: user.isActive,
       totpEnabled: user.totpEnabled,
       serverIds: user.serverAccess.map((a) => a.serverId),
       createdAt: user.createdAt.toISOString(),
     };
+  }
+
+  /** Минимум данных для выдачи одноразового пароля. */
+  async getForProvisioning(userId: string): Promise<{ id: string; email: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) throw new NotFoundException('Пользователь не найден');
+    return user;
   }
 
   async list(): Promise<UserAdminDto[]> {
@@ -41,32 +52,10 @@ export class UsersService {
     return users.map((u) => this.toDto(u));
   }
 
-  async create(input: {
-    email: string;
-    password: string;
-    displayName: string;
-    role: Role;
-  }): Promise<UserAdminDto> {
-    const email = input.email.toLowerCase();
-    if (await this.prisma.user.findUnique({ where: { email } })) {
-      throw new ConflictException('Пользователь с таким email уже существует');
-    }
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        passwordHash: await argon2.hash(input.password),
-        displayName: input.displayName,
-        role: input.role,
-      },
-      include: { serverAccess: { select: { serverId: true } } },
-    });
-    return this.toDto(user);
-  }
-
   async update(
     actorId: string,
     userId: string,
-    patch: { role?: Role; isActive?: boolean; displayName?: string },
+    patch: { role?: Role; isActive?: boolean; nicknameChangeAllowed?: boolean },
   ): Promise<UserAdminDto> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Пользователь не найден');

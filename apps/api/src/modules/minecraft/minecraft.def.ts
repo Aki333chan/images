@@ -3,7 +3,7 @@ import type { BackendGameModule } from '../module-registry';
 import { MinecraftModule } from './minecraft.module';
 
 /**
- * Модуль Minecraft (Java Edition): Paper / Spigot / Vanilla под Pterodactyl.
+ * Модуль Minecraft (Paper): Paper / Spigot / Vanilla под Pterodactyl.
  *
  * console берётся из ядра (WebSocket Pterodactyl) и здесь не дублируется:
  * модуль лишь объявляет возможность, а вкладку рендерит общий компонент.
@@ -11,7 +11,7 @@ import { MinecraftModule } from './minecraft.module';
  */
 export const minecraftManifest: GameModuleManifest = {
   id: 'minecraft',
-  displayName: 'Minecraft (Java)',
+  displayName: 'Minecraft (Paper)',
   capabilities: {
     console: true,
     playerList: true,
@@ -61,6 +61,29 @@ export const minecraftManifest: GameModuleManifest = {
       key: MINECRAFT_PERMISSIONS.inventoryView,
       description: 'Просмотр инвентаря игрока (нужен companion-плагин)',
       defaultRoles: ['ADMIN', 'MODERATOR'],
+    },
+    {
+      key: MINECRAFT_PERMISSIONS.permissionsView,
+      description: 'Просмотр прав игрока (нужны companion-плагин и LuckPerms)',
+      defaultRoles: ['ADMIN', 'MODERATOR'],
+    },
+    {
+      // Выдача прав — это раздача власти на сервере, модератору её не даём.
+      key: MINECRAFT_PERMISSIONS.permissionsEdit,
+      description: 'Изменение групп и прав игрока через LuckPerms',
+      defaultRoles: ['ADMIN'],
+    },
+    {
+      key: MINECRAFT_PERMISSIONS.economyView,
+      description: 'Просмотр баланса игроков и экономики сервера (нужен Vault)',
+      defaultRoles: ['ADMIN', 'MODERATOR'],
+    },
+    {
+      // Начисления и списания — это выдача ценностей, отдельное право от
+      // просмотра: модератор видит баланс, но не правит его.
+      key: MINECRAFT_PERMISSIONS.economyEdit,
+      description: 'Начисление и списание валюты игрокам через Vault',
+      defaultRoles: ['ADMIN'],
     },
     {
       // Пустой список — право есть только у ГМ: здесь задаются RCON-пароль

@@ -1,8 +1,26 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import {
   MINECRAFT_PERMISSIONS,
+  type MinecraftBalanceChangeDto,
+  type MinecraftBalanceDto,
   type MinecraftCommandResultDto,
   type MinecraftConfigStatusDto,
+  type MinecraftConsoleCompletionDto,
+  type MinecraftConsoleDictionaryDto,
+  type MinecraftEconomyDto,
+  type MinecraftPerformanceDto,
+  type MinecraftPermissionsDto,
+  type MinecraftPluginsDto,
   type MinecraftInventoryStatusDto,
 } from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../../auth/decorators';
@@ -12,9 +30,11 @@ import { COMPANION_DOCS_URL, CompanionService } from './companion.service';
 import { MinecraftConfigService } from './minecraft-config.service';
 import { MinecraftService } from './minecraft.service';
 import {
+  BalanceChangeDto,
   BanDto,
   CompanionConfigDto,
   KickDto,
+  PermissionChangeDto,
   QuickCommandRunDto,
   RawCommandDto,
   RconConfigDto,
@@ -133,8 +153,140 @@ export class MinecraftController {
   @Get('quick-commands')
   @RequirePermission(MINECRAFT_PERMISSIONS.quickCommands)
   @ServerScoped('serverId')
-  quickCommands() {
-    return { commands: this.minecraft.listQuickCommands() };
+  async quickCommands(@Param('serverId') serverId: string) {
+    // Список плагинов спрашиваем у сервера: действия чужих плагинов
+    // показываются, только если те действительно установлены.
+    const installed = await this.minecraft.installedPluginNames(serverId);
+    return { commands: this.minecraft.listQuickCommands(installed) };
+  }
+
+  // ---------- Автодополнение в консоли ----------
+  //
+  // Оба роута под servers.power — тем же правом закрыт ввод команд в консоль.
+  // Тому, кто не может отправить команду, дополнять нечего.
+
+  /**
+   * Словарь для базового уровня: панель забирает его один раз при открытии
+   * консоли и дальше дополняет локально, без запроса на каждое нажатие Tab.
+   */
+  @Get('console/dictionary')
+  @RequirePermission('servers.power')
+  @ServerScoped('serverId')
+  consoleDictionary(@Param('serverId') serverId: string): Promise<MinecraftConsoleDictionaryDto> {
+    return this.minecraft.getConsoleDictionary(serverId);
+  }
+
+  /**
+   * Продвинутый уровень: настоящее автодополнение от Bukkit через
+   * companion-плагин. Без плагина отвечает available:false — панель тогда
+   * остаётся на словаре.
+   */
+  @Get('console/complete')
+  @RequirePermission('servers.power')
+  @ServerScoped('serverId')
+  consoleComplete(
+    @Param('serverId') serverId: string,
+    @Query('line') line?: string,
+  ): Promise<MinecraftConsoleCompletionDto> {
+    return this.minecraft.completeConsoleCommand(serverId, line ?? '');
+  }
+
+  /** Что из известного панели стоит на этом сервере. */
+  @Get('plugins')
+  @RequirePermission('servers.view')
+  @ServerScoped('serverId')
+  plugins(@Param('serverId') serverId: string): Promise<MinecraftPluginsDto> {
+    return this.minecraft.getPlugins(serverId);
+  }
+
+  // ---------- Права игрока (LuckPerms) ----------
+
+  @Get('players/:uuid/permissions')
+  @RequirePermission(MINECRAFT_PERMISSIONS.permissionsView)
+  @ServerScoped('serverId')
+  permissions(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<MinecraftPermissionsDto> {
+    return this.companion.getPermissions(serverId, uuid);
+  }
+
+  @Post('players/:uuid/permissions')
+  @RequirePermission(MINECRAFT_PERMISSIONS.permissionsEdit)
+  @ServerScoped('serverId')
+  changePermission(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: PermissionChangeDto,
+  ): Promise<MinecraftPermissionsDto> {
+    return this.companion.changePermission(serverId, uuid, dto);
+  }
+
+  // ---------- Валюта (Vault) ----------
+  //
+  // Просмотр и изменение разведены по разным правам: смотреть баланс полезно
+  // и модератору, а начислять деньги — это раздача ценностей.
+
+  @Get('players/:uuid/balance')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  balance(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<MinecraftBalanceDto> {
+    return this.minecraft.getBalance(serverId, uuid);
+  }
+
+  @Post('players/:uuid/balance/deposit')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyEdit)
+  @ServerScoped('serverId')
+  deposit(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: BalanceChangeDto,
+  ): Promise<MinecraftBalanceChangeDto> {
+    return this.minecraft.changeBalance(
+      serverId,
+      uuid,
+      'deposit',
+      dto.amount,
+      dto.reason ?? null,
+      user.id,
+    );
+  }
+
+  @Post('players/:uuid/balance/withdraw')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyEdit)
+  @ServerScoped('serverId')
+  withdraw(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: BalanceChangeDto,
+  ): Promise<MinecraftBalanceChangeDto> {
+    return this.minecraft.changeBalance(
+      serverId,
+      uuid,
+      'withdraw',
+      dto.amount,
+      dto.reason ?? null,
+      user.id,
+    );
+  }
+
+  /**
+   * Экономика сервера целиком. refresh=1 — пересчитать, минуя кэш; обычное
+   * открытие страницы кэш не сбрасывает, иначе смысл кэша теряется.
+   */
+  @Get('economy')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  economy(
+    @Param('serverId') serverId: string,
+    @Query('refresh') refresh?: string,
+  ): Promise<MinecraftEconomyDto> {
+    return this.minecraft.getEconomy(serverId, { refresh: refresh === '1' || refresh === 'true' });
   }
 
   @Post('quick-commands/:commandId')
@@ -172,6 +324,14 @@ export class MinecraftController {
   @ServerScoped('serverId')
   inventory(@Param('serverId') serverId: string, @Param('name') name: string) {
     return this.minecraft.getInventory(serverId, name);
+  }
+
+  /** TPS и время тика. Право то же, что на просмотр игроков. */
+  @Get('performance')
+  @RequirePermission(MINECRAFT_PERMISSIONS.playersView)
+  @ServerScoped('serverId')
+  performance(@Param('serverId') serverId: string): Promise<MinecraftPerformanceDto> {
+    return this.minecraft.getPerformance(serverId);
   }
 
   // ---------- Настройки подключения ----------

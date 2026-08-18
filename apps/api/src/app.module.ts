@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacModule } from './rbac/rbac.module';
 import { PermissionsGuard } from './rbac/permissions.guard';
+import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
 import { WsModule } from './ws/ws.module';
@@ -15,6 +16,8 @@ import { PterodactylModule } from './pterodactyl/pterodactyl.module';
 import { ServersModule } from './servers/servers.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
+import { SettingsModule } from './settings/settings.module';
+import { MessagesModule } from './messages/messages.module';
 import { HealthModule } from './health/health.module';
 import { GameModulesModule } from './modules/game-modules.module';
 
@@ -24,6 +27,8 @@ import { GameModulesModule } from './modules/game-modules.module';
     CryptoModule,
     BullModule.forRoot({ connection: { url: env.REDIS_URL } }),
     RbacModule,
+    // Global: даёт SettingsService и MailService всем, кто их просит.
+    SettingsModule,
     AuthModule,
     WsModule,
     AuditModule,
@@ -31,7 +36,11 @@ import { GameModulesModule } from './modules/game-modules.module';
     ServersModule,
     TicketsModule,
     UsersModule,
+    MessagesModule,
     HealthModule,
+    // Ассистент импортирует модули, чьи сервисы оборачивает инструментами,
+    // поэтому идёт после них.
+    AiModule,
     GameModulesModule.forRoot(),
   ],
   providers: [

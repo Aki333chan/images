@@ -8,6 +8,12 @@ export type PermissionKey = string;
 
 export const CORE_PERMISSIONS = [
   'users.manage',
+  /**
+   * Создание учётных записей только с ролью Модератор.
+   * Отдельно от users.manage: Админ может завести модератора, но не
+   * может менять роли, деактивировать людей и раздавать доступы.
+   */
+  'users.create.moderator',
   'servers.view',
   'servers.manage',
   'servers.power',
@@ -15,6 +21,13 @@ export const CORE_PERMISSIONS = [
   'tickets.respond',
   'tickets.close',
   'audit.view',
+  /**
+   * Общение с AI-ассистентом. Отдельным правом, а не «всем подряд»:
+   * ассистент ходит в платный внешний сервис, и круг пользующихся им
+   * должен быть управляемым. Права самих действий ассистент НЕ добавляет —
+   * инструменты выполняются с правами того, кто ведёт диалог.
+   */
+  'ai.chat',
 ] as const;
 export type CorePermission = (typeof CORE_PERMISSIONS)[number];
 
@@ -25,6 +38,8 @@ export type CorePermission = (typeof CORE_PERMISSIONS)[number];
 export const CORE_ROLE_PERMISSIONS: Record<Role, readonly CorePermission[] | '*'> = {
   OWNER: '*',
   ADMIN: [
+    'ai.chat',
+    'users.create.moderator',
     'servers.view',
     'servers.manage',
     'servers.power',
@@ -33,6 +48,6 @@ export const CORE_ROLE_PERMISSIONS: Record<Role, readonly CorePermission[] | '*'
     'tickets.close',
     'audit.view',
   ],
-  MODERATOR: ['servers.view', 'tickets.view', 'tickets.respond', 'tickets.close'],
+  MODERATOR: ['ai.chat', 'servers.view', 'tickets.view', 'tickets.respond', 'tickets.close'],
   VIEWER: ['servers.view', 'tickets.view'],
 };

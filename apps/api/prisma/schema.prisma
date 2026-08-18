@@ -24,22 +24,81 @@ enum ActorType {
   ai
 }
 
+/// Состояние учётной записи.
+/// pending_approval — создана Админом и ждёт решения ГМ; вход невозможен,
+/// письмо с паролем не отправлено. rejected — ГМ отказал.
+enum UserStatus {
+  active
+  pending_approval
+  rejected
+}
+
 model User {
   id            String   @id @default(uuid())
   email         String   @unique
   passwordHash  String   @map("password_hash")
-  displayName   String   @map("display_name")
+  /// Ник СОТРУДНИКА панели — единственное его имя в системе: им он подписан
+  /// в аудите, по нему ему пишут в личные сообщения, его же видит ГМ в
+  /// доступах. Отдельного «отображаемого имени» нет намеренно: человек
+  /// придумывает себе ник сам при первом входе, и второе имя, назначенное
+  /// кем-то другим, только расходилось бы с ним.
+  /// К нику игрока в Minecraft отношения не имеет — это разные сущности.
+  /// Уникален по всей панели; null, пока не пройден первый вход.
+  nickname      String?  @unique
+  /// Разовое разрешение ГМ сменить себе ник. Гасится после смены: ник —
+  /// это то, по чему человека знают коллеги, и менять его молча нельзя.
+  nicknameChangeAllowed Boolean @default(false) @map("nickname_change_allowed")
   role          Role     @default(VIEWER)
   isActive      Boolean  @default(true) @map("is_active")
+  status        UserStatus @default(active)
+  /// Кто создал запись. Нужен, чтобы показать ГМ автора заявки.
+  createdById   String?  @map("created_by_id")
+  /// Пароль одноразовый: до смены пускаем только на экран онбординга.
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  /// Срок годности одноразового пароля. После него вход невозможен.
+  passwordExpiresAt  DateTime? @map("password_expires_at")
   totpSecretEnc String?  @map("totp_secret_enc")
   totpEnabled   Boolean  @default(false) @map("totp_enabled")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  sessions     Session[]
-  serverAccess UserServerAccess[]
+  sessions         Session[]
+  serverAccess     UserServerAccess[]
+  sentMessages     StaffMessage[] @relation("StaffMessageFrom")
+  receivedMessages StaffMessage[] @relation("StaffMessageTo")
 
+  @@index([status])
   @@map("users")
+}
+
+/// Личное сообщение между сотрудниками панели.
+///
+/// Приватность обеспечивается на уровне запросов: выборка всегда идёт с
+/// условием «текущий пользователь — отправитель либо получатель». Роли на
+/// это не влияют: ГМ не видит чужую переписку так же, как и все остальные.
+model StaffMessage {
+  id         String    @id @default(uuid())
+  fromUserId String    @map("from_user_id")
+  toUserId   String    @map("to_user_id")
+  from       User      @relation("StaffMessageFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to         User      @relation("StaffMessageTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  text       String
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  /// Выборка диалога и счёт непрочитанных идут по этим парам.
+  @@index([toUserId, readAt])
+  @@index([fromUserId, toUserId, createdAt])
+  @@map("staff_messages")
+}
+
+/// Настройки панели, не являющиеся секретами (секреты — в integration_secrets).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
 }
 
 model Session {
@@ -72,14 +131,41 @@ model Server {
   moduleId        String?  @map("module_id")
   /// AES-256-GCM-шифрованный JSON с доп. кредами (RCON и т.п.)
   credentialsEnc  String?  @map("credentials_enc")
+  /// Лимиты из Pterodactyl, обновляются при синке. 0 — без ограничения.
+  /// Нужны, чтобы показывать «занято из», а не голое число байт.
+  memoryLimitMb   Int?     @map("memory_limit_mb")
+  diskLimitMb     Int?     @map("disk_limit_mb")
+  cpuLimitPercent Int?     @map("cpu_limit_percent")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  access        UserServerAccess[]
-  tickets       Ticket[]
-  minecraftBans MinecraftBan[]
+  access          UserServerAccess[]
+  tickets         Ticket[]
+  minecraftBans   MinecraftBan[]
+  palworldBans    PalworldBan[]
+  activitySamples ServerActivitySample[]
 
   @@map("servers")
+}
+
+/// Замер числа игроков онлайн: по ним строится график активности.
+/// Один ряд на сервер и часовой слот — повторные замеры внутри часа
+/// усредняются на месте, чтобы таблица не росла линейно по времени.
+model ServerActivitySample {
+  serverId  String   @map("server_id")
+  /// Начало часа в UTC, к которому относится замер.
+  bucket    DateTime
+  /// Среднее число игроков за час.
+  avgOnline Float    @map("avg_online")
+  /// Пик за час — по нему видно, что «в среднем двое» это 0 и 4.
+  maxOnline Int      @map("max_online")
+  /// Сколько замеров усреднено: нужно для пересчёта среднего без хранения истории.
+  samples   Int      @default(1)
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@id([serverId, bucket])
+  @@index([serverId, bucket])
+  @@map("server_activity_samples")
 }
 
 /// Server-scoped доступ: Admin/Moderator видит только привязанные сервера.
@@ -142,10 +228,40 @@ model MinecraftBan {
   @@map("mod_minecraft_bans")
 }
 
+/// Баны Palworld.
+///
+/// Своя таблица нужна потому, что REST API Palworld умеет банить и
+/// разбанивать, но НЕ умеет отдавать список банов. Без неё вкладка банов
+/// могла бы только «забанить в пустоту»: ни причины, ни кто забанил, ни
+/// возможности снять бан по списку.
+///
+/// Срока у бана нет намеренно: сам сервер временных банов не поддерживает,
+/// а показывать срок, который никто не соблюдает, значит врать.
+model PalworldBan {
+  id           String    @id @default(uuid())
+  serverId     String    @map("server_id")
+  server       Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  playerName   String    @map("player_name")
+  /// userId платформы (напр. steam_011...) — то, чем оперирует сам сервер.
+  userId       String    @map("user_id")
+  reason       String
+  createdById  String?   @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  pardonedAt   DateTime? @map("pardoned_at")
+  pardonedById String?   @map("pardoned_by_id")
+
+  @@index([serverId, pardonedAt])
+  @@map("mod_palworld_bans")
+}
+
 model AuditLog {
   id         BigInt    @id @default(autoincrement())
   actorId    String?   @map("actor_id")
   actorType  ActorType @default(user) @map("actor_type")
+  /// От чьего имени действовал не-человек. Для actor_type=ai — id сотрудника,
+  /// который вёл диалог с ассистентом и подтвердил действие. Без этого поля
+  /// в журнале осталось бы «сделал ИИ», и концов не найти.
+  onBehalfOf String?   @map("on_behalf_of")
   action     String
   targetType String?   @map("target_type")
   targetId   String?   @map("target_id")
@@ -154,5 +270,57 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([actorId])
+  @@index([onBehalfOf])
   @@map("audit_log")
+}
+
+/// Расход на обращения к DeepSeek: по нему считаются лимиты и деньги.
+model AiUsageLog {
+  id               BigInt   @id @default(autoincrement())
+  userId           String   @map("user_id")
+  model            String
+  promptTokens     Int      @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  /// Сколько инструментов вызвано за обращение — видно, кто «гоняет» модель.
+  toolCalls        Int      @default(0) @map("tool_calls")
+  /// Текст ошибки, если обращение не удалось. null — успех.
+  error            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("ai_usage_log")
+}
+
+/// Разрушительное действие, предложенное моделью и ждущее решения человека.
+///
+/// Хранится на сервере, а не в браузере: подтверждение должно исполнять
+/// ровно то, что предложила модель. Если бы аргументы приезжали с клиента
+/// вместе с подтверждением, «подтверждение» ничего бы не гарантировало.
+model AiPendingAction {
+  id        String   @id @default(uuid())
+  /// Кто вёл диалог. Только он может подтвердить или отклонить.
+  userId    String   @map("user_id")
+  tool      String
+  /// Аргументы вызова как их вернула модель.
+  args      Json
+  /// true — предложение появилось после того, как в контекст попали данные
+  /// из игры (ники, тикеты, вывод консоли). Интерфейс предупреждает об этом
+  /// отдельно: такой ввод недоверенный.
+  fromUntrustedInput Boolean @default(false) @map("from_untrusted_input")
+  status    AiActionStatus @default(pending)
+  result    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  @@index([userId, status])
+  @@map("ai_pending_actions")
+}
+
+enum AiActionStatus {
+  pending
+  approved
+  rejected
+  failed
+  /// Истекло по времени — старое предложение исполнять нельзя.
+  expired
 }
