@@ -1,5 +1,5 @@
 /**
- * Контракт модуля Minecraft (Java Edition) между apps/api и apps/web.
+ * Контракт модуля Minecraft (Paper) между apps/api и apps/web.
  * ВАЖНО: здесь намеренно нет ни RCON-пароля, ни хоста, ни адреса
  * companion-плагина — эти данные никогда не покидают бэкенд.
  */
@@ -216,6 +216,14 @@ export const KNOWN_PLUGINS = [
     displayName: 'InvSee++',
     gives: 'инвентари игроков, которых нет в сети',
   },
+  {
+    // Vault сам по себе экономику не ведёт — он прослойка между плагинами.
+    // Панели важен именно он: через него берётся Economy-провайдер, каким
+    // бы плагином тот ни предоставлялся (EssentialsX, CMI, любой другой).
+    id: 'Vault',
+    displayName: 'Vault',
+    gives: 'блок «Валюта» у игрока и баланс сервера: начисления и списания через Economy-провайдер',
+  },
 ] as const;
 
 export type KnownPluginId = (typeof KNOWN_PLUGINS)[number]['id'];
@@ -232,6 +240,8 @@ export const MINECRAFT_PERMISSIONS = {
   configure: 'minecraft.configure',
   permissionsView: 'minecraft.permissions.view',
   permissionsEdit: 'minecraft.permissions.edit',
+  economyView: 'minecraft.economy.view',
+  economyEdit: 'minecraft.economy.edit',
 } as const;
 
 /**
@@ -248,4 +258,55 @@ export interface MinecraftPerformanceDto {
   /** false — сервер не знает команду (не Paper/Spigot). */
   tpsSupported: boolean;
   msptSupported: boolean;
+}
+
+// ------------------------------------------------------------- Экономика
+//
+// Работает через Vault — прослойку, за которой может стоять любой плагин
+// экономики (EssentialsX, CMI и прочие). Панель с конкретным плагином не
+// разговаривает и знать про него не обязана.
+
+/** Баланс игрока. */
+export interface MinecraftBalanceDto {
+  available: boolean;
+  /** Почему недоступно: нет companion-плагина, нет Vault, нет провайдера. */
+  reason?: string;
+  code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
+  balance?: number;
+  /** Отформатированная провайдером строка: «1 234,50 монет». */
+  formatted?: string;
+  /** Название валюты во множественном числе — для подписей полей. */
+  currency?: string;
+}
+
+/** Результат начисления или списания. */
+export interface MinecraftBalanceChangeDto {
+  ok: boolean;
+  /** Текст ошибки от провайдера, если не вышло. */
+  error?: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  formatted?: string;
+}
+
+/** Экономика сервера целиком: общий объём денег и самые богатые. */
+export interface MinecraftEconomyDto {
+  available: boolean;
+  reason?: string;
+  code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
+  /** Сумма балансов всех, кто когда-либо заходил на сервер. */
+  total?: number;
+  totalFormatted?: string;
+  currency?: string;
+  /** Сколько игроков учтено в сумме. */
+  playersCounted?: number;
+  /** Доска богатства: топ по балансу. */
+  top?: { name: string; uuid: string; balance: number; formatted: string }[];
+  /**
+   * Когда посчитано, ISO-строка. Значение кэшируется: пересчёт обходит всех
+   * игроков сервера, и делать это на каждое открытие страницы незачем.
+   */
+  calculatedAt?: string;
+  /** true — отдана закэшированная величина, а не свежий пересчёт. */
+  cached?: boolean;
 }

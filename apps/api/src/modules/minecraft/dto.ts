@@ -3,6 +3,7 @@ import {
   IsIn,
   IsInt,
   IsISO8601,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -109,4 +110,26 @@ export class PermissionChangeDto {
   @IsOptional()
   @IsBoolean()
   remove?: boolean;
+}
+
+/**
+ * Начисление или списание валюты.
+ *
+ * Знак задаётся маршрутом (deposit/withdraw), а не значением: отрицательная
+ * сумма в «начислить» означала бы списание, и в журнале аудита операция
+ * выглядела бы ровно наоборот. Поэтому здесь только положительные числа.
+ */
+export class BalanceChangeDto {
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Сумма — число не более чем с двумя знаками после запятой' })
+  @Min(0.01, { message: 'Сумма должна быть больше нуля' })
+  // Верхняя граница — не про «столько не бывает», а про опечатку: лишний
+  // ноль в поле не должен приводить к необратимой выдаче.
+  @Max(1_000_000_000)
+  amount!: number;
+
+  /** За что. Не обязательна для API, но именно она делает журнал полезным. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
 }

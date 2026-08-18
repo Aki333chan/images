@@ -9,10 +9,13 @@ author: Aurum
 # соответствующие возможности не появляются.
 #   LuckPerms      — вкладка «Права» (чтение и изменение через его API)
 #   InvSeePlusPlus — инвентари игроков, которых нет в сети
+#   Vault          — блок «Валюта»: баланс, начисления и списания. Сам Vault
+#                    денег не хранит: за ним должен стоять плагин экономики,
+#                    зарегистрировавший провайдера Economy.
 # Имена именно такие, как их регистрируют сами плагины: InvSee++ зовётся
 # InvSeePlusPlus, а EssentialsX — Essentials (ему softdepend не нужен,
 # с ним работаем командами через RCON).
-softdepend: [LuckPerms, InvSeePlusPlus]
+softdepend: [LuckPerms, InvSeePlusPlus, Vault]
 commands:
   ticket:
     description: Отправить сообщение администрации

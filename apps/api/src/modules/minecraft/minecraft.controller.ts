@@ -11,10 +11,13 @@ import {
 } from '@nestjs/common';
 import {
   MINECRAFT_PERMISSIONS,
+  type MinecraftBalanceChangeDto,
+  type MinecraftBalanceDto,
   type MinecraftCommandResultDto,
   type MinecraftConfigStatusDto,
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
+  type MinecraftEconomyDto,
   type MinecraftPerformanceDto,
   type MinecraftPermissionsDto,
   type MinecraftPluginsDto,
@@ -27,6 +30,7 @@ import { COMPANION_DOCS_URL, CompanionService } from './companion.service';
 import { MinecraftConfigService } from './minecraft-config.service';
 import { MinecraftService } from './minecraft.service';
 import {
+  BalanceChangeDto,
   BanDto,
   CompanionConfigDto,
   KickDto,
@@ -216,6 +220,73 @@ export class MinecraftController {
     @Body() dto: PermissionChangeDto,
   ): Promise<MinecraftPermissionsDto> {
     return this.companion.changePermission(serverId, uuid, dto);
+  }
+
+  // ---------- Валюта (Vault) ----------
+  //
+  // Просмотр и изменение разведены по разным правам: смотреть баланс полезно
+  // и модератору, а начислять деньги — это раздача ценностей.
+
+  @Get('players/:uuid/balance')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  balance(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<MinecraftBalanceDto> {
+    return this.minecraft.getBalance(serverId, uuid);
+  }
+
+  @Post('players/:uuid/balance/deposit')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyEdit)
+  @ServerScoped('serverId')
+  deposit(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: BalanceChangeDto,
+  ): Promise<MinecraftBalanceChangeDto> {
+    return this.minecraft.changeBalance(
+      serverId,
+      uuid,
+      'deposit',
+      dto.amount,
+      dto.reason ?? null,
+      user.id,
+    );
+  }
+
+  @Post('players/:uuid/balance/withdraw')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyEdit)
+  @ServerScoped('serverId')
+  withdraw(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: BalanceChangeDto,
+  ): Promise<MinecraftBalanceChangeDto> {
+    return this.minecraft.changeBalance(
+      serverId,
+      uuid,
+      'withdraw',
+      dto.amount,
+      dto.reason ?? null,
+      user.id,
+    );
+  }
+
+  /**
+   * Экономика сервера целиком. refresh=1 — пересчитать, минуя кэш; обычное
+   * открытие страницы кэш не сбрасывает, иначе смысл кэша теряется.
+   */
+  @Get('economy')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  economy(
+    @Param('serverId') serverId: string,
+    @Query('refresh') refresh?: string,
+  ): Promise<MinecraftEconomyDto> {
+    return this.minecraft.getEconomy(serverId, { refresh: refresh === '1' || refresh === 'true' });
   }
 
   @Post('quick-commands/:commandId')

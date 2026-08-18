@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
@@ -69,6 +72,51 @@ public final class PayloadWriter {
             nodes.add(Json.object(fields));
         }
         root.put("permissions", Json.array(nodes));
+        return Json.object(root);
+    }
+
+    public static String balance(BalanceInfo info) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("balance", Json.number(info.balance()));
+        fields.put("formatted", Json.string(info.formatted()));
+        fields.put("currency", Json.string(info.currency()));
+        return Json.object(fields);
+    }
+
+    /**
+     * Результат начисления или списания.
+     *
+     * ok = false — это не HTTP-ошибка: провайдер вправе отказать (не хватило
+     * денег, отрицательная сумма), и панели нужен именно его текст отказа,
+     * а не подменённый нами.
+     */
+    public static String balanceChange(BalanceChange change) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("ok", change.ok() ? "true" : "false");
+        fields.put("error", Json.string(change.error()));
+        fields.put("balanceBefore", Json.number(change.before()));
+        fields.put("balanceAfter", Json.number(change.after()));
+        fields.put("formatted", Json.string(change.formatted()));
+        return Json.object(fields);
+    }
+
+    public static String economy(EconomySummary summary) {
+        Map<String, String> root = new LinkedHashMap<>();
+        root.put("total", Json.number(summary.total()));
+        root.put("totalFormatted", Json.string(summary.totalFormatted()));
+        root.put("currency", Json.string(summary.currency()));
+        root.put("playersCounted", Json.number(summary.playersCounted()));
+
+        List<String> top = new ArrayList<>(summary.top().size());
+        for (EconomySummary.TopEntry entry : summary.top()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("name", Json.string(entry.name()));
+            fields.put("uuid", Json.string(entry.uuid()));
+            fields.put("balance", Json.number(entry.balance()));
+            fields.put("formatted", Json.string(entry.formatted()));
+            top.add(Json.object(fields));
+        }
+        root.put("top", Json.array(top));
         return Json.object(root);
     }
 

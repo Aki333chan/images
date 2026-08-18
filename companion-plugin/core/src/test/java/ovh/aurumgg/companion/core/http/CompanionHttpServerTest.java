@@ -423,4 +423,134 @@ class CompanionHttpServerTest {
         assertFalse(response.body().contains("minecraft:bread"));
         assertTrue(response.body().contains("minecraft:diamond_sword"));
     }
+
+    // ------------------------------------------------------- Экономика (Vault)
+
+    private String balancePath() {
+        return "/players/" + FakeGameBridge.STEVE + "/balance";
+    }
+
+    @Test
+    @DisplayName("без Vault баланс отвечает кодом requires-vault")
+    void balanceWithoutVault() throws Exception {
+        HttpResponse<String> response = get(balancePath(), TOKEN);
+
+        assertEquals(404, response.statusCode());
+        assertEquals("requires-vault", JsonParser.parseObject(response.body()).get("code"));
+    }
+
+    @Test
+    @DisplayName("Vault есть, а плагина экономики нет — код другой, no-provider")
+    void balanceWithVaultButNoProvider() throws Exception {
+        bridge.install("Vault");
+        bridge.economyProvider = false;
+
+        HttpResponse<String> response = get(balancePath(), TOKEN);
+
+        assertEquals(404, response.statusCode());
+        assertEquals("no-provider", JsonParser.parseObject(response.body()).get("code"));
+    }
+
+    @Test
+    @DisplayName("с Vault баланс читается вместе с форматированной строкой и валютой")
+    void balanceWithVault() throws Exception {
+        bridge.install("Vault");
+
+        HttpResponse<String> response = get(balancePath(), TOKEN);
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(250.0, (Double) body.get("balance"));
+        assertEquals("250.00 монет", body.get("formatted"));
+        assertEquals("монет", body.get("currency"));
+    }
+
+    @Test
+    @DisplayName("начисление отдаёт баланс до и после — именно их пишет аудит панели")
+    void depositReturnsBeforeAndAfter() throws Exception {
+        bridge.install("Vault");
+
+        HttpResponse<String> response =
+                post(balancePath() + "/deposit", TOKEN, "{\"amount\":50,\"reason\":\"компенсация\"}");
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(Boolean.TRUE, body.get("ok"));
+        assertEquals(250.0, (Double) body.get("balanceBefore"));
+        assertEquals(300.0, (Double) body.get("balanceAfter"));
+        assertEquals(300.0, bridge.balances.get(FakeGameBridge.STEVE));
+    }
+
+    @Test
+    @DisplayName("списание больше баланса — 200 с ok:false и причиной от провайдера")
+    void withdrawTooMuchIsRejectedByProvider() throws Exception {
+        bridge.install("Vault");
+
+        HttpResponse<String> response = post(balancePath() + "/withdraw", TOKEN, "{\"amount\":1000}");
+
+        // Не 4xx: запрос корректен, отказал провайдер, и его текст нужен панели.
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(Boolean.FALSE, body.get("ok"));
+        assertEquals("Недостаточно средств", body.get("error"));
+        assertEquals(250.0, bridge.balances.get(FakeGameBridge.STEVE));
+    }
+
+    @Test
+    @DisplayName("сумма обязана быть положительным числом")
+    void amountMustBePositiveNumber() throws Exception {
+        bridge.install("Vault");
+
+        // Отрицательная сумма в deposit означала бы списание — знак задаёт
+        // только маршрут, иначе аудит покажет операцию наизнанку.
+        assertEquals(400, post(balancePath() + "/deposit", TOKEN, "{\"amount\":-5}").statusCode());
+        assertEquals(400, post(balancePath() + "/deposit", TOKEN, "{\"amount\":0}").statusCode());
+        assertEquals(400, post(balancePath() + "/deposit", TOKEN, "{\"amount\":\"100\"}").statusCode());
+        assertEquals(400, post(balancePath() + "/deposit", TOKEN, "").statusCode());
+        assertEquals(250.0, bridge.balances.get(FakeGameBridge.STEVE));
+    }
+
+    @Test
+    @DisplayName("сводка экономики: сумма по всем и доска богатства по убыванию")
+    void economySummarySortsAndSums() throws Exception {
+        bridge.install("Vault");
+        java.util.UUID alex = java.util.UUID.fromString("11111111-2222-4333-8444-555555555555");
+        bridge.balances.put(alex, 1000.0);
+        bridge.playerNames.put(alex, "Alex");
+
+        HttpResponse<String> response = get("/economy", TOKEN);
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(1250.0, (Double) body.get("total"));
+        assertEquals(2.0, (Double) body.get("playersCounted"));
+        List<?> top = (List<?>) body.get("top");
+        assertEquals(2, top.size());
+        assertEquals("Alex", ((Map<?, ?>) top.get(0)).get("name"));
+        assertEquals("Steve", ((Map<?, ?>) top.get(1)).get("name"));
+    }
+
+    @Test
+    @DisplayName("параметр top ограничивает доску богатства")
+    void economyTopLimit() throws Exception {
+        bridge.install("Vault");
+        bridge.balances.put(java.util.UUID.randomUUID(), 10.0);
+        bridge.balances.put(java.util.UUID.randomUUID(), 20.0);
+
+        Map<String, Object> body = JsonParser.parseObject(get("/economy?top=1", TOKEN).body());
+
+        assertEquals(1, ((List<?>) body.get("top")).size());
+        // Сумма считается по всем, а не по обрезанной доске.
+        assertEquals(280.0, (Double) body.get("total"));
+        assertEquals(400, get("/economy?top=abc", TOKEN).statusCode());
+    }
+
+    @Test
+    @DisplayName("экономика сервера без Vault — тот же понятный код")
+    void economyWithoutVault() throws Exception {
+        HttpResponse<String> response = get("/economy", TOKEN);
+
+        assertEquals(404, response.statusCode());
+        assertEquals("requires-vault", JsonParser.parseObject(response.body()).get("code"));
+    }
 }

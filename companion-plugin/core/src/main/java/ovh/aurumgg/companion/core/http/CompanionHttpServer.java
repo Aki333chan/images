@@ -18,6 +18,9 @@ import ovh.aurumgg.companion.core.CompanionConfig;
 import ovh.aurumgg.companion.core.GameBridge;
 import ovh.aurumgg.companion.core.json.JsonParser;
 import ovh.aurumgg.companion.core.json.PayloadWriter;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -39,6 +42,10 @@ import ovh.aurumgg.companion.core.model.PlayerInfo;
  *   POST /players/{uuid}/permissions
  *   GET  /plugins
  *   GET  /complete?line=...
+ *   GET  /players/{uuid}/balance
+ *   POST /players/{uuid}/balance/deposit
+ *   POST /players/{uuid}/balance/withdraw
+ *   GET  /economy?top=...
  */
 public final class CompanionHttpServer {
 
@@ -163,6 +170,60 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // GET /economy?top=10 — общий объём денег на сервере и доска богатства.
+        // Считается по всем, кто когда-либо заходил, поэтому обращение дорогое;
+        // кэширует результат панель, а не плагин: срок жизни кэша — её решение.
+        if (parts.length == 1 && parts[0].equals("economy") && method.equals("GET")) {
+            Optional<EconomySummary> summary = bridge.economySummary(parseTopLimit(queryParam(exchange, "top")));
+            if (summary.isEmpty()) {
+                respondNoEconomy(exchange);
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.economy(summary.get()));
+            return;
+        }
+
+        // GET /players/{uuid}/balance — работает и для тех, кого нет в сети
+        if (parts.length == 3
+                && parts[0].equals("players")
+                && parts[2].equals("balance")
+                && method.equals("GET")) {
+            UUID uuid = parseUuid(parts[1]);
+            Optional<BalanceInfo> balance = bridge.balance(uuid);
+            if (balance.isEmpty()) {
+                respondNoEconomy(exchange);
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.balance(balance.get()));
+            return;
+        }
+
+        // POST /players/{uuid}/balance/{deposit|withdraw} — тело {"amount":100}
+        //
+        // Поле reason панель присылает для журнала аудита, и оно здесь
+        // намеренно игнорируется: журнал ведёт панель, у которой есть автор
+        // операции. Плагину знать причину незачем, а писать её в лог сервера
+        // значит дублировать запись без пользы.
+        if (parts.length == 4
+                && parts[0].equals("players")
+                && parts[2].equals("balance")
+                && method.equals("POST")
+                && (parts[3].equals("deposit") || parts[3].equals("withdraw"))) {
+            UUID uuid = parseUuid(parts[1]);
+            double amount = parseAmount(readBody(exchange));
+            boolean deposit = parts[3].equals("deposit");
+            Optional<BalanceChange> change = deposit ? bridge.deposit(uuid, amount) : bridge.withdraw(uuid, amount);
+            if (change.isEmpty()) {
+                respondNoEconomy(exchange);
+                return;
+            }
+            // Отказ провайдера («не хватает денег») — 200 с ok:false: запрос
+            // корректен, а причина отказа нужна панели целиком, вместе с
+            // балансом до и после, чтобы записать её в аудит.
+            respond(exchange, 200, PayloadWriter.balanceChange(change.get()));
+            return;
+        }
+
         // GET /players/{uuid}/permissions — через LuckPerms
         if (parts.length == 3
                 && parts[0].equals("players")
@@ -227,6 +288,60 @@ public final class CompanionHttpServer {
 
     /** Имя InvSee++ в Bukkit — именно такое, «InvSee++» не зарегистрирован. */
     static final String INVSEE_PLUGIN = "InvSeePlusPlus";
+
+    /** Имя Vault в Bukkit. */
+    static final String VAULT_PLUGIN = "Vault";
+
+    /** Сколько строк в доске богатства, если панель не попросила иного. */
+    private static final int DEFAULT_TOP_LIMIT = 10;
+
+    /** Верхняя граница: доска на тысячу строк никому не нужна, а ответ раздувает. */
+    private static final int MAX_TOP_LIMIT = 100;
+
+    /**
+     * Сумма операции: строго положительное конечное число. Знак задаётся
+     * маршрутом (deposit/withdraw), а не значением, — иначе «списать -100»
+     * означало бы начисление, и в аудите это выглядело бы наоборот.
+     */
+    static double parseAmount(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("Пустое тело запроса");
+        }
+        Object raw = JsonParser.parseObject(body).get("amount");
+        if (!(raw instanceof Double amount)) {
+            throw new IllegalArgumentException("Поле amount должно быть числом");
+        }
+        if (!Double.isFinite(amount) || amount <= 0) {
+            throw new IllegalArgumentException("Поле amount должно быть больше нуля");
+        }
+        return amount;
+    }
+
+    static int parseTopLimit(String raw) {
+        if (raw == null) return DEFAULT_TOP_LIMIT;
+        int value;
+        try {
+            value = Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Параметр top должен быть числом");
+        }
+        if (value < 0) throw new IllegalArgumentException("Параметр top не может быть отрицательным");
+        return Math.min(value, MAX_TOP_LIMIT);
+    }
+
+    /**
+     * Экономики нет — но причины две, и панели важно, какая именно: без Vault
+     * надо ставить сам Vault, а с Vault без провайдера — плагин экономики.
+     */
+    private void respondNoEconomy(HttpExchange exchange) throws IOException {
+        if (hasPlugin(VAULT_PLUGIN)) {
+            respond(exchange, 404, PayloadWriter.error(
+                    "Vault установлен, но плагин экономики не зарегистрировал провайдера", "no-provider"));
+        } else {
+            respond(exchange, 404, PayloadWriter.error(
+                    "Работа с валютой требует плагина Vault и плагина экономики", "requires-vault"));
+        }
+    }
 
     /** Больше сотни вариантов в выпадающем списке всё равно бесполезны. */
     private static final int MAX_SUGGESTIONS = 100;

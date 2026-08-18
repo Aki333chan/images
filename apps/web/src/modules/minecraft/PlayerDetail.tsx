@@ -7,6 +7,7 @@ import type {
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Label, Select, Spinner } from '../../components/ui';
+import { BalancePanel } from './BalancePanel';
 import { InventoryGrid } from './InventoryGrid';
 import { PermissionsPanel } from './PermissionsPanel';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
@@ -124,14 +125,32 @@ export function PlayerDetail({
       </div>
 
       {tab === 'actions' && (
-        <PlayerActions
-          serverId={serverId}
-          player={player}
-          has={has}
-          canAct={canAct}
-          onChanged={onChanged}
-          onPunish={onPunish}
-        />
+        <div className="space-y-4">
+          <PlayerActions
+            serverId={serverId}
+            player={player}
+            has={has}
+            canAct={canAct}
+            onChanged={onChanged}
+            onPunish={onPunish}
+          />
+
+          {/* Валюта — отдельным блоком, а не четвёртой вкладкой: на телефоне
+              вкладки и так делят ширину поровну, и четвёртая сделала бы
+              подписи нечитаемыми. */}
+          {hasPermission('minecraft.economy.view') && (
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label>Валюта</Label>
+              {player.uuid ? (
+                <BalancePanel serverId={serverId} uuid={player.uuid} />
+              ) : (
+                <p className="text-sm text-muted">
+                  Для работы с валютой нужен UUID игрока, а его отдаёт только companion-плагин.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {tab === 'inventory' &&

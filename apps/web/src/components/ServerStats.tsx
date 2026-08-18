@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
-import type { MinecraftPerformanceDto, ServerResourcesDto } from '@aurum/shared';
+import { useCallback, useEffect, useState } from 'react';
+import type {
+  MinecraftEconomyDto,
+  MinecraftPerformanceDto,
+  ServerResourcesDto,
+} from '@aurum/shared';
 import { api } from '../lib/api';
-import { Card } from './ui';
+import { useAuth } from '../lib/auth';
+import { Button, Card } from './ui';
 
 /** Байты в человекочитаемый вид: 1.5 ГБ вместо 1610612736. */
 export function formatBytes(bytes: number): string {
@@ -53,6 +58,10 @@ function Metric({
  * Обновляется раз в 10 секунд. Чаще нет смысла: Pterodactyl сам снимает
  * показания с интервалом, а RCON-команда — это лишний поход на игровой
  * сервер, который в это время занят игроками.
+ *
+ * Экономика из этого цикла намеренно исключена: её пересчёт обходит всех, кто
+ * когда-либо заходил на сервер, поэтому цифра берётся один раз при открытии
+ * (бэкенд отдаёт её из кэша) и дальше — только по кнопке «обновить».
  */
 export function ServerStats({
   serverId,
@@ -63,11 +72,44 @@ export function ServerStats({
   moduleId: string | null;
   canSeePerformance: boolean;
 }) {
+  const { hasPermission } = useAuth();
   const [resources, setResources] = useState<ServerResourcesDto | null>(null);
   const [performance, setPerformance] = useState<MinecraftPerformanceDto | null>(null);
   const [failed, setFailed] = useState(false);
+  const [economy, setEconomy] = useState<MinecraftEconomyDto | null>(null);
+  const [economyBusy, setEconomyBusy] = useState(false);
+  const [showRich, setShowRich] = useState(false);
 
   const wantsPerformance = moduleId === 'minecraft' && canSeePerformance;
+  const wantsEconomy = moduleId === 'minecraft' && hasPermission('minecraft.economy.view');
+
+  const loadEconomy = useCallback(
+    async (refresh: boolean) => {
+      setEconomyBusy(true);
+      try {
+        setEconomy(
+          await api<MinecraftEconomyDto>(
+            `/api/modules/minecraft/servers/${serverId}/economy${refresh ? '?refresh=1' : ''}`,
+          ),
+        );
+      } catch {
+        // Нет Vault, нет плагина, сервер выключен — полосу метрик это гасить
+        // не должно.
+        setEconomy(null);
+      } finally {
+        setEconomyBusy(false);
+      }
+    },
+    [serverId],
+  );
+
+  useEffect(() => {
+    if (!wantsEconomy) {
+      setEconomy(null);
+      return;
+    }
+    void loadEconomy(false);
+  }, [wantsEconomy, loadEconomy]);
 
   useEffect(() => {
     let stopped = false;
@@ -141,6 +183,14 @@ export function ServerStats({
       />
       <Metric label="Аптайм" value={formatUptime(resources.uptimeMs)} hint={resources.state} />
 
+      {wantsEconomy && economy?.available && (
+        <Metric
+          label="Экономика"
+          value={economy.totalFormatted ?? String(economy.total ?? 0)}
+          hint={`${economy.playersCounted ?? 0} ${plural(economy.playersCounted ?? 0)}`}
+        />
+      )}
+
       {wantsPerformance && performance && (
         <>
           <Metric
@@ -189,6 +239,62 @@ export function ServerStats({
           />
         </>
       )}
+
+      {wantsEconomy && economy?.available && (
+        // Отдельной строкой во всю ширину: кнопка обновления и доска
+        // богатства не помещаются в полосу метрик и ломали бы её ритм.
+        <div className="w-full border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+            <span>
+              {economy.calculatedAt
+                ? `посчитано ${new Date(economy.calculatedAt).toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}`
+                : 'посчитано только что'}
+              {economy.cached ? ' (из кэша)' : ''}
+            </span>
+            <Button size="sm" variant="ghost" disabled={economyBusy} onClick={() => void loadEconomy(true)}>
+              Обновить
+            </Button>
+            {(economy.top?.length ?? 0) > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setShowRich((v) => !v)}>
+                {showRich ? 'Скрыть богатейших' : 'Богатейшие'}
+              </Button>
+            )}
+          </div>
+
+          {showRich && (economy.top?.length ?? 0) > 0 && (
+            <ol className="mt-2 space-y-1">
+              {economy.top!.map((entry, index) => (
+                <li key={entry.uuid} className="flex items-baseline justify-between gap-3 text-xs">
+                  <span className="min-w-0 truncate">
+                    <span className="mr-2 text-muted">{index + 1}.</span>
+                    {entry.name}
+                  </span>
+                  <span className="shrink-0 font-medium">{entry.formatted || entry.balance}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
     </Card>
   );
+}
+
+/** «1 игрок», «2 игрока», «5 игроков» — иначе подпись читается как машинная. */
+function plural(count: number): string {
+  const mod100 = count % 100;
+  if (mod100 >= 11 && mod100 <= 14) return 'игроков';
+  switch (count % 10) {
+    case 1:
+      return 'игрок';
+    case 2:
+    case 3:
+    case 4:
+      return 'игрока';
+    default:
+      return 'игроков';
+  }
 }

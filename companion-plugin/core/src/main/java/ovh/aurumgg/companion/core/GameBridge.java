@@ -3,6 +3,9 @@ package ovh.aurumgg.companion.core;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -77,4 +80,40 @@ public interface GameBridge {
      * @return пусто, если InvSee++ не установлен либо данных по игроку нет
      */
     Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName);
+
+    // ---------- Экономика (Vault) ----------
+    //
+    // Vault сам денег не хранит: это прослойка, за которой стоит настоящий
+    // плагин экономики. Поэтому «пусто» здесь означает одно из двух — нет
+    // самого Vault или у него не зарегистрирован Economy-провайдер. Различать
+    // эти случаи для панели не нужно: и там, и там блок «Валюта» не работает,
+    // а формулировку даёт HTTP-слой.
+
+    /**
+     * Баланс игрока. Работает и для тех, кого нет в сети: Vault оперирует
+     * OfflinePlayer, а не живым игроком.
+     *
+     * @return пусто, если экономики на сервере нет
+     */
+    Optional<BalanceInfo> balance(UUID playerUuid);
+
+    /**
+     * Начисление (amount &gt; 0) или списание (amount &lt; 0 не передаётся —
+     * для списания есть отдельный метод, чтобы знак не терялся по дороге).
+     *
+     * @return пусто, если экономики нет; иначе результат с балансом до и после
+     */
+    Optional<BalanceChange> deposit(UUID playerUuid, double amount);
+
+    /** Списание. Симметрично deposit. */
+    Optional<BalanceChange> withdraw(UUID playerUuid, double amount);
+
+    /**
+     * Экономика сервера целиком: сумма по всем, кто когда-либо заходил, и
+     * доска богатства.
+     *
+     * @param topLimit сколько строк вернуть в доске богатства
+     * @return пусто, если экономики нет
+     */
+    Optional<EconomySummary> economySummary(int topLimit);
 }

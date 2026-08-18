@@ -18,6 +18,9 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.Plugin;
 import ovh.aurumgg.companion.core.GameBridge;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
@@ -38,6 +41,14 @@ public final class BukkitGameBridge implements GameBridge {
 
     private static final long SYNC_TIMEOUT_SECONDS = 3;
 
+    /**
+     * Отдельный таймаут для подсчёта экономики сервера. Обход всех, кто
+     * когда-либо заходил, у некоторых провайдеров означает поход в базу на
+     * каждого игрока, и на сервере с тысячами записей трёх секунд не хватит.
+     * Считается это редко (панель кэширует результат), так что запас уместен.
+     */
+    private static final long ECONOMY_TIMEOUT_SECONDS = 30;
+
     private final Plugin plugin;
 
     public BukkitGameBridge(Plugin plugin) {
@@ -45,6 +56,10 @@ public final class BukkitGameBridge implements GameBridge {
     }
 
     private <T> T callSync(Callable<T> callable, T fallback) {
+        return callSync(callable, fallback, SYNC_TIMEOUT_SECONDS);
+    }
+
+    private <T> T callSync(Callable<T> callable, T fallback, long timeoutSeconds) {
         // Если мы уже в основном потоке, лишний прыжок не нужен.
         if (Bukkit.isPrimaryThread()) {
             try {
@@ -56,7 +71,7 @@ public final class BukkitGameBridge implements GameBridge {
         }
         Future<T> future = Bukkit.getScheduler().callSyncMethod(plugin, callable);
         try {
-            return future.get(SYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             future.cancel(true);
             plugin.getLogger().warning("Основной поток не ответил вовремя: " + e);
@@ -215,5 +230,33 @@ public final class BukkitGameBridge implements GameBridge {
     public Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName) {
         if (!InvSeeIntegration.isAvailable()) return Optional.empty();
         return InvSeeIntegration.read(playerUuid, playerName);
+    }
+
+    // ---------- Экономика (Vault) ----------
+    //
+    // В основной поток прыгаем сознательно: Vault — только интерфейс, а за
+    // ним стоит произвольный плагин экономики. Часть провайдеров (тот же
+    // EssentialsX) держит балансы в структурах, рассчитанных на обращение из
+    // основного потока, и потокобезопасность здесь никем не обещана.
+
+    @Override
+    public Optional<BalanceInfo> balance(UUID playerUuid) {
+        return callSync(() -> VaultEconomyIntegration.balance(playerUuid), Optional.empty());
+    }
+
+    @Override
+    public Optional<BalanceChange> deposit(UUID playerUuid, double amount) {
+        return callSync(() -> VaultEconomyIntegration.change(playerUuid, amount, true), Optional.empty());
+    }
+
+    @Override
+    public Optional<BalanceChange> withdraw(UUID playerUuid, double amount) {
+        return callSync(() -> VaultEconomyIntegration.change(playerUuid, amount, false), Optional.empty());
+    }
+
+    @Override
+    public Optional<EconomySummary> economySummary(int topLimit) {
+        return callSync(
+                () -> VaultEconomyIntegration.summary(topLimit), Optional.empty(), ECONOMY_TIMEOUT_SECONDS);
     }
 }

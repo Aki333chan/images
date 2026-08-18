@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { request } from 'undici';
 import type {
+  MinecraftBalanceChangeDto,
+  MinecraftBalanceDto,
+  MinecraftEconomyDto,
   MinecraftInventoryItemDto,
   MinecraftInventoryResponse,
   MinecraftPermissionChangeDto,
@@ -73,7 +76,7 @@ export class CompanionService {
   private async callRaw<T>(
     serverId: string,
     path: string,
-    init?: { method?: 'GET' | 'POST'; body?: unknown },
+    init?: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number },
   ): Promise<
     | { ok: true; body: T }
     | { ok: false; status: number | null; code: string | null; error: string | null }
@@ -89,8 +92,8 @@ export class CompanionService {
           ...(init?.body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: init?.body === undefined ? undefined : JSON.stringify(init.body),
-        headersTimeout: 6000,
-        bodyTimeout: 6000,
+        headersTimeout: init?.timeoutMs ?? 6000,
+        bodyTimeout: init?.timeoutMs ?? 6000,
       });
       const text = await res.body.text();
       if (res.statusCode >= 400) {
@@ -272,6 +275,94 @@ export class CompanionService {
     };
   }
 
+  // ---------------------------------------------------------- Экономика
+  //
+  // Всё идёт через Vault, поэтому недоступность бывает трёх видов, и панель
+  // должна их различать: нет companion-плагина (ставить плагин панели),
+  // нет Vault (ставить Vault) и Vault без провайдера (ставить плагин
+  // экономики). Один общий текст «валюта недоступна» отправил бы человека
+  // искать причину вслепую.
+
+  /** Баланс игрока по UUID. Работает и для тех, кого сейчас нет в сети. */
+  async getBalance(serverId: string, uuid: string): Promise<MinecraftBalanceDto> {
+    if (!(await this.isConfigured(serverId))) return economyFailure('no-companion', null);
+    const result = await this.callRaw<RawBalance>(serverId, `/players/${uuid}/balance`);
+    if (!result.ok) return economyFailure(result.code, result.error);
+    return {
+      available: true,
+      balance: numberOr(result.body.balance, 0),
+      formatted: result.body.formatted ?? undefined,
+      currency: result.body.currency ?? undefined,
+    };
+  }
+
+  /**
+   * Начисление или списание.
+   *
+   * Возвращает либо результат операции (в том числе отказ провайдера —
+   * с ok:false и его текстом), либо отказ на уровне доступности экономики.
+   * Разделение важно для журнала: отказ «не хватило денег» — это состоявшаяся
+   * попытка с балансом до и после, а «нет Vault» — вообще не операция.
+   */
+  async changeBalance(
+    serverId: string,
+    uuid: string,
+    direction: 'deposit' | 'withdraw',
+    amount: number,
+  ): Promise<
+    { ok: true; change: MinecraftBalanceChangeDto } | { ok: false; failure: MinecraftBalanceDto }
+  > {
+    if (!(await this.isConfigured(serverId))) {
+      return { ok: false, failure: economyFailure('no-companion', null) };
+    }
+    const result = await this.callRaw<RawBalanceChange>(
+      serverId,
+      `/players/${uuid}/balance/${direction}`,
+      { method: 'POST', body: { amount } },
+    );
+    if (!result.ok) return { ok: false, failure: economyFailure(result.code, result.error) };
+    return {
+      ok: true,
+      change: {
+        ok: result.body.ok === true,
+        error: result.body.error ?? undefined,
+        balanceBefore: numberOr(result.body.balanceBefore, 0),
+        balanceAfter: numberOr(result.body.balanceAfter, 0),
+        formatted: result.body.formatted ?? undefined,
+      },
+    };
+  }
+
+  /**
+   * Экономика сервера целиком.
+   *
+   * Таймаут здесь заметно больше обычного: плагин обходит всех, кто когда-либо
+   * заходил на сервер, и у некоторых провайдеров это поход в базу на каждого.
+   * Запрос редкий — панель держит результат в кэше.
+   */
+  async getEconomy(serverId: string, top: number): Promise<MinecraftEconomyDto> {
+    if (!(await this.isConfigured(serverId))) return economyFailure('no-companion', null);
+    const result = await this.callRaw<RawEconomy>(serverId, `/economy?top=${top}`, {
+      timeoutMs: 40_000,
+    });
+    if (!result.ok) return economyFailure(result.code, result.error);
+    return {
+      available: true,
+      total: numberOr(result.body.total, 0),
+      totalFormatted: result.body.totalFormatted ?? undefined,
+      currency: result.body.currency ?? undefined,
+      playersCounted: numberOr(result.body.playersCounted, 0),
+      top: (result.body.top ?? [])
+        .filter((e): e is Required<RawTopEntry> => typeof e.uuid === 'string' && typeof e.name === 'string')
+        .map((e) => ({
+          name: e.name,
+          uuid: e.uuid,
+          balance: numberOr(e.balance, 0),
+          formatted: e.formatted ?? '',
+        })),
+    };
+  }
+
   /**
    * Ник -> UUID по текущему списку онлайн. Регистр ника не важен.
    *
@@ -336,6 +427,77 @@ function permissionsFailure(code: string | null, error: string | null): Minecraf
       available: false,
       code: 'requires-luckperms',
       reason: 'Работа с правами требует плагина LuckPerms на игровом сервере',
+    };
+  }
+  return {
+    available: false,
+    code: 'error',
+    reason: error ?? 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+  };
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+interface RawBalance {
+  balance?: number;
+  formatted?: string | null;
+  currency?: string | null;
+}
+
+interface RawBalanceChange {
+  ok?: boolean;
+  error?: string | null;
+  balanceBefore?: number;
+  balanceAfter?: number;
+  formatted?: string | null;
+}
+
+interface RawTopEntry {
+  name?: string;
+  uuid?: string;
+  balance?: number;
+  formatted?: string;
+}
+
+interface RawEconomy {
+  total?: number;
+  totalFormatted?: string | null;
+  currency?: string | null;
+  playersCounted?: number;
+  top?: RawTopEntry[];
+}
+
+/**
+ * Почему валюта недоступна — в виде, пригодном для показа.
+ *
+ * Коды плагина сохраняем как есть: панель по ним подсказывает, что именно
+ * доставить на игровой сервер.
+ */
+function economyFailure(
+  code: string | null,
+  error: string | null,
+): { available: false; code: 'no-companion' | 'requires-vault' | 'no-provider' | 'error'; reason: string } {
+  if (code === 'no-companion') {
+    return {
+      available: false,
+      code: 'no-companion',
+      reason: 'Для работы с валютой нужен companion-плагин на игровом сервере',
+    };
+  }
+  if (code === 'requires-vault') {
+    return {
+      available: false,
+      code: 'requires-vault',
+      reason: 'Работа с валютой требует плагина Vault и плагина экономики на игровом сервере',
+    };
+  }
+  if (code === 'no-provider') {
+    return {
+      available: false,
+      code: 'no-provider',
+      reason: 'Vault установлен, но ни один плагин экономики не зарегистрировал провайдера',
     };
   }
   return {
