@@ -6,8 +6,6 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  MaxLength,
-  MinLength,
 } from 'class-validator';
 import { ROLES, Role, type CreateUserResultDto, type PendingUserDto, UserAdminDto } from '@aurum/shared';
 import { RequirePermission } from '../rbac/rbac.decorators';
@@ -16,14 +14,16 @@ import { CurrentUser, AuthUser } from '../auth/decorators';
 import { UsersService } from './users.service';
 import { AccountProvisioningService } from './account-provisioning.service';
 
+/**
+ * Заведение аккаунта: только адрес и роль.
+ *
+ * Имени здесь нет намеренно — сотрудник придумывает себе ник сам при первом
+ * входе. Имя, назначенное кем-то другим, всё равно разошлось бы с тем, как
+ * человек подписывается в переписке.
+ */
 class CreateUserDto {
   @IsEmail()
   email!: string;
-
-  @IsString()
-  @MinLength(1)
-  @MaxLength(80)
-  displayName!: string;
 
   @IsIn(ROLES as unknown as string[])
   role!: Role;
@@ -38,10 +38,10 @@ class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
+  /** Разовое разрешение сотруднику сменить себе ник. */
   @IsOptional()
-  @IsString()
-  @MinLength(1)
-  displayName?: string;
+  @IsBoolean()
+  nicknameChangeAllowed?: boolean;
 }
 
 class SetServersDto {
@@ -115,18 +115,22 @@ export class UsersController {
     return { ok: true };
   }
 
-  /** Выдать новый одноразовый пароль: прежний протух или потерян. */
-  @Post(':id/resend-password')
+  /**
+   * Сброс пароля: сотруднику уходит новый одноразовый пароль.
+   *
+   * Тот же механизм, что и при заведении аккаунта, — прежние сессии
+   * обрываются, а после входа панель просит задать постоянный пароль.
+   * Ник при этом заново не спрашивается: он уже выбран и коллеги его знают.
+   */
+  @Post(':id/reset-password')
   @RequirePermission('users.manage')
-  async resendPassword(
+  async resetPassword(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<{ emailSent: boolean; emailError?: string }> {
     const user = await this.users.getForProvisioning(id);
-    const result = await this.provisioning.issueOneTimePassword(
-      user.id,
-      user.email,
-      user.displayName,
-    );
+    const result = await this.provisioning.issueOneTimePassword(user.id, user.email, {
+      reset: true,
+    });
     return { emailSent: result.sent, ...(result.error ? { emailError: result.error } : {}) };
   }
 

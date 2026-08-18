@@ -29,7 +29,7 @@ describe('одноразовый пароль', () => {
 
 describe('письмо с одноразовым паролем', () => {
   const input = {
-    displayName: 'Вася',
+    login: 'vasya@aurumgg.ovh',
     oneTimePassword: 'AbCd2345EfGh6789',
     panelUrl: 'https://manage.aurumgg.ovh',
     expiresInHours: 72,
@@ -57,10 +57,28 @@ describe('письмо с одноразовым паролем', () => {
     expect(mail.html).not.toContain('<link');
   });
 
-  it('имя пользователя экранируется, а не попадает в разметку как есть', () => {
-    const mail = welcomeMail({ ...input, displayName: '<script>alert(1)</script>' });
+  it('логин экранируется, а не попадает в разметку как есть', () => {
+    const mail = welcomeMail({ ...input, login: '<script>alert(1)</script>' });
     expect(mail.html).not.toContain('<script>');
     expect(mail.html).toContain('&lt;script&gt;');
+  });
+
+  it('в письме есть логин — без имени только он и подсказывает, чей это доступ', () => {
+    expect(welcomeMail(input).text).toContain('vasya@aurumgg.ovh');
+  });
+
+  it('письмо про сброс говорит о сбросе и не зовёт выбирать ник', () => {
+    const mail = welcomeMail({ ...input, reset: true });
+
+    expect(mail.subject).toContain('новый пароль');
+    expect(mail.text).toContain('сброшен');
+    // Ник у такого сотрудника уже есть — просить придумать новый незачем.
+    expect(mail.text).not.toContain('никнейм');
+    expect(mail.html).not.toContain('никнейм');
+  });
+
+  it('письмо про новый аккаунт по-прежнему зовёт выбрать ник', () => {
+    expect(welcomeMail(input).html).toContain('никнейм');
   });
 });
 

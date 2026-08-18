@@ -25,7 +25,12 @@ async function main() {
     data: {
       email: email.toLowerCase(),
       passwordHash: await argon2.hash(password),
-      displayName: process.env.OWNER_NAME ?? 'ГМ',
+      // Ник владельцу задаётся сразу: он единственный, кто не проходит
+      // первый вход по одноразовому паролю, и без ника не появился бы в
+      // списке адресатов внутренних сообщений — коллеги не смогли бы ему
+      // написать. OWNER_NAME поддерживается как прежнее имя переменной.
+      nickname: process.env.OWNER_NICKNAME ?? process.env.OWNER_NAME ?? 'GM',
+      nicknameChangeAllowed: true,
       role: 'OWNER',
     },
   });

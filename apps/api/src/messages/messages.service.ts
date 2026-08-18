@@ -34,7 +34,7 @@ export class MessagesService {
         isActive: true,
         status: 'active',
       },
-      select: { id: true, nickname: true, displayName: true },
+      select: { id: true, nickname: true },
       orderBy: { nickname: 'asc' },
     });
 
@@ -42,7 +42,7 @@ export class MessagesService {
     return rows
       .filter((r) => !needle || normalizeNickname(r.nickname!).includes(needle))
       .slice(0, 20)
-      .map((r) => ({ id: r.id, nickname: r.nickname!, displayName: r.displayName }));
+      .map((r) => ({ id: r.id, nickname: r.nickname! }));
   }
 
   /** Список диалогов: последний обмен с каждым собеседником. */
@@ -51,8 +51,8 @@ export class MessagesService {
       where: { OR: [{ fromUserId: currentUserId }, { toUserId: currentUserId }] },
       orderBy: { createdAt: 'desc' },
       include: {
-        from: { select: { id: true, displayName: true, nickname: true } },
-        to: { select: { id: true, displayName: true, nickname: true } },
+        from: { select: { id: true, nickname: true } },
+        to: { select: { id: true, nickname: true } },
       },
     });
 
@@ -66,7 +66,7 @@ export class MessagesService {
         // Первое встреченное сообщение и есть последнее: список отсортирован
         // по убыванию времени.
         byPeer.set(peer.id, {
-          peer: { id: peer.id, displayName: peer.displayName, nickname: peer.nickname },
+          peer: { id: peer.id, nickname: peer.nickname },
           lastMessage: {
             text: message.text,
             createdAt: message.createdAt.toISOString(),

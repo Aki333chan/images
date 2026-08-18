@@ -20,6 +20,9 @@ export function AccessControlPage() {
   const { hasPermission } = useAuth();
   const [users, setUsers] = useState<UserAdminDto[] | null>(null);
   const [servers, setServers] = useState<ServerDto[] | null>(null);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
   // Списком и ролями распоряжается только ГМ. Админ сюда попадает ради
   // одной кнопки — завести Модератора, — и запрашивать список ему нечем.
@@ -45,6 +48,44 @@ export function AccessControlPage() {
       body: JSON.stringify({ isActive: !user.isActive }),
     });
     setUsers((prev) => prev?.map((u) => (u.id === user.id ? updated : u)) ?? null);
+  }
+
+  /** Разовое разрешение сменить себе ник. */
+  async function toggleNicknameChange(user: UserAdminDto) {
+    const updated = await api<UserAdminDto>(`/api/users/${user.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ nicknameChangeAllowed: !user.nicknameChangeAllowed }),
+    });
+    setUsers((prev) => prev?.map((u) => (u.id === user.id ? updated : u)) ?? null);
+  }
+
+  /**
+   * Сброс пароля: человеку уходит новый временный пароль письмом.
+   *
+   * Прежние входы обрываются сразу — сброс нужен и когда пароль забыт, и
+   * когда есть подозрение, что им кто-то завладел.
+   */
+  async function resetPassword(user: UserAdminDto) {
+    const who = user.nickname ?? user.email;
+    if (!confirm(`Сбросить пароль ${who}? Все его текущие входы завершатся.`)) return;
+    setBusyUserId(user.id);
+    setNotice('');
+    setError('');
+    try {
+      const result = await api<{ emailSent: boolean; emailError?: string }>(
+        `/api/users/${user.id}/reset-password`,
+        { method: 'POST' },
+      );
+      setNotice(
+        result.emailSent
+          ? `Временный пароль отправлен на ${user.email}.`
+          : `Пароль сброшен, но письмо не ушло: ${result.emailError ?? 'проверьте настройки почты'}.`,
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusyUserId(null);
+    }
   }
 
   async function toggleServer(user: UserAdminDto, serverId: string) {
@@ -77,19 +118,27 @@ export function AccessControlPage() {
     <div>
       <h1 className="mb-4 text-xl font-bold">Управление доступом</h1>
       <CreateUserForm canManage onCreated={(user) => setUsers((prev) => [...(prev ?? []), user])} />
+      {notice && <p className="mb-3 text-xs text-emerald-400">{notice}</p>}
+      {error && <div className="mb-3"><ErrorText>{error}</ErrorText></div>}
       <div className="space-y-4">
         {users.map((user) => (
           <Card key={user.id}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="font-semibold">
-                  {user.displayName}{' '}
+                  {/* Ник — единственное имя сотрудника. Пока он не выбран
+                      (человек ещё не входил), показываем email: иначе строку
+                      было бы не отличить от соседней. */}
+                  {user.nickname ?? (
+                    <span className="text-muted">{user.email} · ник ещё не выбран</span>
+                  )}{' '}
                   {!user.isActive && <Badge variant="destructive">деактивирован</Badge>}{' '}
-                  {user.totpEnabled && <Badge variant="success">2FA</Badge>}
+                  {user.totpEnabled && <Badge variant="success">2FA</Badge>}{' '}
+                  {user.nicknameChangeAllowed && <Badge variant="outline">смена ника открыта</Badge>}
                 </div>
-                <div className="text-xs text-muted">{user.email}</div>
+                {user.nickname && <div className="text-xs text-muted">{user.email}</div>}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Select
                   value={user.role}
                   onChange={(v) => void setRole(user, v as Role)}
@@ -97,6 +146,23 @@ export function AccessControlPage() {
                 />
                 <Button size="sm" variant="outline" onClick={() => void toggleActive(user)}>
                   {user.isActive ? 'Деактивировать' : 'Активировать'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busyUserId === user.id}
+                  title="Отправить новый временный пароль письмом"
+                  onClick={() => void resetPassword(user)}
+                >
+                  Сбросить пароль
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Разовое разрешение сменить себе ник"
+                  onClick={() => void toggleNicknameChange(user)}
+                >
+                  {user.nicknameChangeAllowed ? 'Закрыть смену ника' : 'Разрешить смену ника'}
                 </Button>
               </div>
             </div>
@@ -140,11 +206,15 @@ export function AccessControlPage() {
 }
 
 /**
- * Создание учётной записи.
+ * Создание учётной записи: адрес и роль, больше ничего.
  *
  * Пароль здесь не вводится: панель генерирует одноразовый и отправляет его
  * письмом. Так пароль не проходит через руки создающего и не оседает в
  * переписке, а при первом входе человек всё равно задаёт свой.
+ *
+ * Имени тоже нет: сотрудник придумывает себе ник сам при первом входе.
+ * Имя, назначенное кем-то другим, всё равно разошлось бы с тем, как человек
+ * подписывается в переписке, и панели пришлось бы показывать оба.
  */
 function CreateUserForm({
   canManage,
@@ -156,7 +226,6 @@ function CreateUserForm({
 }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [role, setRole] = useState<Role>('MODERATOR');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -171,7 +240,6 @@ function CreateUserForm({
         method: 'POST',
         body: JSON.stringify({
           email: email.trim(),
-          displayName: displayName.trim(),
           // Админ заводит только Модераторов — селектора у него нет.
           role: canManage ? role : 'MODERATOR',
         }),
@@ -192,7 +260,6 @@ function CreateUserForm({
 
       if (result.activated) onCreated(result.user);
       setEmail('');
-      setDisplayName('');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -209,7 +276,7 @@ function CreateUserForm({
     );
   }
 
-  const canSubmit = email.includes('@') && displayName.trim().length > 0 && !busy;
+  const canSubmit = email.includes('@') && !busy;
 
   return (
     <Card className="mb-4 space-y-3">
@@ -222,14 +289,6 @@ function CreateUserForm({
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="off"
             placeholder="friend@example.com"
-          />
-        </div>
-        <div>
-          <Label>Отображаемое имя</Label>
-          <Input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Как показывать в панели"
           />
         </div>
         <div>
@@ -255,9 +314,9 @@ function CreateUserForm({
       {error && <ErrorText>{error}</ErrorText>}
 
       <p className="text-xs text-muted">
-        Пароль придумывать не нужно: панель сгенерирует временный и отправит его письмом. При первом
-        входе человек задаст свой пароль и выберет ник. Доступ к серверам выдаётся ниже, после
-        создания: по умолчанию его нет ни к одному.
+        Ни имени, ни пароля придумывать не нужно: панель сгенерирует временный пароль и отправит его
+        письмом, а ник человек выберет себе сам при первом входе — под ним его и будут знать
+        коллеги. Доступ к серверам выдаётся ниже, после создания: по умолчанию его нет ни к одному.
       </p>
 
       <div className="flex gap-2">

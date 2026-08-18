@@ -7,25 +7,194 @@ import type {
 } from '@aurum/shared';
 import { ROLE_LABELS } from '@aurum/shared';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { AiSettingsCard } from './AiSettingsCard';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 
 /**
- * Настройки панели — только для ГМ.
+ * Настройки.
  *
- * Три блока: правила создания аккаунтов, ожидающие подтверждения заявки и
- * настройки почты. Заявки здесь же, а не отдельным пунктом меню: переключатель
- * и очередь, которую он порождает, читаются вместе.
+ * Сверху — личные, они есть у всех: свой ник и свой пароль. Ниже — настройки
+ * панели, их видит только ГМ: правила создания аккаунтов, очередь заявок,
+ * почта и ассистент. Заявки здесь же, а не отдельным пунктом меню:
+ * переключатель и очередь, которую он порождает, читаются вместе.
  */
 export function SettingsPage() {
+  const { hasPermission } = useAuth();
+  const isGm = hasPermission('users.manage');
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">Настройки</h1>
-      <AccountRules />
-      <PendingApprovals />
-      <SmtpSettings />
-      <AiSettingsCard />
+      <MyNickname />
+      <MyPassword />
+      {isGm && (
+        <>
+          <AccountRules />
+          <PendingApprovals />
+          <SmtpSettings />
+          <AiSettingsCard />
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * Свой ник.
+ *
+ * Менять его можно, только когда ГМ разрешил, и разрешение разовое: ник —
+ * это то, по чему сотрудника знают коллеги в переписке и чем он подписан в
+ * журнале. У ГМ разрешение постоянное — просить его не у кого.
+ */
+function MyNickname() {
+  const { me, hasPermission, refreshMe } = useAuth();
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState('');
+
+  const allowed = !!me?.user.nicknameChangeAllowed || hasPermission('users.manage');
+  const current = me?.user.nickname ?? '';
+
+  useEffect(() => setValue(current), [current]);
+
+  async function save() {
+    setBusy(true);
+    setError('');
+    setSaved('');
+    try {
+      await api('/api/auth/nickname', {
+        method: 'POST',
+        body: JSON.stringify({ nickname: value.trim() }),
+      });
+      await refreshMe();
+      setSaved('Ник изменён.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3">
+      <h2 className="font-semibold">Ник</h2>
+      <p className="text-xs text-muted">
+        Под этим ником вас видят коллеги в сообщениях и журнале аудита. Другого имени в панели
+        нет.
+      </p>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Input
+          value={value}
+          disabled={!allowed || busy}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Ник"
+          maxLength={31}
+          className="sm:max-w-[260px]"
+        />
+        <Button
+          size="sm"
+          disabled={!allowed || busy || !value.trim() || value.trim() === current}
+          onClick={() => void save()}
+        >
+          Сохранить ник
+        </Button>
+      </div>
+
+      {!allowed && (
+        <p className="text-xs text-muted">
+          Смену ника открывает ГМ — попросите его. Разрешение действует на один раз.
+        </p>
+      )}
+      {allowed && me?.user.nicknameChangeAllowed && (
+        <p className="text-xs text-amber-400">
+          ГМ разрешил вам сменить ник. Разрешение сгорит после сохранения.
+        </p>
+      )}
+      {error && <ErrorText>{error}</ErrorText>}
+      {saved && <p className="text-xs text-emerald-400">{saved}</p>}
+    </Card>
+  );
+}
+
+/** Свой пароль. Доступно всем и всегда — это действие над собой. */
+function MyPassword() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [repeat, setRepeat] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState('');
+
+  const mismatch = repeat.length > 0 && repeat !== newPassword;
+  const canSubmit =
+    !busy && currentPassword.length > 0 && newPassword.length >= 10 && repeat === newPassword;
+
+  async function save() {
+    setBusy(true);
+    setError('');
+    setSaved('');
+    try {
+      await api('/api/auth/password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setRepeat('');
+      setSaved('Пароль изменён. Остальные ваши входы завершены.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3">
+      <h2 className="font-semibold">Пароль</h2>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <Label>Текущий пароль</Label>
+          <Input
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Новый пароль</Label>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Ещё раз</Label>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={repeat}
+            onChange={(e) => setRepeat(e.target.value)}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted">
+        Не короче 10 символов. После смены все остальные ваши входы завершатся — текущий
+        останется.
+      </p>
+      {mismatch && <ErrorText>Пароли не совпадают</ErrorText>}
+      <Button size="sm" disabled={!canSubmit} onClick={() => void save()}>
+        Сменить пароль
+      </Button>
+      {error && <ErrorText>{error}</ErrorText>}
+      {saved && <p className="text-xs text-emerald-400">{saved}</p>}
+    </Card>
   );
 }
 
@@ -148,12 +317,13 @@ function PendingApprovals() {
             >
               <div>
                 <div className="text-sm font-medium">
-                  {p.displayName} <Badge variant="outline">{ROLE_LABELS[p.role]}</Badge>
+                  {p.email} <Badge variant="outline">{ROLE_LABELS[p.role]}</Badge>
                 </div>
-                <div className="text-xs text-muted">
-                  {p.email}
-                  {p.createdBy && <> · заявку подал {p.createdBy.nickname ?? p.createdBy.displayName}</>}
-                </div>
+                {p.createdBy && (
+                  <div className="text-xs text-muted">
+                    заявку подал {p.createdBy.nickname ?? 'без ника'}
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button

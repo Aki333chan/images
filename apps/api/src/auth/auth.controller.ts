@@ -19,7 +19,15 @@ import { PermissionsService } from '../rbac/permissions.service';
 import { AuthService } from './auth.service';
 import { TokensService } from './tokens.service';
 import { CurrentUser, Public, AuthUser } from './decorators';
-import { LoginDto, OnboardingDto, TotpDisableDto, TotpEnableDto, TwoFactorDto } from './dto';
+import {
+  ChangeNicknameDto,
+  ChangePasswordDto,
+  LoginDto,
+  OnboardingDto,
+  TotpDisableDto,
+  TotpEnableDto,
+  TwoFactorDto,
+} from './dto';
 import { OnboardingService } from '../users/onboarding.service';
 import { AuditRedactBody } from '../audit/audit.decorators';
 
@@ -119,7 +127,7 @@ export class AuthController {
   }
 
   /**
-   * Завершение онбординга: постоянный пароль и ник сотрудника.
+   * Первый вход: постоянный пароль и — если ника ещё нет — ник сотрудника.
    *
    * Живёт в auth, а не в users: это действие пользователя над собой, и
    * никаких прав, кроме аутентификации, для него не нужно.
@@ -131,6 +139,40 @@ export class AuthController {
     @Body() dto: OnboardingDto,
   ): Promise<MeResponse> {
     await this.onboarding.complete(user.id, user.sessionId, dto);
+    return this.permissions.buildMeResponse(user.id);
+  }
+
+  /**
+   * Смена своего пароля из настроек. Доступна всем — это действие над собой.
+   */
+  @Post('password')
+  @HttpCode(200)
+  @AuditRedactBody() // в теле два пароля
+  async changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ ok: true }> {
+    await this.onboarding.changePassword(user.id, user.sessionId, dto);
+    return { ok: true };
+  }
+
+  /**
+   * Смена своего ника — только если ГМ её разрешил.
+   *
+   * Право users.manage считается постоянным разрешением: у того, кто сам
+   * раздаёт эти разрешения, просить его не у кого.
+   */
+  @Post('nickname')
+  @HttpCode(200)
+  async changeNickname(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangeNicknameDto,
+  ): Promise<MeResponse> {
+    const effective = await this.permissions.getEffectivePermissions(user.id);
+    await this.onboarding.changeNickname(user.id, {
+      nickname: dto.nickname,
+      standingPermission: effective.permissions.has('users.manage'),
+    });
     return this.permissions.buildMeResponse(user.id);
   }
 

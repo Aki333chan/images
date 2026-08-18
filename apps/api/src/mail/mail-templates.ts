@@ -66,26 +66,39 @@ function layout(title: string, inner: string): string {
 }
 
 export interface WelcomeMailInput {
-  displayName: string;
+  /** Логин — он же адрес получателя. Имён у сотрудников в панели нет. */
+  login: string;
   oneTimePassword: string;
   panelUrl: string;
   expiresInHours: number;
+  /**
+   * true — это сброс пароля уже существующему сотруднику, а не новый аккаунт.
+   * Разница не косметическая: человеку с уже выбранным ником незачем читать
+   * «выберите никнейм», а человеку, который пароль не терял, важно понять,
+   * что его сбросил ГМ.
+   */
+  reset?: boolean;
 }
 
 /** Письмо с одноразовым паролем — единственное место, где он виден текстом. */
 export function welcomeMail(input: WelcomeMailInput): { subject: string; html: string; text: string } {
-  const name = escapeHtml(input.displayName);
+  const login = escapeHtml(input.login);
   const password = escapeHtml(input.oneTimePassword);
   const url = escapeHtml(input.panelUrl);
+  const intro = input.reset
+    ? 'Ваш пароль в панели администрирования сброшен. Войдите по временному паролю ниже — ' +
+      'сразу после входа панель попросит задать новый постоянный пароль.'
+    : 'Для вас создана учётная запись в панели администрирования. Войти можно по ' +
+      'временному паролю ниже — при первом входе панель попросит задать свой ' +
+      'пароль и выбрать никнейм.';
 
   const html = layout(
-    `Доступ к ${BRAND}`,
+    input.reset ? `Новый пароль к ${BRAND}` : `Доступ к ${BRAND}`,
     `
-    <p style="margin:0 0 16px 0;">Здравствуйте, ${name}!</p>
-    <p style="margin:0 0 16px 0;">
-      Для вас создана учётная запись в панели администрирования. Войти можно по
-      временному паролю ниже — при первом входе панель попросит задать свой
-      пароль и выбрать никнейм.
+    <p style="margin:0 0 16px 0;">Здравствуйте!</p>
+    <p style="margin:0 0 16px 0;">${escapeHtml(intro)}</p>
+    <p style="margin:0 0 16px 0;color:${MUTED};font-size:13px;">
+      Логин — этот адрес: ${login}
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
@@ -125,18 +138,22 @@ export function welcomeMail(input: WelcomeMailInput): { subject: string; html: s
   // Текстовая версия обязательна: без неё письмо заметно чаще уходит в спам,
   // а часть клиентов HTML не показывает вовсе.
   const text = [
-    `Здравствуйте, ${input.displayName}!`,
+    'Здравствуйте!',
     '',
-    'Для вас создана учётная запись в панели администрирования.',
+    intro,
     '',
+    `Логин: ${input.login}`,
     `Временный пароль: ${input.oneTimePassword}`,
     `Адрес панели: ${input.panelUrl}`,
     '',
     `Пароль действует ${input.expiresInHours} часа и работает один раз.`,
-    'При первом входе панель попросит задать свой пароль и выбрать никнейм.',
     '',
     'Если вы не ожидали это письмо, просто удалите его.',
   ].join('\n');
 
-  return { subject: `${BRAND}: доступ к панели`, html, text };
+  return {
+    subject: input.reset ? `${BRAND}: новый пароль` : `${BRAND}: доступ к панели`,
+    html,
+    text,
+  };
 }

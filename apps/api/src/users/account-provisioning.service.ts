@@ -63,7 +63,7 @@ export class AccountProvisioningService {
   async create(
     actor: { id: string },
     canManageUsers: boolean,
-    input: { email: string; displayName: string; role: Role },
+    input: { email: string; role: Role },
   ): Promise<CreateUserResultDto> {
     const email = input.email.toLowerCase().trim();
     if (await this.prisma.user.findUnique({ where: { email } })) {
@@ -87,7 +87,6 @@ export class AccountProvisioningService {
       const user = await this.prisma.user.create({
         data: {
           email,
-          displayName: input.displayName.trim(),
           role: input.role,
           passwordHash: await argon2.hash(generateOneTimePassword(32)),
           isActive: false,
@@ -102,7 +101,6 @@ export class AccountProvisioningService {
     const user = await this.prisma.user.create({
       data: {
         email,
-        displayName: input.displayName.trim(),
         role: input.role,
         passwordHash: 'заглушка, перезаписывается ниже',
         isActive: true,
@@ -112,7 +110,7 @@ export class AccountProvisioningService {
       include: { serverAccess: { select: { serverId: true } } },
     });
 
-    const delivery = await this.issueOneTimePassword(user.id, user.email, user.displayName);
+    const delivery = await this.issueOneTimePassword(user.id, user.email);
     const fresh = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
       include: { serverAccess: { select: { serverId: true } } },
@@ -134,14 +132,13 @@ export class AccountProvisioningService {
     const authorIds = [...new Set(rows.map((r) => r.createdById).filter((v): v is string => !!v))];
     const authors = await this.prisma.user.findMany({
       where: { id: { in: authorIds } },
-      select: { id: true, displayName: true, nickname: true },
+      select: { id: true, nickname: true },
     });
     const byId = new Map(authors.map((a) => [a.id, a]));
 
     return rows.map((row) => ({
       id: row.id,
       email: row.email,
-      displayName: row.displayName,
       role: row.role,
       createdAt: row.createdAt.toISOString(),
       createdBy: row.createdById ? (byId.get(row.createdById) ?? null) : null,
@@ -160,7 +157,7 @@ export class AccountProvisioningService {
       where: { id: userId },
       data: { status: 'active', isActive: true },
     });
-    const delivery = await this.issueOneTimePassword(user.id, user.email, user.displayName);
+    const delivery = await this.issueOneTimePassword(user.id, user.email);
 
     const fresh = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -201,7 +198,7 @@ export class AccountProvisioningService {
   async issueOneTimePassword(
     userId: string,
     email: string,
-    displayName: string,
+    options?: { reset?: boolean },
   ): Promise<{ sent: boolean; error?: string }> {
     const password = generateOneTimePassword();
     const expiresAt = new Date(Date.now() + ONE_TIME_PASSWORD_HOURS * 3600 * 1000);
@@ -222,10 +219,13 @@ export class AccountProvisioningService {
     });
 
     const result = await this.mail.sendWelcome(email, {
-      displayName,
+      login: email,
       oneTimePassword: password,
       panelUrl: env.PANEL_URL,
       expiresInHours: ONE_TIME_PASSWORD_HOURS,
+      // Письмо про сброс и письмо про новый аккаунт — разные по смыслу:
+      // человеку с уже выбранным ником незачем читать «выберите никнейм».
+      reset: options?.reset ?? false,
     });
     return { sent: result.sent, ...(result.error ? { error: result.error } : {}) };
   }
@@ -234,7 +234,8 @@ export class AccountProvisioningService {
 function toDto(user: {
   id: string;
   email: string;
-  displayName: string;
+  nickname: string | null;
+  nicknameChangeAllowed: boolean;
   role: Role;
   isActive: boolean;
   totpEnabled: boolean;
@@ -244,7 +245,8 @@ function toDto(user: {
   return {
     id: user.id,
     email: user.email,
-    displayName: user.displayName,
+    nickname: user.nickname,
+    nicknameChangeAllowed: user.nicknameChangeAllowed,
     role: user.role,
     isActive: user.isActive,
     totpEnabled: user.totpEnabled,

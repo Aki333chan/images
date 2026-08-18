@@ -215,9 +215,9 @@ export class PalworldService {
     if (unique.length === 0) return new Map();
     const users = await this.prisma.user.findMany({
       where: { id: { in: unique } },
-      select: { id: true, displayName: true, nickname: true },
+      select: { id: true, nickname: true, email: true },
     });
-    return new Map(users.map((u) => [u.id, u.nickname ?? u.displayName]));
+    return new Map(users.map((u) => [u.id, u.nickname ?? u.email]));
   }
 
   private toBanDto(

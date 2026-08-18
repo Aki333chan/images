@@ -13,7 +13,8 @@ export class UsersService {
   private toDto(user: {
     id: string;
     email: string;
-    displayName: string;
+    nickname: string | null;
+    nicknameChangeAllowed: boolean;
     role: Role;
     isActive: boolean;
     totpEnabled: boolean;
@@ -23,7 +24,8 @@ export class UsersService {
     return {
       id: user.id,
       email: user.email,
-      displayName: user.displayName,
+      nickname: user.nickname,
+      nicknameChangeAllowed: user.nicknameChangeAllowed,
       role: user.role,
       isActive: user.isActive,
       totpEnabled: user.totpEnabled,
@@ -33,14 +35,10 @@ export class UsersService {
   }
 
   /** Минимум данных для выдачи одноразового пароля. */
-  async getForProvisioning(userId: string): Promise<{
-    id: string;
-    email: string;
-    displayName: string;
-  }> {
+  async getForProvisioning(userId: string): Promise<{ id: string; email: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, displayName: true },
+      select: { id: true, email: true },
     });
     if (!user) throw new NotFoundException('Пользователь не найден');
     return user;
@@ -57,7 +55,7 @@ export class UsersService {
   async update(
     actorId: string,
     userId: string,
-    patch: { role?: Role; isActive?: boolean; displayName?: string },
+    patch: { role?: Role; isActive?: boolean; nicknameChangeAllowed?: boolean },
   ): Promise<UserAdminDto> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Пользователь не найден');

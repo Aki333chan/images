@@ -59,7 +59,8 @@ export function Layout() {
     { to: '/messages', label: 'Сообщения', permission: null, badge: messagesBadge },
     // Доступы видны и Админу: у него есть право заводить Модераторов.
     { to: '/access', label: 'Доступы', permission: 'users.create.moderator' },
-    { to: '/settings', label: 'Настройки', permission: 'users.manage' },
+    // Без права: внутри есть личный блок — свой ник и пароль.
+    { to: '/settings', label: 'Настройки', permission: null },
     { to: '/audit', label: 'Аудит', permission: 'audit.view' },
     { to: '/security', label: 'Безопасность', permission: null },
   ];
@@ -73,7 +74,7 @@ export function Layout() {
       <div className="mb-6">
         <div className="text-lg font-bold text-primary">Aurum Panel</div>
         <div className="mt-1 text-xs text-muted">
-          {me.user.nickname ?? me.user.displayName} ·{' '}
+          {me.user.nickname ?? me.user.email} ·{' '}
           <Badge variant="outline">{ROLE_LABELS[me.user.role]}</Badge>
         </div>
       </div>

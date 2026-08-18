@@ -37,11 +37,17 @@ model User {
   id            String   @id @default(uuid())
   email         String   @unique
   passwordHash  String   @map("password_hash")
-  displayName   String   @map("display_name")
-  /// Ник СОТРУДНИКА панели: для внутренних сообщений и аудита.
+  /// Ник СОТРУДНИКА панели — единственное его имя в системе: им он подписан
+  /// в аудите, по нему ему пишут в личные сообщения, его же видит ГМ в
+  /// доступах. Отдельного «отображаемого имени» нет намеренно: человек
+  /// придумывает себе ник сам при первом входе, и второе имя, назначенное
+  /// кем-то другим, только расходилось бы с ним.
   /// К нику игрока в Minecraft отношения не имеет — это разные сущности.
-  /// Уникален по всей панели; null, пока не пройден онбординг.
+  /// Уникален по всей панели; null, пока не пройден первый вход.
   nickname      String?  @unique
+  /// Разовое разрешение ГМ сменить себе ник. Гасится после смены: ник —
+  /// это то, по чему человека знают коллеги, и менять его молча нельзя.
+  nicknameChangeAllowed Boolean @default(false) @map("nickname_change_allowed")
   role          Role     @default(VIEWER)
   isActive      Boolean  @default(true) @map("is_active")
   status        UserStatus @default(active)

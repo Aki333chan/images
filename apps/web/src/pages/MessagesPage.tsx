@@ -28,7 +28,17 @@ function formatTime(iso: string): string {
 export function MessagesPage() {
   const { me, messagesVersion } = useAuth();
   const [conversations, setConversations] = useState<ConversationDto[] | null>(null);
-  const [peerId, setPeerId] = useState<string | null>(null);
+  /**
+   * Открытый собеседник целиком, а не только его id.
+   *
+   * Раньше здесь лежал id, а сам собеседник искался в списке переписок — и
+   * для того, кому ещё ни разу не писали, поиск не находил ничего: клик по
+   * нику в подсказках не открывал ровным счётом ничего. Список переписок
+   * знает только тех, с кем обмен уже был, и опираться на него при выборе
+   * НОВОГО адресата нельзя.
+   */
+  const [peer, setPeer] = useState<{ id: string; nickname: string | null } | null>(null);
+  const peerId = peer?.id ?? null;
   const [thread, setThread] = useState<StaffMessageDto[]>([]);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -59,23 +69,26 @@ export function MessagesPage() {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [thread]);
 
-  const peer = useMemo(
+  // Ник собеседника мог смениться, пока диалог открыт: если он есть в свежем
+  // списке переписок, берём оттуда.
+  const peerFromList = useMemo(
     () => conversations?.find((c) => c.peer.id === peerId)?.peer ?? null,
     [conversations, peerId],
   );
+  const openPeer = peerFromList ?? peer;
 
   async function send() {
     const value = text.trim();
-    if (!value || !peer?.nickname) return;
+    if (!value || !openPeer?.nickname) return;
     setBusy(true);
     setError('');
     try {
       await api<StaffMessageDto>('/api/messages', {
         method: 'POST',
-        body: JSON.stringify({ nickname: peer.nickname, text: value }),
+        body: JSON.stringify({ nickname: openPeer.nickname, text: value }),
       });
       setText('');
-      loadThread(peer.id);
+      loadThread(openPeer.id);
       loadConversations();
     } catch (e) {
       setError((e as Error).message);
@@ -93,7 +106,7 @@ export function MessagesPage() {
         <NewConversation
           onStarted={(contact) => {
             loadConversations();
-            setPeerId(contact.id);
+            setPeer(contact);
           }}
         />
       </div>
@@ -108,7 +121,7 @@ export function MessagesPage() {
         обычном мессенджере.
       */}
       <div className="grid gap-4 md:grid-cols-[260px_1fr]">
-        <Card className={`space-y-1 p-2 ${peer ? 'hidden md:block' : ''}`}>
+        <Card className={`space-y-1 p-2 ${openPeer ? 'hidden md:block' : ''}`}>
           {conversations.length === 0 && (
             <p className="p-2 text-xs text-muted">
               Переписки пока нет. Нажмите «Написать» и выберите коллегу по нику.
@@ -117,14 +130,14 @@ export function MessagesPage() {
           {conversations.map((c) => (
             <button
               key={c.peer.id}
-              onClick={() => setPeerId(c.peer.id)}
+              onClick={() => setPeer(c.peer)}
               className={`w-full rounded px-2 py-2.5 text-left ${
                 c.peer.id === peerId ? 'bg-white/10' : 'hover:bg-white/5'
               }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-medium">
-                  {c.peer.nickname ?? c.peer.displayName}
+                  {c.peer.nickname ?? 'без ника'}
                 </span>
                 {c.unread > 0 && <Badge variant="destructive">{c.unread}</Badge>}
               </div>
@@ -140,25 +153,22 @@ export function MessagesPage() {
             Фиксированные 540 px на экране высотой 667 px не оставили бы
             места ни на заголовок, ни на список. */}
         <Card
-          className={`flex h-[65vh] flex-col md:h-[540px] ${peer ? '' : 'hidden md:flex'}`}
+          className={`flex h-[65vh] flex-col md:h-[540px] ${openPeer ? '' : 'hidden md:flex'}`}
         >
-          {!peer ? (
+          {!openPeer ? (
             <p className="m-auto text-sm text-muted">Выберите диалог слева</p>
           ) : (
             <>
               <div className="flex items-center gap-2 border-b border-border pb-2 text-sm font-medium">
                 <button
                   type="button"
-                  onClick={() => setPeerId(null)}
+                  onClick={() => setPeer(null)}
                   aria-label="К списку диалогов"
                   className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted hover:bg-white/5 md:hidden"
                 >
                   ←
                 </button>
-                <span className="min-w-0 truncate">
-                  {peer.nickname ?? peer.displayName}
-                  <span className="ml-2 text-xs text-muted">{peer.displayName}</span>
-                </span>
+                <span className="min-w-0 truncate">{openPeer.nickname ?? 'без ника'}</span>
               </div>
 
               <div className="flex-1 space-y-2 overflow-y-auto py-3">
@@ -244,14 +254,18 @@ function NewConversation({ onStarted }: { onStarted: (contact: StaffContactDto) 
           <button
             key={c.id}
             className="block w-full rounded px-2 py-2.5 text-left text-sm hover:bg-white/10 sm:py-1.5"
-            onClick={() => {
+            // onMouseDown, а не onClick: blur поля происходит между нажатием и
+            // отпусканием кнопки, и закрытый по blur список успевает исчезнуть
+            // раньше, чем click до него доберётся. preventDefault заодно не даёт
+            // полю потерять фокус.
+            onMouseDown={(e) => {
+              e.preventDefault();
               onStarted(c);
               setOpen(false);
               setQuery('');
             }}
           >
             {c.nickname}
-            <span className="ml-2 text-xs text-muted">{c.displayName}</span>
           </button>
         ))}
       </div>

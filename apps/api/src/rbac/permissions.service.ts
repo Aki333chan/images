@@ -78,8 +78,8 @@ export class PermissionsService {
       user: {
         id: user.id,
         email: user.email,
-        displayName: user.displayName,
         nickname: user.nickname,
+        nicknameChangeAllowed: user.nicknameChangeAllowed,
         role: user.role,
         totpEnabled: user.totpEnabled,
         mustChangePassword: user.mustChangePassword,

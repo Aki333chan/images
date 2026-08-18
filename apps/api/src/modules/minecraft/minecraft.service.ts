@@ -140,10 +140,12 @@ export class MinecraftService {
     const users = ids.length
       ? await this.prisma.user.findMany({
           where: { id: { in: ids } },
-          select: { id: true, displayName: true },
+          select: { id: true, nickname: true, email: true },
         })
       : [];
-    const nameById = new Map(users.map((u) => [u.id, u.displayName]));
+    // Ник — единственное имя сотрудника. Пока он не выбран (человек ещё не
+    // входил), в журнале банов честнее показать email, чем пустоту.
+    const nameById = new Map(users.map((u) => [u.id, u.nickname ?? u.email]));
     const expired = !!ban.expiresAt && ban.expiresAt <= new Date();
     return {
       id: ban.id,

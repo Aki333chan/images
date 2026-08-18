@@ -5,11 +5,15 @@ import { useAuth } from '../lib/auth';
 import { Button, Card, ErrorText, Input, Label } from '../components/ui';
 
 /**
- * Первый вход по одноразовому паролю.
+ * Вход по одноразовому паролю.
  *
- * Экран показывается вместо всей панели: пока не задан постоянный пароль и
- * не выбран ник, остальные разделы недоступны. Навигации здесь нет намеренно
- * — уйти отсюда можно только пройдя онбординг либо выйдя из аккаунта.
+ * Экран показывается вместо всей панели: пока не задан постоянный пароль,
+ * остальные разделы недоступны. Навигации здесь нет намеренно — уйти отсюда
+ * можно только задав пароль либо выйдя из аккаунта.
+ *
+ * Ник спрашивается ровно один раз в жизни аккаунта — при самом первом входе.
+ * Сюда же попадают после сброса пароля ГМ, но у такого сотрудника ник уже
+ * есть: коллеги знают его по нему, и требовать придумать новый бессмысленно.
  */
 export function OnboardingPage() {
   const { me, refreshMe, logout } = useAuth();
@@ -40,13 +44,16 @@ export function OnboardingPage() {
     return () => clearTimeout(timer);
   }, [nickname]);
 
+  /** Ник уже выбран — значит, это сброс пароля, а не первый вход. */
+  const needsNickname = !me?.user.nickname;
+
   const passwordsMatch = newPassword.length > 0 && newPassword === repeat;
   const passwordLongEnough = newPassword.length >= 10;
   const canSubmit =
     currentPassword.length > 0 &&
     passwordLongEnough &&
     passwordsMatch &&
-    nickState === 'free' &&
+    (!needsNickname || nickState === 'free') &&
     !busy;
 
   async function submit() {
@@ -55,7 +62,11 @@ export function OnboardingPage() {
     try {
       const next = await api<MeResponse>('/api/auth/onboarding', {
         method: 'POST',
-        body: JSON.stringify({ currentPassword, newPassword, nickname: nickname.trim() }),
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+          ...(needsNickname ? { nickname: nickname.trim() } : {}),
+        }),
       });
       // Перечитываем себя: mustChangePassword станет false, и Shell пустит
       // человека в панель без перезагрузки страницы.
@@ -71,10 +82,21 @@ export function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-md space-y-4">
         <div>
-          <h1 className="text-lg font-bold">Добро пожаловать в Aurum Panel</h1>
+          <h1 className="text-lg font-bold">
+            {needsNickname ? 'Добро пожаловать в Aurum Panel' : 'Задайте новый пароль'}
+          </h1>
           <p className="mt-1 text-xs text-muted">
-            {me?.user.displayName}, вы вошли по временному паролю. Задайте постоянный пароль и
-            выберите ник — он будет виден коллегам во внутренней переписке.
+            {needsNickname ? (
+              <>
+                Вы вошли по временному паролю. Задайте постоянный пароль и выберите ник — под ним
+                вас увидят коллеги во внутренней переписке.
+              </>
+            ) : (
+              <>
+                Ваш пароль сбросили, и вы вошли по временному. Задайте постоянный — ник менять не
+                нужно, вы остаётесь {me?.user.nickname}.
+              </>
+            )}
           </p>
         </div>
 
@@ -113,6 +135,7 @@ export function OnboardingPage() {
           {repeat.length > 0 && !passwordsMatch && <ErrorText>Пароли не совпадают</ErrorText>}
         </div>
 
+        {needsNickname && (
         <div>
           <Label>Ник в панели</Label>
           <Input
@@ -127,11 +150,12 @@ export function OnboardingPage() {
             {nickState === 'idle' && (
               <span className="text-muted">
                 Буквы и цифры, можно пробел, дефис и подчёркивание. Это ник сотрудника панели, к
-                нику в игре он отношения не имеет.
+                нику в игре он отношения не имеет. Сменить его потом можно только с разрешения ГМ.
               </span>
             )}
           </div>
         </div>
+        )}
 
         {error && <ErrorText>{error}</ErrorText>}
 

@@ -76,14 +76,10 @@ function Shell() {
         />
         <Route path="/messages" element={<MessagesPage />} />
         <Route path="/security" element={<SecurityPage />} />
-        <Route
-          path="/settings"
-          element={
-            <Guarded permission="users.manage">
-              <SettingsPage />
-            </Guarded>
-          }
-        />
+        {/* Настройки доступны всем: там же лежат личные — свой ник и пароль.
+            Блоки для ГМ (правила аккаунтов, почта, ассистент) внутри страницы
+            показываются по праву users.manage. */}
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/servers" replace />} />
       </Route>
     </Routes>

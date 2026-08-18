@@ -7,16 +7,20 @@ export interface MeResponse {
   user: {
     id: string;
     email: string;
-    displayName: string;
-    /** Ник сотрудника панели; null — онбординг ещё не пройден. */
+    /**
+     * Ник сотрудника — его единственное имя в панели. null означает, что
+     * человек ещё ни разу не входил и ника себе не выбрал.
+     */
     nickname: string | null;
     role: Role;
     totpEnabled: boolean;
     /**
-     * true — вход был по одноразовому паролю. Пока не пройден онбординг,
+     * true — вход был по одноразовому паролю. Пока не задан постоянный,
      * остальные разделы панели недоступны.
      */
     mustChangePassword: boolean;
+    /** ГМ разрешил сменить ник. Разрешение разовое — гаснет после смены. */
+    nicknameChangeAllowed: boolean;
   };
   permissions: PermissionKey[];
   /** null — доступ ко всем серверам (OWNER или незскоупленная роль). */
@@ -53,7 +57,10 @@ export interface ServerDto {
 export interface UserAdminDto {
   id: string;
   email: string;
-  displayName: string;
+  /** null — человек ещё не входил и ника не выбрал; показываем email. */
+  nickname: string | null;
+  /** ГМ разрешил этому сотруднику сменить себе ник. */
+  nicknameChangeAllowed: boolean;
   role: Role;
   isActive: boolean;
   totpEnabled: boolean;
@@ -144,11 +151,10 @@ export type UserStatusDto = 'active' | 'pending_approval' | 'rejected';
 export interface PendingUserDto {
   id: string;
   email: string;
-  displayName: string;
   role: Role;
   createdAt: string;
   /** Кто подал заявку. */
-  createdBy: { id: string; displayName: string; nickname: string | null } | null;
+  createdBy: { id: string; nickname: string | null } | null;
 }
 
 /** Что вернуть после создания аккаунта — по этому фронт понимает, что сказать. */
@@ -203,7 +209,7 @@ export interface StaffMessageDto {
 
 /** Строка списка диалогов. */
 export interface ConversationDto {
-  peer: { id: string; displayName: string; nickname: string | null };
+  peer: { id: string; nickname: string | null };
   lastMessage: { text: string; createdAt: string; outgoing: boolean };
   unread: number;
 }
@@ -212,5 +218,4 @@ export interface ConversationDto {
 export interface StaffContactDto {
   id: string;
   nickname: string;
-  displayName: string;
 }
