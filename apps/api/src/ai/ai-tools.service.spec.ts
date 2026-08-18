@@ -9,6 +9,7 @@ import type { ServersService } from '../servers/servers.service';
 import type { TicketsService } from '../tickets/tickets.service';
 import type { MinecraftService } from '../modules/minecraft/minecraft.service';
 import type { CompanionService } from '../modules/minecraft/companion.service';
+import type { MessagesService } from '../messages/messages.service';
 
 /**
  * Инструменты ассистента.
@@ -25,6 +26,7 @@ function setup(options: {
   minecraft?: Partial<MinecraftService>;
   tickets?: Partial<TicketsService>;
   companion?: Partial<CompanionService>;
+  messages?: Partial<MessagesService>;
 } = {}) {
   const permissionSet = new Set(options.permissions ?? []);
   const effective: EffectivePermissions = {
@@ -127,6 +129,14 @@ function setup(options: {
       },
       ...options.companion,
     } as unknown as CompanionService,
+    {
+      contacts: () => Promise.resolve([{ id: 'u2', nickname: 'Коллега' }]),
+      send: (...args: unknown[]) => {
+        calls.push(`message:${JSON.stringify(args)}`);
+        return Promise.resolve({} as never);
+      },
+      ...options.messages,
+    } as unknown as MessagesService,
   );
 
   return { service, effective, audited, calls };
@@ -162,15 +172,27 @@ describe('разделение инструментов', () => {
 });
 
 describe('права ассистента', () => {
+  /**
+   * Инструменты без права — те, что работают с личной перепиской и каталогом
+   * артов. Прав для них нет и в самой панели: писать коллеге может любой, это
+   * не игровое действие и не объект модерации (см. MessagesService).
+   */
+  const FREE_TOOLS = ['list_staff', 'find_ascii_art', 'send_ascii_art'];
+
   it('модели предлагаются только те инструменты, на которые есть право', () => {
     const { service, effective } = setup({ permissions: ['servers.view'] });
     const names = service.toolsFor(effective).map((t) => t.function.name);
-    expect(names).toEqual(['list_servers']);
+    expect(names).toEqual(['list_servers', ...FREE_TOOLS]);
   });
 
-  it('без прав инструментов нет вовсе', () => {
+  it('без прав остаются только те, что не требуют прав и в панели', () => {
     const { service, effective } = setup({ permissions: [] });
-    expect(service.toolsFor(effective)).toEqual([]);
+    const names = service.toolsFor(effective).map((t) => t.function.name);
+
+    expect(names).toEqual(FREE_TOOLS);
+    // Ни один инструмент, трогающий игровой сервер или аккаунты, сюда не попал.
+    expect(names.some((n) => n.includes('player') || n.includes('server') || n.includes('ticket')))
+      .toBe(false);
   });
 
   // Главное свойство: ассистент — не способ обойти права. Даже если модель
@@ -512,5 +534,105 @@ describe('инструменты по игроку', () => {
     for (const name of ['player_balance', 'player_permissions', 'player_inventory', 'server_economy']) {
       expect({ name, kind: byName.get(name) }).toEqual({ name, kind: 'safe' });
     }
+  });
+});
+
+describe('ASCII-арт', () => {
+  const CAT = ' /\\_/\\\n( o.o )\n > ^ <';
+
+  it('каталог доступен без прав — переписка их и не требует', async () => {
+    const { service } = setup({ permissions: [] });
+    const result = await service.execute('user-1', 'find_ascii_art', { query: 'кот' });
+
+    // Содержимое — JSON, поэтому сверяем разобранное, а не экранированную строку.
+    const found = JSON.parse(result.content) as { id: string; art: string }[];
+    expect(found.find((e) => e.id === 'cat')?.art).toBe(CAT);
+  });
+
+  it('когда ничего не нашлось, ассистенту прямо сказано рисовать самому', async () => {
+    const { service } = setup({ permissions: [] });
+    const result = await service.execute('user-1', 'find_ascii_art', { query: 'квазар' });
+
+    expect(result.content).toMatch(/нарисуй арт сам/);
+  });
+
+  it('отправка требует подтверждения человеком', () => {
+    const { service } = setup();
+    expect(service.list().find((t) => t.name === 'send_ascii_art')?.kind).toBe('destructive');
+  });
+
+  it('арт уходит обрамлённым, чтобы чат показал его моноширинным', async () => {
+    const { service, calls } = setup({ permissions: [] });
+
+    await service.execute('user-1', 'send_ascii_art', { nickname: 'Коллега', art: CAT });
+
+    const sent = calls.find((c) => c.startsWith('message:'));
+    expect(sent).toContain('```');
+    // Пробелы рисунка не тронуты.
+    expect(JSON.parse(sent!.slice('message:'.length))[1].text).toBe('```\n' + CAT + '\n```');
+  });
+
+  it('подпись идёт перед артом, а не внутри блока', async () => {
+    const { service, calls } = setup({ permissions: [] });
+
+    await service.execute('user-1', 'send_ascii_art', {
+      nickname: 'Коллега',
+      art: CAT,
+      caption: 'держи котика',
+    });
+
+    const text = JSON.parse(calls.find((c) => c.startsWith('message:'))!.slice('message:'.length))[1].text;
+    expect(text).toBe('держи котика\n```\n' + CAT + '\n```');
+  });
+
+  it('негодный арт не отправляется, а объясняется модели', async () => {
+    const { service, calls } = setup({ permissions: [] });
+
+    const result = await service.execute('user-1', 'send_ascii_art', {
+      nickname: 'Коллега',
+      art: 'x'.repeat(500),
+    });
+
+    expect(result.content).toMatch(/Арт не подошёл/);
+    expect(calls.some((c) => c.startsWith('message:'))).toBe(false);
+  });
+
+  /**
+   * Ключевое свойство. Личная переписка не попадает в журнал аудита — это
+   * правило записано в MessagesService, и ассистент не должен становиться
+   * дырой в нём.
+   */
+  it('ни текст, ни адресат не попадают в журнал аудита', async () => {
+    const { service, audited } = setup({ permissions: [] });
+
+    await service.execute('user-1', 'send_ascii_art', {
+      nickname: 'Коллега',
+      art: CAT,
+      caption: 'секретная подпись',
+    });
+
+    expect(audited).toHaveLength(1);
+    const entry = JSON.stringify(audited[0]);
+    expect(entry).not.toContain('секретная подпись');
+    expect(entry).not.toContain('Коллега');
+    expect(entry).not.toContain('o.o');
+    // Но сам факт вызова записан — ассистент остаётся подотчётным.
+    expect(entry).toContain('ai:send_ascii_art');
+    expect(entry).toContain('личная переписка');
+  });
+
+  it('у остальных инструментов аргументы в журнале по-прежнему есть', async () => {
+    const { service, audited } = setup({ permissions: [MINECRAFT_PERMISSIONS.kick], servers: ['s1'] });
+
+    await service.execute('user-1', 'kick_player', { serverId: 's1', player: 'Griefer', reason: 'грифинг' });
+
+    expect(JSON.stringify(audited[0])).toContain('Griefer');
+  });
+
+  it('список коллег отдаёт только ники, без переписки', async () => {
+    const { service } = setup({ permissions: [] });
+    const result = await service.execute('user-1', 'list_staff', {});
+
+    expect(JSON.parse(result.content)).toEqual(['Коллега']);
   });
 });

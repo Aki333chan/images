@@ -316,12 +316,33 @@ function ActionCard({
       <p className="mt-1 break-words text-sm">{action.summary}</p>
 
       <dl className="mt-2 space-y-0.5 text-[11px] text-muted">
-        {Object.entries(action.args).map(([key, value]) => (
-          <div key={key} className="flex gap-2">
-            <dt className="shrink-0 font-mono">{key}:</dt>
-            <dd className="min-w-0 break-all font-mono">{String(value)}</dd>
-          </div>
-        ))}
+        {Object.entries(action.args).map(([key, value]) => {
+          const text = String(value);
+          // Многострочное значение — это почти всегда ASCII-арт. Показать его
+          // через break-all значило бы показать кашу, а подтверждать человек
+          // должен ровно то, что уйдёт собеседнику.
+          if (text.includes('\n')) {
+            return (
+              <div key={key}>
+                <dt className="font-mono">{key}:</dt>
+                <dd>
+                  <pre
+                    className="mt-1 overflow-x-auto rounded bg-black/30 p-2 font-mono text-[11px] leading-[1.15] text-neutral-100"
+                    style={{ whiteSpace: 'pre' }}
+                  >
+                    {text}
+                  </pre>
+                </dd>
+              </div>
+            );
+          }
+          return (
+            <div key={key} className="flex gap-2">
+              <dt className="shrink-0 font-mono">{key}:</dt>
+              <dd className="min-w-0 break-all font-mono">{text}</dd>
+            </div>
+          );
+        })}
       </dl>
 
       {action.fromUntrustedInput && (
