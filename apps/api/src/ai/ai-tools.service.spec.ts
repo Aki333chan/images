@@ -8,6 +8,7 @@ import type { PermissionsService, EffectivePermissions } from '../rbac/permissio
 import type { ServersService } from '../servers/servers.service';
 import type { TicketsService } from '../tickets/tickets.service';
 import type { MinecraftService } from '../modules/minecraft/minecraft.service';
+import type { CompanionService } from '../modules/minecraft/companion.service';
 
 /**
  * Инструменты ассистента.
@@ -23,6 +24,7 @@ function setup(options: {
   onAudit?: (entry: unknown) => void;
   minecraft?: Partial<MinecraftService>;
   tickets?: Partial<TicketsService>;
+  companion?: Partial<CompanionService>;
 } = {}) {
   const permissionSet = new Set(options.permissions ?? []);
   const effective: EffectivePermissions = {
@@ -70,6 +72,14 @@ function setup(options: {
         calls.push(`respond:${JSON.stringify(args)}`);
         return Promise.resolve({} as never);
       },
+      close: (...args: unknown[]) => {
+        calls.push(`close:${JSON.stringify(args)}`);
+        return Promise.resolve({} as never);
+      },
+      // По умолчанию подставной резолвер отдаёт полный id по первым 8 символам —
+      // ровно то поведение, ради которого он и заведён.
+      resolveId: (_eff: unknown, raw: string) =>
+        raw === 't1' || raw.startsWith('t1') ? Promise.resolve('t1') : Promise.reject(new Error('Тикет не найден')),
       ...options.tickets,
     } as unknown as TicketsService,
     {
@@ -88,8 +98,35 @@ function setup(options: {
         calls.push(`command:${JSON.stringify(args)}`);
         return Promise.resolve('ok');
       },
+      requirePlayerUuid: (_serverId: string, player: string) =>
+        player === 'Steve'
+          ? Promise.resolve('8667ba71-b85a-4004-af54-457a9734eed7')
+          : Promise.reject(new Error(`Не удалось определить UUID игрока ${player}`)),
+      getBalance: () => Promise.resolve({ available: true, balance: 250, formatted: '250 монет' }),
+      getEconomy: () => Promise.resolve({ available: true, total: 1250, top: [] }),
+      getInventory: () => Promise.resolve({ available: true, items: [] }),
+      installedPluginNames: () => Promise.resolve(['Essentials']),
+      listQuickCommands: () => [
+        { id: 'ess-heal', label: 'Вылечить', description: '', destructive: false, args: [] },
+      ],
+      runQuickCommand: (...args: unknown[]) => {
+        calls.push(`quick:${JSON.stringify(args)}`);
+        return Promise.resolve('Healed');
+      },
+      changeBalance: (...args: unknown[]) => {
+        calls.push(`balance:${JSON.stringify(args)}`);
+        return Promise.resolve({ ok: true, balanceBefore: 250, balanceAfter: 300 } as never);
+      },
       ...options.minecraft,
     } as unknown as MinecraftService,
+    {
+      getPermissions: () => Promise.resolve({ available: true, primaryGroup: 'default', groups: ['default'] }),
+      changePermission: (...args: unknown[]) => {
+        calls.push(`perm:${JSON.stringify(args)}`);
+        return Promise.resolve({ available: true, groups: ['default', 'vip'] } as never);
+      },
+      ...options.companion,
+    } as unknown as CompanionService,
   );
 
   return { service, effective, audited, calls };
@@ -259,5 +296,221 @@ describe('недоверенный ввод', () => {
     const result = await service.execute('user-1', 'list_servers', {});
     expect(result.untrusted).toBe(false);
     expect(result.content).not.toContain('НЕДОВЕРЕННЫЕ');
+  });
+});
+
+describe('идентификаторы тикетов', () => {
+  // Тот самый баг: ассистент показывал человеку «58d581d9…», а потом
+  // подставлял собственное сокращение обратно в инструмент и получал
+  // «Тикет не найден».
+  it('обрезанный id разрешается в полный, а не роняет действие', async () => {
+    const { service, calls } = setup({
+      permissions: ['tickets.respond'],
+      tickets: {
+        resolveId: ((_eff: unknown, raw: string) =>
+          Promise.resolve(raw.startsWith('58d581d9') ? '58d581d9-full-id' : raw)) as never,
+      },
+    });
+
+    await service.execute('user-1', 'respond_ticket', { ticketId: '58d581d9', text: 'да' });
+
+    expect(calls.some((c) => c.startsWith('respond:["58d581d9-full-id"'))).toBe(true);
+  });
+
+  it('нерешаемый id даёт понятную ошибку, а не «не найден»', async () => {
+    const { service } = setup({
+      permissions: ['tickets.respond'],
+      tickets: { resolveId: (() => Promise.reject(new Error('Тикет abc не найден'))) as never },
+    });
+
+    await expect(
+      service.execute('user-1', 'respond_ticket', { ticketId: 'abc', text: 'да' }),
+    ).rejects.toThrow('Тикет abc не найден');
+  });
+
+  it('в карточке подтверждения id сокращён, но в аргументах — целиком', () => {
+    const { service } = setup({ permissions: ['tickets.close'] });
+    const args = { ticketId: '58d581d9-4c9e-4f30-9a7e-1f2b3c4d5e6f' };
+
+    // Человеку показываем коротко — читать в карточке полный UUID незачем.
+    expect(service.summarize('close_ticket', args)).toBe('Закрыть тикет 58d581d9…');
+    // А в инструмент уходит то, что в args, и оно не тронуто.
+    expect(args.ticketId).toBe('58d581d9-4c9e-4f30-9a7e-1f2b3c4d5e6f');
+  });
+});
+
+describe('закрытие тикета', () => {
+  it('инструмент есть и он разрушительный', () => {
+    const { service } = setup();
+    expect(service.list().find((t) => t.name === 'close_ticket')?.kind).toBe('destructive');
+  });
+
+  it('без права tickets.close не предлагается модели', () => {
+    const { service, effective } = setup({ permissions: ['tickets.view', 'tickets.respond'] });
+    const names = service.availableFor(effective).map((t) => t.name);
+
+    expect(names).toContain('respond_ticket');
+    expect(names).not.toContain('close_ticket');
+  });
+
+  it('с правом — закрывает через тот же сервис, что и кнопка в панели', async () => {
+    const { service, calls } = setup({ permissions: ['tickets.close'] });
+
+    await service.execute('user-1', 'close_ticket', { ticketId: 't1' });
+
+    expect(calls.some((c) => c.startsWith('close:["t1"'))).toBe(true);
+  });
+});
+
+describe('контракт возможностей в промпте', () => {
+  it('перечисляет ровно доступные инструменты', () => {
+    const { service, effective } = setup({ permissions: ['tickets.view', 'tickets.respond'] });
+    const prompt = service.contractPrompt(effective);
+
+    expect(prompt).toContain('list_tickets');
+    expect(prompt).toContain('respond_ticket');
+    // Ассистент не должен предлагать закрыть тикет, если права нет.
+    expect(prompt).not.toContain('close_ticket');
+    expect(prompt).not.toContain('ban_player');
+  });
+
+  it('прямо запрещает обещать недоступное и сокращать id', () => {
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+    const prompt = service.contractPrompt(effective);
+
+    expect(prompt).toContain('Не предлагай и не обещай того, чего нет в списке');
+    expect(prompt).toContain('без многоточий и сокращений');
+    expect(prompt).toContain('НИКОМ, а не UUID');
+  });
+
+  it('разрушительные помечены как требующие подтверждения', () => {
+    const { service, effective } = setup({ permissions: [MINECRAFT_PERMISSIONS.ban] });
+    const prompt = service.contractPrompt(effective);
+
+    expect(prompt).toContain('ban_player (требует подтверждения человеком)');
+  });
+});
+
+describe('инструменты по игроку', () => {
+  const server = { serverId: 's1' };
+
+  it('игрок задаётся ником — UUID ищет панель', async () => {
+    const { service } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyView],
+      servers: ['s1'],
+    });
+
+    const result = await service.execute('user-1', 'player_balance', { ...server, player: 'Steve' });
+
+    expect(result.content).toContain('250');
+  });
+
+  it('неизвестный ник — понятная ошибка, а не пустой ответ', async () => {
+    const { service } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyView],
+      servers: ['s1'],
+    });
+
+    await expect(
+      service.execute('user-1', 'player_balance', { ...server, player: 'Ghost' }),
+    ).rejects.toThrow(/UUID игрока Ghost/);
+  });
+
+  it('начисление идёт через тот же сервис, что и блок «Валюта», с причиной', async () => {
+    const { service, calls } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyEdit],
+      servers: ['s1'],
+    });
+
+    await service.execute('user-1', 'change_player_balance', {
+      ...server,
+      player: 'Steve',
+      direction: 'deposit',
+      amount: 50,
+      reason: 'компенсация',
+    });
+
+    const call = calls.find((c) => c.startsWith('balance:'));
+    expect(call).toContain('"deposit"');
+    expect(call).toContain('компенсация');
+    // Последним аргументом — тот, от чьего имени всё происходит.
+    expect(call).toContain('user-1');
+  });
+
+  it('смена группы прав — одно изменение за вызов', async () => {
+    const { service, calls } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.permissionsEdit],
+      servers: ['s1'],
+    });
+
+    await service.execute('user-1', 'change_player_permission', {
+      ...server,
+      player: 'Steve',
+      kind: 'group',
+      key: 'vip',
+    });
+
+    const call = calls.find((c) => c.startsWith('perm:'));
+    expect(call).toContain('"kind":"group"');
+    expect(call).toContain('"key":"vip"');
+    expect(call).toContain('"remove":false');
+  });
+
+  it('карточка подтверждения называет игрока и суть, а не id', () => {
+    const { service } = setup();
+
+    expect(
+      service.summarize('change_player_balance', {
+        player: 'Steve',
+        direction: 'withdraw',
+        amount: 100,
+        reason: 'штраф',
+      }),
+    ).toBe('Списать 100 игроку Steve — «штраф»');
+    expect(
+      service.summarize('change_player_permission', { player: 'Steve', kind: 'group', key: 'vip', remove: true }),
+    ).toBe('Снять группу «vip» игроку Steve');
+  });
+
+  it('менять баланс и права без права нельзя даже через ассистента', async () => {
+    const { service } = setup({ permissions: [MINECRAFT_PERMISSIONS.economyView], servers: ['s1'] });
+
+    await expect(
+      service.execute('user-1', 'change_player_balance', {
+        ...server,
+        player: 'Steve',
+        direction: 'deposit',
+        amount: 1,
+      }),
+    ).rejects.toThrow(/minecraft\.economy\.edit/);
+  });
+
+  it('быстрые действия берутся из каталога панели, а не выдумываются', async () => {
+    const { service, calls } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.quickCommands],
+      servers: ['s1'],
+    });
+
+    const catalog = await service.execute('user-1', 'list_quick_commands', server);
+    expect(catalog.content).toContain('ess-heal');
+
+    await service.execute('user-1', 'run_quick_command', {
+      ...server,
+      commandId: 'ess-heal',
+      args: { player: 'Steve' },
+    });
+    expect(calls.some((c) => c.startsWith('quick:["s1","ess-heal",{"player":"Steve"}]'))).toBe(true);
+  });
+
+  it('всё, что меняет игрока, требует подтверждения человеком', () => {
+    const { service } = setup();
+    const byName = new Map(service.list().map((t) => [t.name, t.kind]));
+
+    for (const name of ['change_player_balance', 'change_player_permission', 'run_quick_command']) {
+      expect({ name, kind: byName.get(name) }).toEqual({ name, kind: 'destructive' });
+    }
+    for (const name of ['player_balance', 'player_permissions', 'player_inventory', 'server_economy']) {
+      expect({ name, kind: byName.get(name) }).toEqual({ name, kind: 'safe' });
+    }
   });
 });

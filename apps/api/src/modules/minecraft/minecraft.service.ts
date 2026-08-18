@@ -438,6 +438,26 @@ export class MinecraftService {
     return this.companion.getInventory(serverId, player);
   }
 
+  /**
+   * Ник -> UUID, с внятным отказом вместо пустоты.
+   *
+   * Нужен там, где вызывающая сторона оперирует ником, а адресат работает по
+   * UUID: карточка игрока UUID уже знает, а вот AI-ассистенту им оперировать
+   * не стоит — модель длинные идентификаторы сокращает и потом подставляет
+   * собственное сокращение. Ник она не сокращает никогда.
+   */
+  async requirePlayerUuid(serverId: string, player: string): Promise<string> {
+    this.assertNickname(player);
+    const uuid = await this.companion.resolveUuid(serverId, player);
+    if (!uuid) {
+      throw new BadRequestException(
+        `Не удалось определить UUID игрока ${player}. UUID отдаёт companion-плагин и только ` +
+          'для тех, кто сейчас в сети — проверьте, что плагин настроен и игрок онлайн.',
+      );
+    }
+    return uuid;
+  }
+
   // ---------- Валюта (Vault) ----------
 
   async getBalance(serverId: string, uuid: string): Promise<MinecraftBalanceDto> {

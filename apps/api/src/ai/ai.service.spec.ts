@@ -63,6 +63,7 @@ function setup(options: {
 
   const tools = {
     toolsFor: () => [],
+    contractPrompt: () => 'технические правила',
     find: (name: string) => ({
       name,
       kind: name.startsWith('list_') ? 'safe' : 'destructive',

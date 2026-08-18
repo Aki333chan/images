@@ -6,6 +6,12 @@ import { EventsGateway } from '../ws/events.gateway';
 import { EffectivePermissions } from '../rbac/permissions.service';
 import { TicketDeliveryRegistry } from './ticket-delivery.registry';
 
+/**
+ * Сколько символов начала id хватает, чтобы считать его указанием на тикет.
+ * Восемь — длина первого сегмента UUID.
+ */
+const MIN_TICKET_PREFIX = 8;
+
 @Injectable()
 export class TicketsService {
   constructor(
@@ -113,6 +119,56 @@ export class TicketsService {
         ...(eff.allowedServerIds === null ? {} : { serverId: { in: [...eff.allowedServerIds] } }),
       },
     });
+  }
+
+  /**
+   * Полный id тикета по тому, что назвали, — id целиком или его начало.
+   *
+   * Нужно из-за AI-ассистента: модель, пересказывая список тикетов человеку,
+   * сокращает длинные id («58d581d9…»), а потом подставляет собственное
+   * сокращение обратно в инструмент. Требовать от модели дисциплины бесполезно —
+   * надёжнее принять префикс и разрешить его здесь, по тем же тикетам, которые
+   * этому человеку и так видны.
+   *
+   * Минимальная длина префикса — 8 символов: это первый сегмент UUID, ровно то,
+   * что модели обычно и показывают. Меньше — уже угадывание.
+   *
+   * Неоднозначный префикс — ошибка, а не «возьмём первый попавшийся»: закрыть
+   * не тот тикет хуже, чем переспросить.
+   */
+  async resolveId(eff: EffectivePermissions, idOrPrefix: string): Promise<string> {
+    // Многоточие в конце срезаем: модель сокращает id именно так («58d581d9…»),
+    // и если она подставит своё сокращение целиком, это всё равно должно
+    // сработать, а не превратиться в «тикет не найден».
+    const raw = (idOrPrefix ?? '').trim().replace(/(?:…|\.{3})$/, '').trim();
+    if (!raw) throw new NotFoundException('Не указан тикет');
+
+    const scope: Prisma.TicketWhereInput =
+      eff.allowedServerIds === null ? {} : { serverId: { in: [...eff.allowedServerIds] } };
+
+    const exact = await this.prisma.ticket.findFirst({ where: { id: raw, ...scope } });
+    if (exact) return exact.id;
+
+    if (raw.length < MIN_TICKET_PREFIX) {
+      throw new NotFoundException(
+        `Тикет ${raw} не найден. Укажите id целиком (первых ${MIN_TICKET_PREFIX} символов тоже достаточно).`,
+      );
+    }
+
+    const matches = await this.prisma.ticket.findMany({
+      where: { id: { startsWith: raw }, ...scope },
+      select: { id: true },
+      take: 5,
+    });
+    if (matches.length === 1) return matches[0]!.id;
+    if (matches.length === 0) {
+      throw new NotFoundException(`Тикет ${raw} не найден`);
+    }
+    throw new NotFoundException(
+      `Начало «${raw}» подходит сразу нескольким тикетам (${matches
+        .map((m) => m.id)
+        .join(', ')}) — укажите id целиком`,
+    );
   }
 
   async getById(id: string): Promise<TicketDto & { raw: Ticket }> {

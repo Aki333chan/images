@@ -370,7 +370,7 @@ export class CompanionService {
    * Инвентари офлайн через InvSee++ поэтому работают только для тех, чей
    * UUID панель уже знает — например, из открытой карточки игрока.
    */
-  private async resolveUuid(serverId: string, player: string): Promise<string | null> {
+  async resolveUuid(serverId: string, player: string): Promise<string | null> {
     const players = await this.getPlayers(serverId);
     if (!players) return null;
     const match = players.find((p) => p.name.toLowerCase() === player.toLowerCase());

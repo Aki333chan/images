@@ -107,6 +107,10 @@ export class AiService {
 
     const messages: DeepseekMessage[] = [
       { role: 'system', content: config.systemPrompt },
+      // Второе системное сообщение — контракт с панелью: что модель реально
+      // умеет и как обращаться с идентификаторами. Отдельно от настраиваемого
+      // промпта, чтобы правка текста в интерфейсе его не отменяла.
+      { role: 'system', content: this.tools.contractPrompt(permissions) },
       ...history
         .slice(-MAX_HISTORY_MESSAGES)
         .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_LENGTH) })),
