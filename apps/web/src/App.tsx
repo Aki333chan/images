@@ -7,6 +7,7 @@ import { ServerDetailPage } from './pages/ServerDetailPage';
 import { TicketsPage } from './pages/TicketsPage';
 import { AccessControlPage } from './pages/AccessControlPage';
 import { AuditPage } from './pages/AuditPage';
+import { MarketPage } from './pages/MarketPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MessagesPage } from './pages/MessagesPage';
@@ -71,6 +72,14 @@ function Shell() {
           element={
             <Guarded permission="audit.view">
               <AuditPage />
+            </Guarded>
+          }
+        />
+        <Route
+          path="/market"
+          element={
+            <Guarded permission="minecraft.plugins.install">
+              <MarketPage />
             </Guarded>
           }
         />

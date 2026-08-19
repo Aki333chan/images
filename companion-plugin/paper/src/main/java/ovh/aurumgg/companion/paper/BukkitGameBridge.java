@@ -28,6 +28,7 @@ import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
+import ovh.aurumgg.companion.core.model.PluginToggle;
 
 /**
  * Реализация моста поверх Bukkit API.
@@ -40,6 +41,9 @@ import ovh.aurumgg.companion.core.model.PluginInfo;
 public final class BukkitGameBridge implements GameBridge {
 
     private static final long SYNC_TIMEOUT_SECONDS = 3;
+
+    /** Имя самого companion-плагина — совпадает с name в plugin.yml. */
+    private static final String SELF_NAME = "AurumCompanion";
 
     /**
      * Отдельный таймаут для подсчёта экономики сервера. Обход всех, кто
@@ -230,6 +234,46 @@ public final class BukkitGameBridge implements GameBridge {
     public Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName) {
         if (!InvSeeIntegration.isAvailable()) return Optional.empty();
         return InvSeeIntegration.read(playerUuid, playerName);
+    }
+
+    @Override
+    public PluginToggle setPluginEnabled(String pluginName, boolean enabled) {
+        // Обязательно в основном потоке: enablePlugin/disablePlugin трогают
+        // реестры команд и слушателей, а они не потокобезопасны.
+        return callSync(
+                () -> {
+                    Plugin target = Bukkit.getPluginManager().getPlugin(pluginName);
+                    if (target == null) {
+                        return PluginToggle.failed("Плагин «" + pluginName + "» на сервере не найден");
+                    }
+                    // Себя выключать нельзя: вместе с плагином остановится и
+                    // HTTP-сервер, через который пришёл этот самый запрос, —
+                    // включить обратно будет уже нечем.
+                    if (target.getName().equals(SELF_NAME)) {
+                        return PluginToggle.failed("Нельзя выключить companion-плагин: панель потеряет связь с сервером");
+                    }
+                    if (target.isEnabled() == enabled) {
+                        return PluginToggle.ok(enabled);
+                    }
+
+                    try {
+                        if (enabled) {
+                            Bukkit.getPluginManager().enablePlugin(target);
+                        } else {
+                            Bukkit.getPluginManager().disablePlugin(target);
+                        }
+                    } catch (Throwable t) {
+                        // Ловим Throwable, а не Exception: плагин при старте
+                        // вполне может уронить NoClassDefFoundError, и уронить
+                        // вместе с собой основной поток сервера мы не имеем права.
+                        return PluginToggle.failed(
+                                "Плагин отказался переключиться: " + t.getClass().getSimpleName()
+                                        + (t.getMessage() == null ? "" : " — " + t.getMessage()));
+                    }
+
+                    return PluginToggle.ok(target.isEnabled());
+                },
+                PluginToggle.failed("Сервер не ответил вовремя"));
     }
 
     // ---------- Экономика (Vault) ----------

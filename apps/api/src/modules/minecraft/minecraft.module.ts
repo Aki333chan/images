@@ -15,6 +15,10 @@ import { MinecraftInternalController } from './minecraft-internal.controller';
 import { MinecraftTicketDelivery } from './minecraft-ticket-delivery';
 import { MinecraftService } from './minecraft.service';
 import { RconService } from './rcon/rcon.service';
+import { MarketService } from './plugins/market.service';
+import { PluginFilesService } from './plugins/plugin-files.service';
+import { PluginTargetsService } from './plugins/plugin-targets.service';
+import { PluginsController } from './plugins/plugins.controller';
 
 @Module({
   imports: [
@@ -25,7 +29,7 @@ import { RconService } from './rcon/rcon.service';
     // Именно ActivityModule, а не ServersModule: см. пояснение в activity.module.ts.
     ActivityModule,
   ],
-  controllers: [MinecraftController, MinecraftInternalController],
+  controllers: [MinecraftController, MinecraftInternalController, PluginsController],
   providers: [
     RconService,
     MinecraftConfigService,
@@ -37,6 +41,9 @@ import { RconService } from './rcon/rcon.service';
     BanExpiryProcessor,
     ActivitySamplerScheduler,
     ActivitySamplerProcessor,
+    MarketService,
+    PluginFilesService,
+    PluginTargetsService,
   ],
   // MinecraftService и CompanionService нужны AI-ассистенту: его инструменты —
   // тонкие обёртки над этими же сервисами, чтобы не заводить вторую реализацию

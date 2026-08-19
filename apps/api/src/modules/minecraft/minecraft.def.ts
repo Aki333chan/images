@@ -1,4 +1,4 @@
-import { MINECRAFT_PERMISSIONS, type GameModuleManifest } from '@aurum/shared';
+import { MINECRAFT_PERMISSIONS, PLUGIN_PERMISSIONS, type GameModuleManifest } from '@aurum/shared';
 import type { BackendGameModule } from '../module-registry';
 import { MinecraftModule } from './minecraft.module';
 
@@ -83,6 +83,20 @@ export const minecraftManifest: GameModuleManifest = {
       // просмотра: модератор видит баланс, но не правит его.
       key: MINECRAFT_PERMISSIONS.economyEdit,
       description: 'Начисление и списание валюты игрокам через Vault',
+      defaultRoles: ['ADMIN'],
+    },
+    {
+      // Установка плагина — это запуск произвольного кода на игровом сервере:
+      // плагин Bukkit это обычная Java-программа без песочницы. Поэтому
+      // Модератору не даём даже смотреть маркет — ставить он всё равно не
+      // должен, а половинчатый доступ только запутывает.
+      key: PLUGIN_PERMISSIONS.install,
+      description: 'Маркет плагинов и установка плагинов на сервер',
+      defaultRoles: ['ADMIN'],
+    },
+    {
+      key: PLUGIN_PERMISSIONS.manage,
+      description: 'Включение, выключение и удаление установленных плагинов',
       defaultRoles: ['ADMIN'],
     },
     {

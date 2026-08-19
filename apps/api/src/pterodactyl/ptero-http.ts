@@ -9,7 +9,7 @@ import { env } from '../config/env';
  */
 export async function pteroRequest<T>(
   apiKey: string,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<T> {
@@ -72,4 +72,42 @@ export async function pteroRequest<T>(
       }). Начало ответа: ${text.slice(0, 200)}`,
     );
   }
+}
+
+/**
+ * Запрос с сырым телом — для загрузки файлов.
+ *
+ * Отдельно от pteroRequest: тот отправляет JSON, а маршрут files/write ждёт
+ * само содержимое файла в теле. Для .jar это единственный способ положить
+ * бинарник, и content-type тут не application/json.
+ */
+export async function pteroRawRequest(
+  apiKey: string,
+  method: 'POST' | 'PUT',
+  path: string,
+  body: Buffer,
+): Promise<void> {
+  const url = `${env.PTERO_BASE_URL.replace(/\/$/, '')}${path}`;
+  const res = await request(url, {
+    method,
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      accept: 'application/json',
+      'content-type': 'application/octet-stream',
+      'content-length': String(body.length),
+    },
+    body,
+    // Файл может быть в десятки мегабайт, а Wings пишет его на диск.
+    headersTimeout: 120_000,
+    bodyTimeout: 120_000,
+  });
+
+  if (res.statusCode >= 400) {
+    const text = await res.body.text();
+    throw new ServiceUnavailableException(
+      `Pterodactyl API ${method} ${path} -> ${res.statusCode}: ${text.slice(0, 300)}`,
+    );
+  }
+  // Тело ответа читаем всегда: неосвобождённое соединение undici не переиспользует.
+  await res.body.text().catch(() => undefined);
 }

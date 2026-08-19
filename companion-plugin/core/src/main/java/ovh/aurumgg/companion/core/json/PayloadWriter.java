@@ -12,6 +12,7 @@ import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
+import ovh.aurumgg.companion.core.model.PluginToggle;
 
 /** Сериализация ответов плагина. Формат зафиксирован в docs/companion.md. */
 public final class PayloadWriter {
@@ -118,6 +119,14 @@ public final class PayloadWriter {
         }
         root.put("top", Json.array(top));
         return Json.object(root);
+    }
+
+    public static String pluginToggle(PluginToggle toggle) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("ok", toggle.ok() ? "true" : "false");
+        fields.put("enabled", toggle.enabled() ? "true" : "false");
+        fields.put("error", Json.string(toggle.error()));
+        return Json.object(fields);
     }
 
     /** Варианты автодополнения. */

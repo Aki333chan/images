@@ -72,4 +72,12 @@ export const env = {
    * тестах. Имя модели и ключ при этом остаются настройками панели.
    */
   DEEPSEEK_BASE_URL: optional('DEEPSEEK_BASE_URL', DEEPSEEK_BASE_URL_DEFAULT),
+
+  /**
+   * Базовые адреса маркета плагинов. Переопределяются по той же причине, что и
+   * DEEPSEEK_BASE_URL: подставной сервер в тестах и совместимое зеркало, если
+   * официальный адрес окажется недоступен.
+   */
+  MODRINTH_BASE_URL: optional('MODRINTH_BASE_URL', 'https://api.modrinth.com/v2'),
+  HANGAR_BASE_URL: optional('HANGAR_BASE_URL', 'https://hangar.papermc.io/api/v1'),
 };

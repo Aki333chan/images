@@ -12,6 +12,7 @@ import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
+import ovh.aurumgg.companion.core.model.PluginToggle;
 
 /**
  * Единственная точка соприкосновения с игровым сервером.
@@ -59,6 +60,19 @@ public interface GameBridge {
 
     /** Все установленные плагины сервера: имя, версия, включён ли. */
     List<PluginInfo> installedPlugins();
+
+    /**
+     * Горячее включение или выключение плагина без перезапуска сервера.
+     *
+     * ЭТО BEST-EFFORT ПО ПРИРОДЕ BUKKIT. Плагины регистрируют слушателей,
+     * задачи планировщика и команды, и далеко не все аккуратно снимают их за
+     * собой при выключении — по той же причине /reload считается рискованной
+     * командой. Панель обязана предупреждать об этом человека и держать рядом
+     * кнопку перезапуска, а не делать вид, что операция безобидна.
+     *
+     * @return результат с причиной отказа, если не вышло
+     */
+    PluginToggle setPluginEnabled(String pluginName, boolean enabled);
 
     /**
      * Права игрока через LuckPerms.

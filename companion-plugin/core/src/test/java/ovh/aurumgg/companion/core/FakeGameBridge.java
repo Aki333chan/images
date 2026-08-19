@@ -17,6 +17,7 @@ import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
+import ovh.aurumgg.companion.core.model.PluginToggle;
 
 /** Подставной игровой сервер для тестов HTTP-слоя. */
 public final class FakeGameBridge implements GameBridge {
@@ -102,6 +103,26 @@ public final class FakeGameBridge implements GameBridge {
 
     public void install(String name) {
         plugins.add(new PluginInfo(name, "1.0.0", true));
+    }
+
+    /** Плагины, которые «отказываются» переключаться, — для проверки отказа. */
+    public final List<String> stubborn = new ArrayList<>();
+
+    @Override
+    public PluginToggle setPluginEnabled(String pluginName, boolean enabled) {
+        if (pluginName.equals("AurumCompanion")) {
+            return PluginToggle.failed("Нельзя выключить companion-плагин: панель потеряет связь с сервером");
+        }
+        for (int i = 0; i < plugins.size(); i++) {
+            PluginInfo p = plugins.get(i);
+            if (!p.name().equals(pluginName)) continue;
+            if (stubborn.contains(pluginName)) {
+                return PluginToggle.failed("Плагин отказался переключиться: IllegalStateException");
+            }
+            plugins.set(i, new PluginInfo(p.name(), p.version(), enabled));
+            return PluginToggle.ok(enabled);
+        }
+        return PluginToggle.failed("Плагин «" + pluginName + "» на сервере не найден");
     }
 
     private boolean has(String name) {
