@@ -1,6 +1,18 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { PteroSecretsService, SECRET_KEYS } from './ptero-secrets.service';
-import { pteroRequest } from './ptero-http';
+import { pteroRawRequest, pteroRequest } from './ptero-http';
+
+/** Запись из листинга каталога. */
+export interface PteroFile {
+  name: string;
+  mode: string;
+  size: number;
+  is_file: boolean;
+  is_symlink: boolean;
+  mimetype: string;
+  created_at: string;
+  modified_at: string;
+}
 
 export interface PteroResources {
   current_state: string;
@@ -55,6 +67,63 @@ export class ClientApiService {
     await pteroRequest(await this.key(), 'POST', `/api/client/servers/${identifier}/command`, {
       command,
     });
+  }
+
+  // ---------------------------------------------------- Файлы сервера
+  //
+  // Маршруты сверены с routes/api-client.php панели Pterodactyl. Обратите
+  // внимание на методы: rename — это PUT, а не POST, как остальные операции;
+  // перепутанный метод даёт 405, а не понятную ошибку.
+
+  /** GET /api/client/servers/{identifier}/files/list?directory=... */
+  async listFiles(identifier: string, directory: string): Promise<PteroFile[]> {
+    const res = await pteroRequest<{ data: { attributes: PteroFile }[] }>(
+      await this.key(),
+      'GET',
+      `/api/client/servers/${identifier}/files/list?directory=${encodeURIComponent(directory)}`,
+    );
+    return res.data.map((d) => d.attributes);
+  }
+
+  /**
+   * POST /api/client/servers/{identifier}/files/write?file=...
+   *
+   * Тело — сырое содержимое файла, а не JSON. Для .jar это единственный
+   * способ положить бинарник этим маршрутом.
+   */
+  async writeFile(identifier: string, path: string, content: Buffer): Promise<void> {
+    await pteroRawRequest(
+      await this.key(),
+      'POST',
+      `/api/client/servers/${identifier}/files/write?file=${encodeURIComponent(path)}`,
+      content,
+    );
+  }
+
+  /** PUT /api/client/servers/{identifier}/files/rename — им же и переносим. */
+  async renameFile(identifier: string, root: string, from: string, to: string): Promise<void> {
+    await pteroRequest(await this.key(), 'PUT', `/api/client/servers/${identifier}/files/rename`, {
+      root,
+      files: [{ from, to }],
+    });
+  }
+
+  /** POST /api/client/servers/{identifier}/files/delete */
+  async deleteFiles(identifier: string, root: string, files: string[]): Promise<void> {
+    await pteroRequest(await this.key(), 'POST', `/api/client/servers/${identifier}/files/delete`, {
+      root,
+      files,
+    });
+  }
+
+  /** POST /api/client/servers/{identifier}/files/create-folder */
+  async createFolder(identifier: string, root: string, name: string): Promise<void> {
+    await pteroRequest(
+      await this.key(),
+      'POST',
+      `/api/client/servers/${identifier}/files/create-folder`,
+      { root, name },
+    );
   }
 
   /** GET /api/client/servers/{identifier}/websocket — токен+URL для консоли Wings. */

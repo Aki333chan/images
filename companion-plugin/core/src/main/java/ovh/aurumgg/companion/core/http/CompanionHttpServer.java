@@ -26,6 +26,7 @@ import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
+import ovh.aurumgg.companion.core.model.PluginToggle;
 
 /**
  * Входящий HTTP-сервер плагина (панель → плагин).
@@ -41,6 +42,7 @@ import ovh.aurumgg.companion.core.model.PlayerInfo;
  *   GET  /players/{uuid}/permissions
  *   POST /players/{uuid}/permissions
  *   GET  /plugins
+ *   POST /plugins/{name}/enabled
  *   GET  /complete?line=...
  *   GET  /players/{uuid}/balance
  *   POST /players/{uuid}/balance/deposit
@@ -123,6 +125,26 @@ public final class CompanionHttpServer {
         // GET /plugins — что вообще установлено на этом сервере
         if (parts.length == 1 && parts[0].equals("plugins") && method.equals("GET")) {
             respond(exchange, 200, PayloadWriter.plugins(bridge.installedPlugins()));
+            return;
+        }
+
+        // POST /plugins/{name}/enabled — тело {"enabled":true|false}
+        //
+        // Горячее переключение без перезапуска. Best-effort по природе Bukkit:
+        // формулировку про риск даёт панель, здесь — только результат.
+        if (parts.length == 3
+                && parts[0].equals("plugins")
+                && parts[2].equals("enabled")
+                && method.equals("POST")) {
+            String name = decode(parts[1]);
+            boolean enabled = parseEnabled(readBody(exchange));
+            PluginToggle result = bridge.setPluginEnabled(name, enabled);
+            if (!result.ok()) {
+                // 409, а не 400: запрос корректен, отказало состояние сервера.
+                respond(exchange, 409, PayloadWriter.error(result.error(), "toggle-failed"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.pluginToggle(result));
             return;
         }
 
@@ -284,6 +306,23 @@ public final class CompanionHttpServer {
         }
 
         respond(exchange, 404, PayloadWriter.error("Неизвестный маршрут"));
+    }
+
+    /** Тело {"enabled":true}. Отсутствие поля — ошибка, а не «по умолчанию». */
+    static boolean parseEnabled(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("Пустое тело запроса");
+        }
+        Object raw = JsonParser.parseObject(body).get("enabled");
+        if (!(raw instanceof Boolean enabled)) {
+            throw new IllegalArgumentException("Поле enabled должно быть true или false");
+        }
+        return enabled;
+    }
+
+    /** Имя плагина в пути закодировано: в нём бывают пробелы и плюсы. */
+    private static String decode(String raw) {
+        return URLDecoder.decode(raw, StandardCharsets.UTF_8);
     }
 
     /** Имя InvSee++ в Bukkit — именно такое, «InvSee++» не зарегистрирован. */

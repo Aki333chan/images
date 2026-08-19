@@ -553,4 +553,66 @@ class CompanionHttpServerTest {
         assertEquals(404, response.statusCode());
         assertEquals("requires-vault", JsonParser.parseObject(response.body()).get("code"));
     }
+    // ------------------------------------------- Горячее переключение плагинов
+
+    @Test
+    @DisplayName("плагин выключается и включается без перезапуска")
+    void togglePlugin() throws Exception {
+        bridge.install("LuckPerms");
+
+        HttpResponse<String> off = post("/plugins/LuckPerms/enabled", TOKEN, "{\"enabled\":false}");
+        assertEquals(200, off.statusCode());
+        assertEquals(Boolean.FALSE, JsonParser.parseObject(off.body()).get("enabled"));
+        assertFalse(bridge.installedPlugins().stream()
+                .filter(p -> p.name().equals("LuckPerms"))
+                .findFirst()
+                .orElseThrow()
+                .enabled());
+
+        HttpResponse<String> on = post("/plugins/LuckPerms/enabled", TOKEN, "{\"enabled\":true}");
+        assertEquals(200, on.statusCode());
+        assertEquals(Boolean.TRUE, JsonParser.parseObject(on.body()).get("enabled"));
+    }
+
+    @Test
+    @DisplayName("сам companion выключить нельзя — иначе панель потеряет связь")
+    void cannotDisableSelf() throws Exception {
+        HttpResponse<String> response =
+                post("/plugins/AurumCompanion/enabled", TOKEN, "{\"enabled\":false}");
+
+        assertEquals(409, response.statusCode());
+        assertTrue(response.body().contains("companion"));
+    }
+
+    @Test
+    @DisplayName("неизвестный плагин — отказ с причиной, а не тихий успех")
+    void unknownPluginRejected() throws Exception {
+        HttpResponse<String> response = post("/plugins/НетТакого/enabled", TOKEN, "{\"enabled\":true}");
+
+        assertEquals(409, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("toggle-failed", body.get("code"));
+    }
+
+    @Test
+    @DisplayName("плагин, упавший при переключении, не роняет сервер")
+    void stubbornPluginReported() throws Exception {
+        bridge.install("Broken");
+        bridge.stubborn.add("Broken");
+
+        HttpResponse<String> response = post("/plugins/Broken/enabled", TOKEN, "{\"enabled\":false}");
+
+        assertEquals(409, response.statusCode());
+        assertTrue(response.body().contains("отказался переключиться"));
+    }
+
+    @Test
+    @DisplayName("поле enabled обязательно: молчание не значит «выключить»")
+    void enabledFieldRequired() throws Exception {
+        bridge.install("LuckPerms");
+
+        assertEquals(400, post("/plugins/LuckPerms/enabled", TOKEN, "{}").statusCode());
+        assertEquals(400, post("/plugins/LuckPerms/enabled", TOKEN, "").statusCode());
+        assertEquals(400, post("/plugins/LuckPerms/enabled", TOKEN, "{\"enabled\":\"yes\"}").statusCode());
+    }
 }

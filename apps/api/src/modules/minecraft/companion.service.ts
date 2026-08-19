@@ -130,6 +130,42 @@ export class CompanionService {
   }
 
   /**
+   * Горячее включение/выключение плагина через PluginManager сервера.
+   *
+   * Отказ приходит с кодом 409 и человеческой причиной — её и показываем,
+   * не подменяя своей: «плагин отказался переключиться» и «плагина нет»
+   * требуют от человека разных действий.
+   */
+  async setPluginEnabled(
+    serverId: string,
+    pluginName: string,
+    enabled: boolean,
+  ): Promise<{ ok: boolean; enabled?: boolean; error?: string }> {
+    if (!(await this.isConfigured(serverId))) {
+      return {
+        ok: false,
+        error:
+          'Горячее переключение требует companion-плагина на игровом сервере. ' +
+          'Без него плагин можно отключить только переносом файла.',
+      };
+    }
+    const result = await this.callRaw<{ ok?: boolean; enabled?: boolean }>(
+      serverId,
+      `/plugins/${encodeURIComponent(pluginName)}/enabled`,
+      { method: 'POST', body: { enabled } },
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        error:
+          result.error ??
+          'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+      };
+    }
+    return { ok: true, enabled: result.body.enabled !== false };
+  }
+
+  /**
    * Настоящее автодополнение от Bukkit: то же, что видит игрок по Tab в игре,
    * включая команды и аргументы сторонних плагинов.
    *

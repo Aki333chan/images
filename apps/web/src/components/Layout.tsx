@@ -57,6 +57,9 @@ export function Layout() {
     { to: '/servers', label: 'Серверы', permission: 'servers.view' },
     { to: '/tickets', label: 'Тикеты', permission: 'tickets.view', badge: ticketsBadge },
     { to: '/messages', label: 'Сообщения', permission: null, badge: messagesBadge },
+    // Установка плагина — запуск чужого кода на сервере, поэтому право
+    // по умолчанию только у ГМ и Админа.
+    { to: '/market', label: 'Маркет', permission: 'minecraft.plugins.install' },
     // Доступы видны и Админу: у него есть право заводить Модераторов.
     { to: '/access', label: 'Доступы', permission: 'users.create.moderator' },
     // Без права: внутри есть личный блок — свой ник и пароль.
