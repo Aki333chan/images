@@ -22,6 +22,16 @@ function splitLastToken(line: string): { head: string; token: string } {
   return { head: line.slice(0, line.length - token.length), token };
 }
 
+/** Пауза перед попыткой переподключения: 1, 2, 4, 8 и дальше по 15 секунд. */
+const RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
+
+/**
+ * Насколько близко к низу человек должен быть, чтобы список продолжал
+ * прокручиваться сам. Чуть больше высоты строки: если отлистнуть вверх хотя
+ * бы на строку, значит читают старое, и утаскивать вниз уже нельзя.
+ */
+const STICK_TO_BOTTOM_PX = 24;
+
 /**
  * Консоль сервера — возможность ЯДРА: подключается напрямую к Wings по
  * WebSocket, как это делает сама панель Pterodactyl. Игровые модули объявляют
@@ -29,17 +39,28 @@ function splitLastToken(line: string): { head: string; token: string } {
  *
  * Протокол Wings: после connect шлём {event:'auth', args:[token]}; сервер
  * отвечает событиями console output / status / token expiring / token expired.
+ *
+ * ПРО ОБРЫВЫ. Соединение рвётся регулярно и по причинам, которые от панели не
+ * зависят: браузер усыпляет фоновую вкладку и закрывает её сокеты, телефон
+ * уходит в сон, сеть переключается с Wi-Fi на мобильную. Раньше любой такой
+ * обрыв означал ошибку до перезагрузки страницы — теперь консоль
+ * переподключается сама, а возврат на вкладку пробует соединение сразу, не
+ * дожидаясь очередной паузы.
  */
 export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId: string }) {
   const { hasPermission } = useAuth();
   const [lines, setLines] = useState<string[]>([]);
-  const [state, setState] = useState<'connecting' | 'online' | 'error'>('connecting');
+  const [state, setState] = useState<'connecting' | 'online' | 'reconnecting' | 'error'>(
+    'connecting',
+  );
   const [error, setError] = useState('');
   /** Адрес узла Wings — показываем в подсказке, чтобы было что искать в CSP. */
   const [socketUrl, setSocketUrl] = useState('');
   const [command, setCommand] = useState('');
   const socketRef = useRef<WebSocket | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const logRef = useRef<HTMLDivElement | null>(null);
+  /** Человек не отлистывал вверх — можно продолжать прокручивать за ним. */
+  const stickRef = useRef(true);
 
   // ---------- Автодополнение ----------
   //
@@ -59,79 +80,188 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
   const completingRef = useRef(false);
 
   useEffect(() => {
-    let closed = false;
+    /** Компонент размонтирован — все попытки прекращаются насовсем. */
+    let disposed = false;
     let socket: WebSocket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    /** Хоть раз авторизовались: значит адрес и CSP в порядке, дело в обрыве. */
+    let everOnline = false;
 
     const push = (text: string) =>
       // Держим окно в разумных пределах, иначе вкладка съест память.
       setLines((prev) => [...prev.slice(-800), text]);
 
+    /**
+     * Пауза перед следующей попыткой.
+     *
+     * Растёт до 15 секунд и на этом останавливается: узел Wings может лежать
+     * долго, и долбиться в него раз в секунду всё это время незачем, а вот
+     * подняться он должен подхватываться за разумное время без участия
+     * человека.
+     */
+    function scheduleRetry() {
+      if (disposed || retryTimer !== null) return;
+      const delay = RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)];
+      attempt += 1;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void connect();
+      }, delay);
+    }
+
+    /** Обрыв: показываем состояние по тому, работало ли соединение раньше. */
+    function dropped(message?: string) {
+      if (disposed) return;
+      if (everOnline) {
+        // Соединение уже работало — значит и адрес, и CSP, и Wings в порядке,
+        // и длинная подсказка про настройку тут только мешала бы.
+        setState('reconnecting');
+      } else {
+        setState('error');
+        if (message) setError(message);
+      }
+      scheduleRetry();
+    }
+
     async function connect() {
+      if (disposed) return;
+      // Закрываем предыдущий сокет молча: его onclose не должен считаться
+      // новым обрывом и заводить ещё одну очередь переподключений.
+      if (socket) {
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.onmessage = null;
+        socket.close();
+        socket = null;
+      }
+      if (!everOnline) setState('connecting');
+
+      let token: string;
+      let url: string;
       try {
-        const { token, socket: url } = await api<{ token: string; socket: string }>(
+        const res = await api<{ token: string; socket: string }>(
           `/api/servers/${serverId}/console-token`,
         );
-        if (closed) return;
-        socket = new WebSocket(url);
-        socketRef.current = socket;
-
-        socket.onopen = () => socket?.send(JSON.stringify({ event: 'auth', args: [token] }));
-        socket.onmessage = (event) => {
-          const payload = JSON.parse(event.data as string) as { event: string; args?: string[] };
-          switch (payload.event) {
-            case 'auth success':
-              setState('online');
-              // Просим Wings прислать историю и текущее состояние.
-              socket?.send(JSON.stringify({ event: 'send logs', args: [null] }));
-              break;
-            case 'console output':
-            case 'install output':
-              for (const line of payload.args ?? []) push(line);
-              break;
-            case 'status':
-              push(`— статус сервера: ${payload.args?.[0] ?? '?'}`);
-              break;
-            case 'token expiring':
-            case 'token expired': {
-              // Токен живёт недолго — берём новый и продлеваем сессию.
-              void api<{ token: string }>(`/api/servers/${serverId}/console-token`).then((fresh) =>
-                socket?.send(JSON.stringify({ event: 'auth', args: [fresh.token] })),
-              );
-              break;
-            }
-            case 'jwt error':
-              setState('error');
-              setError(payload.args?.[0] ?? 'Ошибка авторизации консоли');
-              break;
-          }
-        };
-        socket.onerror = () => {
-          setState('error');
-          // Браузер намеренно не сообщает JS причину отказа — блокировку по CSP
-          // и недоступный узел здесь не различить. Поэтому подсказка ниже
-          // перечисляет обе, а точную причину показывает консоль браузера.
-          setError('Не удалось подключиться к консоли Wings');
-          setSocketUrl(url);
-        };
-        socket.onclose = () => {
-          if (!closed) setState('error');
-        };
+        token = res.token;
+        url = res.socket;
       } catch (e) {
-        setState('error');
-        setError((e as Error).message);
+        dropped((e as Error).message);
+        return;
       }
+      if (disposed) return;
+
+      const active = new WebSocket(url);
+      socket = active;
+      socketRef.current = active;
+
+      active.onopen = () => active.send(JSON.stringify({ event: 'auth', args: [token] }));
+      active.onmessage = (event) => {
+        const payload = JSON.parse(event.data as string) as { event: string; args?: string[] };
+        switch (payload.event) {
+          case 'auth success':
+            setState('online');
+            setError('');
+            attempt = 0;
+            if (everOnline) {
+              // Перечитываем журнал с нуля, а не дописываем: Wings отдаёт
+              // хвост файла целиком, и дописанный он дал бы десятки уже
+              // показанных строк — человек читал бы одно и то же дважды.
+              setLines(['— соединение восстановлено, журнал перечитан —']);
+            }
+            everOnline = true;
+            // Просим Wings прислать историю и текущее состояние.
+            active.send(JSON.stringify({ event: 'send logs', args: [null] }));
+            break;
+          case 'console output':
+          case 'install output':
+            for (const line of payload.args ?? []) push(line);
+            break;
+          case 'status':
+            push(`— статус сервера: ${payload.args?.[0] ?? '?'}`);
+            break;
+          case 'token expiring':
+          case 'token expired': {
+            // Токен живёт недолго — берём новый и продлеваем сессию.
+            // Не вышло — сокет всё равно закроется, и обычное
+            // переподключение сделает то же самое с новым токеном.
+            void api<{ token: string }>(`/api/servers/${serverId}/console-token`)
+              .then((fresh) => active.send(JSON.stringify({ event: 'auth', args: [fresh.token] })))
+              .catch(() => undefined);
+            break;
+          }
+          case 'jwt error':
+            setState('error');
+            setError(payload.args?.[0] ?? 'Ошибка авторизации консоли');
+            break;
+        }
+      };
+      active.onerror = () => {
+        // Браузер намеренно не сообщает JS причину отказа — блокировку по CSP
+        // и недоступный узел здесь не различить. Поэтому подсказка ниже
+        // перечисляет обе, а точную причину показывает консоль браузера.
+        setSocketUrl(url);
+      };
+      active.onclose = () => {
+        if (socket !== active) return;
+        socketRef.current = null;
+        dropped('Не удалось подключиться к консоли Wings');
+      };
     }
+
+    /**
+     * Возврат к вкладке — повод попробовать немедленно.
+     *
+     * Пока вкладка была скрыта, браузер мог усыпить её и закрыть сокет, а
+     * очередь переподключений — уползти на пятнадцатисекундную паузу (её
+     * таймер в фоне тоже притормаживается). Человек, вернувшийся на страницу,
+     * ждать этого не должен.
+     */
+    function wake() {
+      if (disposed || document.hidden) return;
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      attempt = 0;
+      void connect();
+    }
+
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('online', wake);
 
     void connect();
     return () => {
-      closed = true;
-      socket?.close();
+      disposed = true;
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('online', wake);
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
       socketRef.current = null;
     };
   }, [serverId]);
 
+  /**
+   * Прокрутка — только внутри окна консоли.
+   *
+   * scrollIntoView здесь не годится: он прокручивает ВСЕ прокручиваемые
+   * контейнеры до самого документа, и на телефоне каждая новая строка при
+   * старте сервера утаскивала страницу к консоли — то есть к самому верху.
+   * Пролистать вниз при этом было невозможно.
+   *
+   * И прокручиваем только если человек и так внизу: если он отлистнул вверх
+   * читать стартовые ошибки, дёргать его на каждой новой строке нельзя.
+   */
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
+    const el = logRef.current;
+    if (!el || !stickRef.current) return;
+    el.scrollTop = el.scrollHeight;
   }, [lines]);
 
   /**
@@ -219,8 +349,11 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
 
   function sendCommand() {
     const value = command.trim();
-    if (!value || !socketRef.current) return;
-    socketRef.current.send(JSON.stringify({ event: 'send command', args: [value] }));
+    const socket = socketRef.current;
+    // readyState обязателен: во время переподключения сокет существует, но
+    // send по нему бросает исключение, а не молча теряет команду.
+    if (!value || !socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ event: 'send command', args: [value] }));
     setCommand('');
     setSuggestions([]);
     cycleRef.current = null;
@@ -260,9 +393,22 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
           </div>
         </Card>
       )}
+      {state === 'reconnecting' && (
+        <p className="text-xs text-amber-400">
+          Соединение с консолью прервалось — переподключаемся. Перезагружать страницу не нужно.
+        </p>
+      )}
       {/* Высота от экрана на телефоне: жёсткие 420 px занимали бы почти всю
           высоту вместе с шапкой и полем ввода. */}
-      <Card className="h-[45vh] overflow-y-auto bg-black/70 font-mono text-xs leading-5 text-neutral-200 sm:h-[420px]">
+      <Card
+        ref={logRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stickRef.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_TO_BOTTOM_PX;
+        }}
+        className="h-[45vh] overflow-y-auto bg-black/70 font-mono text-xs leading-5 text-neutral-200 sm:h-[420px]"
+      >
         {lines.length === 0 && (
           <p className="text-muted">
             {state === 'connecting' ? 'Подключение к консоли…' : 'Вывода пока нет'}
@@ -273,7 +419,6 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
             {line}
           </div>
         ))}
-        <div ref={bottomRef} />
       </Card>
       {hasPermission('servers.power') && (
         <div className="space-y-1">

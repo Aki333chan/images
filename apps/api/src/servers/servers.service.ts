@@ -1,7 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ServerDto } from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { ApplicationApiService } from '../pterodactyl/application-api.service';
+import {
+  ApplicationApiService,
+  defaultAllocation,
+} from '../pterodactyl/application-api.service';
 import { EffectivePermissions } from '../rbac/permissions.service';
 
 @Injectable()
@@ -19,15 +22,24 @@ export class ServersService {
     name: string;
     description: string | null;
     node: string | null;
+    allocationIp: string | null;
+    allocationAlias: string | null;
+    allocationPort: number | null;
     status: string | null;
     moduleId: string | null;
   }): ServerDto {
+    // Показываем alias, когда он есть: если владелец завёл в Pterodactyl
+    // доменное имя, значит игрокам он даёт именно его, а не голый IP.
+    const host = s.allocationAlias?.trim() || s.allocationIp;
     return {
       id: s.id,
       pteroIdentifier: s.pteroIdentifier,
       name: s.name,
       description: s.description,
       node: s.node,
+      address: host && s.allocationPort ? `${host}:${s.allocationPort}` : null,
+      ip: s.allocationIp,
+      port: s.allocationPort,
       status: s.status,
       moduleId: s.moduleId,
     };
@@ -65,6 +77,17 @@ export class ServersService {
     const seenIds: number[] = [];
     for (const srv of remote) {
       seenIds.push(srv.id);
+      const allocation = defaultAllocation(srv);
+      // Аллокация приезжает не всегда (ключу может не хватать прав на неё),
+      // а затирать известный адрес пустотой хуже, чем показать вчерашний:
+      // адрес сервера меняется несравнимо реже, чем случаются такие ответы.
+      const address = allocation
+        ? {
+            allocationIp: allocation.ip,
+            allocationAlias: allocation.alias || null,
+            allocationPort: allocation.port,
+          }
+        : {};
       await this.prisma.server.upsert({
         where: { pteroId: srv.id },
         create: {
@@ -78,6 +101,7 @@ export class ServersService {
           memoryLimitMb: srv.limits?.memory ?? null,
           diskLimitMb: srv.limits?.disk ?? null,
           cpuLimitPercent: srv.limits?.cpu ?? null,
+          ...address,
         },
         update: {
           pteroIdentifier: srv.identifier,
@@ -89,6 +113,7 @@ export class ServersService {
           memoryLimitMb: srv.limits?.memory ?? null,
           diskLimitMb: srv.limits?.disk ?? null,
           cpuLimitPercent: srv.limits?.cpu ?? null,
+          ...address,
         },
       });
     }

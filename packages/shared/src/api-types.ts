@@ -49,7 +49,20 @@ export interface ServerDto {
   pteroIdentifier: string;
   name: string;
   description: string | null;
+  /**
+   * Номер ноды Pterodactyl. В интерфейсе не показывается: человеку он ничего
+   * не говорит, а адрес сервера — говорит. Остаётся в контракте потому, что по
+   * нему видно, какие сервера стоят рядом, когда разбираешься с нагрузкой.
+   */
   node: string | null;
+  /**
+   * Адрес сервера, готовый к показу: «play.example.com:25565» или
+   * «203.0.113.10:25565». null — Pterodactyl не отдал аллокацию.
+   */
+  address: string | null;
+  /** Та же аллокация по частям — на случай, когда адрес надо разобрать. */
+  ip: string | null;
+  port: number | null;
   status: string | null;
   moduleId: string | null;
 }

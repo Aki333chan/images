@@ -127,6 +127,11 @@ model Server {
   description     String?
   node            String?
   status          String?
+  /// Основная аллокация из Pterodactyl: по этому адресу игроки заходят на сервер.
+  /// Обновляется при синке; alias — доменное имя, если оно задано в Pterodactyl.
+  allocationIp    String?  @map("allocation_ip")
+  allocationAlias String?  @map("allocation_alias")
+  allocationPort  Int?     @map("allocation_port")
   /// id игрового модуля из реестра (null — модуль не назначен)
   moduleId        String?  @map("module_id")
   /// AES-256-GCM-шифрованный JSON с доп. кредами (RCON и т.п.)

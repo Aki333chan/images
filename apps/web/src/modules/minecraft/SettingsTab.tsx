@@ -1,19 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { MinecraftConfigStatusDto } from '@aurum/shared';
+import { PLUGIN_PERMISSIONS, type MinecraftConfigStatusDto } from '@aurum/shared';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
+import { InstalledPluginsPanel } from './InstalledPluginsPanel';
 
 const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
 
 /**
- * Настройки подключения модуля: RCON и companion-плагин.
+ * Настройки подключения модуля: RCON, companion-плагин и управление
+ * установленными плагинами.
  *
  * Секреты сюда не приходят — сервер отдаёт только флаги «настроено/нет».
  * Поэтому поля пароля и токена всегда пустые: это не потеря данных, а
  * следствие того, что прочитать сохранённое нельзя даже владельцу панели.
+ *
+ * Список установленных плагинов живёт именно здесь, а не на виду у страницы
+ * сервера: это редкая настроечная работа, а не ежедневная. Посмотреть, что
+ * стоит на сервере, можно и без неё — в блоке «Поддерживаемые плагины» по
+ * кнопке «Показать все плагины сервера».
  */
 export function MinecraftSettingsTab({ serverId }: ModuleTabProps) {
+  const { hasPermission } = useAuth();
   const [status, setStatus] = useState<MinecraftConfigStatusDto | null>(null);
   const [error, setError] = useState('');
 
@@ -30,6 +39,20 @@ export function MinecraftSettingsTab({ serverId }: ModuleTabProps) {
       {error && <ErrorText>{error}</ErrorText>}
       <RconForm serverId={serverId} status={status} onSaved={load} />
       <CompanionForm serverId={serverId} status={status} onSaved={load} />
+      {hasPermission(PLUGIN_PERMISSIONS.manage) && (
+        <InstalledPluginsPanel
+          serverId={serverId}
+          onRestart={
+            hasPermission('servers.power')
+              ? () =>
+                  void api(`/api/servers/${serverId}/power`, {
+                    method: 'POST',
+                    body: JSON.stringify({ signal: 'restart' }),
+                  })
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
