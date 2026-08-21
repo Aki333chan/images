@@ -123,46 +123,58 @@ export function InstalledPluginsPanel({
                   {plugin.name}
                   {plugin.version && <span className="text-xs text-muted">{plugin.version}</span>}
                   <StateBadge state={plugin.state} />
-                  {plugin.protected && <Badge variant="outline">плагин панели</Badge>}
+                  {plugin.protected && (
+                    <span title={plugin.protectedReason}>
+                      <Badge variant="outline">нужен панели</Badge>
+                    </span>
+                  )}
                 </div>
                 {plugin.fileName && (
                   <div className="truncate font-mono text-[11px] text-muted">{plugin.fileName}</div>
                 )}
+                {plugin.protected && plugin.protectedReason && (
+                  <div className="mt-1 text-[11px] text-muted">{plugin.protectedReason}</div>
+                )}
               </div>
 
+              {/* Запрет односторонний: выключить защищённый плагин нельзя,
+                  а включить или вернуть файл — можно. Поэтому «выключающие»
+                  кнопки у него не показываются вовсе, а «включающие» — да:
+                  спрятанная кнопка честнее заблокированной, по которой
+                  непонятно, что вообще произойдёт при нажатии. */}
               <div className="flex flex-wrap gap-2">
-                {plugin.state !== 'disabled-file' && data.companionAvailable && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={plugin.protected || busy === plugin.name}
-                    title={
-                      plugin.protected
-                        ? 'Плагин самой панели: выключив его, панель потеряет связь с сервером'
-                        : 'Горячее переключение через PluginManager, без перезапуска'
-                    }
-                    onClick={() => void toggleRuntime(plugin, plugin.state !== 'enabled')}
-                  >
-                    {plugin.state === 'enabled' ? 'Выключить' : 'Включить'}
-                  </Button>
-                )}
+                {plugin.state !== 'disabled-file' &&
+                  data.companionAvailable &&
+                  !(plugin.protected && plugin.state === 'enabled') && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === plugin.name}
+                      title="Горячее переключение через PluginManager, без перезапуска"
+                      onClick={() => void toggleRuntime(plugin, plugin.state !== 'enabled')}
+                    >
+                      {plugin.state === 'enabled' ? 'Выключить' : 'Включить'}
+                    </Button>
+                  )}
 
-                {plugin.fileName && data.filesAvailable && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={plugin.protected || busy === plugin.name}
-                    onClick={() => void toggleFile(plugin, plugin.state !== 'disabled-file')}
-                  >
-                    {plugin.state === 'disabled-file' ? 'Вернуть файл' : 'Отключить файлом'}
-                  </Button>
-                )}
+                {plugin.fileName &&
+                  data.filesAvailable &&
+                  !(plugin.protected && plugin.state !== 'disabled-file') && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === plugin.name}
+                      onClick={() => void toggleFile(plugin, plugin.state !== 'disabled-file')}
+                    >
+                      {plugin.state === 'disabled-file' ? 'Вернуть файл' : 'Отключить файлом'}
+                    </Button>
+                  )}
 
-                {plugin.fileName && data.filesAvailable && (
+                {plugin.fileName && data.filesAvailable && !plugin.protected && (
                   <Button
                     size="sm"
                     variant="destructive"
-                    disabled={plugin.protected || busy === plugin.name}
+                    disabled={busy === plugin.name}
                     onClick={() => setRemoving(plugin)}
                   >
                     Удалить

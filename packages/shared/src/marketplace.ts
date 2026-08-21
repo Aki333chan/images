@@ -164,8 +164,13 @@ export interface InstalledPluginDto {
   state: InstalledPluginState;
   /** Имя файла в plugins/ — по нему идут перенос и удаление. */
   fileName: string | null;
-  /** true — это сам companion-плагин, его трогать нельзя. */
+  /**
+   * true — плагин, на котором держится панель: companion либо один из
+   * KNOWN_PLUGINS. Выключение, отключение файлом и удаление для него закрыты.
+   */
   protected: boolean;
+  /** Почему закрыто — текст для человека, а не код ошибки. */
+  protectedReason?: string;
 }
 
 export interface InstalledPluginsResponseDto {

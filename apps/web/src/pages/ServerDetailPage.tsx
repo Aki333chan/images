@@ -7,7 +7,8 @@ import { Badge, Button, Card, Select, Spinner, Tabs } from '../components/ui';
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { ServerStats } from '../components/ServerStats';
 import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
-import { InstalledPluginsPanel } from '../modules/minecraft/InstalledPluginsPanel';
+import { ServerAddress } from '../components/ServerAddress';
+import { refreshServerRuntime, useServerRuntime } from '../lib/server-runtime';
 import { listCapabilities } from '@aurum/shared';
 
 /** Не пересекается с id capability: те приходят из манифеста модуля. */
@@ -17,9 +18,12 @@ export function ServerDetailPage() {
   const { serverId = '' } = useParams();
   const navigate = useNavigate();
   const { me, modules, hasPermission, canSeeServer } = useAuth();
+  const runtime = useServerRuntime(serverId);
   const [server, setServer] = useState<ServerDto | null>(null);
   const [activeTab, setActiveTab] = useState<string>('');
   const [error, setError] = useState('');
+  /** Отказ Pterodactyl по кнопке питания: молча его терять нельзя. */
+  const [powerError, setPowerError] = useState('');
 
   // canSeeServer в зависимостях: если ГМ отвяжет этот сервер, доступ пропадёт
   // на лету и пользователя вернёт к списку.
@@ -94,16 +98,23 @@ export function ServerDetailPage() {
       {/* Название и кнопки питания в столбик на телефоне: три кнопки плюс
           значок статуса в одну строку с заголовком не помещаются. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-1">
           <h1 className="truncate text-xl font-bold">{server.name}</h1>
-          <p className="truncate text-xs text-muted">
-            {server.pteroIdentifier} · нода {server.node ?? '—'}
-          </p>
+          <p className="truncate text-xs text-muted">{server.pteroIdentifier}</p>
+          {/* Адрес — крупно и отдельной строкой: это то, что спрашивают
+              игроки, и то, что чаще всего приходится диктовать вслух. */}
+          <ServerAddress address={server.address} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={server.status === 'active' ? 'success' : 'outline'}>
-            {server.status ?? '—'}
-          </Badge>
+          {/* Значок показывает питание, а не запись в Pterodactyl: «active»
+              там означает лишь «не заблокирован», и после остановки сервера
+              он оставался бы зелёным. */}
+          <PowerBadge state={runtime.state} />
+          {server.status && server.status !== 'active' && (
+            <Badge variant={server.status === 'missing' ? 'destructive' : 'outline'}>
+              {server.status}
+            </Badge>
+          )}
           {hasPermission('servers.power') && (
             <>
               <Button size="sm" variant="outline" onClick={() => void power('start')}>
@@ -119,6 +130,8 @@ export function ServerDetailPage() {
           )}
         </div>
       </div>
+
+      {powerError && <p className="text-sm text-red-400">{powerError}</p>}
 
       {hasPermission('servers.manage') && (
         <Card className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -165,23 +178,31 @@ export function ServerDetailPage() {
           {/* Под вкладками, а не внутри одной из них: список отвечает на
               вопрос «почему у меня нет такой-то кнопки», который возникает
               на любой вкладке. */}
+          {/* Управление установленными плагинами живёт во вкладке настроек:
+              здесь достаточно списка поддерживаемых, а все файлы сервера
+              открываются в нём по кнопке «Показать все плагины сервера». */}
           {manifest.id === 'minecraft' && <PluginsPanel serverId={server.id} />}
-          {manifest.id === 'minecraft' && hasPermission('minecraft.plugins.manage') && (
-            <InstalledPluginsPanel
-              serverId={server.id}
-              onRestart={hasPermission('servers.power') ? () => void power('restart') : undefined}
-            />
-          )}
         </>
       )}
     </div>
   );
 
   async function power(signal: 'start' | 'stop' | 'restart') {
-    await api(`/api/servers/${server!.id}/power`, {
-      method: 'POST',
-      body: JSON.stringify({ signal }),
-    });
+    setPowerError('');
+    try {
+      await api(`/api/servers/${server!.id}/power`, {
+        method: 'POST',
+        body: JSON.stringify({ signal }),
+      });
+    } catch (e) {
+      setPowerError((e as Error).message);
+      return;
+    }
+    // Спрашиваем состояние сразу и ещё раз через три секунды: сигнал уходит
+    // мгновенно, а Wings переводит сервер в stopping/starting не в тот же миг,
+    // и один только немедленный опрос показал бы ещё старое состояние.
+    refreshServerRuntime(server!.id);
+    setTimeout(() => refreshServerRuntime(server!.id), 3_000);
   }
 
   async function setModule(moduleId: string | null) {
@@ -191,4 +212,31 @@ export function ServerDetailPage() {
     });
     setServer(updated);
   }
+}
+
+/**
+ * Состояние питания сервера.
+ *
+ * Именно питания: в Pterodactyl у сервера есть ещё и статус записи
+ * (active / suspended / installing), и он остаётся «active» у выключенного
+ * сервера. Показывать его как единственный значок значило бы светить зелёным
+ * ровно тогда, когда сервер только что остановили.
+ */
+function PowerBadge({ state }: { state: string | null }) {
+  if (state === null) return <Badge variant="outline">…</Badge>;
+  const label: Record<string, string> = {
+    running: 'работает',
+    offline: 'выключен',
+    starting: 'запускается',
+    stopping: 'останавливается',
+  };
+  return (
+    <Badge
+      variant={
+        state === 'running' ? 'success' : state === 'offline' ? 'outline' : 'default'
+      }
+    >
+      {label[state] ?? state}
+    </Badge>
+  );
 }

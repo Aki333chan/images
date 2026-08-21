@@ -10,7 +10,14 @@
  * размеры шрифта» — причём после расфокуса масштаб не возвращается.
  * Ровно поэтому здесь 16 px, и менять это, не проверив на iPhone, не стоит.
  */
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type TextareaHTMLAttributes,
+} from 'react';
 import { cn } from '../lib/cn';
 
 type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive';
@@ -75,15 +82,26 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   },
 );
 
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return (
-    // На узком экране поля по 16 px с каждой стороны съедали бы почти
-    // десятую часть ширины — на мобильном отступ меньше.
-    <div className={cn('rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4', className)}>
-      {children}
-    </div>
-  );
-}
+/**
+ * Карточка. Ссылку наружу отдаёт намеренно: прокручиваемым карточкам (консоль)
+ * нужно уметь дотянуться до собственного scrollTop, а прокручивать их через
+ * scrollIntoView вложенного элемента нельзя — он тянет за собой и страницу.
+ */
+export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  function Card({ className, children, ...props }, ref) {
+    return (
+      // На узком экране поля по 16 px с каждой стороны съедали бы почти
+      // десятую часть ширины — на мобильном отступ меньше.
+      <div
+        ref={ref}
+        className={cn('rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4', className)}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  },
+);
 
 export function Badge({
   children,

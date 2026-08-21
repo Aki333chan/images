@@ -66,6 +66,13 @@ export function ServersPage() {
                     {s.status ?? '—'}
                   </Badge>
                 </div>
+                {/* Адрес в карточке: чаще всего сервер ищут именно по нему,
+                    когда серверов больше одного. */}
+                {s.address && (
+                  <div className="mt-2 break-all font-mono text-xs text-neutral-300">
+                    {s.address}
+                  </div>
+                )}
                 <div className="mt-3 text-xs text-muted">
                   Модуль: {moduleName(s.moduleId) ?? <span className="italic">не назначен</span>}
                 </div>

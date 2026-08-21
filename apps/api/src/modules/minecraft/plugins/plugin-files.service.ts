@@ -13,6 +13,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ClientApiService } from '../../../pterodactyl/client-api.service';
 import { CompanionService } from '../companion.service';
 import { MarketService } from './market.service';
+import { fileProtectionReason, protectionReason } from './plugin-protection';
 
 /**
  * Установка, включение/выключение и удаление плагинов на игровом сервере.
@@ -29,9 +30,6 @@ const DISABLED_DIR = `${PLUGINS_DIR}/${DISABLED_PLUGINS_DIR}`;
 
 /** Больше этого плагины практически не весят, а память панели не резиновая. */
 const MAX_JAR_BYTES = 150 * 1024 * 1024;
-
-/** Имя companion-плагина: его самого выключать и сносить нельзя. */
-const COMPANION_PLUGIN = 'AurumCompanion';
 
 @Injectable()
 export class PluginFilesService {
@@ -177,22 +175,29 @@ export class PluginFilesService {
       this.logger.warn(`Файлы сервера ${serverId} недоступны: ${(e as Error).message}`);
     }
 
-    const plugins: InstalledPluginDto[] = (live ?? []).map((p) => ({
-      name: p.name,
-      version: p.version,
-      state: p.enabled ? 'enabled' : 'disabled-runtime',
-      fileName: guessFile(files, p.name),
-      protected: p.name === COMPANION_PLUGIN,
-    }));
+    const plugins: InstalledPluginDto[] = (live ?? []).map((p) => {
+      const reason = protectionReason(p.name);
+      return {
+        name: p.name,
+        version: p.version,
+        state: p.enabled ? 'enabled' : 'disabled-runtime',
+        fileName: guessFile(files, p.name),
+        protected: reason !== null,
+        ...(reason ? { protectedReason: reason } : {}),
+      };
+    });
 
     // Отключённые переносом сервер не видит вовсе — они есть только на диске.
     for (const fileName of disabled) {
+      // Тут имени из Bukkit нет, есть только файл: сверяемся по нему.
+      const reason = fileProtectionReason(fileName);
       plugins.push({
         name: nameFromJar(fileName),
         version: null,
         state: 'disabled-file',
         fileName,
-        protected: false,
+        protected: reason !== null,
+        ...(reason ? { protectedReason: reason } : {}),
       });
     }
 
@@ -233,7 +238,10 @@ export class PluginFilesService {
     enabled: boolean,
     actorId: string,
   ): Promise<{ ok: boolean; message: string }> {
-    this.assertNotCompanion(pluginName);
+    // Запрет односторонний: выключать защищённый плагин нельзя, а включать —
+    // можно и нужно. Если LuckPerms оказался выключен, кнопка «Включить» это
+    // единственное, чем панель ещё способна помочь.
+    if (!enabled) this.assertNotProtected(pluginName);
     const result = await this.companion.setPluginEnabled(serverId, pluginName, enabled);
 
     await this.audit.log({
@@ -270,6 +278,9 @@ export class PluginFilesService {
     actorId: string,
   ): Promise<{ ok: boolean; message: string }> {
     const safeName = sanitizeJarName(fileName);
+    // Как и с горячим выключением: унести файл защищённого плагина нельзя,
+    // вернуть его из .disabled/ обратно — можно.
+    if (disabled) this.assertFileNotProtected(safeName);
     const identifier = await this.identifier(serverId);
 
     if (disabled) {
@@ -317,8 +328,9 @@ export class PluginFilesService {
     input: { fileName: string; pluginName?: string; withData: boolean },
     actorId: string,
   ): Promise<{ ok: boolean; message: string }> {
-    if (input.pluginName) this.assertNotCompanion(input.pluginName);
+    if (input.pluginName) this.assertNotProtected(input.pluginName);
     const safeName = sanitizeJarName(input.fileName);
+    this.assertFileNotProtected(safeName);
     const identifier = await this.identifier(serverId);
 
     // Файл может лежать и в plugins/, и в .disabled/ — сносим там, где он есть.
@@ -396,13 +408,14 @@ export class PluginFilesService {
     }
   }
 
-  private assertNotCompanion(pluginName: string): void {
-    if (pluginName === COMPANION_PLUGIN) {
-      throw new BadRequestException(
-        'Это companion-плагин самой панели: выключив его, панель потеряет связь с сервером ' +
-          'и включить обратно будет уже нечем. Снимайте его только вручную по SFTP.',
-      );
-    }
+  private assertNotProtected(pluginName: string): void {
+    const reason = protectionReason(pluginName);
+    if (reason) throw new BadRequestException(reason);
+  }
+
+  private assertFileNotProtected(fileName: string): void {
+    const reason = fileProtectionReason(fileName);
+    if (reason) throw new BadRequestException(reason);
   }
 }
 

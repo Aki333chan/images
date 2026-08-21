@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import type {
-  MinecraftEconomyDto,
-  MinecraftPerformanceDto,
-  ServerResourcesDto,
-} from '@aurum/shared';
+import type { MinecraftEconomyDto, MinecraftPerformanceDto } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { RUNTIME_POLL_MS, useServerRuntime } from '../lib/server-runtime';
 import { Button, Card } from './ui';
 
 /** Байты в человекочитаемый вид: 1.5 ГБ вместо 1610612736. */
@@ -59,6 +56,9 @@ function Metric({
  * показания с интервалом, а RCON-команда — это лишний поход на игровой
  * сервер, который в это время занят игроками.
  *
+ * Ресурсы берутся из общего опроса (см. lib/server-runtime): то же состояние
+ * нужно шапке страницы и списку плагинов, и спрашивать его трижды незачем.
+ *
  * Экономика из этого цикла намеренно исключена: её пересчёт обходит всех, кто
  * когда-либо заходил на сервер, поэтому цифра берётся один раз при открытии
  * (бэкенд отдаёт её из кэша) и дальше — только по кнопке «обновить».
@@ -73,9 +73,8 @@ export function ServerStats({
   canSeePerformance: boolean;
 }) {
   const { hasPermission } = useAuth();
-  const [resources, setResources] = useState<ServerResourcesDto | null>(null);
+  const { resources, failed } = useServerRuntime(serverId);
   const [performance, setPerformance] = useState<MinecraftPerformanceDto | null>(null);
-  const [failed, setFailed] = useState(false);
   const [economy, setEconomy] = useState<MinecraftEconomyDto | null>(null);
   const [economyBusy, setEconomyBusy] = useState(false);
   const [showRich, setShowRich] = useState(false);
@@ -112,20 +111,17 @@ export function ServerStats({
   }, [wantsEconomy, loadEconomy]);
 
   useEffect(() => {
+    if (!wantsPerformance) {
+      setPerformance(null);
+      return;
+    }
     let stopped = false;
 
     async function tick() {
-      try {
-        const res = await api<ServerResourcesDto>(`/api/servers/${serverId}/resources`);
-        if (!stopped) {
-          setResources(res);
-          setFailed(false);
-        }
-      } catch {
-        if (!stopped) setFailed(true);
-      }
-
-      if (!wantsPerformance) return;
+      // На скрытой вкладке не ходим: RCON-команда — это поход на живой
+      // сервер, и делать его для страницы, на которую никто не смотрит,
+      // незачем.
+      if (document.hidden) return;
       try {
         const perf = await api<MinecraftPerformanceDto>(
           `/api/modules/minecraft/servers/${serverId}/performance`,
@@ -138,7 +134,7 @@ export function ServerStats({
     }
 
     void tick();
-    const timer = setInterval(() => void tick(), 10_000);
+    const timer = setInterval(() => void tick(), RUNTIME_POLL_MS);
     return () => {
       stopped = true;
       clearInterval(timer);
