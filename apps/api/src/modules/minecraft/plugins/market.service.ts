@@ -453,6 +453,56 @@ export class MarketService {
       external,
     };
   }
+
+  /**
+   * Иконка плагина, забранная панелью и отданная браузеру со своего адреса.
+   *
+   * Прямая ссылка на CDN источника не работает и работать не должна: панель
+   * стоит за nginx с Content-Security-Policy, где img-src ограничен своим
+   * доменом и crafatar.com. Добавлять туда по домену на каждый источник —
+   * значит править конфиг живого сервера при появлении каждого нового
+   * маркета, а заодно показывать этим CDN адрес каждого администратора,
+   * который открыл список плагинов.
+   *
+   * Поэтому картинку забирает панель и отдаёт со своего адреса: CSP не
+   * трогается, чужие CDN видят один только сервер.
+   */
+  async getIcon(rawUrl: string): Promise<ProxiedIcon> {
+    if (!isAllowedIconUrl(rawUrl)) {
+      throw new NotFoundException('Иконка с этого адреса не отдаётся');
+    }
+
+    const res = await request(rawUrl, {
+      method: 'GET',
+      headers: { 'user-agent': USER_AGENT },
+      maxRedirections: 3,
+      headersTimeout: 8_000,
+      bodyTimeout: 15_000,
+    }).catch(() => null);
+
+    if (!res || res.statusCode >= 400) {
+      throw new NotFoundException('Источник не отдал иконку');
+    }
+
+    const contentType = String(res.headers['content-type'] ?? '')
+      .split(';')[0]!
+      .trim()
+      .toLowerCase();
+    if (!ICON_TYPES.has(contentType)) {
+      throw new NotFoundException('По этому адресу не картинка');
+    }
+
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of res.body) {
+      const buf = Buffer.from(chunk);
+      total += buf.length;
+      if (total > MAX_ICON_BYTES) throw new NotFoundException('Иконка слишком большая');
+      chunks.push(buf);
+    }
+
+    return { body: Buffer.concat(chunks), contentType };
+  }
 }
 
 /** Modrinth называет каналы release/beta/alpha, Hangar — Release/Beta/Alpha. */
@@ -477,4 +527,57 @@ function hangarPath(id: string): string {
     .split('/')
     .map((part) => encodeURIComponent(part))
     .join('/');
+
+}
+
+/**
+ * Хосты, с которых панель соглашается забирать иконки плагинов.
+ *
+ * Белый список, а не «любой https» — потому что прокси картинок это чужой
+ * URL, который панель запрашивает сама, изнутри сети. Без ограничения по
+ * хосту такой маршрут превращается в SSRF: подставив адрес вида
+ * http://10.0.0.2:8085/… или http://169.254.169.254/…, снаружи можно было бы
+ * читать то, до чего дотягивается панель, но не дотягивается браузер.
+ *
+ * Список закрытый и сверен с тем, что реально отдают источники: Modrinth
+ * держит иконки на своём CDN, Hangar — на своём.
+ */
+const ICON_HOSTS = new Set([
+  'cdn.modrinth.com',
+  'hangarcdn.papermc.io',
+  'hangar.papermc.io',
+]);
+
+/** Больше иконки не весят, а память панели не резиновая. */
+const MAX_ICON_BYTES = 2 * 1024 * 1024;
+
+/** Что панель соглашается считать картинкой. */
+const ICON_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+]);
+
+export interface ProxiedIcon {
+  body: Buffer;
+  contentType: string;
+}
+
+/**
+ * Разрешён ли адрес иконки. Экспортируется ради тестов: проверка на SSRF
+ * ломается тихо, а цена ошибки — доступ к внутренней сети.
+ */
+export function isAllowedIconUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  // Только https: по http адрес можно подменить на пути, а внутри сети
+  // http — это как раз то, до чего дотягиваться нельзя.
+  if (url.protocol !== 'https:') return false;
+  return ICON_HOSTS.has(url.hostname.toLowerCase());
 }

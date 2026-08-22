@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query , Res } from '@nestjs/common';
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import {
   MARKET_SOURCES,
@@ -14,6 +14,7 @@ import {
 import { AuthUser, CurrentPermissions, CurrentUser } from '../../../auth/decorators';
 import type { EffectivePermissions } from '../../../rbac/permissions.service';
 import { RequirePermission, ServerScoped } from '../../../rbac/rbac.decorators';
+import type { Response } from 'express';
 import { MarketService } from './market.service';
 import { PluginFilesService } from './plugin-files.service';
 import { PluginTargetsService } from './plugin-targets.service';
@@ -110,6 +111,27 @@ export class PluginsController {
   @RequirePermission(PLUGIN_PERMISSIONS.install)
   targetList(@CurrentPermissions() eff: EffectivePermissions): Promise<ServerTargetDto[]> {
     return this.targets.listForUser(eff);
+  }
+
+  /**
+   * Иконка плагина через панель.
+   *
+   * Отдельным маршрутом ВЫШЕ market/:source/:pluginId: у Nest маршруты
+   * сопоставляются по порядку объявления, и «market/icon» иначе поймался бы
+   * шаблоном с двумя параметрами.
+   */
+  @Get('market/icon')
+  @RequirePermission(PLUGIN_PERMISSIONS.install)
+  async icon(@Query('url') url: string, @Res() res: Response): Promise<void> {
+    const icon = await this.market.getIcon(url ?? '');
+    res.setHeader('content-type', icon.contentType);
+    // Сутки в кэше браузера: иконка плагина меняется раз в год, а список
+    // маркета открывают подряд и помногу.
+    res.setHeader('cache-control', 'private, max-age=86400');
+    // Явный запрет на угадывание типа: содержимое пришло с чужого сервера,
+    // и браузер не должен решать, что это на самом деле, сам.
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.end(icon.body);
   }
 
   @Get('market/:source/:pluginId')

@@ -21,6 +21,9 @@
  */
 import {
   forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
@@ -196,35 +199,114 @@ export function Select({
   );
 }
 
+/**
+ * Ряд вкладок с едущей подложкой.
+ *
+ * Подложка — один отдельный элемент, который переезжает под активную вкладку,
+ * а не подсветка, вспыхивающая на новом месте. Разница смысловая: переезд
+ * показывает, ЧТО ИМЕННО сменилось и куда, а вспышка оставляет глаз искать
+ * активную вкладку заново — особенно на длинном ряду, где она может оказаться
+ * с другого края.
+ *
+ * Позиция меряется по живому DOM, а не считается из ширин: вкладки подписаны
+ * словами разной длины, ряд на узком экране прокручивается, и любая
+ * арифметика тут разъезжается. Пересчёт — на смену активной, на изменение
+ * размеров (ResizeObserver) и на прокрутку ряда.
+ */
 export function Tabs({
   tabs,
   active,
   onChange,
+  fill = false,
 }: {
   tabs: { id: string; label: string; icon?: ReactNode }[];
   active: string;
   onChange: (id: string) => void;
+  /**
+   * Делить ширину поровну на телефоне. Для коротких рядов из трёх вкладок,
+   * которые целиком помещаются на экран: так в каждую удобно попасть пальцем,
+   * и прокручивать нечего.
+   */
+  fill?: boolean;
 }) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  /**
+   * Первую установку подложки делаем без перехода: иначе при открытии
+   * страницы она приезжает из левого угла — движение, которого никто не
+   * совершал.
+   */
+  const placed = useRef(false);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+
+    const measure = () => {
+      const el = row.querySelector<HTMLElement>(`[data-tab="${CSS.escape(active)}"]`);
+      if (!el) return setIndicator(null);
+      // offsetLeft, а не getBoundingClientRect: ряд прокручивается, и
+      // координаты относительно окна уезжают вместе с прокруткой, а
+      // относительно родителя — нет.
+      setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+    };
+
+    measure();
+    const raf = requestAnimationFrame(() => {
+      placed.current = true;
+    });
+
+    // Шрифт догружается после первой отрисовки и меняет ширину подписей —
+    // без пересчёта подложка остаётся под старыми размерами.
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    for (const child of Array.from(row.children)) observer.observe(child);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [active, tabs]);
+
   return (
     // Вкладок бывает шесть и больше, а на 375 px в ряд помещается три.
     // Горизонтальная прокрутка вместо переноса: ряд вкладок, разъехавшийся
     // на две строки, перестаёт читаться как одна группа. scrollbar скрыт —
     // на мобильном его и так нет, а на десктопе ряд обычно влезает целиком.
     <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="flex w-max min-w-full gap-1 rounded-lg border border-border bg-card/60 p-1">
+      <div
+        ref={rowRef}
+        className={cn(
+          'relative flex min-w-full gap-1 rounded-lg border border-border bg-card/60 p-1',
+          fill ? 'w-full' : 'w-max',
+        )}
+      >
+        {indicator && (
+          <span
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute bottom-1 top-1 rounded-md bg-primary/15',
+              'shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]',
+              // motion-safe: у тех, кто попросил систему не анимировать,
+              // подложка просто оказывается на новом месте.
+              placed.current && 'motion-safe:transition-[transform,width] motion-safe:duration-300 motion-safe:ease-panel',
+            )}
+            style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
+          />
+        )}
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
+            data-tab={t.id}
             aria-current={active === t.id ? 'page' : undefined}
             onClick={() => onChange(t.id)}
             className={cn(
-              'flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 text-sm',
+              'relative z-10 flex min-h-11 items-center gap-2 whitespace-nowrap rounded-md px-3 text-sm',
               'transition-colors duration-200 sm:min-h-9',
+              fill ? 'flex-1 justify-center sm:flex-none sm:justify-start' : 'shrink-0',
               FOCUS_RING,
-              active === t.id
-                ? 'bg-primary/15 text-primary-200 shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]'
-                : 'text-muted hover:bg-white/5 hover:text-neutral-100',
+              active === t.id ? 'text-primary-200' : 'text-muted hover:text-neutral-100',
             )}
           >
             {t.icon}

@@ -13,6 +13,7 @@ import {
 } from '@aurum/shared';
 import { api } from '../lib/api';
 import { Badge, Button, ErrorText, Input, Spinner } from '../components/ui';
+import { PluginIcon } from './PluginIcon';
 import { Modal } from '../components/Modal';
 
 const BASE = '/api/modules/minecraft/market';
@@ -97,16 +98,7 @@ export function MarketPage() {
             onClick={() => setSelected(hit)}
           >
             <div className="flex gap-3">
-              {hit.iconUrl ? (
-                <img
-                  src={hit.iconUrl}
-                  alt=""
-                  className="h-12 w-12 shrink-0 rounded bg-white/5 object-contain"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="h-12 w-12 shrink-0 rounded bg-white/5" />
-              )}
+              <PluginIcon url={hit.iconUrl} title={hit.title} size={48} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{hit.title}</span>
@@ -173,13 +165,7 @@ function PluginModal({
       ) : (
         <div className="space-y-4">
           <div className="flex gap-3">
-            {plugin.iconUrl && (
-              <img
-                src={plugin.iconUrl}
-                alt=""
-                className="h-16 w-16 shrink-0 rounded bg-white/5 object-contain"
-              />
-            )}
+            <PluginIcon url={plugin.iconUrl} title={plugin.title} size={64} />
             <div className="min-w-0">
               <p className="text-sm">{plugin.description}</p>
               <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted">

@@ -21,6 +21,8 @@ function snapshot(state: string | null, uptimeMs: number | null): ServerRuntime 
     resources: state === null || uptimeMs === null ? null : resources(state, uptimeMs),
     failed: false,
     runId: 0,
+    bootAt: null,
+    tick: 0,
   };
 }
 
