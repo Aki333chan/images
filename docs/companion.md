@@ -127,6 +127,27 @@ ls -lh paper/build/libs/
   Посмотрите `./gradlew -q javaToolchains`: в списке должна быть 25.
 - **`Could not resolve io.papermc.paper:paper-api`** → нет доступа к
   `repo.papermc.io`. Проверьте интернет и что не мешает корпоративный прокси.
+- **`Cannot select module with conflict on capability 'org.bukkit:bukkit'`** →
+  это уже починено в `paper/build.gradle.kts`, и если ошибка всё же вылезла,
+  значит собирается старая версия файла — обновите репозиторий.
+
+  Суть: VaultAPI тянет за собой `org.bukkit:bukkit` восьмилетней давности
+  (JitPack пересобирает его и публикует свой pom, где эта зависимость
+  попадает в compile), а `paper-api` объявляет собой ту же способность
+  (`capability`) — Paper делает это нарочно, чтобы старый Bukkit и Paper не
+  встретились в одном classpath. Gradle видит двух поставщиков одного и того
+  же и отказывается выбирать.
+  Лечится исключением старого Bukkit из VaultAPI: все классы `org.bukkit.*`
+  даёт `paper-api`, он их надмножество.
+
+  ```kotlin
+  compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
+      exclude(group = "org.bukkit", module = "bukkit")
+  }
+  ```
+
+  Если когда-нибудь добавите ещё одну библиотеку эпохи Bukkit и увидите ту же
+  ошибку — лечится так же, исключением в её объявлении.
 - **`Permission denied: ./gradlew`** → `chmod +x gradlew` и повторите.
 - **Не хочется возиться со сборкой** → соберите на своём компьютере (шаги те
   же) и загрузите готовый jar через браузер на шаге 3.
