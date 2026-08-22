@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MinecraftPluginsDto } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { useServerRuntime } from '../../lib/server-runtime';
@@ -14,10 +14,73 @@ import { Badge, Button, Card, ErrorText, Spinner } from '../../components/ui';
  *
  * Поэтому последний удавшийся ответ запоминается — до следующего ЗАПУСКА
  * сервера, а не до конца сессии: перезапуск это единственный момент, когда
- * набор плагинов действительно может стать другим, и с него панель начинает
- * узнавать всё заново.
+ * набор плагинов действительно может стать другим.
+ *
+ * Хранилище — sessionStorage, а не переменная в модуле. Переменная живёт до
+ * первого F5, а перезагружают страницу как раз тогда, когда «всё пропало»:
+ * человек видит сплошное «нет», жмёт обновить — и получает ровно то же самое.
+ * sessionStorage переживает перезагрузку и умирает вместе со вкладкой.
  */
-const remembered = new Map<string, { data: MinecraftPluginsDto; runId: number }>();
+const CACHE_PREFIX = 'aurum.plugins.';
+
+export interface Remembered {
+  data: MinecraftPluginsDto;
+  /**
+   * Момент запуска сервера, при котором эти данные получены, или null — если
+   * сервер тогда не работал. По нему видно, тот ли это ещё запуск.
+   */
+  bootAt: number | null;
+}
+
+function readRemembered(serverId: string): Remembered | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_PREFIX + serverId);
+    return raw ? (JSON.parse(raw) as Remembered) : null;
+  } catch {
+    // Приватный режим, переполненное хранилище, чужой мусор по тому же ключу —
+    // память это удобство, и падать из-за неё экран не должен.
+    return null;
+  }
+}
+
+function writeRemembered(serverId: string, value: Remembered): void {
+  try {
+    sessionStorage.setItem(CACHE_PREFIX + serverId, JSON.stringify(value));
+  } catch {
+    /* см. выше */
+  }
+}
+
+/**
+ * Годится ли запомненное к тому, что происходит с сервером сейчас.
+ *
+ * Сервер не работает — годится: набор плагинов с прошлого запуска и есть
+ * последнее, что о нём известно, и показать его правильнее, чем «нет».
+ * Сервер работает — только если это ТОТ ЖЕ запуск: после перезапуска плагины
+ * могли поменяться, и выдавать вчерашний список за сегодняшний нельзя.
+ *
+ * Чистая функция и экспортируется ради тестов: ошибка здесь незаметна на
+ * глаз — таблица выглядит правдоподобно в обоих случаях.
+ */
+export function rememberedFits(kept: Remembered, bootAt: number | null): boolean {
+  if (bootAt === null) return true;
+  return kept.bootAt === bootAt;
+}
+
+/**
+ * Сколько раз подряд пробовать достучаться до companion, пока сервер работает.
+ *
+ * Повторы нужны потому, что момент, когда Wings объявляет сервер запущенным, и
+ * момент, когда companion поднял свой HTTP-порт, не совпадают. Одной попытки
+ * не хватало: она уходила в пустоту, и до нажатия «Обновить» руками таблица
+ * так и оставалась пустой.
+ *
+ * Тридцать попыток с шагом опроса (10 с) — это пять минут: столько сервер
+ * поднимается с большим запасом. Дальше молчание означает не «ещё грузится», а
+ * «настроено неверно», и долбиться в него бесконечно незачем — кнопка
+ * «Обновить» никуда не делась.
+ */
+const MAX_RETRIES = 30;
 
 export function PluginsPanel({ serverId }: { serverId: string }) {
   const runtime = useServerRuntime(serverId);
@@ -27,9 +90,11 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  /** Сколько раз подряд companion не ответил на этом запуске сервера. */
+  const retriesRef = useRef(0);
 
   const load = useCallback(
-    async (runId: number) => {
+    async (bootAt: number | null) => {
       setBusy(true);
       setError('');
       try {
@@ -37,16 +102,17 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
           `/api/modules/minecraft/servers/${serverId}/plugins`,
         );
         if (fresh.available) {
-          remembered.set(serverId, { data: fresh, runId });
+          retriesRef.current = 0;
+          writeRemembered(serverId, { data: fresh, bootAt });
           setData(fresh);
           setStale(false);
           return;
         }
         // Живого ответа нет. Память годится, только если сервер с тех пор не
-        // перезапускался: после перезапуска набор плагинов мог измениться, и
-        // выдавать вчерашний список за сегодняшний нельзя.
-        const kept = remembered.get(serverId);
-        if (kept && kept.runId === runId) {
+        // перезапускался.
+        retriesRef.current += 1;
+        const kept = readRemembered(serverId);
+        if (kept && rememberedFits(kept, bootAt)) {
           setData(kept.data);
           setStale(true);
         } else {
@@ -62,14 +128,45 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
     [serverId],
   );
 
-  // runId в зависимостях — это и есть обновление на старте и рестарте:
-  // он растёт ровно тогда, когда сервер поднялся заново.
+  // Первый показ и каждый новый запуск сервера. runId растёт ровно тогда,
+  // когда сервер поднялся заново, — это и есть «обновись со стартом».
   useEffect(() => {
-    void load(runtime.runId);
+    retriesRef.current = 0;
+    void load(runtime.bootAt);
+    // bootAt намеренно не в зависимостях: он уточняется на каждом опросе на
+    // доли секунды, и по нему запрос уходил бы каждые десять секунд.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, runtime.runId]);
+
+  // Первый запрос уходит раньше первого ответа Pterodactyl, поэтому свежие
+  // данные поначалу оказываются привязаны к «неизвестно какому» запуску.
+  // Как только запуск становится известен — дописываем его в память. Только
+  // из null и только один раз: иначе после перезапуска старые данные молча
+  // привязались бы к новому запуску и выдавались бы за сегодняшние.
+  useEffect(() => {
+    if (!data?.available || stale || runtime.bootAt === null) return;
+    const kept = readRemembered(serverId);
+    if (kept && kept.bootAt === null) {
+      writeRemembered(serverId, { data: kept.data, bootAt: runtime.bootAt });
+    }
+  }, [serverId, data, stale, runtime.bootAt]);
+
+  // Догоняем: сервер уже работает, а companion ещё не ответил. Считаем по
+  // тикам общего опроса, чтобы не заводить второй таймер на ту же задачу.
+  useEffect(() => {
+    if (runtime.tick === 0) return;
+    if (data?.available) return;
+    if (runtime.state !== 'running') return;
+    if (retriesRef.current === 0 || retriesRef.current > MAX_RETRIES) return;
+    void load(runtime.bootAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runtime.tick]);
 
   if (error && !data) return <ErrorText>{error}</ErrorText>;
   if (!data) return <Spinner />;
+
+  const retrying =
+    !data.available && runtime.state === 'running' && retriesRef.current <= MAX_RETRIES;
 
   return (
     <Card className="space-y-3">
@@ -79,19 +176,23 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
           {data.available && !stale && (
             <span className="text-xs text-muted">всего на сервере: {data.installed.length}</span>
           )}
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load(runtime.runId)}>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load(runtime.bootAt)}>
             {busy ? 'Проверяем…' : 'Обновить'}
           </Button>
         </div>
       </div>
 
       {stale && (
-        <p className="text-xs text-amber-400">
+        <p className="text-xs text-warn">
           Сервер сейчас не отвечает — показано состояние на момент последней проверки. Список
           обновится сам, когда сервер запустится.
         </p>
       )}
-      {!data.available && !stale && <p className="text-xs text-amber-400">{data.reason}</p>}
+      {!data.available && !stale && (
+        <p className="text-xs text-warn">
+          {retrying ? 'Сервер запущен, ждём ответа companion-плагина…' : data.reason}
+        </p>
+      )}
 
       <ul className="space-y-2">
         {data.known.map((plugin) => (
@@ -102,9 +203,7 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
             <div className="min-w-0">
               <div className="text-sm font-medium">
                 {plugin.displayName}
-                {plugin.version && (
-                  <span className="ml-2 text-xs text-muted">{plugin.version}</span>
-                )}
+                {plugin.version && <span className="ml-2 text-xs text-muted">{plugin.version}</span>}
               </div>
               <div className="text-xs text-muted">{plugin.gives}</div>
             </div>

@@ -29,11 +29,49 @@ export interface ServerRuntime {
    * Номер запуска сервера. Растёт на каждом старте — по нему видно, что
    * сервер перезапустили, и можно перечитать всё, что зависит от запуска:
    * список плагинов, версию ядра.
+   *
+   * Живёт только в памяти вкладки: после перезагрузки страницы счёт
+   * начинается заново. Для того, что должно пережить F5, есть bootAt.
    */
   runId: number;
+  /**
+   * Момент запуска сервера, миллисекунды эпохи, или null — если сервер не
+   * работает и считать не от чего.
+   *
+   * В отличие от runId переживает перезагрузку страницы: это свойство самого
+   * сервера, а не счётчик вкладки. По нему видно, тот ли это запуск, что был,
+   * когда данные складывали в кэш.
+   */
+  bootAt: number | null;
+  /**
+   * Счётчик удачных опросов. Растёт на каждом ответе Pterodactyl — по нему
+   * подписчик может повторить то, что в прошлый раз не удалось, не заводя
+   * собственного таймера.
+   */
+  tick: number;
 }
 
-const EMPTY: ServerRuntime = { resources: null, state: null, failed: false, runId: 0 };
+const EMPTY: ServerRuntime = {
+  resources: null,
+  state: null,
+  failed: false,
+  runId: 0,
+  bootAt: null,
+  tick: 0,
+};
+
+/**
+ * Момент запуска сервера по аптайму.
+ *
+ * Округляем до десяти секунд: аптайм приходит с точностью до миллисекунд, и
+ * два соседних замера дали бы два разных «момента запуска» одного и того же
+ * запуска. Округление превращает их в одно значение, которое можно сравнивать
+ * на равенство.
+ */
+function bootTime(resources: ServerResourcesDto): number | null {
+  if (resources.state !== 'running' && resources.state !== 'starting') return null;
+  return Math.round((Date.now() - resources.uptimeMs) / 10_000) * 10_000;
+}
 
 /**
  * Тот же сервер или уже другой запуск.
@@ -82,6 +120,8 @@ async function poll(serverId: string) {
       state: resources.state,
       failed: false,
       runId: prev.runId + (isNewRun(prev, resources) ? 1 : 0),
+      bootAt: bootTime(resources),
+      tick: prev.tick + 1,
     };
     emit(entry);
   } catch {

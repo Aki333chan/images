@@ -7,6 +7,7 @@ import {
   type ServerTargetDto,
 } from '@aurum/shared';
 import { parseVersionOutput } from './plugin-targets.service';
+import { isAllowedIconUrl } from './market.service';
 
 /**
  * Совместимость — БЕЙДЖ, А НЕ ФИЛЬТР.
@@ -145,5 +146,47 @@ describe('parseVersionOutput', () => {
       gameVersion: null,
       loader: null,
     });
+  });
+});
+
+/**
+ * Прокси иконок ходит по адресу, который пришёл снаружи, изнутри сети панели.
+ * Без ограничения по хосту это прямой SSRF: подставив внутренний адрес, через
+ * панель можно читать то, до чего дотягивается она, но не дотягивается
+ * браузер. Поэтому список закрытый, и проверяется он тестом, а не на глаз.
+ */
+describe('прокси иконок маркета', () => {
+  it('пускает CDN известных источников', () => {
+    expect(isAllowedIconUrl('https://cdn.modrinth.com/data/AABBCCDD/icon.png')).toBe(true);
+    expect(isAllowedIconUrl('https://hangarcdn.papermc.io/avatars/project/1.webp')).toBe(true);
+  });
+
+  it('не пускает чужой хост', () => {
+    expect(isAllowedIconUrl('https://example.invalid/icon.png')).toBe(false);
+  });
+
+  it('не пускает внутреннюю сеть', () => {
+    // Ровно то, ради чего список и заведён: адрес companion-плагина, метаданные
+    // облака и сама панель доступны с сервера, но не должны быть доступны
+    // через него кому угодно с правом смотреть маркет.
+    expect(isAllowedIconUrl('http://10.0.0.2:8085/players')).toBe(false);
+    expect(isAllowedIconUrl('http://169.254.169.254/latest/meta-data/')).toBe(false);
+    expect(isAllowedIconUrl('http://127.0.0.1:3001/api/settings')).toBe(false);
+  });
+
+  it('не пускает http даже на разрешённый хост', () => {
+    // По http ответ подменяется на пути, а внутри сети http — это как раз то,
+    // до чего дотягиваться нельзя.
+    expect(isAllowedIconUrl('http://cdn.modrinth.com/icon.png')).toBe(false);
+  });
+
+  it('не пускает хост, который лишь содержит разрешённый', () => {
+    expect(isAllowedIconUrl('https://cdn.modrinth.com.attacker.test/x.png')).toBe(false);
+    expect(isAllowedIconUrl('https://evilcdn.modrinth.com/x.png')).toBe(false);
+  });
+
+  it('мусор вместо адреса — отказ, а не исключение', () => {
+    expect(isAllowedIconUrl('не адрес')).toBe(false);
+    expect(isAllowedIconUrl('')).toBe(false);
   });
 });

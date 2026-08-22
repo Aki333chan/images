@@ -5,9 +5,8 @@ import type {
   MinecraftPluginsDto,
 } from '@aurum/shared';
 import { api } from '../../lib/api';
-import { cn } from '../../lib/cn';
 import { useAuth } from '../../lib/auth';
-import { Badge, Button, Card, ErrorText, Label, Select, Spinner } from '../../components/ui';
+import { Badge, Button, Card, ErrorText, Label, Select, Spinner, Tabs } from '../../components/ui';
 import { BalancePanel } from './BalancePanel';
 import { InventoryGrid } from './InventoryGrid';
 import { PermissionsPanel } from './PermissionsPanel';
@@ -103,34 +102,19 @@ export function PlayerDetail({
     <div className="space-y-4">
       <PlayerStats player={player} />
 
-      {/* Тот же вид, что у вкладок сервера: подчёркивание вместо таблетки
-          читалось бы как другой уровень навигации, хотя это ровно такое же
-          переключение содержимого. */}
-      <div className="flex gap-1 rounded-lg border border-border bg-background/40 p-1">
-        {(
-          [
-            ['actions', 'Действия'],
-            ['inventory', 'Инвентарь'],
-            ['rights', 'Группа прав'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            // flex-1 на телефоне: три вкладки делят ширину поровну, и в
-            // каждую удобно попасть пальцем.
-            className={cn(
-              'min-h-11 flex-1 whitespace-nowrap rounded-md px-2 text-sm transition-colors sm:min-h-9',
-              tab === id
-                ? 'bg-primary/15 text-primary-200 shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]'
-                : 'text-muted hover:bg-white/5 hover:text-neutral-100',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Тот же компонент, что и у вкладок сервера: и вид, и едущая подложка
+          общие. Отдельная реализация здесь означала бы, что одинаковое на вид
+          переключение ведёт себя по-разному в двух местах одного экрана. */}
+      <Tabs
+        fill
+        active={tab}
+        onChange={(id) => setTab(id as typeof tab)}
+        tabs={[
+          { id: 'actions', label: 'Действия' },
+          { id: 'inventory', label: 'Инвентарь' },
+          { id: 'rights', label: 'Группа прав' },
+        ]}
+      />
 
       {tab === 'actions' && (
         <div className="space-y-4">
@@ -161,12 +145,21 @@ export function PlayerDetail({
         </div>
       )}
 
+      {/* Признак того, что companion на связи, — это plugins.available: он и
+          означает «companion ответил на запрос списка». Раньше здесь стояло
+          has('AurumCompanion'), но has() ищет в plugins.known, то есть в
+          KNOWN_PLUGINS — списке СТОРОННИХ плагинов, которые панель умеет
+          распознавать. Самого себя панель туда не вносит, и проверка была
+          ложной всегда: вкладка инвентаря пропадала ровно тогда, когда
+          companion работал, и появлялась, когда список вовсе не удалось
+          получить. */}
       {tab === 'inventory' &&
-        (has('AurumCompanion') || plugins === null ? (
+        (plugins === null || plugins.available ? (
           <PlayerInventory serverId={serverId} name={player.name} />
         ) : (
           <p className="text-sm text-muted">
-            Инвентарь показывает companion-плагин — на этом сервере он не установлен.
+            Инвентарь показывает companion-плагин — сейчас он не отвечает. Проверьте адрес и
+            токен во вкладке «Настройки» сервера.
           </p>
         ))}
 
