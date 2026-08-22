@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Badge, Button, Card, Select, Spinner, Tabs } from '../components/ui';
+import { Badge, Button, Card, Dot, Select, Spinner, Tabs } from '../components/ui';
+import { IconBack, IconPlay, IconRestart, IconStop } from '../components/icons';
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { ServerStats } from '../components/ServerStats';
 import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
@@ -95,6 +96,21 @@ export function ServerDetailPage() {
 
   return (
     <div className="space-y-4">
+      {/* Возврат к списку. В боковом меню «Серверы» тоже ведут сюда, но на
+          телефоне меню спрятано за гамбургером, и без этой ссылки уйти со
+          страницы сервера можно только кнопкой «назад» браузера. */}
+      <button
+        type="button"
+        onClick={() => navigate('/servers')}
+        // min-h-11 на телефоне — та же нижняя граница тач-таргета, что и у
+        // кнопок: на узком экране эта ссылка единственный способ уйти со
+        // страницы сервера, меню спрятано за гамбургером.
+        className="-ml-1.5 -mt-1 flex min-h-11 items-center gap-1.5 rounded-sm px-1.5 text-[11.5px] font-medium text-muted transition-colors hover:text-primary-200 sm:min-h-9"
+      >
+        <IconBack size={14} />
+        Все серверы
+      </button>
+
       {/* Название и кнопки питания в столбик на телефоне: три кнопки плюс
           значок статуса в одну строку с заголовком не помещаются. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -117,13 +133,21 @@ export function ServerDetailPage() {
           )}
           {hasPermission('servers.power') && (
             <>
-              <Button size="sm" variant="outline" onClick={() => void power('start')}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="hover:border-ok/60 hover:bg-ok/10 hover:text-ok"
+                onClick={() => void power('start')}
+              >
+                <IconPlay size={13} />
                 Старт
               </Button>
               <Button size="sm" variant="outline" onClick={() => void power('restart')}>
+                <IconRestart size={13} />
                 Рестарт
               </Button>
               <Button size="sm" variant="destructive" onClick={() => void power('stop')}>
+                <IconStop size={13} />
                 Стоп
               </Button>
             </>
@@ -232,10 +256,12 @@ function PowerBadge({ state }: { state: string | null }) {
   };
   return (
     <Badge
-      variant={
-        state === 'running' ? 'success' : state === 'offline' ? 'outline' : 'default'
-      }
+      variant={state === 'running' ? 'success' : state === 'offline' ? 'outline' : 'warn'}
+      className="text-[11.5px]"
     >
+      {/* Огонёк рядом со словом: состояние сервера читают мельком, и цветная
+          точка доносит его быстрее, чем слово успевает прочитаться. */}
+      <Dot className={state === 'starting' || state === 'stopping' ? 'aurum-pulse' : undefined} />
       {label[state] ?? state}
     </Badge>
   );

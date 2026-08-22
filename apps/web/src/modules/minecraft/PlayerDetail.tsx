@@ -5,6 +5,7 @@ import type {
   MinecraftPluginsDto,
 } from '@aurum/shared';
 import { api } from '../../lib/api';
+import { cn } from '../../lib/cn';
 import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Label, Select, Spinner } from '../../components/ui';
 import { BalancePanel } from './BalancePanel';
@@ -102,7 +103,10 @@ export function PlayerDetail({
     <div className="space-y-4">
       <PlayerStats player={player} />
 
-      <div className="flex gap-1 border-b border-border">
+      {/* Тот же вид, что у вкладок сервера: подчёркивание вместо таблетки
+          читалось бы как другой уровень навигации, хотя это ровно такое же
+          переключение содержимого. */}
+      <div className="flex gap-1 rounded-lg border border-border bg-background/40 p-1">
         {(
           [
             ['actions', 'Действия'],
@@ -112,12 +116,16 @@ export function PlayerDetail({
         ).map(([id, label]) => (
           <button
             key={id}
+            type="button"
             onClick={() => setTab(id)}
             // flex-1 на телефоне: три вкладки делят ширину поровну, и в
             // каждую удобно попасть пальцем.
-            className={`min-h-11 flex-1 whitespace-nowrap px-2 text-sm sm:min-h-0 sm:flex-none sm:px-3 sm:py-1.5 ${
-              tab === id ? 'border-b-2 border-primary font-medium' : 'text-muted'
-            }`}
+            className={cn(
+              'min-h-11 flex-1 whitespace-nowrap rounded-md px-2 text-sm transition-colors sm:min-h-9',
+              tab === id
+                ? 'bg-primary/15 text-primary-200 shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]'
+                : 'text-muted hover:bg-white/5 hover:text-neutral-100',
+            )}
           >
             {label}
           </button>

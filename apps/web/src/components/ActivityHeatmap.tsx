@@ -26,7 +26,10 @@ function cellStyle(value: number | null, peak: number): { className: string; tit
   const ratio = peak > 0 ? value / peak : 0;
   // Четыре ступени: глазу проще сравнивать пять состояний, чем градиент.
   const step = ratio > 0.75 ? 3 : ratio > 0.5 ? 2 : ratio > 0.25 ? 1 : 0;
-  const colors = ['bg-fuchsia-500/30', 'bg-fuchsia-500/55', 'bg-fuchsia-500/80', 'bg-fuchsia-400'];
+  // Ступени акцента, а не отдельный цвет: график активности — часть той же
+  // системы, и собственная фуксия выбивалась из неё единственным пятном
+  // чужого оттенка на весь интерфейс.
+  const colors = ['bg-primary/30', 'bg-primary/55', 'bg-primary/80', 'bg-primary-400'];
   return {
     className: colors[step] ?? colors[0]!,
     title: `${value} ${value === 1 ? 'игрок' : value < 5 ? 'игрока' : 'игроков'}`,
@@ -119,10 +122,10 @@ export function ActivityHeatmap({ serverId }: { serverId: string }) {
         <span>меньше</span>
         <div className="h-3 w-3 rounded-sm bg-white/[0.04]" title="нет данных" />
         <div className="h-3 w-3 rounded-sm bg-white/10" title="никого" />
-        <div className="h-3 w-3 rounded-sm bg-fuchsia-500/30" />
-        <div className="h-3 w-3 rounded-sm bg-fuchsia-500/55" />
-        <div className="h-3 w-3 rounded-sm bg-fuchsia-500/80" />
-        <div className="h-3 w-3 rounded-sm bg-fuchsia-400" />
+        <div className="h-3 w-3 rounded-sm bg-primary/30" />
+        <div className="h-3 w-3 rounded-sm bg-primary/55" />
+        <div className="h-3 w-3 rounded-sm bg-primary/80" />
+        <div className="h-3 w-3 rounded-sm bg-primary-400" />
         <span>больше</span>
         <span className="ml-2">первый квадрат — данных нет, второй — никого не было</span>
       </div>

@@ -1,6 +1,11 @@
 /**
- * Минимальный набор UI-компонентов в стиле shadcn/ui (тёмная тема).
- * При желании заменяются на полноценные shadcn-компоненты — API совместим.
+ * Базовые элементы интерфейса.
+ *
+ * Внешний вид — из дизайн-системы Nocturne: радиусы 4/8/14, волосяная рамка
+ * вместо тени, акцент-блёрпл, Inter. Цвета берутся ТОЛЬКО через ролевые
+ * классы Tailwind (bg-card, text-muted, border-border): перекраска системы —
+ * это правка tailwind.config.ts, а не поиск шестнадцатеричных литералов по
+ * всему проекту.
  *
  * ПРО РАЗМЕР ШРИФТА В ПОЛЯХ ВВОДА. У Input, Textarea и Select на мобильном
  * стоит text-base (16 px), и уменьшать его до text-sm можно только начиная
@@ -9,6 +14,10 @@
  * мельче 16 px. Внешне это выглядит как «поехала вёрстка и запрыгали
  * размеры шрифта» — причём после расфокуса масштаб не возвращается.
  * Ровно поэтому здесь 16 px, и менять это, не проверив на iPhone, не стоит.
+ *
+ * ПРО ВЫСОТУ КНОПОК И ПОЛЕЙ. 44 px на мобильном — не «с запасом», а нижняя
+ * граница, при которой в цель попадают пальцем с первого раза. На десктопе,
+ * где целятся мышью, вёрстка плотнее — отсюда пары вида h-11 sm:h-9.
  */
 import {
   forwardRef,
@@ -22,6 +31,14 @@ import { cn } from '../lib/cn';
 
 type ButtonVariant = 'default' | 'outline' | 'ghost' | 'destructive';
 
+/**
+ * Общая рамка фокуса. Кольцо, а не подмена рамки: рамка у поля уже занята
+ * состоянием (обычное / с ошибкой), и если фокус будет менять её же, эти два
+ * состояния станут неразличимы.
+ */
+const FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+
 export const Button = forwardRef<
   HTMLButtonElement,
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: 'sm' | 'md' }
@@ -30,16 +47,21 @@ export const Button = forwardRef<
     <button
       ref={ref}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-medium transition-colors',
-        'disabled:pointer-events-none disabled:opacity-50',
-        // На мобильном кнопки крупнее: 40 px — нижняя граница, при которой
-        // в кнопку попадают пальцем с первого раза. На десктопе, где целятся
-        // мышью, оставляем прежнюю плотную вёрстку.
+        'inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-medium',
+        'transition-[background-color,border-color,color,filter,transform] duration-200 ease-panel',
+        // Нажатие отзывается смещением на пиксель. Этого достаточно, чтобы
+        // касание на телефоне ощущалось нажатием, — там нет ни курсора, ни
+        // состояния hover, и без отклика непонятно, попал ли ты по кнопке.
+        'active:translate-y-px',
+        'disabled:pointer-events-none disabled:opacity-45',
+        FOCUS_RING,
         size === 'sm' ? 'h-10 px-3 text-sm sm:h-8 sm:text-xs' : 'h-11 px-4 text-sm sm:h-9',
-        variant === 'default' && 'bg-primary text-primary-foreground hover:bg-primary/90',
-        variant === 'outline' && 'border border-border bg-transparent hover:bg-white/5',
-        variant === 'ghost' && 'hover:bg-white/5',
-        variant === 'destructive' && 'bg-destructive text-white hover:bg-destructive/90',
+        variant === 'default' &&
+          'bg-primary text-primary-foreground shadow-sm hover:brightness-110',
+        variant === 'outline' &&
+          'border border-neutral-800 bg-transparent text-neutral-300 hover:border-primary/60 hover:bg-primary/10 hover:text-neutral-100',
+        variant === 'ghost' && 'text-muted hover:bg-white/5 hover:text-neutral-100',
+        variant === 'destructive' && 'bg-destructive text-white hover:brightness-110',
         className,
       )}
       {...props}
@@ -47,18 +69,20 @@ export const Button = forwardRef<
   );
 });
 
+/** Поля ввода: подложка темнее карточки, чтобы поле читалось как углубление. */
+const FIELD =
+  'w-full rounded-md border border-neutral-800 bg-background/70 text-neutral-100 placeholder:text-muted ' +
+  'transition-[border-color,box-shadow] duration-200 ' +
+  'focus:border-primary focus:outline-none focus:ring-[3px] focus:ring-primary/20 ' +
+  'disabled:opacity-50';
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {
     return (
       <input
         ref={ref}
-        className={cn(
-          // text-base на мобильном — против автозума iOS, см. шапку файла.
-          'flex h-11 w-full rounded-md border border-border bg-background px-3 py-1 text-base',
-          'sm:h-9 sm:text-sm',
-          'placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50',
-          className,
-        )}
+        // text-base на мобильном — против автозума iOS, см. шапку файла.
+        className={cn(FIELD, 'flex h-11 px-3 py-1 text-base sm:h-9 sm:text-sm', className)}
         {...props}
       />
     );
@@ -70,12 +94,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
     return (
       <textarea
         ref={ref}
-        className={cn(
-          'flex min-h-[70px] w-full rounded-md border border-border bg-background px-3 py-2 text-base',
-          'sm:text-sm',
-          'placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50',
-          className,
-        )}
+        className={cn(FIELD, 'flex min-h-[70px] px-3 py-2 text-base sm:text-sm', className)}
         {...props}
       />
     );
@@ -83,8 +102,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 );
 
 /**
- * Карточка. Ссылку наружу отдаёт намеренно: прокручиваемым карточкам (консоль)
- * нужно уметь дотянуться до собственного scrollTop, а прокручивать их через
+ * Карточка — основная поверхность интерфейса.
+ *
+ * Ссылку наружу отдаёт намеренно: прокручиваемым карточкам (консоль) нужно
+ * уметь дотянуться до собственного scrollTop, а прокручивать их через
  * scrollIntoView вложенного элемента нельзя — он тянет за собой и страницу.
  */
 export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
@@ -94,7 +115,7 @@ export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
       // десятую часть ширины — на мобильном отступ меньше.
       <div
         ref={ref}
-        className={cn('rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4', className)}
+        className={cn('rounded-lg border border-border bg-card p-3 sm:p-4', className)}
         {...props}
       >
         {children}
@@ -109,17 +130,18 @@ export function Badge({
   className,
 }: {
   children: ReactNode;
-  variant?: 'default' | 'outline' | 'destructive' | 'success';
+  variant?: 'default' | 'outline' | 'destructive' | 'success' | 'warn';
   className?: string;
 }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        variant === 'default' && 'bg-primary/15 text-primary',
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
+        variant === 'default' && 'bg-primary/15 text-primary-300',
         variant === 'outline' && 'border border-border text-muted',
-        variant === 'destructive' && 'bg-destructive/15 text-red-400',
-        variant === 'success' && 'bg-emerald-500/15 text-emerald-400',
+        variant === 'destructive' && 'bg-destructive/15 text-destructive',
+        variant === 'success' && 'bg-ok/15 text-ok',
+        variant === 'warn' && 'bg-warn/15 text-warn',
         className,
       )}
     >
@@ -128,8 +150,24 @@ export function Badge({
   );
 }
 
+/**
+ * Точка состояния для значка: цвет берёт у текста рядом и светится им же.
+ * Отдельный элемент, потому что «работает» и «выключен» должны отличаться
+ * не только словом — на беглый взгляд читается именно огонёк.
+ */
+export function Dot({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn('h-1.5 w-1.5 shrink-0 rounded-full bg-current', className)}
+      style={{ boxShadow: '0 0 8px currentColor' }}
+    />
+  );
+}
+
 export function Label({ children, className }: { children: ReactNode; className?: string }) {
-  return <label className={cn('mb-1 block text-xs font-medium text-muted', className)}>{children}</label>;
+  return (
+    <label className={cn('mb-1 block text-xs font-medium text-muted', className)}>{children}</label>
+  );
 }
 
 export function Select({
@@ -147,12 +185,7 @@ export function Select({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={cn(
-        'h-11 max-w-full rounded-md border border-border bg-background px-2 text-base',
-        'sm:h-9 sm:text-sm',
-        'focus:outline-none focus:ring-2 focus:ring-primary/50',
-        className,
-      )}
+      className={cn(FIELD, 'h-11 max-w-full px-2 text-base sm:h-9 sm:text-sm', className)}
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -168,7 +201,7 @@ export function Tabs({
   active,
   onChange,
 }: {
-  tabs: { id: string; label: string }[];
+  tabs: { id: string; label: string; icon?: ReactNode }[];
   active: string;
   onChange: (id: string) => void;
 }) {
@@ -178,18 +211,23 @@ export function Tabs({
     // на две строки, перестаёт читаться как одна группа. scrollbar скрыт —
     // на мобильном его и так нет, а на десктопе ряд обычно влезает целиком.
     <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="flex w-max min-w-full gap-1 border-b border-border">
+      <div className="flex w-max min-w-full gap-1 rounded-lg border border-border bg-card/60 p-1">
         {tabs.map((t) => (
           <button
             key={t.id}
+            type="button"
+            aria-current={active === t.id ? 'page' : undefined}
             onClick={() => onChange(t.id)}
             className={cn(
-              'shrink-0 whitespace-nowrap rounded-t-md px-3 py-2.5 text-sm transition-colors sm:py-2',
+              'flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 text-sm',
+              'transition-colors duration-200 sm:min-h-9',
+              FOCUS_RING,
               active === t.id
-                ? 'border border-border border-b-transparent bg-card text-primary'
-                : 'text-muted hover:text-neutral-100',
+                ? 'bg-primary/15 text-primary-200 shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]'
+                : 'text-muted hover:bg-white/5 hover:text-neutral-100',
             )}
           >
+            {t.icon}
             {t.label}
           </button>
         ))}
@@ -208,5 +246,5 @@ export function Spinner() {
 
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
-  return <p className="text-sm text-red-400">{children}</p>;
+  return <p className="text-sm text-destructive">{children}</p>;
 }

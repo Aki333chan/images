@@ -4,6 +4,20 @@ import { ROLE_LABELS } from '@aurum/shared';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/cn';
 import { Badge, Button } from './ui';
+import {
+  IconAccess,
+  IconAudit,
+  IconClose,
+  IconLogout,
+  IconMarket,
+  IconMenu,
+  IconMessages,
+  IconSecurity,
+  IconServers,
+  IconSettings,
+  IconTickets,
+  type IconProps,
+} from './icons';
 import { AiAssistant } from './AiAssistant';
 
 interface NavItem {
@@ -11,6 +25,8 @@ interface NavItem {
   label: string;
   permission: string | null;
   badge?: number;
+  /** Иконка пункта. По ней меню читается боковым зрением, без чтения подписей. */
+  icon: (p: IconProps) => JSX.Element;
 }
 
 /**
@@ -54,18 +70,30 @@ export function Layout() {
   if (!me) return null;
 
   const items: NavItem[] = [
-    { to: '/servers', label: 'Серверы', permission: 'servers.view' },
-    { to: '/tickets', label: 'Тикеты', permission: 'tickets.view', badge: ticketsBadge },
-    { to: '/messages', label: 'Сообщения', permission: null, badge: messagesBadge },
+    { to: '/servers', label: 'Серверы', permission: 'servers.view', icon: IconServers },
+    {
+      to: '/tickets',
+      label: 'Тикеты',
+      permission: 'tickets.view',
+      badge: ticketsBadge,
+      icon: IconTickets,
+    },
+    {
+      to: '/messages',
+      label: 'Сообщения',
+      permission: null,
+      badge: messagesBadge,
+      icon: IconMessages,
+    },
     // Установка плагина — запуск чужого кода на сервере, поэтому право
     // по умолчанию только у ГМ и Админа.
-    { to: '/market', label: 'Маркет', permission: 'minecraft.plugins.install' },
+    { to: '/market', label: 'Маркет', permission: 'minecraft.plugins.install', icon: IconMarket },
     // Доступы видны и Админу: у него есть право заводить Модераторов.
-    { to: '/access', label: 'Доступы', permission: 'users.create.moderator' },
+    { to: '/access', label: 'Доступы', permission: 'users.create.moderator', icon: IconAccess },
     // Без права: внутри есть личный блок — свой ник и пароль.
-    { to: '/settings', label: 'Настройки', permission: null },
-    { to: '/audit', label: 'Аудит', permission: 'audit.view' },
-    { to: '/security', label: 'Безопасность', permission: null },
+    { to: '/settings', label: 'Настройки', permission: null, icon: IconSettings },
+    { to: '/audit', label: 'Аудит', permission: 'audit.view', icon: IconAudit },
+    { to: '/security', label: 'Безопасность', permission: null, icon: IconSecurity },
   ];
 
   const visible = items.filter((i) => i.permission === null || hasPermission(i.permission));
@@ -74,14 +102,29 @@ export function Layout() {
 
   const sidebar = (
     <>
-      <div className="mb-6">
-        <div className="text-lg font-bold text-primary">Aurum Panel</div>
-        <div className="mt-1 text-xs text-muted">
-          {me.user.nickname ?? me.user.email} ·{' '}
-          <Badge variant="outline">{ROLE_LABELS[me.user.role]}</Badge>
+      <div className="mb-5 flex items-center gap-2.5 pr-10 lg:pr-0">
+        <img
+          src="/logo-128.png"
+          alt=""
+          width={32}
+          height={32}
+          className="h-8 w-8 shrink-0 object-contain drop-shadow-[0_2px_7px_rgba(0,0,0,.55)]"
+        />
+        <div className="min-w-0">
+          <div className="text-sm font-medium tracking-wide text-primary-200">Aurum Panel</div>
+          {/* Ник и роль одной строкой под названием: это ответ на вопрос
+              «под кем я сейчас», который возникает у тех, кто держит две
+              учётки — свою и служебную. */}
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-muted">
+            <span className="truncate">{me.user.nickname ?? me.user.email}</span>
+            <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[9.5px]">
+              {ROLE_LABELS[me.user.role]}
+            </Badge>
+          </div>
         </div>
       </div>
-      <nav className="flex flex-1 flex-col gap-1">
+
+      <nav className="flex flex-1 flex-col gap-0.5">
         {visible.map((i) => (
           <NavLink
             key={i.to}
@@ -91,19 +134,36 @@ export function Layout() {
               cn(
                 // min-h-11 — по тому же правилу, что и кнопки: попасть
                 // пальцем в пункт меню с первого раза.
-                'flex min-h-11 items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
+                'group relative flex min-h-11 items-center gap-2.5 rounded-md py-2 pl-3.5 pr-2.5',
+                'text-sm transition-[color,background-color] duration-200',
                 isActive
-                  ? 'bg-primary/15 text-primary'
+                  ? 'bg-primary/[0.13] text-primary-200 shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]'
                   : 'text-muted hover:bg-white/5 hover:text-neutral-100',
               )
             }
           >
-            <span>{i.label}</span>
-            {i.badge !== undefined && i.badge > 0 && <Badge variant="destructive">{i.badge}</Badge>}
+            {({ isActive }) => (
+              <>
+                {/* Засечка у активного пункта: на узкой панели подложка
+                    читается слабо, а светящаяся полоска у края — сразу. */}
+                {isActive && (
+                  <span className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-sm bg-primary shadow-[0_0_11px_1px_rgba(145,132,217,.65)]" />
+                )}
+                <i.icon size={16} className="shrink-0" />
+                <span className="truncate">{i.label}</span>
+                {i.badge !== undefined && i.badge > 0 && (
+                  <Badge variant="destructive" className="ml-auto font-mono">
+                    {i.badge}
+                  </Badge>
+                )}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
-      <Button variant="outline" size="sm" onClick={() => void logout()}>
+
+      <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => void logout()}>
+        <IconLogout size={14} />
         Выйти
       </Button>
     </>
@@ -121,14 +181,15 @@ export function Layout() {
           onClick={() => setMenuOpen(true)}
           aria-label="Открыть меню"
           aria-expanded={menuOpen}
-          className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-white/5"
+          className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-neutral-800 transition-colors hover:border-primary hover:bg-primary/10"
         >
-          <BurgerIcon />
+          <IconMenu size={18} />
           {totalBadge > 0 && (
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
           )}
         </button>
-        <span className="truncate text-base font-bold text-primary">Aurum Panel</span>
+        <img src="/logo-128.png" alt="" width={26} height={26} className="h-[26px] w-[26px] object-contain" />
+        <span className="truncate text-[15px] font-medium text-primary-200">Aurum Panel</span>
       </header>
 
       {/* Затемнение под панелью: клик по нему закрывает меню. */}
@@ -153,16 +214,16 @@ export function Layout() {
           menuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full',
           // Десктоп: обычная колонка в потоке, всегда на месте и видима —
           // состояние menuOpen на этой ширине ни на что не влияет.
-          'lg:visible lg:static lg:z-auto lg:w-56 lg:max-w-none lg:translate-x-0 lg:bg-card/50',
+          'lg:visible lg:static lg:z-auto lg:w-56 lg:max-w-none lg:translate-x-0 lg:bg-card/60',
         )}
       >
         <button
           type="button"
           onClick={() => setMenuOpen(false)}
           aria-label="Закрыть меню"
-          className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-white/5 lg:hidden"
+          className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100 lg:hidden"
         >
-          ✕
+          <IconClose size={18} />
         </button>
         {sidebar}
       </aside>
@@ -170,7 +231,10 @@ export function Layout() {
       {/* min-w-0 обязателен: без него флекс-элемент не сжимается уже своего
           содержимого, и широкая таблица или длинная строка растягивают всю
           страницу — появляется горизонтальная прокрутка. */}
-      <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-6">
+      {/* key на pathname: короткое появление содержимого при каждом переходе.
+          Смена экрана иначе читается как мигание — особенно там, где шапка и
+          меню на месте, а меняется только середина. */}
+      <main key={location.pathname} className="aurum-rise min-w-0 flex-1 p-3 sm:p-4 lg:p-6">
         <Outlet />
       </main>
 
@@ -179,18 +243,5 @@ export function Layout() {
           нет права ai.chat. */}
       <AiAssistant />
     </div>
-  );
-}
-
-function BurgerIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 7h16M4 12h16M4 17h16"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }

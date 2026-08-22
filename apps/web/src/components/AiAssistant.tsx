@@ -3,6 +3,7 @@ import type { AiChatMessage, AiPendingActionDto, AiStreamEvent, AiUsageDto } fro
 import { api, getAccessToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, Card, ErrorText, Input } from './ui';
+import { IconClose, IconEraser, IconSparkle } from './icons';
 
 /**
  * AI-ассистент: плавающая кнопка в углу и окно чата.
@@ -157,7 +158,9 @@ export function AiAssistant() {
       });
       setFeed((prev) =>
         prev.map((i) =>
-          i.kind === 'action' && i.action.id === action.id ? { kind: 'action', action: updated } : i,
+          i.kind === 'action' && i.action.id === action.id
+            ? { kind: 'action', action: updated }
+            : i,
         ),
       );
     } catch (e) {
@@ -173,10 +176,13 @@ export function AiAssistant() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Открыть AI-ассистента"
-          className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105"
+          // Таблетка с подписью, а не безымянный кружок: у ассистента нет
+          // пункта в меню, и по одной иконке в углу непонятно, что это.
+          className="fixed bottom-4 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-primary-foreground shadow-md transition-[filter,transform] duration-200 ease-panel hover:-translate-y-0.5 hover:brightness-110"
           style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          <AssistantIcon />
+          <IconSparkle size={17} />
+          Ассистент
         </button>
       )}
 
@@ -191,15 +197,18 @@ export function AiAssistant() {
               className="flex shrink-0 items-center justify-between gap-2 border-b border-border p-3"
               style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
             >
-              <div className="min-w-0">
-                <div className="truncate font-semibold">Ассистент</div>
-                {usage && (
-                  <div className="truncate text-[11px] text-muted">
-                    {usage.requestsLastHour}/{usage.requestsPerHour} обращений за час ·{' '}
-                    {usage.tokensToday.toLocaleString('ru-RU')}/
-                    {usage.tokensPerDay.toLocaleString('ru-RU')} токенов сегодня
-                  </div>
-                )}
+              <div className="flex min-w-0 items-center gap-2">
+                <IconSparkle size={16} className="shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">Ассистент</div>
+                  {usage && (
+                    <div className="truncate text-[11px] text-muted">
+                      {usage.requestsLastHour}/{usage.requestsPerHour} обращений за час ·{' '}
+                      {usage.tokensToday.toLocaleString('ru-RU')}/
+                      {usage.tokensPerDay.toLocaleString('ru-RU')} токенов сегодня
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {feed.length > 0 && (
@@ -208,18 +217,18 @@ export function AiAssistant() {
                     onClick={() => setFeed([])}
                     title="Очистить переписку"
                     aria-label="Очистить переписку"
-                    className="flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-white/5"
+                    className="flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
                   >
-                    ⟲
+                    <IconEraser size={16} />
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Закрыть"
-                  className="flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-white/5"
+                  className="flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
                 >
-                  ✕
+                  <IconClose size={16} />
                 </button>
               </div>
             </header>
@@ -347,8 +356,8 @@ function ActionCard({
 
       {action.fromUntrustedInput && (
         <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-300">
-          Предложено после чтения данных из игры (ники, тикеты, вывод консоли). В таком тексте
-          может быть попытка подсказать ассистенту команду — проверьте особенно внимательно.
+          Предложено после чтения данных из игры (ники, тикеты, вывод консоли). В таком тексте может
+          быть попытка подсказать ассистенту команду — проверьте особенно внимательно.
         </p>
       )}
 
@@ -388,18 +397,3 @@ const STATUS_LABELS: Record<AiPendingActionDto['status'], string> = {
   failed: 'не удалось',
   expired: 'предложение устарело',
 };
-
-function AssistantIcon() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M12 3a7 7 0 0 1 7 7v1.5a7 7 0 0 1-7 7H8.5L5 21.5V17a7 7 0 0 1-1-3.5V10a7 7 0 0 1 7-7Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-      <circle cx="9.5" cy="11" r="1.1" fill="currentColor" />
-      <circle cx="14.5" cy="11" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}

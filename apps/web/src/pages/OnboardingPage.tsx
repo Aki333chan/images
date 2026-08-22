@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import type { MeResponse } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Button, Card, ErrorText, Input, Label } from '../components/ui';
+import { Button,  ErrorText, Input, Label } from '../components/ui';
+import { AuthCard } from '../components/AuthCard';
 
 /**
  * Вход по одноразовому паролю.
@@ -79,13 +80,10 @@ export function OnboardingPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md space-y-4">
+    <AuthCard className="max-w-md" title={needsNickname ? 'Первый вход' : 'Задайте новый пароль'}>
+      <div className="space-y-4">
         <div>
-          <h1 className="text-lg font-bold">
-            {needsNickname ? 'Добро пожаловать в Aurum Panel' : 'Задайте новый пароль'}
-          </h1>
-          <p className="mt-1 text-xs text-muted">
+          <p className="-mt-1 mb-1 text-xs text-muted">
             {needsNickname ? (
               <>
                 Вы вошли по временному паролю. Задайте постоянный пароль и выберите ник — под ним
@@ -172,7 +170,7 @@ export function OnboardingPage() {
             Выйти
           </button>
         </div>
-      </Card>
-    </div>
+      </div>
+    </AuthCard>
   );
 }

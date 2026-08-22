@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react';
 import type { LoginResponse } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Button, Card, ErrorText, Input, Label } from '../components/ui';
+import { Button, ErrorText, Input, Label } from '../components/ui';
+import { AuthCard } from '../components/AuthCard';
 
 export function LoginPage() {
   const { loginDone } = useAuth();
@@ -42,10 +43,8 @@ export function LoginPage() {
   return (
     // p-4: без отступа карточка на 375 px прижималась к обоим краям экрана
     // вплотную — max-w-sm (384 px) шире самого экрана.
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <h1 className="mb-4 text-center text-xl font-bold text-primary">Aurum Panel</h1>
-        <form onSubmit={submit} className="space-y-3">
+    <AuthCard>
+      <form onSubmit={submit} className="space-y-3">
           {!twoFactorToken ? (
             <>
               <div>
@@ -79,6 +78,7 @@ export function LoginPage() {
                 maxLength={6}
                 autoFocus
                 required
+                className="h-11 text-center font-mono text-lg tracking-[0.28em] sm:h-11 sm:text-lg"
               />
             </div>
           )}
@@ -86,21 +86,20 @@ export function LoginPage() {
           <Button className="w-full" disabled={busy}>
             {twoFactorToken ? 'Подтвердить' : 'Войти'}
           </Button>
-          {twoFactorToken && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              onClick={() => {
-                setTwoFactorToken(null);
-                setCode('');
-              }}
-            >
-              Назад
-            </Button>
-          )}
-        </form>
-      </Card>
-    </div>
+        {twoFactorToken && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => {
+              setTwoFactorToken(null);
+              setCode('');
+            }}
+          >
+            Назад
+          </Button>
+        )}
+      </form>
+    </AuthCard>
   );
 }
