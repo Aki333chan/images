@@ -33,7 +33,26 @@ dependencies {
     // не попадают. Зависимость мягкая — см. softdepend в plugin.yml.
     // Версия 1.7 — та, что указана в README и pom.xml самого VaultAPI; именно
     // её исходники сверялись при выборе перегрузок (см. VaultEconomyIntegration).
-    compileOnly("com.github.MilkBowl:VaultAPI:1.7")
+    //
+    // ИСКЛЮЧЕНИЕ org.bukkit:bukkit ОБЯЗАТЕЛЬНО: без него сборка не разрешает
+    // зависимости вовсе и падает на
+    //
+    //   Cannot select module with conflict on capability 'org.bukkit:bukkit'
+    //
+    // Сходятся две вещи. VaultAPI тянет за собой org.bukkit:bukkit 1.13.1
+    // (в исходном pom.xml он со scope provided, но JitPack пересобирает
+    // артефакт и публикует свой pom, где зависимость уже compile — потому
+    // она и доезжает до compileClasspath). А paper-api ОБЪЯВЛЯЕТ СОБОЙ ту же
+    // способность — capability org.bukkit:bukkit. Paper делает это нарочно,
+    // чтобы старый Bukkit и Paper не встретились в одном classpath. Gradle
+    // видит двух поставщиков одного и того же и отказывается выбирать.
+    //
+    // Выкинуть старый Bukkit безопасно: все классы org.bukkit.* даёт
+    // paper-api, он их надмножество. Оставить, наоборот, нельзя — Bukkit
+    // 1.13 восьмилетней давности и Paper 26.x несовместимы.
+    compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
+        exclude(group = "org.bukkit", module = "bukkit")
+    }
 
     // InvSee++ compileOnly-зависимостью НЕ подключается намеренно: его
     // артефакт лежит в GitHub Packages, требующем токен даже для публичных
