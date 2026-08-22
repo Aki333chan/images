@@ -19,7 +19,19 @@ html {
 }
 
 body {
-  @apply bg-background text-neutral-100 antialiased;
+  @apply bg-background font-sans text-neutral-100 antialiased;
+  /*
+   * Свечение из дизайна: холодный блик акцента в правом верхнем углу.
+   * Он не декорация ради декорации — на сплошной тёмной заливке экран
+   * выглядит плоским листом, а этот градиент даёт ему верх и низ.
+   * fixed, чтобы блик оставался на месте при прокрутке длинных списков.
+   */
+  background-image: radial-gradient(
+    1100px 620px at 78% -12%,
+    color-mix(in srgb, #9184d9 8%, transparent),
+    transparent 70%
+  );
+  background-attachment: fixed;
   /*
    * Учитываем «чёлку» и полосу жестов iPhone. Работает вместе с
    * viewport-fit=cover в index.html: без него значения env() равны нулю,
@@ -36,4 +48,73 @@ body {
 .overflow-y-auto,
 .overflow-x-auto {
   -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * Полосы прокрутки — в тон подложке. По умолчанию WebKit рисует их светлыми
+ * поверх тёмного интерфейса, и на длинных списках это самая яркая деталь
+ * экрана.
+ */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-md bg-neutral-800;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+* {
+  scrollbar-color: theme('colors.neutral.800') transparent;
+}
+
+/*
+ * Появление содержимого при переходе между экранами. Кадр всего один и
+ * короткий: движение здесь нужно, чтобы смена экрана читалась как смена, а
+ * не как мигание, — а не чтобы его замечали.
+ */
+@keyframes aurum-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.aurum-rise {
+  animation: aurum-rise 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Пульсация точки живого состояния — «связь есть прямо сейчас». */
+@keyframes aurum-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.aurum-pulse {
+  animation: aurum-pulse 2.6s ease-in-out infinite;
+}
+
+/*
+ * Всё движение выключается, если человек попросил об этом в системе.
+ * Для части людей анимация интерфейса — не украшение, а причина тошноты
+ * и головокружения.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .aurum-rise,
+  .aurum-pulse {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
 }

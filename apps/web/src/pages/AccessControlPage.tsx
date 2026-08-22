@@ -10,6 +10,7 @@ import {
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
+import { IconUserPlus } from '../components/icons';
 
 /**
  * Экран управления доступом (только ГМ): смена ролей и привязка серверов.
@@ -119,7 +120,11 @@ export function AccessControlPage() {
       <h1 className="mb-4 text-xl font-bold">Управление доступом</h1>
       <CreateUserForm canManage onCreated={(user) => setUsers((prev) => [...(prev ?? []), user])} />
       {notice && <p className="mb-3 text-xs text-emerald-400">{notice}</p>}
-      {error && <div className="mb-3"><ErrorText>{error}</ErrorText></div>}
+      {error && (
+        <div className="mb-3">
+          <ErrorText>{error}</ErrorText>
+        </div>
+      )}
       <div className="space-y-4">
         {users.map((user) => (
           <Card key={user.id}>
@@ -134,7 +139,9 @@ export function AccessControlPage() {
                   )}{' '}
                   {!user.isActive && <Badge variant="destructive">деактивирован</Badge>}{' '}
                   {user.totpEnabled && <Badge variant="success">2FA</Badge>}{' '}
-                  {user.nicknameChangeAllowed && <Badge variant="outline">смена ника открыта</Badge>}
+                  {user.nicknameChangeAllowed && (
+                    <Badge variant="outline">смена ника открыта</Badge>
+                  )}
                 </div>
                 {user.nickname && <div className="text-xs text-muted">{user.email}</div>}
               </div>
@@ -270,7 +277,10 @@ function CreateUserForm({
   if (!open) {
     return (
       <div className="mb-4 space-y-2">
-        <Button onClick={() => setOpen(true)}>Добавить пользователя</Button>
+        <Button onClick={() => setOpen(true)}>
+          <IconUserPlus size={14} />
+          Добавить пользователя
+        </Button>
         {notice && <p className="text-xs text-emerald-400">{notice}</p>}
       </div>
     );

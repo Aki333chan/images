@@ -6,7 +6,25 @@ import {
 } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Button, Card, Input } from './ui';
+import { cn } from '../lib/cn';
+import { Button, Card, Dot, Input } from './ui';
+import { IconSend } from './icons';
+
+/** Как называется состояние соединения в шапке журнала. */
+const CONNECTION_LABEL: Record<string, string> = {
+  connecting: 'подключение',
+  online: 'на связи',
+  reconnecting: 'переподключение',
+  error: 'нет связи',
+};
+
+/** Цвет той же строки: зелёный — идёт, жёлтый — чинится, красный — стоит. */
+const CONNECTION_TONE: Record<string, string> = {
+  connecting: 'text-warn',
+  online: 'text-ok',
+  reconnecting: 'text-warn',
+  error: 'text-destructive',
+};
 
 /** Сколько живёт кэш словаря: за это время список игроков успевает устареть. */
 const DICTIONARY_TTL_MS = 30_000;
@@ -74,9 +92,12 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
   const [suggestionSource, setSuggestionSource] = useState<'companion' | 'static'>('static');
   const dictionaryRef = useRef<{ data: MinecraftConsoleDictionaryDto; at: number } | null>(null);
   /** Состояние перебора: повторный Tab идёт по списку, как в игре. */
-  const cycleRef = useRef<{ head: string; options: string[]; index: number; applied: string } | null>(
-    null,
-  );
+  const cycleRef = useRef<{
+    head: string;
+    options: string[];
+    index: number;
+    applied: string;
+  } | null>(null);
   const completingRef = useRef(false);
 
   useEffect(() => {
@@ -219,7 +240,10 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
      */
     function wake() {
       if (disposed || document.hidden) return;
-      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      if (
+        socket &&
+        (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+      ) {
         return;
       }
       if (retryTimer !== null) {
@@ -292,7 +316,9 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
   }, [completionEnabled, hasPermission, loadDictionary]);
 
   /** Варианты для текущей строки: сперва у сервера, иначе по словарю. */
-  async function optionsFor(line: string): Promise<{ options: string[]; source: 'companion' | 'static' }> {
+  async function optionsFor(
+    line: string,
+  ): Promise<{ options: string[]; source: 'companion' | 'static' }> {
     const dictionary = await loadDictionary();
     if (!dictionary) return { options: [], source: 'static' };
 
@@ -394,32 +420,52 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
         </Card>
       )}
       {state === 'reconnecting' && (
-        <p className="text-xs text-amber-400">
+        <p className="text-xs text-warn">
           Соединение с консолью прервалось — переподключаемся. Перезагружать страницу не нужно.
         </p>
       )}
-      {/* Высота от экрана на телефоне: жёсткие 420 px занимали бы почти всю
+
+      <div>
+        {/* Шапка журнала: откуда идут строки и живо ли соединение прямо сейчас.
+          Консоль — единственное место панели с постоянным соединением, и без
+          такой строки «тишина в журнале» и «связь оборвалась» неотличимы. */}
+        <div className="flex items-center gap-2 rounded-t-lg border border-b-0 border-border bg-card/60 px-3 py-2 text-[11px]">
+          <span className={CONNECTION_TONE[state]}>
+            <Dot
+              className={
+                state === 'connecting' || state === 'reconnecting' ? 'aurum-pulse' : undefined
+              }
+            />
+          </span>
+          <span className="text-muted">Консоль Pterodactyl · WebSocket</span>
+          <span className={cn('ml-auto font-mono uppercase tracking-wide', CONNECTION_TONE[state])}>
+            {CONNECTION_LABEL[state]}
+          </span>
+        </div>
+
+        {/* Высота от экрана на телефоне: жёсткие 420 px занимали бы почти всю
           высоту вместе с шапкой и полем ввода. */}
-      <Card
-        ref={logRef}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          stickRef.current =
-            el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_TO_BOTTOM_PX;
-        }}
-        className="h-[45vh] overflow-y-auto bg-black/70 font-mono text-xs leading-5 text-neutral-200 sm:h-[420px]"
-      >
-        {lines.length === 0 && (
-          <p className="text-muted">
-            {state === 'connecting' ? 'Подключение к консоли…' : 'Вывода пока нет'}
-          </p>
-        )}
-        {lines.map((line, i) => (
-          <div key={i} className="whitespace-pre-wrap break-all">
-            {line}
-          </div>
-        ))}
-      </Card>
+        <Card
+          ref={logRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            stickRef.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_TO_BOTTOM_PX;
+          }}
+          className="h-[45vh] overflow-y-auto rounded-t-none border-t-0 bg-background/80 font-mono text-xs leading-5 text-neutral-200 sm:h-[420px]"
+        >
+          {lines.length === 0 && (
+            <p className="text-muted">
+              {state === 'connecting' ? 'Подключение к консоли…' : 'Вывода пока нет'}
+            </p>
+          )}
+          {lines.map((line, i) => (
+            <div key={i} className="whitespace-pre-wrap break-all">
+              {line}
+            </div>
+          ))}
+        </Card>
+      </div>
       {hasPermission('servers.power') && (
         <div className="space-y-1">
           {suggestions.length > 0 && (
@@ -485,6 +531,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
             />
             <Button onClick={sendCommand} disabled={state !== 'online' || !command.trim()}>
               Отправить
+              <IconSend size={13} />
             </Button>
           </div>
           {/* Подсказка про Tab — только там, где эта клавиша есть.

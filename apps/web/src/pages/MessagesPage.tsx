@@ -4,6 +4,7 @@ import { hasAsciiArt, parseMessageSegments } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Spinner, Textarea } from '../components/ui';
+import { IconCompose } from '../components/icons';
 
 function formatTime(iso: string): string {
   const date = new Date(iso);
@@ -190,9 +191,7 @@ export function MessagesPage() {
         {/* Высота: на телефоне от высоты экрана, на десктопе — как было.
             Фиксированные 540 px на экране высотой 667 px не оставили бы
             места ни на заголовок, ни на список. */}
-        <Card
-          className={`flex h-[65vh] flex-col md:h-[540px] ${openPeer ? '' : 'hidden md:flex'}`}
-        >
+        <Card className={`flex h-[65vh] flex-col md:h-[540px] ${openPeer ? '' : 'hidden md:flex'}`}>
           {!openPeer ? (
             <p className="m-auto text-sm text-muted">Выберите диалог слева</p>
           ) : (
@@ -216,7 +215,10 @@ export function MessagesPage() {
                   // рисунок пополам, и прокручивать пришлось бы каждую строку.
                   const wide = hasAsciiArt(m.text);
                   return (
-                    <div key={m.id} className={`flex ${outgoing ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      key={m.id}
+                      className={`flex ${outgoing ? 'justify-end' : 'justify-start'}`}
+                    >
                       <div
                         className={`min-w-0 rounded-lg px-3 py-2 text-sm ${
                           wide ? 'max-w-full' : 'max-w-[75%]'
@@ -302,7 +304,13 @@ function NewConversation({ onStarted }: { onStarted: (contact: StaffContactDto) 
     return () => clearTimeout(timer);
   }, [open, query]);
 
-  if (!open) return <Button onClick={() => setOpen(true)}>Написать</Button>;
+  if (!open)
+    return (
+      <Button onClick={() => setOpen(true)}>
+        <IconCompose size={14} />
+        Написать
+      </Button>
+    );
 
   return (
     <div className="relative">

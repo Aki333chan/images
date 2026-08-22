@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { IconClose } from './icons';
 
 /**
  * Общая модалка ядра. Ею пользуются все игровые модули — своей копии
@@ -48,7 +49,9 @@ export function Modal({
         className="flex w-full flex-col sm:max-h-[85vh] sm:max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-border bg-card shadow-sm sm:rounded-lg sm:border">
+        {/* Верхний уровень высоты: у диалога тень плотнее, чем у карточки, —
+            иначе на тёмном фоне он не отделяется от того, что под ним. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-border bg-card sm:rounded-lg sm:border sm:shadow-md">
           <div
             className="flex shrink-0 items-center justify-between gap-2 border-b border-border p-3 sm:p-4"
             style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
@@ -58,9 +61,9 @@ export function Modal({
               type="button"
               onClick={onClose}
               aria-label="Закрыть"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted hover:bg-white/5"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
             >
-              ✕
+              <IconClose size={16} />
             </button>
           </div>
           <div
