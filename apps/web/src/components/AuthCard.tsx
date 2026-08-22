@@ -28,7 +28,7 @@ export function AuthCard({
     <div className="flex min-h-screen items-center justify-center p-4">
       <div
         className={cn(
-          'aurum-rise relative w-full max-w-sm overflow-hidden rounded-lg bg-card px-7 pb-6 pt-8 shadow-md',
+          'aurum-rise-up relative w-full max-w-sm overflow-hidden rounded-lg bg-card px-7 pb-6 pt-8 shadow-md',
           className,
         )}
       >

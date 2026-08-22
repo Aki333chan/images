@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { IconClose } from './icons';
 
 /**
@@ -11,6 +12,17 @@ import { IconClose } from './icons';
  * 300 px её пришлось бы читать через двойную прокрутку — страницы и окна.
  * Шапка закреплена, чтобы кнопка закрытия оставалась на виду при длинном
  * содержимом. С sm и шире — прежнее окно по центру.
+ *
+ * РИСУЕТСЯ ПОРТАЛОМ В <body>, А НЕ ТАМ, ГДЕ ОБЪЯВЛЕНА. Причина не в
+ * красоте: position: fixed отсчитывается от окна только до тех пор, пока ни
+ * у одного предка нет transform, filter или perspective. Стоит появиться
+ * такому предку — и модалка начинает считать inset-0 от него. Один раз это
+ * уже случилось: анимация появления на <main> сдвигала окно на ширину
+ * бокового меню и на прокрутку страницы, оно переставало закрывать экран
+ * целиком, и в щель снизу лезла кнопка ассистента поверх «Установить».
+ *
+ * Портал делает модалку невосприимчивой к тому, что происходит со стилями
+ * страницы под ней, — сейчас и в будущем.
  */
 export function Modal({
   title,
@@ -37,7 +49,7 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex bg-black/60 sm:items-center sm:justify-center sm:p-4"
       onClick={onClose}
@@ -74,6 +86,7 @@ export function Modal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

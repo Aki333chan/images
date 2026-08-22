@@ -73,19 +73,49 @@ body {
  * Появление содержимого при переходе между экранами. Кадр всего один и
  * короткий: движение здесь нужно, чтобы смена экрана читалась как смена, а
  * не как мигание, — а не чтобы его замечали.
+ *
+ * БЕЗ TRANSFORM, И ЭТО НЕ ПРИДИРКА. Элемент с ненулевым transform становится
+ * containing block для потомков с position: fixed — они начинают считать
+ * inset-0 от него, а не от окна. Эта анимация висит на <main>, внутри
+ * которого живут все модалки: с translateY окно плагина открывалось со
+ * смещением на ширину бокового меню и на прокрутку страницы, не закрывало
+ * собой экран целиком, и в открывшуюся щель снизу лезла кнопка ассистента,
+ * перекрывая «Установить».
+ *
+ * Само по себе `transform: none` в конце анимации containing block не
+ * создаёт, но пока анимация идёт (и пока держится её fill-mode), браузер
+ * ведёт себя так, будто transform есть. Прозрачность такого свойства не
+ * имеет — ею и анимируем.
  */
 @keyframes aurum-rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+  }
+}
+.aurum-rise {
+  animation: aurum-rise 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/*
+ * Та же мысль, но со сдвигом — для экранов, внутри которых модалок нет и
+ * быть не может: вход, второй фактор, первый вход. Там transform безопасен,
+ * и карточка появляется так, как задумано в дизайне.
+ */
+@keyframes aurum-rise-up {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-.aurum-rise {
-  animation: aurum-rise 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+.aurum-rise-up {
+  animation: aurum-rise-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 /* Пульсация точки живого состояния — «связь есть прямо сейчас». */
@@ -109,6 +139,7 @@ body {
  */
 @media (prefers-reduced-motion: reduce) {
   .aurum-rise,
+  .aurum-rise-up,
   .aurum-pulse {
     animation: none;
   }
