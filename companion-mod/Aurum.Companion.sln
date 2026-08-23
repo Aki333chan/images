@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{265E40C7-621F-4223-B2AA-59FBC0FA404C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aurum.Companion.Core", "src\Aurum.Companion.Core\Aurum.Companion.Core.csproj", "{306362E3-6865-41A7-9970-787449711969}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aurum.Companion.Game", "src\Aurum.Companion.Game\Aurum.Companion.Game.csproj", "{EC54D4E3-1444-4AE3-AEB4-C0D1918E7DC1}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{2DCCB683-899E-4FB9-BA17-006750AF99AD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aurum.Companion.Core.Tests", "tests\Aurum.Companion.Core.Tests\Aurum.Companion.Core.Tests.csproj", "{61F2DA2F-C65C-49BD-B4CA-70E0170E2B58}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aurum.Companion.Game.StubCheck", "tests\Aurum.Companion.Game.StubCheck\Aurum.Companion.Game.StubCheck.csproj", "{79ECE601-80D3-4FF1-BAB8-862079A7B880}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{306362E3-6865-41A7-9970-787449711969}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{306362E3-6865-41A7-9970-787449711969}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{306362E3-6865-41A7-9970-787449711969}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{306362E3-6865-41A7-9970-787449711969}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EC54D4E3-1444-4AE3-AEB4-C0D1918E7DC1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EC54D4E3-1444-4AE3-AEB4-C0D1918E7DC1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EC54D4E3-1444-4AE3-AEB4-C0D1918E7DC1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EC54D4E3-1444-4AE3-AEB4-C0D1918E7DC1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{61F2DA2F-C65C-49BD-B4CA-70E0170E2B58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{61F2DA2F-C65C-49BD-B4CA-70E0170E2B58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{61F2DA2F-C65C-49BD-B4CA-70E0170E2B58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{61F2DA2F-C65C-49BD-B4CA-70E0170E2B58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{79ECE601-80D3-4FF1-BAB8-862079A7B880}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79ECE601-80D3-4FF1-BAB8-862079A7B880}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79ECE601-80D3-4FF1-BAB8-862079A7B880}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79ECE601-80D3-4FF1-BAB8-862079A7B880}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{306362E3-6865-41A7-9970-787449711969} = {265E40C7-621F-4223-B2AA-59FBC0FA404C}
+		{EC54D4E3-1444-4AE3-AEB4-C0D1918E7DC1} = {265E40C7-621F-4223-B2AA-59FBC0FA404C}
+		{61F2DA2F-C65C-49BD-B4CA-70E0170E2B58} = {2DCCB683-899E-4FB9-BA17-006750AF99AD}
+		{79ECE601-80D3-4FF1-BAB8-862079A7B880} = {2DCCB683-899E-4FB9-BA17-006750AF99AD}
+	EndGlobalSection
+EndGlobal

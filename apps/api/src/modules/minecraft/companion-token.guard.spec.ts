@@ -1,7 +1,9 @@
 process.env.NODE_ENV = 'test';
 
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { CompanionTokenGuard, isPrivateAddress } from './companion-token.guard';
+import { CompanionTokenGuard } from './companion-token.guard';
+// Проверка приватной сети переехала в ядро: правило общее для всех модулей.
+import { isPrivateAddress } from '../../common/private-network';
 import type { MinecraftConfigService } from './minecraft-config.service';
 
 describe('isPrivateAddress', () => {

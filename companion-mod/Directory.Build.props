@@ -1,0 +1,19 @@
+<Project>
+  <!--
+    Общие свойства всех проектов мода.
+
+    LangVersion 11 при TargetFramework net48 — законно: язык и среда
+    выполнения версионируются раздельно, компилятор Roslyn из .NET SDK 8
+    умеет собирать C# 11 под .NET Framework. Это позволяет писать здесь
+    современный код, не таща в процесс игры новую среду выполнения.
+  -->
+  <PropertyGroup>
+    <LangVersion>11.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <NeutralLanguage>ru-RU</NeutralLanguage>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

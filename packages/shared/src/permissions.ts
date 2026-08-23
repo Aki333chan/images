@@ -21,6 +21,41 @@ export const CORE_PERMISSIONS = [
   'tickets.respond',
   'tickets.close',
   'audit.view',
+
+  /*
+   * Общие возможности Pterodactyl. Ключи ядровые, а не модульные, потому что
+   * ни одна из них не зависит от игры: файл есть файл, а бэкап есть бэкап
+   * и на Minecraft, и на Palworld.
+   */
+
+  /** Просмотр дерева файлов и чтение текстовых файлов. */
+  'files.view',
+  /**
+   * Изменение файлов: сохранение, папки, переименование, перенос, архивы,
+   * загрузка. Отдельно от просмотра: файлом может оказаться что угодно,
+   * вплоть до мировых данных, и сохранение поверх — необратимо.
+   */
+  'files.manage',
+  /**
+   * Удаление файлов. Отдельно даже от files.manage: испорченный файл можно
+   * переписать обратно, удалённый — только из бэкапа.
+   */
+  'files.delete',
+  /** Аллокации: адреса и порты сервера. */
+  'allocations.manage',
+  /** Переменные запуска и докер-образ. Ошибка здесь не даёт серверу стартовать. */
+  'startup.manage',
+  /** Базы данных сервера вместе с их креденшлами. */
+  'databases.manage',
+  /** Просмотр списка бэкапов: что есть и когда сделано. */
+  'backups.view',
+  /**
+   * Создание, восстановление и удаление бэкапов. Восстановление затирает
+   * текущее состояние сервера — это разрушительное действие.
+   */
+  'backups.manage',
+  /** Расписания задач: создание, включение, ручной запуск. */
+  'schedules.manage',
   /**
    * Общение с AI-ассистентом. Отдельным правом, а не «всем подряд»:
    * ассистент ходит в платный внешний сервис, и круг пользующихся им
@@ -47,7 +82,27 @@ export const CORE_ROLE_PERMISSIONS: Record<Role, readonly CorePermission[] | '*'
     'tickets.respond',
     'tickets.close',
     'audit.view',
+    // Возможности Pterodactyl целиком: это работа администратора сервера.
+    'files.view',
+    'files.manage',
+    'files.delete',
+    'allocations.manage',
+    'startup.manage',
+    'databases.manage',
+    'backups.view',
+    'backups.manage',
+    'schedules.manage',
   ],
-  MODERATOR: ['ai.chat', 'servers.view', 'tickets.view', 'tickets.respond', 'tickets.close'],
-  VIEWER: ['servers.view', 'tickets.view'],
+  MODERATOR: [
+    'ai.chat',
+    'servers.view',
+    'tickets.view',
+    'tickets.respond',
+    'tickets.close',
+    // Модератору — только смотреть. Открыть лог сервера и убедиться, что
+    // ночной бэкап сделался, ему нужно; менять файлы, трогать порты и
+    // восстанавливать бэкапы — нет.
+    'files.view',
+    'backups.view',
+  ],
 };

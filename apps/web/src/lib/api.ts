@@ -68,3 +68,51 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
+
+/**
+ * Запрос с сырым телом — содержимое файла.
+ *
+ * Отдельно от api(): тот шлёт JSON, а файл в JSON заворачивать незачем —
+ * экранирование раздуло бы бинарник, а разбор мегабайтной строки это лишняя
+ * работа на ровном месте. Заголовок content-type здесь обязателен: без него
+ * бэкенд не разберёт тело и запишет пустой файл поверх конфига.
+ */
+export async function apiRaw<T>(path: string, body: Blob | File): Promise<T> {
+  return api<T>(path, {
+    method: 'POST',
+    body,
+    headers: { 'content-type': 'application/octet-stream' },
+  });
+}
+
+/**
+ * Скачивание файла через API.
+ *
+ * Простой ссылкой это сделать нельзя: доступ подтверждается токеном в
+ * памяти вкладки, а обычная навигация его не отправит и получит 401.
+ * Поэтому забираем содержимое запросом и отдаём браузеру уже готовый blob.
+ */
+export async function apiDownload(path: string, fileName: string): Promise<void> {
+  const res = await rawFetch(path);
+  if (!res.ok) {
+    let message = `Ошибка ${res.status}`;
+    try {
+      const body = (await res.json()) as { message?: string | string[] };
+      message = Array.isArray(body.message) ? body.message.join(', ') : (body.message ?? message);
+    } catch {
+      // тело не JSON
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Освобождаем сразу: объект держит blob в памяти вкладки до перезагрузки.
+  URL.revokeObjectURL(url);
+}

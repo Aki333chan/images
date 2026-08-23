@@ -1,4 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { cn } from '../lib/cn';
 import { IconClose } from './icons';
 
 /**
@@ -11,15 +13,35 @@ import { IconClose } from './icons';
  * 300 px её пришлось бы читать через двойную прокрутку — страницы и окна.
  * Шапка закреплена, чтобы кнопка закрытия оставалась на виду при длинном
  * содержимом. С sm и шире — прежнее окно по центру.
+ *
+ * РИСУЕТСЯ ПОРТАЛОМ В <body>, А НЕ ТАМ, ГДЕ ОБЪЯВЛЕНА. Причина не в
+ * красоте: position: fixed отсчитывается от окна только до тех пор, пока ни
+ * у одного предка нет transform, filter или perspective. Стоит появиться
+ * такому предку — и модалка начинает считать inset-0 от него. Один раз это
+ * уже случилось: анимация появления на <main> сдвигала окно на ширину
+ * бокового меню и на прокрутку страницы, оно переставало закрывать экран
+ * целиком, и в щель снизу лезла кнопка ассистента поверх «Установить».
+ *
+ * Портал делает модалку невосприимчивой к тому, что происходит со стилями
+ * страницы под ней, — сейчас и в будущем.
  */
 export function Modal({
   title,
   onClose,
   children,
+  wide,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /**
+   * Широкий диалог — для редактора файлов.
+   *
+   * Конфиг в колонке шириной с телефон читать невозможно: строки переносятся
+   * посреди значений. На узком экране разницы нет — там диалог и так во весь
+   * экран.
+   */
+  wide?: boolean;
 }) {
   // Фон под модалкой не прокручиваем — иначе на телефоне при прокрутке
   // внутри окна «уезжает» страница за ним.
@@ -37,7 +59,7 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex bg-black/60 sm:items-center sm:justify-center sm:p-4"
       onClick={onClose}
@@ -46,7 +68,10 @@ export function Modal({
       aria-label={title}
     >
       <div
-        className="flex w-full flex-col sm:max-h-[85vh] sm:max-w-md"
+        className={cn(
+          'flex w-full flex-col sm:max-h-[85vh]',
+          wide ? 'sm:max-w-4xl' : 'sm:max-w-md',
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Верхний уровень высоты: у диалога тень плотнее, чем у карточки, —
@@ -74,6 +99,7 @@ export function Modal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

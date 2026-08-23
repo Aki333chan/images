@@ -1,5 +1,6 @@
 export * from './roles';
 export * from './permissions';
+export * from './pterodactyl';
 export * from './module-manifest';
 export * from './ws-events';
 export * from './api-types';
@@ -9,3 +10,4 @@ export * from './marketplace';
 export * from './modules/minecraft';
 export * from './modules/minecraft-console';
 export * from './modules/palworld';
+export * from './modules/sevendays';

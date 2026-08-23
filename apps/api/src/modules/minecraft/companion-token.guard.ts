@@ -1,5 +1,5 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { timingSafeEqual } from 'crypto';
+import { constantTimeEquals, isPrivateAddress } from '../../common/private-network';
 import { MinecraftConfigService } from './minecraft-config.service';
 
 /**
@@ -41,32 +41,4 @@ export class CompanionTokenGuard implements CanActivate {
     }
     return true;
   }
-}
-
-function constantTimeEquals(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  // timingSafeEqual требует одинаковой длины, а сама длина секретом не является.
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
-
-/**
- * Приватные диапазоны + loopback. Плагин ходит по туннелю (10.0.0.2 -> 10.0.0.1),
- * поэтому публичных адресов здесь быть не должно.
- */
-export function isPrivateAddress(rawIp: string | undefined): boolean {
-  if (!rawIp) return false;
-  // Express отдаёт IPv4-mapped адреса вида ::ffff:10.0.0.2.
-  const ip = rawIp.replace(/^::ffff:/i, '');
-  if (ip === '::1' || ip === '127.0.0.1') return true;
-  const octets = ip.split('.');
-  if (octets.length !== 4) return false;
-  const [a, b] = octets.map((part) => Number(part));
-  if (a === undefined || b === undefined || Number.isNaN(a) || Number.isNaN(b)) return false;
-  if (a === 10) return true;
-  if (a === 127) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  return false;
 }

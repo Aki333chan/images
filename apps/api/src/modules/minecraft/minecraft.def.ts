@@ -25,7 +25,7 @@ export const minecraftManifest: GameModuleManifest = {
     {
       key: MINECRAFT_PERMISSIONS.playersView,
       description: 'Просмотр списка игроков онлайн',
-      defaultRoles: ['ADMIN', 'MODERATOR', 'VIEWER'],
+      defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {
       key: MINECRAFT_PERMISSIONS.kick,
