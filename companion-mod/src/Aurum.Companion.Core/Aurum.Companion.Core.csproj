@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Ядро мода. Ссылок на сборки игры здесь НЕТ и быть не должно — в этом
+    весь смысл разделения: всё, что можно проверить тестами, живёт тут и
+    собирается на любой машине, а к Assembly-CSharp.dll прикасается только
+    проект Game, который без игрового сервера не собрать.
+
+    Две цели сборки: net48 — то, что грузится в процесс игры (Unity-Mono
+    у 7 Days to Die — это .NET Framework 4.x); netstandard2.0 — то, на что
+    ссылаются тесты под современным .NET. Один и тот же исходник, два
+    артефакта, никакого второго кода ради тестируемости.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net48;netstandard2.0</TargetFrameworks>
+    <AssemblyName>Aurum.Companion.Core</AssemblyName>
+    <RootNamespace>Aurum.Companion.Core</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aurum.Companion.Core.Tests" />
+  </ItemGroup>
+
+</Project>
