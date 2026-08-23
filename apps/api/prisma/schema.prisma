@@ -7,11 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Роли персонала. Ровно три — «наблюдателя» нет намеренно, см. shared/roles.ts.
 enum Role {
   OWNER
   ADMIN
   MODERATOR
-  VIEWER
 }
 
 enum TicketStatus {
@@ -48,7 +48,7 @@ model User {
   /// Разовое разрешение ГМ сменить себе ник. Гасится после смены: ник —
   /// это то, по чему человека знают коллеги, и менять его молча нельзя.
   nicknameChangeAllowed Boolean @default(false) @map("nickname_change_allowed")
-  role          Role     @default(VIEWER)
+  role          Role     @default(MODERATOR)
   isActive      Boolean  @default(true) @map("is_active")
   status        UserStatus @default(active)
   /// Кто создал запись. Нужен, чтобы показать ГМ автора заявки.

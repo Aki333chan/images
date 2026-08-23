@@ -1,4 +1,10 @@
-export const ROLES = ['OWNER', 'ADMIN', 'MODERATOR', 'VIEWER'] as const;
+/**
+ * Роли персонала. Их ровно три, и «наблюдателя» среди них нет намеренно:
+ * право просто смотреть без права что-либо сделать в панели управления
+ * игровыми серверами никому не пригодилось, а лишняя роль в списке — это
+ * лишний способ выдать доступ не тому.
+ */
+export const ROLES = ['OWNER', 'ADMIN', 'MODERATOR'] as const;
 export type Role = (typeof ROLES)[number];
 
 /** Подписи ролей в интерфейсе. */
@@ -6,5 +12,4 @@ export const ROLE_LABELS: Record<Role, string> = {
   OWNER: 'ГМ',
   ADMIN: 'Админ',
   MODERATOR: 'Модератор',
-  VIEWER: 'Наблюдатель',
 };

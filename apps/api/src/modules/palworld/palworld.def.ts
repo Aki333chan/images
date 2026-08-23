@@ -48,7 +48,7 @@ export const palworldManifest: GameModuleManifest = {
     {
       key: PALWORLD_PERMISSIONS.playersView,
       description: 'Просмотр игроков онлайн и состояния сервера',
-      defaultRoles: ['ADMIN', 'MODERATOR', 'VIEWER'],
+      defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {
       key: PALWORLD_PERMISSIONS.kick,

@@ -68,7 +68,7 @@ export const sevenDaysManifest: GameModuleManifest = {
     {
       key: SEVENDAYS_PERMISSIONS.playersView,
       description: 'Просмотр игроков онлайн и состояния сервера',
-      defaultRoles: ['ADMIN', 'MODERATOR', 'VIEWER'],
+      defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {
       key: SEVENDAYS_PERMISSIONS.kick,

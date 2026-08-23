@@ -111,3 +111,59 @@ export async function pteroRawRequest(
   // Тело ответа читаем всегда: неосвобождённое соединение undici не переиспользует.
   await res.body.text().catch(() => undefined);
 }
+
+/**
+ * GET, возвращающий тело как есть.
+ *
+ * Нужен для двух маршрутов Pterodactyl, которые отвечают НЕ JSON:
+ * files/contents отдаёт содержимое файла с типом text/plain, а скачивание с
+ * Wings — поток байтов. Общий pteroRequest такой ответ отвергает намеренно
+ * (не-JSON там означает, что запрос попал не в API, а на страницу панели),
+ * поэтому для них отдельная функция, а не послабление в общей.
+ *
+ * Размер ограничивается: файлом может оказаться что угодно, вплоть до
+ * мировых данных, и втянуть его целиком в память бэкенда нельзя.
+ */
+export async function pteroRawGet(
+  apiKey: string,
+  path: string,
+  maxBytes: number,
+): Promise<{ body: Buffer; truncated: boolean; contentType: string }> {
+  const url = `${env.PTERO_BASE_URL.replace(/\/$/, '')}${path}`;
+  const res = await request(url, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${apiKey}`, accept: '*/*' },
+    headersTimeout: 60_000,
+    bodyTimeout: 120_000,
+  });
+
+  if (res.statusCode >= 400) {
+    const text = await res.body.text();
+    throw new ServiceUnavailableException(
+      `Pterodactyl API GET ${path} -> ${res.statusCode}: ${text.slice(0, 300)}`,
+    );
+  }
+
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let truncated = false;
+  for await (const chunk of res.body) {
+    const buf = Buffer.from(chunk);
+    if (size + buf.length > maxBytes) {
+      chunks.push(buf.subarray(0, maxBytes - size));
+      truncated = true;
+      // Соединение рвём сразу: дочитывать гигабайт, который всё равно
+      // выбросим, значит зря занимать и сеть, и Wings.
+      res.body.destroy();
+      break;
+    }
+    chunks.push(buf);
+    size += buf.length;
+  }
+
+  return {
+    body: Buffer.concat(chunks),
+    truncated,
+    contentType: String(res.headers['content-type'] ?? 'application/octet-stream'),
+  };
+}

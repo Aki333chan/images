@@ -9,7 +9,7 @@ import { PERMISSION_KEY, SERVER_SCOPE_PARAM } from './rbac.decorators';
 
 type UserRow = {
   id: string;
-  role: 'OWNER' | 'ADMIN' | 'MODERATOR' | 'VIEWER';
+  role: 'OWNER' | 'ADMIN' | 'MODERATOR';
   isActive: boolean;
   serverAccess: { serverId: string }[];
 };
@@ -130,9 +130,10 @@ describe('PermissionsGuard (RBAC по состоянию БД)', () => {
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
 
     // «Понизили» в БД — следующий же запрос отклоняется, JWT тот же.
+    // Модератор servers.manage не имеет, и это то, что здесь проверяется.
     prisma.user.findUnique.mockResolvedValueOnce({
       id: 'u5',
-      role: 'VIEWER',
+      role: 'MODERATOR',
       isActive: true,
       serverAccess: [],
     });

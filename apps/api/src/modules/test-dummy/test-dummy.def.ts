@@ -24,7 +24,7 @@ export const testDummyManifest: GameModuleManifest = {
     {
       key: 'test-dummy.players',
       description: 'Просмотр списка игроков',
-      defaultRoles: ['ADMIN', 'MODERATOR', 'VIEWER'],
+      defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {
       key: 'test-dummy.quick-commands',
