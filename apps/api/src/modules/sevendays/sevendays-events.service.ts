@@ -67,8 +67,13 @@ export class SevenDaysEventsService {
   }
 
   private toRow(serverId: string, event: IncomingEvent) {
+    // Проверки типов здесь, а не в DTO: контроллер принимает пачку как есть,
+    // чтобы одна непонятная запись не уносила остальные сорок девять.
+    if (!event || typeof event !== 'object') return null;
     if (!SEVENDAYS_EVENT_KINDS.includes(event.kind as SevenDaysEventKind)) return null;
+    if (typeof event.playerId !== 'string' || typeof event.playerName !== 'string') return null;
     if (!event.playerId || !event.playerName) return null;
+    if (typeof event.occurredAt !== 'string') return null;
 
     const occurredAt = new Date(event.occurredAt);
     // Мод мог пролежать с очередью, пока панель была недоступна, но
@@ -80,9 +85,9 @@ export class SevenDaysEventsService {
       kind: event.kind,
       playerId: event.playerId.slice(0, 128),
       playerName: event.playerName.slice(0, 64),
-      text: event.text ? event.text.slice(0, 500) : null,
-      actorId: event.actorId ? event.actorId.slice(0, 128) : null,
-      actorName: event.actorName ? event.actorName.slice(0, 64) : null,
+      text: text(event.text, 500),
+      actorId: text(event.actorId, 128),
+      actorName: text(event.actorName, 64),
       x: finiteOrNull(event.x),
       y: finiteOrNull(event.y),
       z: finiteOrNull(event.z),
@@ -132,6 +137,11 @@ export class SevenDaysEventsService {
   }
 }
 
-function finiteOrNull(value: number | null | undefined): number | null {
+function finiteOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Строка нужной длины или null. Всё, что не строка, — это null, а не «undefined». */
+function text(value: unknown, max: number): string | null {
+  return typeof value === 'string' && value.length > 0 ? value.slice(0, max) : null;
 }

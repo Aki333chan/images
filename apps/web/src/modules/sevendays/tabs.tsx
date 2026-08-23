@@ -3,6 +3,8 @@ import {
   SEVENDAYS_BAN_UNITS,
   SEVENDAYS_PERMISSIONS,
   type SevenDaysActionDto,
+  type SevenDaysEventDto,
+  type SevenDaysEventKind,
   type SevenDaysBanDto,
   type SevenDaysBanUnit,
   type SevenDaysPlayerDto,
@@ -51,7 +53,7 @@ function targetOf(player: SevenDaysPlayerDto): string {
 
 // ---------------------------------------------------------------- Игроки
 
-export function SevenDaysPlayersTab({ serverId }: ModuleTabProps) {
+export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: ModuleTabProps) {
   const { hasPermission } = useAuth();
   const [data, setData] = useState<SevenDaysPlayersResponse | null>(null);
   const [state, setState] = useState<SevenDaysStateDto | null>(null);
@@ -177,6 +179,14 @@ export function SevenDaysPlayersTab({ serverId }: ModuleTabProps) {
           />
         )}
       </Card>
+
+      {/*
+        Журнал под списком игроков, а не отдельной вкладкой: разбирающий
+        жалобу уже здесь — смотрит, кто сейчас в сети, — и ему нужно то же
+        самое, только за прошедшее время. Отдельная вкладка заставила бы
+        ходить туда-сюда.
+      */}
+      <SevenDaysEventsPanel serverId={serverId} moduleId={moduleId} capabilityState={capabilityState} />
     </div>
   );
 }
@@ -226,36 +236,84 @@ function ServerState({ state }: { state: SevenDaysStateDto }) {
     return <Card className="text-xs text-muted">{state.reason}</Card>;
   }
 
-  const bloodMoonToday = state.daysToBloodMoon === 0;
+  const fromMod = state.source === 'companion';
+  const bloodMoonNow = fromMod ? state.bloodMoonActive === true : state.daysToBloodMoon === 0;
 
   return (
-    <Card className="flex flex-wrap items-start gap-x-6 gap-y-3">
-      <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted">День</div>
-        <div className="text-sm font-semibold">{state.day ?? '—'}</div>
-      </div>
-      <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted">Время</div>
-        <div className="text-sm font-semibold">{state.time ?? '—'}</div>
-      </div>
-      <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted">Кровавая луна</div>
-        <div className={`text-sm font-semibold ${bloodMoonToday ? 'text-red-400' : ''}`}>
-          {state.daysToBloodMoon === null || state.daysToBloodMoon === undefined
-            ? '—'
-            : bloodMoonToday
-              ? 'сегодня ночью'
-              : `через ${state.daysToBloodMoon} дн.`}
+    <Card className="space-y-3">
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">День</div>
+          <div className="text-sm font-semibold">{state.day ?? '—'}</div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">Время</div>
+          <div className="text-sm font-semibold">{state.time ?? '—'}</div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">Кровавая луна</div>
+          <div className={`text-sm font-semibold ${bloodMoonNow ? 'text-red-400' : ''}`}>
+            {bloodMoonNow
+              ? fromMod
+                ? 'идёт сейчас'
+                : 'сегодня ночью'
+              : state.daysToBloodMoon === null || state.daysToBloodMoon === undefined
+                ? '—'
+                : `через ${state.daysToBloodMoon} дн.`}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">Онлайн</div>
+          <div className="text-sm font-semibold">
+            {state.onlineCount ?? '—'}
+            {fromMod && state.maxPlayers ? ` / ${state.maxPlayers}` : ''}
+          </div>
+        </div>
+
+        {/* Показатели, которые есть только у мода: консоль их не отдаёт. */}
+        {fromMod && (
+          <>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-muted">FPS сервера</div>
+              <div
+                className={`text-sm font-semibold ${
+                  typeof state.fps === 'number' && state.fps < 20 ? 'text-red-400' : ''
+                }`}
+              >
+                {typeof state.fps === 'number' ? Math.round(state.fps) : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-muted">Зомби</div>
+              <div className="text-sm font-semibold">
+                {state.zombies ?? '—'}
+                {state.maxZombies ? ` / ${state.maxZombies}` : ''}
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wide text-muted">Версия</div>
+          <div className="truncate text-sm font-semibold">{state.version ?? '—'}</div>
         </div>
       </div>
-      <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted">Онлайн</div>
-        <div className="text-sm font-semibold">{state.onlineCount ?? '—'}</div>
-      </div>
-      <div className="min-w-0">
-        <div className="text-[11px] uppercase tracking-wide text-muted">Версия</div>
-        <div className="truncate text-sm font-semibold">{state.version ?? '—'}</div>
-      </div>
+
+      {/*
+        Откуда взяты цифры — не мелочь. Через консоль «до кровавой луны» это
+        расчёт по номеру дня, а частота орды настраивается и через консоль не
+        читается. Показать догадку как факт значит однажды подвести дежурного.
+      */}
+      <p className="text-[11px] text-muted">
+        {fromMod ? (
+          <>
+            Данные от companion-мода — от самой игры
+            {state.bloodMoonFrequency ? `, орда каждые ${state.bloodMoonFrequency} дн.` : ''}
+          </>
+        ) : (
+          'Данные из консоли. Срок до кровавой луны посчитан по номеру дня и верен только при стандартной частоте орды — точное значение даёт companion-мод.'
+        )}
+      </p>
     </Card>
   );
 }
@@ -654,6 +712,112 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
             </div>
           </div>
         </Modal>
+      )}
+    </Card>
+  );
+}
+
+// -------------------------------------------------- Журнал событий (виджет)
+
+/** Как называется каждое событие для человека. */
+const EVENT_LABELS: Record<SevenDaysEventKind, string> = {
+  chat: 'чат',
+  join: 'вход',
+  leave: 'выход',
+  death: 'смерть',
+  'player-kill': 'PvP',
+};
+
+const EVENT_FILTERS: { value: string; label: string }[] = [
+  { value: '', label: 'Все события' },
+  { value: 'chat', label: 'Чат' },
+  { value: 'player-kill', label: 'PvP' },
+  { value: 'death', label: 'Смерти' },
+  { value: 'join', label: 'Входы' },
+  { value: 'leave', label: 'Выходы' },
+];
+
+/**
+ * Лента событий игры.
+ *
+ * Существует только при установленном моде: сама игра событий нигде не
+ * хранит — они происходят и исчезают. Смысл ленты именно в разборе задним
+ * числом, поэтому по умолчанию показывается всё подряд, а не только
+ * «интересное»: что окажется интересным, заранее неизвестно.
+ */
+export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
+  const { hasPermission } = useAuth();
+  const [events, setEvents] = useState<SevenDaysEventDto[] | null>(null);
+  const [kind, setKind] = useState('');
+  const [error, setError] = useState('');
+
+  const allowed = hasPermission(SEVENDAYS_PERMISSIONS.eventsView);
+
+  const load = useCallback(
+    (filter: string) => {
+      if (!allowed) return Promise.resolve();
+      setError('');
+      const qs = filter ? `?kind=${encodeURIComponent(filter)}` : '';
+      return api<SevenDaysEventDto[]>(`${base(serverId)}/events${qs}`)
+        .then(setEvents)
+        .catch((e: Error) => setError(e.message));
+    },
+    [serverId, allowed],
+  );
+
+  useEffect(() => {
+    void load(kind);
+  }, [load, kind]);
+
+  if (!allowed) return null;
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">Журнал событий</h2>
+        <div className="flex gap-2">
+          <Select value={kind} onChange={setKind} options={EVENT_FILTERS} />
+          <Button size="sm" variant="outline" onClick={() => void load(kind)}>
+            Обновить
+          </Button>
+        </div>
+      </div>
+
+      <ErrorText>{error}</ErrorText>
+
+      {events === null ? (
+        <Spinner />
+      ) : events.length === 0 ? (
+        <p className="text-xs text-muted">
+          Пока пусто. События приносит companion-мод — без него игра о них ничего не
+          рассказывает.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {events.map((e) => (
+            <li key={e.id} className="rounded-md border border-border px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <Badge variant={e.kind === 'player-kill' ? 'destructive' : 'outline'}>
+                  {EVENT_LABELS[e.kind] ?? e.kind}
+                </Badge>
+                <span className="font-medium">{e.playerName}</span>
+                {e.kind === 'player-kill' && e.actorName && (
+                  <span className="text-muted">убит игроком {e.actorName}</span>
+                )}
+                <span className="ml-auto text-[11px] text-muted">
+                  {new Date(e.occurredAt).toLocaleString('ru-RU')}
+                </span>
+              </div>
+              {e.text && <p className="mt-1 break-words text-muted">{e.text}</p>}
+              {/* Координаты — для разбора жалоб, а не для красоты. */}
+              {e.position && (
+                <p className="mt-1 font-mono text-[11px] text-muted">
+                  {Math.round(e.position.x)}, {Math.round(e.position.y)}, {Math.round(e.position.z)}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </Card>
   );

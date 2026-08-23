@@ -1,19 +1,9 @@
 import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
-import {
-  IsArray,
-  IsISO8601,
-  IsNumber,
-  IsOptional,
-  IsString,
-  MaxLength,
-  MinLength,
-  ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsArray, IsNumber, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { Public } from '../../auth/decorators';
 import { TicketsService } from '../../tickets/tickets.service';
 import { SevenDaysCompanionGuard } from './sevendays-companion.guard';
-import { SevenDaysEventsService } from './sevendays-events.service';
+import { SevenDaysEventsService, type IncomingEvent } from './sevendays-events.service';
 
 /**
  * Идентификатор игрока в 7 Days to Die — Steam_… / EOS_… , а не UUID.
@@ -57,25 +47,23 @@ class ModReportDto extends PlayerIdMixin {
   @IsOptional() @IsNumber() z?: number | null;
 }
 
-class ModEventDto {
-  @IsString() @MaxLength(32) kind!: string;
-  @IsString() @MaxLength(128) playerId!: string;
-  @IsString() @MaxLength(64) playerName!: string;
-  @IsISO8601() occurredAt!: string;
-
-  @IsOptional() @IsString() @MaxLength(500) text?: string | null;
-  @IsOptional() @IsString() @MaxLength(128) actorId?: string | null;
-  @IsOptional() @IsString() @MaxLength(64) actorName?: string | null;
-  @IsOptional() @IsNumber() x?: number | null;
-  @IsOptional() @IsNumber() y?: number | null;
-  @IsOptional() @IsNumber() z?: number | null;
-}
-
+/**
+ * Пачка событий.
+ *
+ * ЗДЕСЬ НАМЕРЕННО НЕТ ПОЭЛЕМЕНТНОЙ ПРОВЕРКИ, и это не упущение.
+ * Строгая проверка каждой записи отвергала бы ВСЮ пачку из-за одной
+ * непонятной — а мод отправляет пачками до пятидесяти событий и на отказ
+ * 4xx пачку выбрасывает, потому что повторять её бессмысленно. То есть
+ * одно кривое событие уносило бы полсотни нормальных.
+ *
+ * Событие может оказаться непонятным по совершенно рабочей причине: мод
+ * новее панели и знает вид события, которого панель ещё не знает. Поэтому
+ * записи разбираются по одной в SevenDaysEventsService, непонятные
+ * отбрасываются, а остальные сохраняются — и ответ говорит, сколько принято.
+ */
 class ModEventBatchDto {
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ModEventDto)
-  events!: ModEventDto[];
+  events!: unknown[];
 }
 
 /**
@@ -144,6 +132,6 @@ export class SevenDaysInternalController {
   @UseGuards(SevenDaysCompanionGuard)
   @Post('events')
   async ingestEvents(@Param('serverId') serverId: string, @Body() dto: ModEventBatchDto) {
-    return this.events.ingest(serverId, dto.events);
+    return this.events.ingest(serverId, dto.events as IncomingEvent[]);
   }
 }

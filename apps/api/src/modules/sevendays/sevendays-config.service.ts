@@ -49,6 +49,15 @@ export interface SevenDaysCredentials {
  */
 const HOST_RE = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$/;
 
+/**
+ * Допустимые символы токена.
+ *
+ * Ровно те, что разрешены в значении заголовка Authorization по RFC 7235
+ * (token68). Всё остальное — включая кириллицу и пробелы — в заголовок не
+ * помещается физически.
+ */
+const TOKEN_RE = /^[A-Za-z0-9\-._~+/=]+$/;
+
 @Injectable()
 export class SevenDaysConfigService {
   private readonly logger = new Logger(SevenDaysConfigService.name);
@@ -162,6 +171,16 @@ export class SevenDaysConfigService {
     // а мод отказывается работать с токеном короче 16 символов.
     if (!token || token.length < 16) {
       throw new BadRequestException('Токен мода должен быть не короче 16 символов');
+    }
+    // Токен уезжает заголовком Authorization, а заголовки HTTP — это не
+    // юникод. Кириллица в токене не «работает хуже», она не отправляется
+    // вовсе: клиент падает при сборке запроса. Сказать об этом здесь
+    // честнее, чем оставить необъяснимое «мод не отвечает».
+    if (!TOKEN_RE.test(token)) {
+      throw new BadRequestException(
+        'Токен мода может состоять только из латинских букв, цифр и знаков -._~+/= — ' +
+          'он передаётся в заголовке HTTP, а туда другие символы не помещаются',
+      );
     }
 
     await this.write(serverId, {
