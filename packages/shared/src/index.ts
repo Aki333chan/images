@@ -9,3 +9,4 @@ export * from './marketplace';
 export * from './modules/minecraft';
 export * from './modules/minecraft-console';
 export * from './modules/palworld';
+export * from './modules/sevendays';
