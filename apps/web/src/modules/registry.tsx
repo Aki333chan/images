@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import {
   MINECRAFT_PERMISSIONS,
   PALWORLD_PERMISSIONS,
+  SEVENDAYS_PERMISSIONS,
   type CapabilityState,
   type ModuleCapability,
 } from '@aurum/shared';
@@ -24,6 +25,13 @@ import {
   PalworldQuickActionsWidget,
 } from './palworld/tabs';
 import { PalworldSettingsTab } from './palworld/SettingsTab';
+import {
+  SevenDaysBansTab,
+  SevenDaysPlayersTab,
+  SevenDaysQuickActionsWidget,
+  SevenDaysWhitelistTab,
+} from './sevendays/tabs';
+import { SevenDaysSettingsTab } from './sevendays/SettingsTab';
 
 export interface ModuleTabProps {
   serverId: string;
@@ -114,6 +122,41 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       label: 'Настройки',
       permission: PALWORLD_PERMISSIONS.configure,
       component: PalworldSettingsTab,
+    },
+  },
+  /**
+   * 7 Days to Die. Вкладок три — по числу возможностей, которые есть у игры
+   * без модов: игроки, баны и белый список. Консоль берётся из ядра
+   * (CORE_TABS). Инвентаря и тикетов у этой игры нет вовсе — см. манифест.
+   */
+  sevendays: {
+    tabs: {
+      playerList: {
+        label: 'Игроки',
+        permission: SEVENDAYS_PERMISSIONS.playersView,
+        component: SevenDaysPlayersTab,
+      },
+      banKick: {
+        label: 'Баны',
+        permission: SEVENDAYS_PERMISSIONS.ban,
+        component: SevenDaysBansTab,
+      },
+      whitelist: {
+        label: 'Whitelist',
+        permission: SEVENDAYS_PERMISSIONS.whitelist,
+        component: SevenDaysWhitelistTab,
+      },
+    },
+    dashboard: {
+      // Право проверяет сам виджет: действия под разными правами, и одного
+      // ключа на весь блок не хватает.
+      permission: null,
+      component: SevenDaysQuickActionsWidget,
+    },
+    settings: {
+      label: 'Настройки',
+      permission: SEVENDAYS_PERMISSIONS.configure,
+      component: SevenDaysSettingsTab,
     },
   },
   'test-dummy': {
