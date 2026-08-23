@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { cn } from '../lib/cn';
 import { IconClose } from './icons';
 
 /**
@@ -28,10 +29,19 @@ export function Modal({
   title,
   onClose,
   children,
+  wide,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /**
+   * Широкий диалог — для редактора файлов.
+   *
+   * Конфиг в колонке шириной с телефон читать невозможно: строки переносятся
+   * посреди значений. На узком экране разницы нет — там диалог и так во весь
+   * экран.
+   */
+  wide?: boolean;
 }) {
   // Фон под модалкой не прокручиваем — иначе на телефоне при прокрутке
   // внутри окна «уезжает» страница за ним.
@@ -58,7 +68,10 @@ export function Modal({
       aria-label={title}
     >
       <div
-        className="flex w-full flex-col sm:max-h-[85vh] sm:max-w-md"
+        className={cn(
+          'flex w-full flex-col sm:max-h-[85vh]',
+          wide ? 'sm:max-w-4xl' : 'sm:max-w-md',
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Верхний уровень высоты: у диалога тень плотнее, чем у карточки, —

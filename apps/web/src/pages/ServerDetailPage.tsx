@@ -10,6 +10,7 @@ import { ServerStats } from '../components/ServerStats';
 import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
 import { ServerAddress } from '../components/ServerAddress';
 import { refreshServerRuntime, useServerRuntime } from '../lib/server-runtime';
+import { SERVER_TABS } from '../server-tabs/registry';
 import { listCapabilities } from '@aurum/shared';
 
 /** Не пересекается с id capability: те приходят из манифеста модуля. */
@@ -46,30 +47,53 @@ export function ServerDetailPage() {
     [modules, server?.moduleId],
   );
 
-  /** Вкладки: capabilities активного модуля ∩ реестр компонентов ∩ права. */
+  /**
+   * Вкладки страницы сервера.
+   *
+   * Их два источника, и смешивать их нельзя:
+   *
+   *   вкладки МОДУЛЯ — capabilities манифеста ∩ реестр компонентов ∩ права.
+   *   Их состав зависит от игры: у Minecraft есть whitelist, у Palworld нет;
+   *
+   *   вкладки ЯДРА — общие возможности Pterodactyl: файлы, бэкапы, сеть,
+   *   запуск, базы, расписания. Они не зависят от игры вообще и показываются
+   *   даже когда модуль серверу не назначен: файл есть файл, а бэкап есть
+   *   бэкап.
+   *
+   * Порядок: сначала игровое, потом общее. Модератор заходит смотреть
+   * игроков, а не аллокации.
+   */
   const tabs = useMemo(() => {
-    if (!manifest) return [];
-    const capabilityTabs = listCapabilities(manifest).flatMap(({ capability, state }) => {
-      const tab = resolveTab(manifest.id, capability);
-      if (!tab) return [];
-      if (tab.permission && !hasPermission(tab.permission)) return [];
-      // id как string: ниже к списку добавляется вкладка настроек,
-      // которой в перечислении capability нет.
-      return [{ id: capability as string, label: tab.label, component: tab.component, state }];
-    });
+    const moduleTabs = !manifest
+      ? []
+      : listCapabilities(manifest).flatMap(({ capability, state }) => {
+          const tab = resolveTab(manifest.id, capability);
+          if (!tab) return [];
+          if (tab.permission && !hasPermission(tab.permission)) return [];
+          // id как string: ниже к списку добавляются вкладки, которых в
+          // перечислении capability нет.
+          return [{ id: capability as string, label: tab.label, component: tab.component, state }];
+        });
 
-    // Настройки идут последними: пользуются ими редко, а место в ряду
-    // вкладок нужнее тем, с чем работают каждый день.
-    const settings = resolveSettings(manifest.id);
+    // Настройки модуля — последними среди модульных: пользуются ими редко.
+    const settings = manifest ? resolveSettings(manifest.id) : null;
     if (settings && hasPermission(settings.permission)) {
-      capabilityTabs.push({
+      moduleTabs.push({
         id: SETTINGS_TAB_ID,
         label: settings.label,
         component: settings.component,
         state: true,
       });
     }
-    return capabilityTabs;
+
+    const coreTabs = SERVER_TABS.filter((tab) => hasPermission(tab.permission)).map((tab) => ({
+      id: `core:${tab.id}`,
+      label: tab.label,
+      component: tab.component,
+      state: true as const,
+    }));
+
+    return [...moduleTabs, ...coreTabs];
   }, [manifest, hasPermission]);
 
   /** Виджет модуля на дашборде сервера (напр. быстрые команды Minecraft). */
