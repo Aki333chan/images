@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DISABLED_PLUGINS_DIR, type InstalledPluginDto, type InstalledPluginsResponseDto } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Badge, Button, Card, ErrorText, Spinner } from '../../components/ui';
@@ -32,6 +33,7 @@ export function InstalledPluginsPanel({
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [removing, setRemoving] = useState<InstalledPluginDto | null>(null);
+  const navigate = useNavigate();
 
   const base = `/api/modules/minecraft/servers/${serverId}/plugins`;
 
@@ -82,6 +84,12 @@ export function InstalledPluginsPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">Установленные плагины</h2>
         <div className="flex gap-2">
+          {/* serverId в адресе не косметика: маркет по нему открывает нужную
+              вкладку (плагины или моды — по ядру этого сервера) и заранее
+              отмечает его в мастере установки. */}
+          <Button size="sm" variant="outline" onClick={() => navigate(`/market?serverId=${serverId}`)}>
+            Маркет
+          </Button>
           <Button size="sm" variant="outline" onClick={load}>
             Обновить
           </Button>

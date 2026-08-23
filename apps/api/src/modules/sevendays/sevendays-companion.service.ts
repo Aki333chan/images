@@ -95,8 +95,9 @@ export class SevenDaysCompanionService {
         headersTimeout: SevenDaysCompanionService.TIMEOUT_MS,
         bodyTimeout: SevenDaysCompanionService.TIMEOUT_MS,
       });
-    } catch (e) {
-      // В тексте ошибки undici бывает адрес — а он приватный и секретный.
+    } catch {
+      // В тексте ошибки undici бывает адрес — а он приватный и секретный,
+      // поэтому саму ошибку наружу не пускаем и не связываем с ответом.
       throw new BadRequestException('Companion-мод не отвечает');
     }
 

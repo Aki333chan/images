@@ -80,4 +80,12 @@ export const env = {
    */
   MODRINTH_BASE_URL: optional('MODRINTH_BASE_URL', 'https://api.modrinth.com/v2'),
   HANGAR_BASE_URL: optional('HANGAR_BASE_URL', 'https://hangar.papermc.io/api/v1'),
+
+  /**
+   * SpiGet — сторонняя обёртка над SpigotMC (собственного API у SpigotMC нет).
+   * Источник заведомо менее надёжный, чем два предыдущих, поэтому адрес вынесен
+   * отдельно: если обёртка переедет или ляжет надолго, её можно подменить
+   * зеркалом, не трогая код.
+   */
+  SPIGET_BASE_URL: optional('SPIGET_BASE_URL', 'https://api.spiget.org/v2'),
 };

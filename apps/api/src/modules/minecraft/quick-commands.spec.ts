@@ -59,11 +59,42 @@ describe('каталог быстрых действий', () => {
     expect(MINECRAFT_QUICK_COMMANDS.some((c) => c.plugin === 'EssentialsX')).toBe(false);
   });
 
-  it('есть стартовый набор EssentialsX из задания', () => {
+  it('есть стартовый набор EssentialsX', () => {
     const ids = MINECRAFT_QUICK_COMMANDS.map((c) => c.id);
-    for (const id of ['ess-heal', 'ess-god', 'ess-fly', 'ess-kit', 'ess-gamemode']) {
+    // Только то, чего в ванили НЕТ. gamemode и tp здесь намеренно
+    // отсутствуют: EssentialsX перехватывает их прозрачно, и его копии были
+    // побайтово теми же командами — см. следующий тест.
+    for (const id of ['ess-heal', 'ess-god', 'ess-fly', 'ess-kit']) {
       expect(ids).toContain(id);
     }
+  });
+
+  it('нет двух кнопок с одинаковой командой', () => {
+    // Регрессия на реальную жалобу: на сервере с EssentialsX человек видел
+    // две одинаковые кнопки «Сменить режим игры» и «Телепорт к игроку» с
+    // побайтово одинаковыми шаблонами и гадал, чем они отличаются. Ничем.
+    //
+    // Правильный вариант — ванильный: он работает на любом сервере и не
+    // зависит от того, стоит ли плагин. Дублировать его командой плагина
+    // можно только там, где плагин делает что-то ДРУГОЕ.
+    const seen = new Map<string, string>();
+    for (const command of MINECRAFT_QUICK_COMMANDS) {
+      const key = (Array.isArray(command.template) ? command.template : [command.template]).join(
+        ' && ',
+      );
+      expect({ id: command.id, sameAs: seen.get(key) ?? null }).toEqual({
+        id: command.id,
+        sameAs: null,
+      });
+      seen.set(key, command.id);
+    }
+  });
+
+  it('подписи кнопок не повторяются', () => {
+    // Одинаковая команда под разными подписями — уже проверено выше; здесь
+    // обратный случай: разные команды под одной подписью так же непонятны.
+    const labels = MINECRAFT_QUICK_COMMANDS.map((c) => c.label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('аргументы с ником названы так, чтобы попасть под валидацию ника', () => {

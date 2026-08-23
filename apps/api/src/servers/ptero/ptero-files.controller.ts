@@ -11,7 +11,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { IsArray, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsString, MaxLength, MinLength } from 'class-validator';
 import type { PteroDirectoryDto, PteroFileContentDto, PteroFileDto } from '@aurum/shared';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
 import { PteroFilesService } from './ptero-files.service';

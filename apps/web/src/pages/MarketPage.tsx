@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
+  EMPTY_FILTERS,
+  MARKET_SORTS,
+  MARKET_SORT_LABELS,
   MARKET_SOURCES,
+  defaultProjectTypeFor,
+  loadersFor,
+  sourcesFor,
+  type MarketFilters,
   type MarketHitDto,
   type MarketMatch,
   type MarketPluginDto,
+  type MarketProjectType,
   type MarketSearchResponseDto,
+  type MarketSort,
   type MarketSourceId,
   type MarketVersionDto,
   type MarketVersionsResponseDto,
@@ -12,69 +22,159 @@ import {
   type ServerTargetDto,
 } from '@aurum/shared';
 import { api } from '../lib/api';
-import { Badge, Button, ErrorText, Input, Spinner } from '../components/ui';
+import { Badge, Button, ErrorText, Input, Select, Spinner, Tabs } from '../components/ui';
 import { PluginIcon } from './PluginIcon';
 import { Modal } from '../components/Modal';
 
 const BASE = '/api/modules/minecraft/market';
 
 /**
- * Маркет плагинов: поиск по Modrinth и Hangar.
+ * Маркет: плагины (Modrinth, Hangar, SpigotMC) и моды (Modrinth).
  *
  * ГЛАВНОЕ ПРАВИЛО ЭКРАНА: заявленная автором совместимость — подсказка, а не
- * фильтр. Панель показывает ВСЕ найденные плагины и ВСЕ их версии, включая
+ * фильтр. Панель показывает ВСЕ найденные проекты и ВСЕ их версии, включая
  * те, где текущая версия сервера не заявлена. Огромная часть плагинов
  * прекрасно работает на ядрах новее заявленных — автор просто не обновил
  * метаданные, и прятать их значило бы решать за человека.
  *
- * Подсветка совпадений — есть. Скрытие — нет.
+ * Подсветка совпадений — есть. Скрытие — нет. Фильтры на этом экране ставит
+ * человек галочкой; ни одна из них не проставляется панелью самостоятельно.
+ *
+ * ПЛАГИНЫ И МОДЫ РАЗДЕЛЬНО, а не одним списком. Плагин под Paper и мод под
+ * Fabric ставятся в разные папки и на чужом сервере не загрузятся вовсе.
+ * Свалить их в одну выдачу значило бы предлагать заведомо неработающее.
  */
 export function MarketPage() {
+  const [params] = useSearchParams();
+  // Сервер, со страницы которого пришли: он решает, какая вкладка откроется
+  // и какой сервер подставится в мастере установки.
+  const fromServerId = params.get('serverId');
+
+  const [type, setType] = useState<MarketProjectType>('plugin');
+  const [sort, setSort] = useState<MarketSort>('relevance');
+  const [filters, setFilters] = useState<MarketFilters>(EMPTY_FILTERS);
   const [query, setQuery] = useState('');
+
   const [data, setData] = useState<MarketSearchResponseDto | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MarketHitDto | null>(null);
   const [targets, setTargets] = useState<ServerTargetDto[]>([]);
+  const [gameVersions, setGameVersions] = useState<string[]>([]);
+
+  // Ручное переключение вкладки нельзя отменять автоподстановкой: список
+  // серверов приезжает асинхронно, и без этой отметки вкладка перепрыгивала бы
+  // обратно уже после того, как человек её сменил.
+  const typeTouched = useRef(false);
 
   useEffect(() => {
     api<ServerTargetDto[]>(`${BASE}/targets`)
       .then(setTargets)
       .catch(() => setTargets([]));
+    // Справочник версий не критичен: без него просто не будет галочек версий.
+    api<string[]>(`${BASE}/game-versions`)
+      .then(setGameVersions)
+      .catch(() => setGameVersions([]));
   }, []);
 
-  const search = useCallback((q: string) => {
-    setLoading(true);
-    setError('');
-    api<MarketSearchResponseDto>(`${BASE}/search?q=${encodeURIComponent(q)}&limit=20`)
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+  // Вкладка по типу сервера, с которого пришли: на Paper искать моды
+  // бессмысленно, на Fabric — плагины.
+  useEffect(() => {
+    if (typeTouched.current || !fromServerId) return;
+    const target = targets.find((t) => t.serverId === fromServerId);
+    if (target) setType(defaultProjectTypeFor(target.loader));
+  }, [fromServerId, targets]);
+
+  const switchType = useCallback((next: MarketProjectType) => {
+    typeTouched.current = true;
+    setType(next);
+    // Ядра и источники у плагинов и модов разные: отмеченный «fabric» на
+    // вкладке плагинов не значит ничего, а отмеченный Hangar на вкладке модов
+    // дал бы вечно пустую выдачу. Версии игры общие — их сохраняем.
+    setFilters((f) => ({ ...f, loaders: [], sources: [] }));
   }, []);
+
+  const search = useCallback(
+    (q: string) => {
+      setLoading(true);
+      setError('');
+      const url = new URLSearchParams({ limit: '20', type, sort });
+      if (q) url.set('q', q);
+      if (filters.gameVersions.length) url.set('gameVersions', filters.gameVersions.join(','));
+      if (filters.loaders.length) url.set('loaders', filters.loaders.join(','));
+      if (filters.sources.length) url.set('sources', filters.sources.join(','));
+
+      api<MarketSearchResponseDto>(`${BASE}/search?${url.toString()}`)
+        .then(setData)
+        .catch((e: Error) => setError(e.message))
+        .finally(() => setLoading(false));
+    },
+    [type, sort, filters],
+  );
 
   // Поиск по мере ввода, но с задержкой: у Modrinth есть лимит запросов,
-  // и дёргать оба источника на каждую букву незачем.
+  // и дёргать все источники на каждую букву незачем. Смена вкладки, сортировки
+  // или галочки ждать не должна — там задержки нет.
   useEffect(() => {
     const timer = setTimeout(() => search(query.trim()), query.trim() ? 450 : 0);
     return () => clearTimeout(timer);
   }, [query, search]);
 
   const failed = data?.sources.filter((s) => !s.ok) ?? [];
+  const activeSources = useMemo(() => sourcesFor(type), [type]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">Маркет плагинов</h1>
+        <h1 className="text-xl font-bold">Маркет</h1>
         <span className="text-xs text-muted">
-          {MARKET_SOURCES.map((s) => s.label).join(' · ')}
+          {activeSources.map((id) => sourceLabel(id)).join(' · ')}
         </span>
       </div>
 
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Название плагина: luckperms, essentials, vault…"
+      <Tabs
+        fill
+        active={type}
+        onChange={(id) => switchType(id as MarketProjectType)}
+        tabs={[
+          { id: 'plugin', label: 'Плагины' },
+          { id: 'mod', label: 'Моды' },
+        ]}
       />
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Input
+          className="flex-1"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={
+            type === 'mod'
+              ? 'Название мода: create, jei, sodium…'
+              : 'Название плагина: luckperms, essentials, vault…'
+          }
+        />
+        <Select
+          className="sm:w-56"
+          value={sort}
+          onChange={(v) => setSort(v as MarketSort)}
+          options={MARKET_SORTS.map((s) => ({ value: s, label: MARKET_SORT_LABELS[s] }))}
+        />
+      </div>
+
+      <FilterBar
+        type={type}
+        filters={filters}
+        onChange={setFilters}
+        gameVersions={gameVersions}
+      />
+
+      {type === 'mod' && (
+        <p className="text-xs text-muted">
+          Моды раздаёт только Modrinth: у Hangar в списке платформ есть лишь Paper, Waterfall и
+          Velocity, а SpigotMC — площадка плагинов Bukkit. Показывать рядом два заведомо пустых
+          источника незачем.
+        </p>
+      )}
 
       {failed.length > 0 && (
         <p className="text-xs text-amber-400">
@@ -87,7 +187,9 @@ export function MarketPage() {
       {loading && <Spinner />}
 
       {!loading && data && data.hits.length === 0 && (
-        <p className="text-sm text-muted">Ничего не нашлось. Попробуйте другое слово.</p>
+        <p className="text-sm text-muted">
+          Ничего не нашлось. Попробуйте другое слово или снимите часть галочек.
+        </p>
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -103,11 +205,20 @@ export function MarketPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{hit.title}</span>
                   <Badge variant="outline">{sourceLabel(hit.source)}</Badge>
+                  {hit.premium && (
+                    <span title="Платный ресурс SpigotMC — панель его не скачает">
+                      <Badge variant="outline">платный</Badge>
+                    </span>
+                  )}
                 </div>
                 <p className="mt-0.5 line-clamp-2 text-xs text-muted">{hit.description}</p>
                 <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted">
                   {hit.author && <span>{hit.author}</span>}
                   <span>{formatDownloads(hit.downloads)} загрузок</span>
+                  {hit.loaders.length > 0 && <span>{hit.loaders.join(', ')}</span>}
+                  {hit.updatedAt && (
+                    <span>обновлён {new Date(hit.updatedAt).toLocaleDateString('ru-RU')}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -119,6 +230,7 @@ export function MarketPage() {
         <PluginModal
           hit={selected}
           targets={targets}
+          preferredServerId={fromServerId}
           onClose={() => setSelected(null)}
         />
       )}
@@ -126,14 +238,166 @@ export function MarketPage() {
   );
 }
 
-/** Карточка плагина: описание, заявленные ядра и версии, все релизы. */
+/**
+ * Комбинируемые фильтры.
+ *
+ * ГАЛОЧКИ, А НЕ ПЕРЕКЛЮЧАТЕЛИ: значения внутри одной группы складываются по
+ * «или», группы между собой — по «и». Отметить 1.20 и 1.21 разом это нормальный
+ * запрос, и радиокнопки его бы не выразили.
+ *
+ * Пустая группа означает «без ограничения», а не «ничего не показывать»:
+ * галочки снимают, чтобы увидеть больше.
+ */
+function FilterBar({
+  type,
+  filters,
+  onChange,
+  gameVersions,
+}: {
+  type: MarketProjectType;
+  filters: MarketFilters;
+  onChange: (next: MarketFilters) => void;
+  gameVersions: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [allVersions, setAllVersions] = useState(false);
+
+  const sources = sourcesFor(type);
+  const loaders = loadersFor(type);
+  const active =
+    filters.gameVersions.length + filters.loaders.length + filters.sources.length;
+
+  // Версий Minecraft полсотни; сразу показываем свежие, остальные по кнопке —
+  // иначе панель фильтров занимает весь экран ради того, что нужно раз в год.
+  const shownVersions = allVersions ? gameVersions : gameVersions.slice(0, 12);
+
+  function toggle<K extends keyof MarketFilters>(key: K, value: string) {
+    const current = filters[key] as string[];
+    const next = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value];
+    onChange({ ...filters, [key]: next } as MarketFilters);
+  }
+
+  return (
+    <div className="rounded-lg border border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <button
+          type="button"
+          className="text-sm font-medium"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          Фильтры{active > 0 ? ` · ${active}` : ''} {open ? '▲' : '▼'}
+        </button>
+        {active > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => onChange(EMPTY_FILTERS)}>
+            Сбросить
+          </Button>
+        )}
+      </div>
+
+      {open && (
+        <div className="space-y-3 border-t border-border px-3 py-3">
+          {gameVersions.length > 0 && (
+            <FilterGroup title="Версия Minecraft">
+              {shownVersions.map((v) => (
+                <CheckChip
+                  key={v}
+                  label={v}
+                  checked={filters.gameVersions.includes(v)}
+                  onToggle={() => toggle('gameVersions', v)}
+                />
+              ))}
+              {gameVersions.length > shownVersions.length && (
+                <button
+                  type="button"
+                  className="text-[11px] text-primary underline"
+                  onClick={() => setAllVersions(true)}
+                >
+                  ещё {gameVersions.length - shownVersions.length}
+                </button>
+              )}
+            </FilterGroup>
+          )}
+
+          <FilterGroup title={type === 'mod' ? 'Загрузчик' : 'Ядро'}>
+            {loaders.map((l) => (
+              <CheckChip
+                key={l}
+                label={l}
+                checked={filters.loaders.includes(l)}
+                onToggle={() => toggle('loaders', l)}
+              />
+            ))}
+          </FilterGroup>
+
+          {/* Одному источнику галочка не нужна: выбирать не из чего. */}
+          {sources.length > 1 && (
+            <FilterGroup title="Источник">
+              {sources.map((s) => (
+                <CheckChip
+                  key={s}
+                  label={sourceLabel(s)}
+                  checked={filters.sources.includes(s)}
+                  onToggle={() => toggle('sources', s)}
+                />
+              ))}
+            </FilterGroup>
+          )}
+
+          {type === 'plugin' && (
+            <p className="text-[11px] text-muted">
+              У SpigotMC ядро плагина не хранится вовсе, поэтому галочка ядра его результаты не
+              отсеивает — иначе один щелчок прятал бы целый источник.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-muted">{title}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+function CheckChip({
+  label,
+  checked,
+  onToggle,
+}: {
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-center gap-1.5 rounded border px-2 py-1 text-xs ${
+        checked ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted'
+      }`}
+    >
+      <input type="checkbox" className="h-3.5 w-3.5" checked={checked} onChange={onToggle} />
+      {label}
+    </label>
+  );
+}
+
+/** Карточка проекта: описание, заявленные ядра и версии, все релизы. */
 function PluginModal({
   hit,
   targets,
+  preferredServerId,
   onClose,
 }: {
   hit: MarketHitDto;
   targets: ServerTargetDto[];
+  preferredServerId: string | null;
   onClose: () => void;
 }) {
   const [plugin, setPlugin] = useState<MarketPluginDto | null>(null);
@@ -141,9 +405,13 @@ function PluginModal({
   const [error, setError] = useState('');
   const [installing, setInstalling] = useState<MarketVersionDto | null>(null);
 
-  // Сравниваем с первым сервером просто чтобы бейджи не были пустыми; на шаге
-  // выбора сервера в мастере они пересчитываются под выбранный.
-  const compareWith = targets[0]?.serverId;
+  // Сверяем с тем сервером, со страницы которого пришли, а если пришли из
+  // меню — с первым: так бейджи не пустуют. На шаге выбора сервера в мастере
+  // они пересчитываются под выбранный.
+  const compareWith =
+    (preferredServerId && targets.some((t) => t.serverId === preferredServerId)
+      ? preferredServerId
+      : targets[0]?.serverId) ?? undefined;
   const path = `${BASE}/${hit.source}/${encodeURIComponent(hit.id)}`;
 
   useEffect(() => {
@@ -157,6 +425,8 @@ function PluginModal({
       .catch((e: Error) => setError(e.message));
   }, [path, compareWith]);
 
+  const premium = plugin?.premium ?? hit.premium ?? false;
+
   return (
     <Modal title={hit.title} onClose={onClose}>
       {error && <ErrorText>{error}</ErrorText>}
@@ -168,25 +438,56 @@ function PluginModal({
             <PluginIcon url={plugin.iconUrl} title={plugin.title} size={64} />
             <div className="min-w-0">
               <p className="text-sm">{plugin.description}</p>
-              <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
                 <Badge variant="outline">{sourceLabel(plugin.source)}</Badge>
+                <Badge variant="outline">
+                  {plugin.projectType === 'mod' ? 'мод' : 'плагин'}
+                </Badge>
                 <span>{formatDownloads(plugin.downloads)} загрузок</span>
-                <a className="text-primary underline" href={plugin.pageUrl} target="_blank" rel="noreferrer">
-                  страница плагина
+                <a
+                  className="text-primary underline"
+                  href={plugin.pageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  страница на источнике
                 </a>
               </div>
             </div>
           </div>
 
+          {premium && (
+            <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
+              Это платный ресурс SpigotMC. Файл отдаётся только покупателю на самом сайте, поэтому
+              панель его не скачает — установка отсюда недоступна. Купленный .jar можно загрузить
+              вручную через файловый менеджер сервера.
+            </p>
+          )}
+
+          {plugin.externalFile && !premium && (
+            <p className="text-xs text-muted">
+              Файл размещён не у источника, а на стороннем сайте. Контрольной суммы у такого файла
+              нет — панель проверит только то, что приехал настоящий архив.
+            </p>
+          )}
+
           {/* Все заявленные ядра и версии игры — как их отдаёт источник. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <div className="text-[11px] uppercase tracking-wide text-muted">Заявленные ядра</div>
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {plugin.projectType === 'mod' ? 'Заявленные загрузчики' : 'Заявленные ядра'}
+              </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 {plugin.loaders.length === 0 ? (
-                  <span className="text-xs text-muted">не указаны</span>
+                  <span className="text-xs text-muted">
+                    {plugin.source === 'spiget' ? 'SpigotMC их не хранит' : 'не указаны'}
+                  </span>
                 ) : (
-                  plugin.loaders.map((l) => <Badge key={l} variant="outline">{l}</Badge>)
+                  plugin.loaders.map((l) => (
+                    <Badge key={l} variant="outline">
+                      {l}
+                    </Badge>
+                  ))
                 )}
               </div>
             </div>
@@ -198,7 +499,11 @@ function PluginModal({
                 {plugin.gameVersions.length === 0 ? (
                   <span className="text-xs text-muted">не указаны</span>
                 ) : (
-                  plugin.gameVersions.map((v) => <Badge key={v} variant="outline">{v}</Badge>)
+                  plugin.gameVersions.map((v) => (
+                    <Badge key={v} variant="outline">
+                      {v}
+                    </Badge>
+                  ))
                 )}
               </div>
             </div>
@@ -211,7 +516,11 @@ function PluginModal({
                 <span className="text-[11px] text-muted">
                   бейджи сверены с «{versions.comparedTo.name}»
                   {versions.comparedTo.gameVersion ? ` (${versions.comparedTo.gameVersion}` : ''}
-                  {versions.comparedTo.loader ? `, ${versions.comparedTo.loader})` : versions.comparedTo.gameVersion ? ')' : ''}
+                  {versions.comparedTo.loader
+                    ? `, ${versions.comparedTo.loader})`
+                    : versions.comparedTo.gameVersion
+                      ? ')'
+                      : ''}
                 </span>
               )}
             </div>
@@ -241,7 +550,7 @@ function PluginModal({
                           {v.gameVersions.length > 0 && ` · ${v.gameVersions.join(', ')}`}
                         </div>
                       </div>
-                      <Button size="sm" onClick={() => setInstalling(v)}>
+                      <Button size="sm" disabled={premium} onClick={() => setInstalling(v)}>
                         Установить
                       </Button>
                     </div>
@@ -268,6 +577,7 @@ function PluginModal({
           plugin={plugin}
           version={installing}
           targets={targets}
+          preferredServerId={preferredServerId}
           onClose={() => setInstalling(null)}
         />
       )}
@@ -280,27 +590,35 @@ function PluginModal({
  *
  * Шаг с выбором сервера показывается ВСЕГДА, даже когда сервер один: серверов
  * станет больше, и интерфейс сразу делается под это, а не под сегодняшний
- * частный случай.
+ * частный случай. Сервер, со страницы которого пришли, просто отмечен заранее.
  */
 function InstallWizard({
   plugin,
   version,
   targets,
+  preferredServerId,
   onClose,
 }: {
   plugin: MarketPluginDto;
   version: MarketVersionDto;
   targets: ServerTargetDto[];
+  preferredServerId: string | null;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [serverId, setServerId] = useState<string>('');
+  const [serverId, setServerId] = useState<string>(
+    preferredServerId && targets.some((t) => t.serverId === preferredServerId)
+      ? preferredServerId
+      : '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<PluginInstallResultDto | null>(null);
 
   const target = targets.find((t) => t.serverId === serverId) ?? null;
   const running = target?.status === 'running' || target?.status === 'starting';
+  const folder = plugin.projectType === 'mod' ? 'mods/' : 'plugins/';
+  const what = plugin.projectType === 'mod' ? 'Мод' : 'Плагин';
 
   async function install() {
     setBusy(true);
@@ -375,7 +693,7 @@ function InstallWizard({
             <p className="text-sm">На какой сервер ставим?</p>
             {targets.length === 0 ? (
               <p className="text-sm text-muted">
-                Нет серверов с модулем Minecraft — плагин ставить некуда.
+                Нет серверов с модулем Minecraft — ставить некуда.
               </p>
             ) : (
               <ul className="space-y-2">
@@ -429,29 +747,41 @@ function InstallWizard({
             ) : (
               <>
                 <dl className="space-y-1 text-sm">
-                  <Row label="Плагин" value={`${plugin.title} (${sourceLabel(plugin.source)})`} />
+                  <Row
+                    label={plugin.projectType === 'mod' ? 'Мод' : 'Плагин'}
+                    value={`${plugin.title} (${sourceLabel(plugin.source)})`}
+                  />
                   <Row label="Версия" value={version.name} />
                   <Row label="Сервер" value={target?.name ?? '—'} />
-                  <Row label="Куда" value="plugins/" />
+                  <Row label="Куда" value={folder} />
                 </dl>
 
+                {/* Мод в plugins/ не загрузится, а плагин в mods/ у Forge ещё
+                    и роняет запуск. Куда именно кладём — не мелочь. */}
+                {plugin.projectType === 'mod' && (
+                  <p className="text-xs text-muted">
+                    Моды читают только Forge, NeoForge и Fabric. Если выбранный сервер работает на
+                    ядре семейства Bukkit, файл ляжет в mods/, но игрой прочитан не будет.
+                  </p>
+                )}
+
                 {/* Предупреждение только если сервер сейчас работает: у
-                    выключенного плагин просто подхватится при старте. */}
+                    выключенного файл просто подхватится при старте. */}
                 {running ? (
                   <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
-                    Сервер сейчас запущен. Плагин будет загружен в папку, но заработает только
-                    после перезапуска сервера.
+                    Сервер сейчас запущен. Файл будет загружен в папку, но заработает только после
+                    перезапуска сервера.
                   </p>
                 ) : (
                   <p className="text-xs text-muted">
-                    Сервер сейчас выключен — плагин подхватится при следующем запуске.
+                    Сервер сейчас выключен — {what.toLowerCase()} подхватится при следующем запуске.
                   </p>
                 )}
 
                 {version.compatibility?.gameVersion === 'not-declared' && (
                   <p className="text-xs text-muted">
                     Автор не заявил эту версию Minecraft для выбранного релиза. Это не значит, что
-                    плагин не заработает — метаданные часто отстают. Установка не блокируется.
+                    он не заработает — метаданные часто отстают. Установка не блокируется.
                   </p>
                 )}
 
@@ -487,7 +817,11 @@ function Row({ label, value }: { label: string; value: string }) {
  * Бейдж совпадения — ИНФОРМАЦИОННЫЙ. Он ничего не блокирует и ничего не
  * прячет: рядом с любым его состоянием кнопка «Установить» одинаково активна.
  */
-function MatchBadge({ compatibility }: { compatibility?: { gameVersion: MarketMatch; loader: MarketMatch } }) {
+function MatchBadge({
+  compatibility,
+}: {
+  compatibility?: { gameVersion: MarketMatch; loader: MarketMatch };
+}) {
   if (!compatibility) return null;
   const { gameVersion, loader } = compatibility;
   if (gameVersion === 'unknown' && loader === 'unknown') return null;
@@ -496,7 +830,7 @@ function MatchBadge({ compatibility }: { compatibility?: { gameVersion: MarketMa
     return <Badge variant="success">совпадает с сервером</Badge>;
   }
   return (
-    <span title="Автор не заявил эту версию. Плагин всё равно можно поставить.">
+    <span title="Автор не заявил эту версию. Поставить всё равно можно.">
       <Badge variant="outline">не заявлено для этой версии</Badge>
     </span>
   );

@@ -67,27 +67,68 @@ export class PluginTargetsService {
         .getResources(identifier)
         .then((r) => r.current_state)
         .catch(() => null),
-      this.detectVersion(serverId),
+      this.detectVersion(serverId, identifier),
     ]);
 
     return { serverId, name, status, ...versionInfo };
   }
 
   /**
-   * Версия игры и ядро — из ответа RCON-команды `version`.
+   * Версия игры и ядро — сначала у самого сервера, потом у Pterodactyl.
    *
-   * Спрашиваем сам сервер, а не Pterodactyl: в эгге может быть указано что
-   * угодно, а «version» отвечает то, что реально запущено. Не ответил —
-   * возвращаем null, и бейдж честно скажет «не с чем сравнивать», вместо того
-   * чтобы угадывать.
+   * СНАЧАЛА RCON: в эгге может быть указано что угодно, а «version» отвечает
+   * то, что реально запущено.
+   *
+   * ПОТОМ ЗАПУСК — и это не подстраховка «на всякий случай», а единственный
+   * способ узнать про Forge и Fabric. Команды `version` в ванильном
+   * Minecraft нет: её добавляет Bukkit. На Fabric-сервере RCON на неё ответит
+   * «Unknown command», и распознать загрузчик по ответу невозможно в принципе.
+   * А знать его надо: от этого зависит, какая вкладка маркета откроется и в
+   * какую папку ляжет файл.
+   *
+   * Не ответило ничего — возвращаем null, и бейдж честно скажет «не с чем
+   * сравнивать» вместо того, чтобы угадывать.
    */
   private async detectVersion(
     serverId: string,
+    identifier: string,
   ): Promise<{ gameVersion: string | null; loader: string | null }> {
     const output = await this.minecraft.runCommand(serverId, 'version').catch(() => null);
-    if (!output) return { gameVersion: null, loader: null };
-    return parseVersionOutput(output);
+    const fromRcon = output ? parseVersionOutput(output) : { gameVersion: null, loader: null };
+    if (fromRcon.loader) return fromRcon;
+
+    const startup = await this.client.getStartup(identifier).catch(() => null);
+    if (!startup) return fromRcon;
+
+    // Всё, где вообще может встретиться имя загрузчика: строка запуска,
+    // образ и значения переменных эгга (там живёт SERVER_JARFILE).
+    const haystack = [
+      startup.meta?.startup_command ?? '',
+      startup.meta?.raw_startup_command ?? '',
+      ...Object.keys(startup.meta?.docker_images ?? {}),
+      ...Object.values(startup.meta?.docker_images ?? {}),
+      ...startup.variables.map((v) => `${v.env_variable} ${v.server_value ?? ''}`),
+    ].join(' ');
+
+    return { gameVersion: fromRcon.gameVersion, loader: loaderFromStartup(haystack) };
   }
+}
+
+/**
+ * Загрузчик по строке запуска сервера.
+ *
+ * Порядок проверок важен: NeoForge содержит в себе слово «forge», и наивный
+ * поиск объявил бы NeoForge-сервер обычным Forge. Quilt так же тянет за собой
+ * Fabric — он собран на его API и обычно упоминает оба имени.
+ *
+ * Экспортируется ради тестов: это разбор чужой строки, он ломается тихо.
+ */
+export function loaderFromStartup(raw: string): string | null {
+  const value = raw.toLowerCase();
+  for (const loader of ['neoforge', 'quilt', 'fabric', 'forge', 'purpur', 'folia', 'paper', 'spigot']) {
+    if (value.includes(loader)) return loader;
+  }
+  return null;
 }
 
 /**

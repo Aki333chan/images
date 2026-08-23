@@ -12,13 +12,94 @@
  * и решение всегда за человеком.
  */
 
-/** Откуда результат. SpigotMC не включён: у него нет официального API. */
-export type MarketSourceId = 'modrinth' | 'hangar';
+/**
+ * Что ищем: плагин для серверного ядра или мод для загрузчика.
+ *
+ * РАЗДЕЛЬНО, А НЕ ОДНИМ СПИСКОМ, и это не вкусовщина. Плагин под Paper и мод
+ * под Fabric ставятся в разные папки, требуют разного сервера и на чужом
+ * сервере просто не загрузятся. Свалить их в одну выдачу значит предложить
+ * человеку установить то, что заведомо не заработает.
+ */
+export type MarketProjectType = 'plugin' | 'mod';
 
-export const MARKET_SOURCES: { id: MarketSourceId; label: string; site: string }[] = [
-  { id: 'modrinth', label: 'Modrinth', site: 'https://modrinth.com' },
-  { id: 'hangar', label: 'Hangar', site: 'https://hangar.papermc.io' },
+/** Откуда результат. */
+export type MarketSourceId = 'modrinth' | 'hangar' | 'spiget';
+
+export const MARKET_SOURCES: {
+  id: MarketSourceId;
+  label: string;
+  site: string;
+  /**
+   * Что источник вообще отдаёт.
+   *
+   * Проверено по их собственным спецификациям, а не по ощущениям:
+   *   Hangar — перечисление Platform в его OpenAPI это ровно
+   *   PAPER, WATERFALL, VELOCITY. Ни Forge, ни Fabric там нет;
+   *   SpigotMC — площадка плагинов семейства Bukkit, модов на ней не бывает.
+   *
+   * Поэтому на вкладке «Моды» источник ровно один — Modrinth. Показывать
+   * рядом с ним отключённые Hangar и SpigotMC с вечным «ничего не найдено»
+   * было бы обманом.
+   */
+  provides: MarketProjectType[];
+}[] = [
+  { id: 'modrinth', label: 'Modrinth', site: 'https://modrinth.com', provides: ['plugin', 'mod'] },
+  { id: 'hangar', label: 'Hangar', site: 'https://hangar.papermc.io', provides: ['plugin'] },
+  { id: 'spiget', label: 'SpigotMC', site: 'https://spigotmc.org', provides: ['plugin'] },
 ];
+
+/** Источники, у которых есть что показать для этого типа проекта. */
+export function sourcesFor(type: MarketProjectType): MarketSourceId[] {
+  return MARKET_SOURCES.filter((s) => s.provides.includes(type)).map((s) => s.id);
+}
+
+/**
+ * Загрузчики модов и серверные ядра.
+ *
+ * Разделены потому же, почему разделены плагины и моды: под Fabric не
+ * работает то, что собрано под Forge, и наоборот.
+ */
+export const MOD_LOADERS = ['forge', 'neoforge', 'fabric', 'quilt'] as const;
+export const PLUGIN_LOADERS = ['paper', 'spigot', 'bukkit', 'purpur', 'folia', 'velocity'] as const;
+
+export function loadersFor(type: MarketProjectType): readonly string[] {
+  return type === 'mod' ? MOD_LOADERS : PLUGIN_LOADERS;
+}
+
+/**
+ * Как сортировать выдачу.
+ *
+ * 'relevance' у каждого источника свой и считается им самим — панель его не
+ * пересчитывает и не притворяется, что умеет лучше.
+ */
+export const MARKET_SORTS = ['relevance', 'downloads', 'updated', 'name'] as const;
+export type MarketSort = (typeof MARKET_SORTS)[number];
+
+export const MARKET_SORT_LABELS: Record<MarketSort, string> = {
+  relevance: 'По совпадению',
+  downloads: 'По загрузкам',
+  updated: 'По дате обновления',
+  name: 'По алфавиту',
+};
+
+/**
+ * Фильтры выдачи. Все КОМБИНИРУЕМЫЕ: внутри одного поля значения складываются
+ * по «или», между полями — по «и».
+ *
+ * Пустой список означает «без ограничения», а не «ничего не показывать».
+ * Это важное различие: галочки снимают, чтобы увидеть больше, а не чтобы
+ * получить пустой экран.
+ */
+export interface MarketFilters {
+  /** Версии игры: ['1.21', '1.20.4']. */
+  gameVersions: string[];
+  /** Ядра или загрузчики: ['fabric', 'forge']. */
+  loaders: string[];
+  /** Источники: ['modrinth', 'spiget']. */
+  sources: MarketSourceId[];
+}
+
+export const EMPTY_FILTERS: MarketFilters = { gameVersions: [], loaders: [], sources: [] };
 
 /**
  * Насколько версия совпадает с текущим сервером — ТОЛЬКО для бейджа.
@@ -59,9 +140,29 @@ export interface MarketHitDto {
   categories: string[];
   /** Заявленные игровые версии — для бейджа в строке результата. */
   gameVersions: string[];
+  /** Заявленные ядра или загрузчики — по ним же работает фильтр. */
+  loaders: string[];
   updatedAt: string | null;
   /** Страница плагина на самом источнике. */
   pageUrl: string;
+  /** Плагин или мод: от этого зависит папка установки. */
+  projectType: MarketProjectType;
+  /**
+   * Платный ресурс. Бывает только на SpigotMC.
+   *
+   * Скачать его панель не может — за ним стоит оплата на самом сайте.
+   * Прячем не результат, а кнопку установки: знать, что такой плагин
+   * существует, полезно, а вот молча предложить установить то, что не
+   * скачается, — нет.
+   */
+  premium?: boolean;
+  /**
+   * Файл лежит не у источника, а на стороннем сайте.
+   *
+   * Тоже про SpigotMC: автор вправе выложить jar куда угодно. Скачивание
+   * такого файла — это поход по произвольному адресу, и хэша у него нет.
+   */
+  externalFile?: boolean;
 }
 
 /**
@@ -86,6 +187,8 @@ export interface MarketSearchResponseDto {
 
 export interface MarketPluginDto {
   source: MarketSourceId;
+  /** Плагин или мод: от этого зависит папка установки. */
+  projectType: MarketProjectType;
   id: string;
   slug: string;
   title: string;
@@ -105,6 +208,8 @@ export interface MarketPluginDto {
   issuesUrl: string | null;
   wikiUrl: string | null;
   discordUrl: string | null;
+  premium?: boolean;
+  externalFile?: boolean;
 }
 
 export type MarketChannel = 'release' | 'beta' | 'alpha';
@@ -237,4 +342,114 @@ export function compatibilityOf(
     gameVersion: matchGameVersion(version.gameVersions, target?.gameVersion ?? null),
     loader: matchLoader(version.loaders, target?.loader ?? null),
   };
+}
+
+// ------------------------------------------- Сортировка и фильтрация
+
+/**
+ * Ядро сервера -> что ему подходит.
+ *
+ * Нужно, чтобы, открыв маркет со страницы сервера, человек сразу оказался на
+ * нужной вкладке: на Paper искать моды бессмысленно, на Fabric — плагины.
+ * Неизвестное ядро оставляем на плагинах: их на свете больше, и Paper —
+ * самый частый случай.
+ */
+export function defaultProjectTypeFor(loader: string | null | undefined): MarketProjectType {
+  const value = (loader ?? '').toLowerCase();
+  return (MOD_LOADERS as readonly string[]).includes(value) ? 'mod' : 'plugin';
+}
+
+/**
+ * Подходит ли результат под фильтры.
+ *
+ * Пустое поле фильтра — «без ограничения». Сравнение версий по префиксу, как
+ * и у бейджа совместимости: заявленный «1.21» покрывает «1.21.4», и
+ * заставлять человека отмечать тридцать галочек ради этого незачем.
+ */
+export function passesFilters(hit: MarketHitDto, filters: MarketFilters): boolean {
+  if (filters.sources.length > 0 && !filters.sources.includes(hit.source)) return false;
+
+  if (filters.loaders.length > 0) {
+    const declared = hit.loaders.map((l) => l.toLowerCase());
+    // Результат без объявленных загрузчиков не отсеиваем: у SpigotMC их нет
+    // вовсе, и фильтр по ядру спрятал бы весь источник целиком.
+    if (declared.length > 0 && !filters.loaders.some((l) => declared.includes(l.toLowerCase()))) {
+      return false;
+    }
+  }
+
+  if (filters.gameVersions.length > 0) {
+    const declared = hit.gameVersions;
+    if (declared.length > 0) {
+      const hit_ = filters.gameVersions.some((wanted) =>
+        declared.some(
+          (v) => v === wanted || wanted.startsWith(`${v}.`) || v.startsWith(`${wanted}.`),
+        ),
+      );
+      if (!hit_) return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Сортировка сведённой выдачи.
+ *
+ * Считается на панели, а не у источника, потому что результаты приходят из
+ * трёх мест сразу: каждый отсортировал СВОЙ кусок, а человек смотрит на
+ * общий список. Без общей сортировки сверху всегда оказывался бы тот
+ * источник, который опрошен первым.
+ *
+ * 'relevance' — исключение: своей меры релевантности у панели нет и быть не
+ * может, поэтому порядок остаётся таким, каким его вернули источники,
+ * с чередованием, чтобы ни один не занял всю первую страницу.
+ */
+export function sortHits(hits: MarketHitDto[], sort: MarketSort): MarketHitDto[] {
+  const list = [...hits];
+  switch (sort) {
+    case 'downloads':
+      return list.sort((a, b) => b.downloads - a.downloads);
+    case 'updated':
+      return list.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+    case 'name':
+      return list.sort((a, b) => a.title.localeCompare(b.title, 'ru', { sensitivity: 'base' }));
+    case 'relevance':
+    default:
+      return interleaveBySource(list);
+  }
+}
+
+/**
+ * Чередование по источникам.
+ *
+ * Берём по одному результату от каждого источника по кругу, сохраняя порядок
+ * внутри источника. Иначе при сортировке «по совпадению» первые двадцать
+ * строк были бы из Modrinth просто потому, что его ответ пришёл первым, —
+ * и человек решил бы, что остальные источники ничего не нашли.
+ */
+function interleaveBySource(hits: MarketHitDto[]): MarketHitDto[] {
+  const bySource = new Map<MarketSourceId, MarketHitDto[]>();
+  for (const hit of hits) {
+    const list = bySource.get(hit.source);
+    if (list) list.push(hit);
+    else bySource.set(hit.source, [hit]);
+  }
+
+  const queues = [...bySource.values()];
+  const out: MarketHitDto[] = [];
+  let index = 0;
+  while (out.length < hits.length) {
+    let moved = false;
+    for (const queue of queues) {
+      const next = queue[index];
+      if (next) {
+        out.push(next);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+    index++;
+  }
+  return out;
 }
