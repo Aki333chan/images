@@ -1,20 +1,23 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { constantTimeEquals, isPrivateAddress } from '../../common/private-network';
-import { MinecraftConfigService } from './minecraft-config.service';
+import { SevenDaysConfigService } from './sevendays-config.service';
 
 /**
- * Авторизация companion-плагина по токену сервера.
+ * Авторизация companion-мода по токену сервера.
  *
- * Токен тот же, которым панель ходит в плагин, — он хранится зашифрованным
- * и сравнивается за постоянное время. Дополнительно запрос должен приходить
- * из приватной сети: internal-эндпоинт живёт на внутреннем адресе панели
+ * Тот же токен, которым панель ходит в мод: он хранится зашифрованным и
+ * сравнивается за постоянное время. Дополнительно запрос обязан приходить из
+ * приватной сети — internal-эндпоинт живёт на внутреннем адресе панели
  * (10.0.0.1) и через nginx наружу не публикуется.
+ *
+ * Два условия, а не одно, намеренно: утёкший токен без доступа в туннель
+ * бесполезен, а доступ в туннель без токена — тоже.
  */
 @Injectable()
-export class CompanionTokenGuard implements CanActivate {
-  private readonly logger = new Logger(CompanionTokenGuard.name);
+export class SevenDaysCompanionGuard implements CanActivate {
+  private readonly logger = new Logger(SevenDaysCompanionGuard.name);
 
-  constructor(private readonly config: MinecraftConfigService) {}
+  constructor(private readonly config: SevenDaysConfigService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
@@ -33,10 +36,10 @@ export class CompanionTokenGuard implements CanActivate {
     const creds = await this.config.read(serverId);
     const expected = creds.companion?.token;
     if (!expected) {
-      throw new ForbiddenException('Для этого сервера не настроен companion-плагин');
+      throw new ForbiddenException('Для этого сервера не настроен companion-мод');
     }
     if (!constantTimeEquals(provided, expected)) {
-      this.logger.warn(`Неверный токен companion-плагина для сервера ${serverId}`);
+      this.logger.warn(`Неверный токен companion-мода для сервера ${serverId}`);
       throw new ForbiddenException('Неверный токен сервера');
     }
     return true;

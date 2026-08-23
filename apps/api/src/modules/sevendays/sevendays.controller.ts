@@ -11,16 +11,28 @@ import {
 import {
   SEVENDAYS_PERMISSIONS,
   type SevenDaysBanDto,
+  type SevenDaysCompanionStatusDto,
   type SevenDaysConfigStatusDto,
+  type SevenDaysEventDto,
   type SevenDaysPlayersResponse,
   type SevenDaysStateDto,
   type SevenDaysWhitelistEntryDto,
 } from '@aurum/shared';
+import { Query } from '@nestjs/common';
 import { AuditRedactBody } from '../../audit/audit.decorators';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
+import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysConfigService } from './sevendays-config.service';
+import { SevenDaysEventsService } from './sevendays-events.service';
 import { SevenDaysService } from './sevendays.service';
-import { ActionRunDto, BanDto, KickDto, TelnetConfigDto, WhitelistEntryDto } from './dto';
+import {
+  ActionRunDto,
+  BanDto,
+  CompanionConfigDto,
+  KickDto,
+  TelnetConfigDto,
+  WhitelistEntryDto,
+} from './dto';
 
 /**
  * Роуты модуля 7 Days to Die. Как и в остальных модулях: каждый закрыт
@@ -38,6 +50,8 @@ export class SevenDaysController {
   constructor(
     private readonly sevendays: SevenDaysService,
     private readonly config: SevenDaysConfigService,
+    private readonly companion: SevenDaysCompanionService,
+    private readonly events: SevenDaysEventsService,
   ) {}
 
   // ---------- Игроки ----------
@@ -157,6 +171,26 @@ export class SevenDaysController {
     return this.sevendays.runAction(serverId, 'shutdown', {});
   }
 
+  // ---------- Журнал событий ----------
+
+  /**
+   * Лента событий игры. Существует только при установленном моде: сама игра
+   * событий нигде не хранит.
+   */
+  @Get('events')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.eventsView)
+  @ServerScoped('serverId')
+  listEvents(
+    @Param('serverId') serverId: string,
+    @Query('kind') kind?: string,
+    @Query('limit') limit?: string,
+  ): Promise<SevenDaysEventDto[]> {
+    return this.events.list(serverId, {
+      kind,
+      limit: limit ? Number(limit) : undefined,
+    }) as Promise<SevenDaysEventDto[]>;
+  }
+
   // ---------- Настройки подключения ----------
 
   /** Только флаги — ни адреса, ни порта, ни пароля наружу. */
@@ -168,6 +202,44 @@ export class SevenDaysController {
     return {
       telnetConfigured: !!creds.sevendays,
       lastSeenAt: creds.sevendays?.lastSeenAt ?? null,
+    };
+  }
+
+  /** Состояние companion-мода. Ни адреса, ни токена наружу. */
+  @Get('companion')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.configure)
+  @ServerScoped('serverId')
+  async companionStatus(
+    @Param('serverId') serverId: string,
+  ): Promise<SevenDaysCompanionStatusDto> {
+    const creds = await this.config.read(serverId);
+    if (!creds.companion) {
+      return { configured: false, online: false, version: null, lastSeenAt: null };
+    }
+    const ping = await this.companion.ping(serverId);
+    return {
+      configured: true,
+      online: ping !== null,
+      version: ping?.version ?? null,
+      lastSeenAt: creds.companion.lastSeenAt ?? null,
+    };
+  }
+
+  @Put('companion')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.configure)
+  @ServerScoped('serverId')
+  @AuditRedactBody() // приватный адрес мода и общий секрет
+  async setCompanion(@Param('serverId') serverId: string, @Body() dto: CompanionConfigDto) {
+    await this.config.setCompanion(serverId, dto.host ?? null, dto.port ?? null, dto.token ?? null);
+    if (!dto.host) return { ok: true, configured: false };
+
+    // Сразу проверяем связь: иначе ошибка всплыла бы у модератора, когда
+    // тот попытается ответить на первый тикет.
+    const ping = await this.companion.ping(serverId);
+    return {
+      ok: true,
+      configured: true,
+      probe: ping ? `мод ответил, версия ${ping.version}` : 'мод не отвечает — проверьте адрес и токен',
     };
   }
 

@@ -8,6 +8,7 @@ import {
   type SevenDaysStateDto,
   type SevenDaysWhitelistEntryDto,
 } from '@aurum/shared';
+import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysConfigService } from './sevendays-config.service';
 import { arg, optionalArg, SevenDaysConsoleService } from './sevendays-console.service';
 import {
@@ -40,6 +41,7 @@ export class SevenDaysService {
   constructor(
     private readonly console: SevenDaysConsoleService,
     private readonly config: SevenDaysConfigService,
+    private readonly companion: SevenDaysCompanionService,
   ) {}
 
   // ---------- Игроки ----------
@@ -60,6 +62,11 @@ export class SevenDaysService {
    * грузиться, и это не ошибка панели, а обычное состояние.
    */
   async getState(serverId: string): Promise<SevenDaysStateDto> {
+    // Если мод стоит — спрашиваем его: он читает мир напрямую, а не
+    // выводит состояние из текста. Разница не косметическая, см. ниже.
+    const fromMod = await this.stateFromCompanion(serverId);
+    if (fromMod) return fromMod;
+
     if (!(await this.config.isConfigured(serverId))) {
       return { available: false, reason: 'Консоль 7 Days to Die не настроена для этого сервера' };
     }
@@ -79,11 +86,50 @@ export class SevenDaysService {
     const { day, time } = parseGameTime(timeRaw);
     return {
       available: true,
+      source: 'telnet',
       day,
       time,
+      // ЭТО ДОГАДКА, а не факт: частота орды настраивается
+      // (BloodMoonFrequency), и через консоль она не читается. Панель
+      // помечает источник, чтобы дежурный знал, чему верит.
       daysToBloodMoon: day === null ? null : daysToBloodMoon(day),
       version: versionRaw === null ? null : parseVersion(versionRaw),
       onlineCount: playersRaw === null ? null : parsePlayers(playersRaw).online,
+    };
+  }
+
+  /**
+   * Состояние от companion-мода — то же, но от самой игры.
+   *
+   * Возвращает null, если мода нет или он не ответил: это обычное состояние,
+   * а не ошибка, и вызывающий просто идёт в консоль.
+   */
+  private async stateFromCompanion(serverId: string): Promise<SevenDaysStateDto | null> {
+    if (!(await this.config.hasCompanion(serverId))) return null;
+
+    const state = await this.companion.state(serverId);
+    if (!state) return null;
+
+    // Частоту орды мод берёт из настроек сервера. Если она известна —
+    // считаем по ней, а не по семи из головы.
+    const every = state.bloodMoonFrequency && state.bloodMoonFrequency > 0
+      ? state.bloodMoonFrequency
+      : undefined;
+
+    return {
+      available: true,
+      source: 'companion',
+      day: state.day,
+      time: `${String(state.hour).padStart(2, '0')}:${String(state.minute).padStart(2, '0')}`,
+      daysToBloodMoon: state.bloodMoonActive ? 0 : daysToBloodMoon(state.day, every),
+      bloodMoonActive: state.bloodMoonActive,
+      bloodMoonFrequency: state.bloodMoonFrequency,
+      version: state.version,
+      onlineCount: state.onlinePlayers,
+      fps: state.fps,
+      zombies: state.zombies,
+      maxZombies: state.maxZombies,
+      maxPlayers: state.maxPlayers,
     };
   }
 

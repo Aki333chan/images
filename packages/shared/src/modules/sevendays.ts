@@ -114,6 +114,59 @@ export interface SevenDaysStateDto {
   daysToBloodMoon?: number | null;
   version?: string | null;
   onlineCount?: number | null;
+
+  /**
+   * Откуда взято состояние.
+   *
+   * 'telnet'    — из консоли; про кровавую луну это ДОГАДКА по номеру дня;
+   * 'companion' — от мода, то есть от самой игры.
+   *
+   * Различие показывается человеку: «через 2 дня» и «через 2 дня, если
+   * частота орды стандартная» — разные утверждения.
+   */
+  source?: 'telnet' | 'companion';
+
+  /** Идёт ли орда прямо сейчас. Только от мода — консоль такого не знает. */
+  bloodMoonActive?: boolean | null;
+  /** Частота орды из настроек сервера. Только от мода. */
+  bloodMoonFrequency?: number | null;
+  /**
+   * Кадры сервера. Только от мода.
+   *
+   * Единственный показатель здоровья, который у 7 Days to Die есть: тика
+   * фиксированной частоты, как в Minecraft, здесь нет, и «TPS» рисовать
+   * неоткуда.
+   */
+  fps?: number | null;
+  zombies?: number | null;
+  maxZombies?: number | null;
+  maxPlayers?: number | null;
+}
+
+/** Событие игрового сервера из журнала. */
+export interface SevenDaysEventDto {
+  id: string;
+  kind: SevenDaysEventKind;
+  playerId: string;
+  playerName: string;
+  text: string | null;
+  /** Кто убил — для 'player-kill'. Жертва в playerName. */
+  actorId: string | null;
+  actorName: string | null;
+  position: { x: number; y: number; z: number } | null;
+  occurredAt: string;
+}
+
+export const SEVENDAYS_EVENT_KINDS = ['chat', 'join', 'leave', 'death', 'player-kill'] as const;
+export type SevenDaysEventKind = (typeof SEVENDAYS_EVENT_KINDS)[number];
+
+/** Статус companion-мода. Ни адрес, ни токен наружу не уезжают. */
+export interface SevenDaysCompanionStatusDto {
+  configured: boolean;
+  /** Ответил ли мод только что. */
+  online: boolean;
+  version: string | null;
+  lastSeenAt: string | null;
 }
 
 /** Флаги настройки подключения. Ни адрес, ни пароль наружу не уезжают. */
@@ -149,6 +202,8 @@ export const SEVENDAYS_PERMISSIONS = {
   whitelist: 'sevendays.whitelist',
   quickActions: 'sevendays.quick-actions',
   shutdown: 'sevendays.shutdown',
+  /** Журнал событий: чат, входы, смерти, PvP. */
+  eventsView: 'sevendays.events.view',
   configure: 'sevendays.configure',
 } as const;
 

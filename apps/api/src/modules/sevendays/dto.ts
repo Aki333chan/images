@@ -81,6 +81,28 @@ export class BanDto extends TargetDto {
 
 export class WhitelistEntryDto extends TargetDto {}
 
+/**
+ * Подключение к companion-моду. Пустой host стирает настройку — так мод
+ * отключают от сервера, не удаляя его с игрового сервера.
+ */
+export class CompanionConfigDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  host?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  port?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  token?: string | null;
+}
+
 export class ActionRunDto {
   @IsOptional()
   @IsObject()

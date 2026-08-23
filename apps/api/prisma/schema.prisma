@@ -148,6 +148,7 @@ model Server {
   tickets         Ticket[]
   minecraftBans   MinecraftBan[]
   palworldBans    PalworldBan[]
+  sevenDaysEvents SevenDaysEvent[]
   activitySamples ServerActivitySample[]
 
   @@map("servers")
@@ -212,6 +213,44 @@ model Ticket {
 
 /// Баны модуля Minecraft. Источник истины о причине, сроке и модераторе;
 /// на самом сервере бан ставится RCON-командой для мгновенного эффекта.
+/// События игрового сервера 7 Days to Die, присланные companion-модом.
+///
+/// Своей таблицы у модуля не было и для банов не нужно — их ведёт сам
+/// игровой сервер. А вот события он нигде не хранит: они происходят и
+/// исчезают. Панель их складывает сюда, потому что смысл именно в разборе
+/// задним числом — «кто кого убил на PvE» и «что было в чате перед
+/// жалобой» спрашивают уже после случившегося.
+///
+/// Таблица растёт быстро (чат живого сервера), поэтому старое подрезается
+/// при приёме — см. SevenDaysEventsService.
+model SevenDaysEvent {
+  id         String   @id @default(uuid())
+  serverId   String   @map("server_id")
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  /// chat | join | leave | death | player-kill
+  kind       String
+  /// Идентификатор платформы: Steam_… или EOS_…
+  playerId   String   @map("player_id")
+  playerName String   @map("player_name")
+  /// Текст — только у событий чата.
+  text       String?
+  /// Кто убил, для player-kill: жертва в playerId, убийца здесь.
+  actorId    String?  @map("actor_id")
+  actorName  String?  @map("actor_name")
+  /// Место происшествия. Нужно для разбора жалоб, а не для карты.
+  x          Float?
+  y          Float?
+  z          Float?
+  /// Время по данным игрового сервера, а не по времени приёма: события
+  /// могли пролежать в очереди мода, пока панель была недоступна.
+  occurredAt DateTime @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([serverId, occurredAt])
+  @@index([serverId, kind, occurredAt])
+  @@map("mod_sevendays_events")
+}
+
 model MinecraftBan {
   id           String    @id @default(uuid())
   serverId     String    @map("server_id")

@@ -3,6 +3,9 @@ import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SEVENDAYS_DEFAULT_PORT } from './telnet/telnet-client';
 
+/** Порт companion-мода по умолчанию — тот же, что в его companion.cfg.example. */
+export const SEVENDAYS_COMPANION_PORT = 8110;
+
 /**
  * Секреты модуля лежат в servers.credentials_enc (поле ядра) как
  * зашифрованный AES-256-GCM JSON — там же, где креды других модулей. Ключ
@@ -20,6 +23,19 @@ export interface SevenDaysCredentials {
     port: number;
     password: string;
     /** Последняя успешно выполненная команда, ISO-строка. */
+    lastSeenAt?: string;
+  };
+  /**
+   * Companion-мод. Настраивается отдельно от telnet и не обязателен:
+   * без него модуль работает, просто без обращений из игры и без
+   * достоверного состояния мира.
+   */
+  companion?: {
+    host: string;
+    port: number;
+    /** Общий секрет: им панель ходит в мод, а мод — в панель. */
+    token: string;
+    /** Последний успешный ответ мода, ISO-строка. */
     lastSeenAt?: string;
   };
 }
@@ -119,6 +135,68 @@ export class SevenDaysConfigService {
 
   async isConfigured(serverId: string): Promise<boolean> {
     return !!(await this.read(serverId)).sevendays;
+  }
+
+  // ---------- Companion-мод ----------
+
+  async setCompanion(
+    serverId: string,
+    host: string | null,
+    port: number | null,
+    token: string | null,
+  ): Promise<void> {
+    const current = await this.read(serverId);
+
+    if (!host) {
+      delete current.companion;
+      await this.write(serverId, current);
+      return;
+    }
+
+    if (!HOST_RE.test(host)) {
+      throw new BadRequestException(
+        'Адрес мода — это имя хоста или IP без схемы и порта, например 10.0.0.2',
+      );
+    }
+    // Длина, а не содержимое: короткий общий секрет — это отсутствие секрета,
+    // а мод отказывается работать с токеном короче 16 символов.
+    if (!token || token.length < 16) {
+      throw new BadRequestException('Токен мода должен быть не короче 16 символов');
+    }
+
+    await this.write(serverId, {
+      ...current,
+      companion: {
+        host,
+        port: port ?? SEVENDAYS_COMPANION_PORT,
+        token,
+        lastSeenAt: current.companion?.lastSeenAt,
+      },
+    });
+  }
+
+  async readCompanion(serverId: string): Promise<NonNullable<SevenDaysCredentials['companion']>> {
+    const creds = await this.read(serverId);
+    if (!creds.companion) {
+      throw new BadRequestException(
+        'Companion-мод для этого сервера не настроен. Он не обязателен: без него ' +
+          'работает всё, кроме обращений игроков из игры и достоверного состояния мира.',
+      );
+    }
+    return creds.companion;
+  }
+
+  async hasCompanion(serverId: string): Promise<boolean> {
+    return !!(await this.read(serverId)).companion;
+  }
+
+  async markCompanionSeen(serverId: string): Promise<void> {
+    const current = await this.read(serverId);
+    if (!current.companion) return;
+    await this.write(serverId, {
+      ...current,
+      companion: { ...current.companion, lastSeenAt: new Date().toISOString() },
+    });
   }
 
   async markSeen(serverId: string): Promise<void> {
