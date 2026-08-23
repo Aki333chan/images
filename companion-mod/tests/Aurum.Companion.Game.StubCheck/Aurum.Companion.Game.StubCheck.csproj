@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Сборка игрового слоя против заглушек игровых типов. Смысл и границы
+    этой проверки — в README.md рядом.
+
+    Артефакт этой сборки НИКУДА НЕ ПОСТАВЛЯЕТСЯ: он содержит заглушки
+    вместо игры и в процессе сервера был бы вреден.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Aurum.Companion.Game.StubCheck</AssemblyName>
+    <RootNamespace>Aurum.Companion.Game</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- Заглушки намеренно ничего не делают: возврат значений по умолчанию
+         и неиспользуемые параметры — это здесь норма, а не недосмотр. -->
+    <NoWarn>$(NoWarn);CS0649;CS0169;CS8618;CS0067</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Aurum.Companion.Core/Aurum.Companion.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Исходники игрового слоя как есть, без копирования. -->
+  <ItemGroup>
+    <Compile Include="../../src/Aurum.Companion.Game/**/*.cs" Exclude="../../src/Aurum.Companion.Game/obj/**/*.cs;../../src/Aurum.Companion.Game/bin/**/*.cs" />
+  </ItemGroup>
+
+</Project>

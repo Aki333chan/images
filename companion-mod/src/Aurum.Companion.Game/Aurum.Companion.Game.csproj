@@ -1,0 +1,72 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Слой, который касается игры.
+    ================================================================
+    ЭТОТ ПРОЕКТ НЕ СОБИРАЕТСЯ БЕЗ ФАЙЛОВ ИГРОВОГО СЕРВЕРА.
+
+    Ему нужны сборки из вашей установки 7 Days to Die Dedicated Server —
+    положите их в папку 7dtd-binaries рядом с этим файлом. Копировать их в
+    репозиторий нельзя: это проприетарные файлы игры, и распространять их
+    мы не вправе. Как именно — в companion-mod/README.md.
+
+    Отсюда же следует, почему логики здесь почти нет: всё, что можно
+    проверить тестами, живёт в Aurum.Companion.Core, который собирается
+    где угодно. Здесь остаётся перевод игровых типов в свои и обратно.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Aurum.Companion</AssemblyName>
+    <RootNamespace>Aurum.Companion.Game</RootNamespace>
+    <!--
+      Ссылки на игру приходят без XML-документации и с чужими соглашениями;
+      падать из-за предупреждений в них смысла нет — свой код проверяется
+      в Core, где ошибки как ошибки.
+    -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Aurum.Companion.Core/Aurum.Companion.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Private=false у всех ссылок на игру: эти сборки уже загружены в процесс
+    сервера. Скопировать их рядом с модом значит получить в памяти вторую
+    копию тех же типов — и «Assembly-CSharp.EntityPlayer не приводится к
+    Assembly-CSharp.EntityPlayer».
+  -->
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>7dtd-binaries\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>7dtd-binaries\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>7dtd-binaries\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="LogLibrary">
+      <HintPath>7dtd-binaries\LogLibrary.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="ModInfo.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="companion.cfg.example">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

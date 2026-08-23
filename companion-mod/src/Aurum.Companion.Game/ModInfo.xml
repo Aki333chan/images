@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ModInfo>
+	<Name value="AurumCompanion" />
+	<DisplayName value="Aurum Companion" />
+	<Description value="Связь игрового сервера с панелью Aurum: обращения игроков из чата, жалобы, события и достоверное состояние мира. Только серверная сторона — игрокам ставить ничего не нужно." />
+	<Author value="Aurum" />
+	<Version value="1.0.0" />
+	<Website value="https://manage.aurumgg.ovh" />
+</ModInfo>
