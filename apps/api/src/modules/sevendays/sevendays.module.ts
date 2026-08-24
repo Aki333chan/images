@@ -7,6 +7,8 @@ import { SevenDaysEventsService } from './sevendays-events.service';
 import { SevenDaysInternalController } from './sevendays-internal.controller';
 import { SevenDaysService } from './sevendays.service';
 import { SevenDaysTicketDelivery } from './sevendays-ticket-delivery';
+import { ServerMetricsModule } from '../../servers/metrics/server-metrics.module';
+import { SevenDaysPlayerCount } from './sevendays-player-count';
 
 /**
  * Модуль 7 Days to Die.
@@ -26,8 +28,9 @@ import { SevenDaysTicketDelivery } from './sevendays-ticket-delivery';
  * игроков из игры, ответов им в чат и достоверного состояния мира.
  */
 @Module({
+  imports: [ServerMetricsModule],
   controllers: [SevenDaysController, SevenDaysInternalController],
-  providers: [
+  providers: [SevenDaysPlayerCount, 
     SevenDaysConfigService,
     SevenDaysConsoleService,
     SevenDaysService,

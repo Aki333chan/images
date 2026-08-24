@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
+  AlertSettingsDto,
   AppSettingsDto,
   PendingUserDto,
   SmtpSettingsDto,
   SmtpTestResultDto,
 } from '@aurum/shared';
-import { ROLE_LABELS } from '@aurum/shared';
+import { ALERT_SETTINGS_LIMITS, DEFAULT_ALERT_SETTINGS, ROLE_LABELS } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { AiSettingsCard } from './AiSettingsCard';
@@ -33,6 +34,7 @@ export function SettingsPage() {
           <AccountRules />
           <PendingApprovals />
           <SmtpSettings />
+          <AlertSettings />
           <AiSettingsCard />
         </>
       )}
@@ -507,5 +509,158 @@ function SmtpSettings() {
         </span>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Алерты о перегрузке серверов.
+ *
+ * ПОРОГИ — В ПРОЦЕНТАХ ОТ ЛИМИТА СЕРВЕРА, а не от абстрактных 100. У
+ * Pterodactyl лимит CPU задаётся в процентах от одного ядра (200 — два ядра),
+ * и сырое значение сравнивать не с чем: 150% это перегрузка на сервере с
+ * одним ядром и половина выделенного на сервере с тремя.
+ *
+ * ЗАДЕРЖКА — НЕ УКРАШЕНИЕ. Сервер уходит в потолок на запуске, на генерации
+ * чанков, на распаковке бэкапа. Письмо на каждый такой всплеск сделает почту
+ * нечитаемой за неделю, и тогда пропущенным окажется настоящий инцидент.
+ */
+function AlertSettings() {
+  const [value, setValue] = useState<AlertSettingsDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState('');
+
+  useEffect(() => {
+    api<AlertSettingsDto>('/api/settings/alerts')
+      .then(setValue)
+      .catch(() => setValue({ ...DEFAULT_ALERT_SETTINGS }));
+  }, []);
+
+  async function save(next: AlertSettingsDto) {
+    setBusy(true);
+    setError('');
+    setSaved('');
+    try {
+      setValue(
+        await api<AlertSettingsDto>('/api/settings/alerts', {
+          method: 'PUT',
+          body: JSON.stringify(next),
+        }),
+      );
+      setSaved('Сохранено');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!value) return <Card><Spinner /></Card>;
+
+  const L = ALERT_SETTINGS_LIMITS;
+  const patch = (over: Partial<AlertSettingsDto>) => setValue({ ...value, ...over });
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">Алерты о перегрузке</h2>
+        <Badge variant={value.enabled ? 'success' : 'outline'}>
+          {value.enabled ? 'включены' : 'выключены'}
+        </Badge>
+      </div>
+
+      <p className="text-xs text-muted">
+        Письмо уходит тем, у кого есть доступ к этому серверу. ГМ получает письма по всем
+        серверам — у него доступ ко всем по определению роли. Отправка идёт через тот же SMTP,
+        что и письма с паролями: пока он не настроен, алерты никуда не уйдут.
+      </p>
+
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1 h-4 w-4"
+          checked={value.enabled}
+          onChange={(e) => patch({ enabled: e.target.checked })}
+        />
+        <span>Присылать письма при перегрузке</span>
+      </label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <ThresholdField
+          label="Порог ЦПУ, % от лимита"
+          value={value.cpuThresholdPercent}
+          onChange={(v) => patch({ cpuThresholdPercent: v })}
+        />
+        <ThresholdField
+          label="Порог памяти, % от лимита"
+          value={value.memoryThresholdPercent}
+          onChange={(v) => patch({ memoryThresholdPercent: v })}
+        />
+        <div>
+          <Label>Держится дольше, мин</Label>
+          <Input
+            type="number"
+            min={L.minSustainedMinutes}
+            max={L.maxSustainedMinutes}
+            value={value.sustainedMinutes}
+            onChange={(e) => patch({ sustainedMinutes: Number(e.target.value) })}
+          />
+          <p className="mt-1 text-[11px] text-muted">
+            Короткие всплески при запуске сервера — это норма, а не авария.
+          </p>
+        </div>
+        <div>
+          <Label>Не чаще одного письма в, мин</Label>
+          <Input
+            type="number"
+            min={L.minCooldownMinutes}
+            max={L.maxCooldownMinutes}
+            value={value.cooldownMinutes}
+            onChange={(e) => patch({ cooldownMinutes: Number(e.target.value) })}
+          />
+          <p className="mt-1 text-[11px] text-muted">
+            Затянувшаяся перегрузка — одна проблема, а не письмо каждую минуту.
+          </p>
+        </div>
+      </div>
+
+      {error && <ErrorText>{error}</ErrorText>}
+      {saved && <p className="text-xs text-emerald-400">{saved}</p>}
+
+      <div className="flex justify-end">
+        <Button disabled={busy} onClick={() => void save(value)}>
+          {busy ? 'Сохраняем…' : 'Сохранить'}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Порог по одному ресурсу. Пустое поле означает «по этому ресурсу не следим» —
+ * это осмысленный выбор, а не «забыли заполнить», поэтому значение nullable.
+ */
+function ThresholdField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  const L = ALERT_SETTINGS_LIMITS;
+  return (
+    <div>
+      <Label>{label}</Label>
+      <Input
+        type="number"
+        min={L.minThreshold}
+        max={L.maxThreshold}
+        value={value ?? ''}
+        placeholder="не следить"
+        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+      />
+    </div>
   );
 }

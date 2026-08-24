@@ -1,5 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ServerDto } from '@aurum/shared';
+import {
+  DEFAULT_SERVER_LIST_PREFS,
+  SERVER_SORTS,
+  type ServerDto,
+  type ServerListPrefsDto,
+  type ServerSort,
+} from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ApplicationApiService,
@@ -124,4 +130,49 @@ export class ServersService {
     this.logger.log(`Синхронизировано серверов: ${remote.length}`);
     return { synced: remote.length };
   }
+
+  // ------------------------------------------- Личные настройки списка
+
+  /**
+   * Настройки списка серверов конкретного человека.
+   *
+   * Лежат в app_settings под ключом с его id. Отдельной таблицы нет
+   * намеренно: это одна строка JSON на пользователя, которую читает и пишет
+   * только он сам, — заводить под неё таблицу с миграцией значило бы
+   * усложнить на ровном месте.
+   *
+   * Битое или устаревшее значение молча заменяется дефолтом: сломанный
+   * порядок карточек не должен ломать сам список.
+   */
+  async getListPrefs(userId: string): Promise<ServerListPrefsDto> {
+    const row = await this.prisma.appSetting.findUnique({
+      where: { key: listPrefsKey(userId) },
+    });
+    if (!row) return { ...DEFAULT_SERVER_LIST_PREFS };
+    try {
+      const parsed = JSON.parse(row.value) as Partial<ServerListPrefsDto>;
+      return {
+        sort: (SERVER_SORTS as readonly string[]).includes(parsed.sort ?? '')
+          ? (parsed.sort as ServerSort)
+          : DEFAULT_SERVER_LIST_PREFS.sort,
+        order: Array.isArray(parsed.order) ? parsed.order.filter((id) => typeof id === 'string') : [],
+      };
+    } catch {
+      return { ...DEFAULT_SERVER_LIST_PREFS };
+    }
+  }
+
+  async setListPrefs(userId: string, prefs: ServerListPrefsDto): Promise<ServerListPrefsDto> {
+    const value = JSON.stringify(prefs);
+    await this.prisma.appSetting.upsert({
+      where: { key: listPrefsKey(userId) },
+      create: { key: listPrefsKey(userId), value },
+      update: { value },
+    });
+    return prefs;
+  }
+}
+
+function listPrefsKey(userId: string): string {
+  return `ui.serverList.${userId}`;
 }

@@ -123,7 +123,17 @@ export interface ModulesResponse {
 export interface ServerResourcesDto {
   /** running / offline / starting / stopping. */
   state: string;
+  /**
+   * Сырое значение Pterodactyl (`resources.cpu_absolute`): 200 = два ядра
+   * целиком. Само по себе НИ О ЧЁМ не говорит — сравнивать его надо с
+   * cpuLimitPercent, см. cpuUsage() в resources.ts.
+   */
   cpuPercent: number;
+  /**
+   * Лимит CPU из настроек сервера в Pterodactyl (`limits.cpu`), в тех же
+   * единицах: 100 = одно ядро. 0 — без ограничения.
+   */
+  cpuLimitPercent: number;
   memoryBytes: number;
   /** Лимит из настроек сервера в Pterodactyl; 0 — без ограничения. */
   memoryLimitBytes: number;

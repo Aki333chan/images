@@ -9,10 +9,11 @@ import { PteroOpsService } from './ptero/ptero-ops.service';
 import { PteroSettingsController } from './ptero/ptero-settings.controller';
 import { PteroSettingsService } from './ptero/ptero-settings.service';
 import { ActivityModule } from './activity.module';
+import { ServerMetricsModule } from './metrics/server-metrics.module';
 import { ServersSyncProcessor, ServersSyncScheduler, SYNC_QUEUE } from './servers-sync.processor';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: SYNC_QUEUE }), ActivityModule],
+  imports: [BullModule.registerQueue({ name: SYNC_QUEUE }), ActivityModule, ServerMetricsModule],
   controllers: [
     ServersController,
     // Общие возможности Pterodactyl. Отдельными контроллерами, а не одним
@@ -30,6 +31,6 @@ import { ServersSyncProcessor, ServersSyncScheduler, SYNC_QUEUE } from './server
     PteroSettingsService,
     PteroOpsService,
   ],
-  exports: [ServersService, ActivityModule],
+  exports: [ServersService, ActivityModule, ServerMetricsModule],
 })
 export class ServersModule {}

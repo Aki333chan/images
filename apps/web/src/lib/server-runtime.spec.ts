@@ -5,6 +5,7 @@ function resources(state: string, uptimeMs: number): ServerResourcesDto {
   return {
     state,
     cpuPercent: 0,
+    cpuLimitPercent: 0,
     memoryBytes: 0,
     memoryLimitBytes: 0,
     diskBytes: 0,

@@ -1,21 +1,69 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { ServerDto } from '@aurum/shared';
+import {
+  DEFAULT_SERVER_LIST_PREFS,
+  SERVER_SORTS,
+  SERVER_SORT_LABELS,
+  cpuUsage,
+  formatBytesUsage,
+  formatCpu,
+  resourceTone,
+  type ServerDto,
+  type ServerListPrefsDto,
+  type ServerMetricsDto,
+  type ServerSort,
+} from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Badge, Button, Card, Spinner } from '../components/ui';
+import { filterServers, isOnline, reorder, sortServers, type ServerRow } from '../lib/server-list';
+import { Badge, Button, Card, Input, Select, Spinner } from '../components/ui';
 import { IconSync } from '../components/icons';
+
+/** Как часто обновляем метрики карточек. Снимки собирает крон раз в полминуты. */
+const METRICS_POLL_MS = 20_000;
 
 export function ServersPage() {
   const { me, modules, hasPermission } = useAuth();
   const [servers, setServers] = useState<ServerDto[] | null>(null);
+  const [metrics, setMetrics] = useState<ServerMetricsDto[]>([]);
+  const [prefs, setPrefs] = useState<ServerListPrefsDto>(DEFAULT_SERVER_LIST_PREFS);
+  const [query, setQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
 
-  const load = () => void api<ServerDto[]>('/api/servers').then(setServers);
+  const load = useCallback(() => void api<ServerDto[]>('/api/servers').then(setServers), []);
 
   // me в зависимостях: при live-изменении привязок список перезагружается
   // и пропавший сервер исчезает без релогина.
-  useEffect(load, [me]);
+  useEffect(load, [load, me]);
+
+  useEffect(() => {
+    api<ServerListPrefsDto>('/api/servers/list-prefs')
+      .then(setPrefs)
+      .catch(() => setPrefs(DEFAULT_SERVER_LIST_PREFS));
+  }, [me]);
+
+  // Метрики отдельно от списка: список меняется редко, цифры — постоянно.
+  useEffect(() => {
+    const tick = () => {
+      if (document.hidden) return;
+      api<ServerMetricsDto[]>('/api/servers/metrics')
+        .then(setMetrics)
+        .catch(() => undefined);
+    };
+    tick();
+    const timer = setInterval(tick, METRICS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [me]);
+
+  const savePrefs = useCallback((next: ServerListPrefsDto) => {
+    setPrefs(next);
+    // Сохраняем в фоне: список уже переставился, и ждать ответ, чтобы
+    // показать результат собственного перетаскивания, незачем.
+    void api<ServerListPrefsDto>('/api/servers/list-prefs', {
+      method: 'PUT',
+      body: JSON.stringify(next),
+    }).catch(() => undefined);
+  }, []);
 
   async function sync() {
     setSyncing(true);
@@ -25,6 +73,31 @@ export function ServersPage() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  const rows: ServerRow[] = useMemo(() => {
+    const byId = new Map(metrics.map((m) => [m.serverId, m]));
+    return (servers ?? []).map((server) => ({ server, metrics: byId.get(server.id) ?? null }));
+  }, [servers, metrics]);
+
+  const visible = useMemo(
+    () => sortServers(filterServers(rows, query), prefs.sort, prefs.order),
+    [rows, query, prefs],
+  );
+
+  /**
+   * Перетаскивание работает ТОЛЬКО в режиме «Свой порядок».
+   *
+   * В остальных порядок задан критерием: перетащенная карточка вернулась бы
+   * на место при первом же обновлении метрик, и жест выглядел бы сломанным.
+   */
+  const manual = prefs.sort === 'manual';
+
+  function onDrop(fromId: string, toId: string) {
+    if (!manual || fromId === toId) return;
+    const ids = visible.map((r) => r.server.id);
+    const next = reorder(ids, ids.indexOf(fromId), ids.indexOf(toId));
+    savePrefs({ ...prefs, order: next });
   }
 
   if (!servers) return <Spinner />;
@@ -46,46 +119,213 @@ export function ServersPage() {
           </Button>
         )}
       </div>
+
+      {servers.length > 0 && (
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+          <Input
+            className="flex-1"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Поиск по имени или адресу"
+          />
+          <Select
+            className="sm:w-56"
+            value={prefs.sort}
+            onChange={(v) => savePrefs({ ...prefs, sort: v as ServerSort })}
+            options={SERVER_SORTS.map((s) => ({ value: s, label: SERVER_SORT_LABELS[s] }))}
+          />
+        </div>
+      )}
+
+      {manual && servers.length > 1 && (
+        <p className="mb-3 text-xs text-muted">
+          Перетащите карточки, чтобы задать порядок. Он сохраняется только для вас — у коллег
+          список останется прежним.
+        </p>
+      )}
+
       {servers.length === 0 ? (
         <p className="text-muted">
           Нет доступных серверов. Запустите синхронизацию или попросите ГМ выдать доступ.
         </p>
+      ) : visible.length === 0 ? (
+        <p className="text-sm text-muted">Ничего не нашлось. Попробуйте другое слово.</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {servers.map((s) => (
-            <Link key={s.id} to={`/servers/${s.id}`} className="group">
-              {/* Подъём под курсором вместо смены цвета рамки: карточка сервера
-                  — основная цель на этом экране, и она должна отзываться на
-                  наведение заметно, а не намёком. */}
-              <Card className="h-full transition-[box-shadow,transform,border-color] duration-300 ease-panel group-hover:-translate-y-[3px] group-hover:border-transparent group-hover:shadow-lift">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-semibold">{s.name}</div>
-                    <div className="mt-1 text-xs text-muted">{s.description || s.pteroIdentifier}</div>
-                  </div>
-                  <Badge
-                    variant={
-                      s.status === 'active' ? 'success' : s.status === 'missing' ? 'destructive' : 'outline'
-                    }
-                  >
-                    {s.status ?? '—'}
-                  </Badge>
-                </div>
-                {/* Адрес в карточке: чаще всего сервер ищут именно по нему,
-                    когда серверов больше одного. */}
-                {s.address && (
-                  <div className="mt-2 break-all font-mono text-xs text-neutral-300">
-                    {s.address}
-                  </div>
-                )}
-                <div className="mt-3 text-xs text-muted">
-                  Модуль: {moduleName(s.moduleId) ?? <span className="italic">не назначен</span>}
-                </div>
-              </Card>
-            </Link>
+          {visible.map((row) => (
+            <ServerCard
+              key={row.server.id}
+              row={row}
+              moduleName={moduleName(row.server.moduleId)}
+              draggable={manual}
+              onDrop={onDrop}
+            />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Карточка сервера со всем, ради чего раньше приходилось на него заходить:
+ * загрузка ЦПУ, память «занято / лимит» и игроки онлайн.
+ */
+function ServerCard({
+  row,
+  moduleName,
+  draggable,
+  onDrop,
+}: {
+  row: ServerRow;
+  moduleName: string | null;
+  draggable: boolean;
+  onDrop: (fromId: string, toId: string) => void;
+}) {
+  const { server, metrics } = row;
+  const [over, setOver] = useState(false);
+  // Перетаскивание карточки не должно открывать сервер: клик и перетаскивание
+  // начинаются одинаково, и без этой отметки любой перенос заканчивался бы
+  // переходом на страницу.
+  const dragging = useRef(false);
+
+  const cpu = metrics ? cpuUsage(metrics.cpuAbsolutePercent ?? 0, metrics.cpuLimitPercent) : null;
+  const online = isOnline(row);
+
+  const card = (
+    <Card
+      className={`h-full transition-[box-shadow,transform,border-color] duration-300 ease-panel ${
+        over ? 'border-primary' : 'group-hover:border-transparent group-hover:shadow-lift'
+      } ${draggable ? '' : 'group-hover:-translate-y-[3px]'}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate font-semibold">{server.name}</div>
+          <div className="mt-1 truncate text-xs text-muted">
+            {server.description || server.pteroIdentifier}
+          </div>
+        </div>
+        <Badge
+          variant={
+            server.status === 'active' ? 'success' : server.status === 'missing' ? 'destructive' : 'outline'
+          }
+        >
+          {server.status ?? '—'}
+        </Badge>
+      </div>
+
+      {/* Адрес в карточке: чаще всего сервер ищут именно по нему,
+          когда серверов больше одного. */}
+      {server.address && (
+        <div className="mt-2 break-all font-mono text-xs text-neutral-300">{server.address}</div>
+      )}
+
+      {/* Метрики. Пока снимка нет — строка не рисуется вовсе: три прочерка
+          выглядели бы как «сервер сломан», хотя это просто первый заход. */}
+      {metrics && cpu && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <CardMetric
+            label="ЦПУ"
+            value={
+              !online
+                ? '—'
+                : cpu.unlimited
+                  ? `${cpu.absolutePercent.toFixed(0)}%`
+                  : `${Math.round(cpu.percentOfLimit ?? 0)}%`
+            }
+            hint={online ? formatCpu(cpu) : 'выключен'}
+            tone={online ? resourceTone(cpu.percentOfLimit) : 'unknown'}
+          />
+          <CardMetric
+            label="Память"
+            value={
+              online && metrics.memoryBytes !== null
+                ? formatBytesUsage(metrics.memoryBytes, metrics.memoryLimitBytes)
+                : '—'
+            }
+          />
+          <CardMetric
+            label="Игроки"
+            value={
+              metrics.playersOnline === null
+                ? '—'
+                : metrics.playersMax === null
+                  ? String(metrics.playersOnline)
+                  : `${metrics.playersOnline}/${metrics.playersMax}`
+            }
+          />
+        </div>
+      )}
+
+      <div className="mt-3 text-xs text-muted">
+        Модуль: {moduleName ?? <span className="italic">не назначен</span>}
+      </div>
+    </Card>
+  );
+
+  if (!draggable) {
+    return (
+      <Link to={`/servers/${server.id}`} className="group">
+        {card}
+      </Link>
+    );
+  }
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        dragging.current = true;
+        e.dataTransfer.setData('text/plain', server.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragEnd={() => {
+        // Через кадр: click приходит после dragend, и сбросив флаг сразу,
+        // мы бы всё равно открыли сервер.
+        setTimeout(() => (dragging.current = false), 0);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        onDrop(e.dataTransfer.getData('text/plain'), server.id);
+      }}
+      className="group cursor-grab active:cursor-grabbing"
+    >
+      <Link
+        to={`/servers/${server.id}`}
+        onClick={(e) => {
+          if (dragging.current) e.preventDefault();
+        }}
+      >
+        {card}
+      </Link>
+    </div>
+  );
+}
+
+function CardMetric({
+  label,
+  value,
+  hint,
+  tone = 'normal',
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: 'normal' | 'warn' | 'bad' | 'unknown';
+}) {
+  const color =
+    tone === 'bad' ? 'text-red-400' : tone === 'warn' ? 'text-amber-400' : 'text-neutral-100';
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
+      <div className={`truncate text-sm font-semibold ${color}`}>{value}</div>
+      {hint && <div className="truncate text-[10px] text-muted">{hint}</div>}
     </div>
   );
 }

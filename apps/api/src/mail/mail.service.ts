@@ -70,22 +70,44 @@ export class MailService {
    * интерфейс об этом прямо говорит.
    */
   async sendWelcome(to: string, input: WelcomeMailInput): Promise<SendResult> {
+    return this.send(to, welcomeMail(input), 'письмо с доступом');
+  }
+
+  /**
+   * Готовое письмо кому-то одному.
+   *
+   * Общий метод для писем, у которых нет секретов в теле, — алертов и всего,
+   * что появится дальше. sendWelcome остаётся отдельным: там в теле
+   * одноразовый пароль, и подпись в журнале должна об этом напоминать.
+   */
+  async sendTo(
+    to: string,
+    message: { subject: string; html: string; text: string },
+    what = 'письмо',
+  ): Promise<SendResult> {
+    return this.send(to, message, what);
+  }
+
+  private async send(
+    to: string,
+    message: { subject: string; html: string; text: string },
+    what: string,
+  ): Promise<SendResult> {
     const config = await this.settings.getSmtpConfig();
     if (!config?.host || !config.from) {
       return { sent: false, error: 'SMTP не настроен — письмо не отправлено' };
     }
 
-    const { subject, html, text } = welcomeMail(input);
     const transport = this.transport(config);
     try {
-      await transport.sendMail({ from: config.from, to, subject, html, text });
-      // В журнал — только адрес получателя и факт отправки. Пароль в логи
-      // не попадает ни при каких условиях.
-      this.logger.log(`Письмо с доступом отправлено на ${to}`);
+      await transport.sendMail({ from: config.from, to, ...message });
+      // В журнал — только адрес получателя и факт отправки. Содержимое письма
+      // (в том числе одноразовый пароль) в логи не попадает никогда.
+      this.logger.log(`Отправлено ${what} на ${to}`);
       return { sent: true };
     } catch (e) {
       const error = describe(e);
-      this.logger.warn(`Не удалось отправить письмо на ${to}: ${error}`);
+      this.logger.warn(`Не удалось отправить ${what} на ${to}: ${error}`);
       return { sent: false, error };
     } finally {
       transport.close();

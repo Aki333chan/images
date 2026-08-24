@@ -1,6 +1,13 @@
 import { Body, Controller, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
-import type { ServerActivityDto, ServerResourcesDto } from '@aurum/shared';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import {
+  SERVER_SORTS,
+  type ServerActivityDto,
+  type ServerListPrefsDto,
+  type ServerMetricsDto,
+  type ServerResourcesDto,
+  type ServerSort,
+} from '@aurum/shared';
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
 import type { Request } from 'express';
 import { RequirePermission, ServerScoped } from '../rbac/rbac.decorators';
 import { CurrentUser, AuthUser } from '../auth/decorators';
@@ -9,6 +16,7 @@ import { ClientApiService } from '../pterodactyl/client-api.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ServersService } from './servers.service';
 import { ActivityService } from './activity.service';
+import { ServerMetricsService } from './metrics/server-metrics.service';
 
 class PowerDto {
   @IsIn(['start', 'stop', 'restart', 'kill'])
@@ -21,6 +29,21 @@ class SetModuleDto {
   moduleId!: string | null;
 }
 
+class ServerListPrefsInput {
+  @IsIn(SERVER_SORTS)
+  sort!: ServerSort;
+
+  /**
+   * Порядок карточек. Потолок в 500 — не про красоту, а про то, что это
+   * пользовательский ввод: без него сюда можно было бы записать список на
+   * мегабайт и раздуть строку настроек.
+   */
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID('4', { each: true })
+  order!: string[];
+}
+
 @Controller('servers')
 export class ServersController {
   constructor(
@@ -29,6 +52,7 @@ export class ServersController {
     private readonly clientApi: ClientApiService,
     private readonly prisma: PrismaService,
     private readonly activityService: ActivityService,
+    private readonly metrics: ServerMetricsService,
   ) {}
 
   private eff(req: Request): Promise<EffectivePermissions> {
@@ -43,6 +67,48 @@ export class ServersController {
   @RequirePermission('servers.view')
   async list(@Req() req: Request) {
     return this.servers.listForUser(await this.eff(req));
+  }
+
+  /**
+   * Нагрузка и онлайн по всем доступным серверам — для списка серверов.
+   *
+   * Читает снимки, собранные кроном, а НЕ ходит в Pterodactyl. На десятке
+   * серверов поход за каждым означал бы десяток запросов на одно открытие
+   * списка, и открывался бы он секундами. Цена — цифры отстают на полминуты,
+   * что для списка ровно то, что нужно: точные значения показывает страница
+   * сервера.
+   */
+  @Get('metrics')
+  @RequirePermission('servers.view')
+  async metricsList(@Req() req: Request): Promise<ServerMetricsDto[]> {
+    const servers = await this.servers.listForUser(await this.eff(req));
+    const rows = await this.prisma.server.findMany({
+      where: { id: { in: servers.map((s) => s.id) } },
+      select: { id: true, memoryLimitMb: true, cpuLimitPercent: true },
+    });
+    return this.metrics.listFor(rows);
+  }
+
+  /**
+   * Личные настройки списка: критерий сортировки и свой порядок карточек.
+   *
+   * ЛИЧНЫЕ, а не общие для панели: перетаскивание у одного человека не должно
+   * переставлять карточки всем остальным. Поэтому хранятся под ключом с id
+   * пользователя, а не в поле сервера.
+   */
+  @Get('list-prefs')
+  @RequirePermission('servers.view')
+  async listPrefs(@CurrentUser() user: AuthUser): Promise<ServerListPrefsDto> {
+    return this.servers.getListPrefs(user.id);
+  }
+
+  @Put('list-prefs')
+  @RequirePermission('servers.view')
+  async saveListPrefs(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ServerListPrefsInput,
+  ): Promise<ServerListPrefsDto> {
+    return this.servers.setListPrefs(user.id, { sort: dto.sort, order: dto.order });
   }
 
   @Post('sync')
@@ -75,6 +141,10 @@ export class ServersController {
     return {
       state: raw.current_state,
       cpuPercent: raw.resources.cpu_absolute,
+      // Без лимита сырой процент не значит ничего: 150 — это перегрузка на
+      // сервере с одним ядром и половина выделенного на сервере с тремя.
+      // Нормализует его фронтенд через cpuUsage(), см. resources.ts.
+      cpuLimitPercent: server.cpuLimitPercent ?? 0,
       memoryBytes: raw.resources.memory_bytes,
       // Лимиты приходят из Pterodactyl в МиБ и обновляются при синке.
       memoryLimitBytes: (server.memoryLimitMb ?? 0) * MIB,
