@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react';
 import {
+  MINECRAFT_FORGE_PERMISSIONS,
+  MINECRAFT_NEOFORGE_PERMISSIONS,
   MINECRAFT_PERMISSIONS,
   PALWORLD_PERMISSIONS,
   SEVENDAYS_PERMISSIONS,
@@ -95,6 +97,79 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
     settings: {
       label: 'Настройки',
       permission: MINECRAFT_PERMISSIONS.configure,
+      component: MinecraftSettingsTab,
+    },
+  },
+  /**
+   * Minecraft на загрузчиках модов — Forge и NeoForge.
+   *
+   * ТЕ ЖЕ САМЫЕ КОМПОНЕНТЫ, что и у Paper, а не их копии: за вкладками стоят
+   * команды самого сервера Minecraft (`list`, `kick`, `ban`, `whitelist`),
+   * одинаковые на любом ядре и загрузчике. Отличаются только адрес API —
+   * компоненты берут его из moduleId — и ключи прав.
+   *
+   * ЗАПИСИ ДВЕ, А НЕ ОДНА, И ЭТО ПРИНЦИПИАЛЬНО. Forge и NeoForge — разные
+   * загрузчики: с Minecraft 1.20.2 NeoForge переименовал внутренние пакеты, и
+   * мод одного на другом не загружается вовсе. Раздельные права позволяют
+   * пустить модератора на один сервер, не пуская на другой; общая запись
+   * лишила бы ГМ этой возможности молча.
+   *
+   * Вкладок инвентаря и тикетов здесь нет: за ними стоит companion-плагин
+   * Bukkit, которого на загрузчиках модов не существует (см. манифесты).
+   */
+  'minecraft-forge': {
+    tabs: {
+      playerList: {
+        label: 'Игроки',
+        permission: MINECRAFT_FORGE_PERMISSIONS.playersView,
+        component: MinecraftPlayersTab,
+      },
+      banKick: {
+        label: 'Баны',
+        permission: MINECRAFT_FORGE_PERMISSIONS.ban,
+        component: MinecraftBansTab,
+      },
+      whitelist: {
+        label: 'Whitelist',
+        permission: MINECRAFT_FORGE_PERMISSIONS.whitelist,
+        component: MinecraftWhitelistTab,
+      },
+    },
+    dashboard: {
+      permission: MINECRAFT_FORGE_PERMISSIONS.quickCommands,
+      component: MinecraftQuickCommandsWidget,
+    },
+    settings: {
+      label: 'Настройки',
+      permission: MINECRAFT_FORGE_PERMISSIONS.configure,
+      component: MinecraftSettingsTab,
+    },
+  },
+  'minecraft-neoforge': {
+    tabs: {
+      playerList: {
+        label: 'Игроки',
+        permission: MINECRAFT_NEOFORGE_PERMISSIONS.playersView,
+        component: MinecraftPlayersTab,
+      },
+      banKick: {
+        label: 'Баны',
+        permission: MINECRAFT_NEOFORGE_PERMISSIONS.ban,
+        component: MinecraftBansTab,
+      },
+      whitelist: {
+        label: 'Whitelist',
+        permission: MINECRAFT_NEOFORGE_PERMISSIONS.whitelist,
+        component: MinecraftWhitelistTab,
+      },
+    },
+    dashboard: {
+      permission: MINECRAFT_NEOFORGE_PERMISSIONS.quickCommands,
+      component: MinecraftQuickCommandsWidget,
+    },
+    settings: {
+      label: 'Настройки',
+      permission: MINECRAFT_NEOFORGE_PERMISSIONS.configure,
       component: MinecraftSettingsTab,
     },
   },

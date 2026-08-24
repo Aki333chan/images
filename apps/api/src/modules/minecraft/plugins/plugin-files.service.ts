@@ -28,6 +28,20 @@ import { fileProtectionReason, protectionReason } from './plugin-protection';
 const PLUGINS_DIR = '/plugins';
 const DISABLED_DIR = `${PLUGINS_DIR}/${DISABLED_PLUGINS_DIR}`;
 
+/**
+ * Моды кладутся в mods/, плагины — в plugins/, и перепутать их нельзя.
+ *
+ * Это не косметика: Forge и Fabric читают только mods/, серверные ядра
+ * семейства Bukkit — только plugins/. Мод, положенный в plugins/, просто
+ * не загрузится, а плагин в mods/ у Forge ещё и роняет запуск.
+ *
+ * Управление установленным (список, включение, удаление) осталось только для
+ * плагинов: живое состояние приходит от companion-плагина Bukkit, а его на
+ * Forge/Fabric нет. Установка модов работает, разбор их состояния — нет, и
+ * притворяться обратным панель не станет.
+ */
+const MODS_DIR = '/mods';
+
 /** Больше этого плагины практически не весят, а память панели не резиновая. */
 const MAX_JAR_BYTES = 150 * 1024 * 1024;
 
@@ -96,22 +110,40 @@ export class PluginFilesService {
       );
     }
 
+    // Часть источников (SpigotMC) хэшей не отдаёт вовсе, и тогда единственная
+    // защита от «приехал не тот файл» — посмотреть, что приехало. jar это zip,
+    // у него есть сигнатура. Без этой проверки HTML-страница с ошибкой легла
+    // бы в plugins/ под именем плагина, и сервер молча не загрузил бы его.
+    if (!looksLikeJar(jar)) {
+      await log(false, { error: 'приехал не jar' });
+      throw new BadRequestException(
+        'Источник вернул не jar-файл — вероятно, вместо файла отдана страница сайта. Установка отменена.',
+      );
+    }
+
     const safeName = sanitizeJarName(file.fileName);
-    await this.client.writeFile(identifier, `${PLUGINS_DIR}/${safeName}`, jar);
+    const targetDir = file.projectType === 'mod' ? MODS_DIR : PLUGINS_DIR;
+    await this.client.writeFile(identifier, `${targetDir}/${safeName}`, jar);
 
     // Состояние сервера решает только текст предупреждения: запущенный сервер
     // подхватит новый jar лишь после перезапуска, выключенный — при старте.
     const running = await this.isRunning(identifier);
-    await log(true, { sizeBytes: jar.length, restartRequired: running });
+    await log(true, {
+      sizeBytes: jar.length,
+      restartRequired: running,
+      projectType: file.projectType,
+      dir: targetDir,
+    });
 
+    const what = file.projectType === 'mod' ? 'Мод' : 'Плагин';
     return {
       ok: true,
       fileName: safeName,
       sizeBytes: jar.length,
       restartRequired: running,
       message: running
-        ? 'Плагин загружен. Сервер сейчас запущен — он заработает после перезапуска.'
-        : 'Плагин загружен. Он подхватится при следующем запуске сервера.',
+        ? `${what} загружен в ${targetDir.slice(1)}/. Сервер сейчас запущен — он заработает после перезапуска.`
+        : `${what} загружен в ${targetDir.slice(1)}/. Он подхватится при следующем запуске сервера.`,
     };
   }
 
@@ -207,7 +239,7 @@ export class PluginFilesService {
       ...(live === null
         ? { reason: 'Companion-плагин не настроен — видно только файлы, без живого состояния' }
         : {}),
-      plugins,
+      plugins: plugins.sort(byProtectedThenName),
     };
   }
 
@@ -429,6 +461,24 @@ function verifyHash(data: Buffer, hash: { algo: string; value: string }): boolea
  * Всё, что похоже на выход из каталога, отсекаем — иначе плагин можно было бы
  * положить куда угодно, вплоть до перезаписи server.jar.
  */
+/**
+ * Похоже ли скачанное на jar.
+ *
+ * jar — это zip, а у zip первые байты всегда «PK» и дальше 03 04 (обычная
+ * запись) либо 05 06 / 07 08 (пустой архив и разбитый на тома). Проверяем
+ * ровно это: полный разбор архива тут не нужен, нужна отсечка страницы
+ * «404 Not Found» и капчи, приехавших вместо файла.
+ *
+ * Экспортируется ради тестов: это единственная проверка содержимого для тех
+ * источников, которые не отдают хэш (SpigotMC не отдаёт его вовсе).
+ */
+export function looksLikeJar(buffer: Buffer): boolean {
+  if (buffer.length < 4) return false;
+  if (buffer[0] !== 0x50 || buffer[1] !== 0x4b) return false;
+  const marker = (buffer[2]! << 8) | buffer[3]!;
+  return marker === 0x0304 || marker === 0x0506 || marker === 0x0708;
+}
+
 function sanitizeJarName(raw: string): string {
   const base = (raw ?? '').split(/[\\/]/).pop() ?? '';
   const cleaned = base.replace(/[^A-Za-z0-9._+-]/g, '_');
@@ -460,4 +510,23 @@ function guessFile(files: string[], pluginName: string): string | null {
 /** Имя плагина по имени файла — для тех, кого сервер не видит (отключены). */
 function nameFromJar(fileName: string): string {
   return fileName.replace(/\.jar$/i, '').replace(/[-_]v?\d[\d.]*.*$/i, '') || fileName;
+}
+
+/**
+ * Порядок в списке установленных: сначала неотключаемые, потом остальные.
+ *
+ * Неотключаемые — это те, на которых держится сама панель: companion и
+ * плагины из KNOWN_PLUGINS. У них нет кнопок выключения и удаления, то есть
+ * делать с ними в списке нечего, — но именно их наличие и версию проверяют
+ * первым делом, когда что-то в панели перестало работать. Держать их
+ * вперемешку с двумя десятками обычных плагинов значит заставлять искать
+ * глазами то, на что смотрят чаще всего.
+ *
+ * Внутри каждой группы — по имени, без учёта регистра: порядок, в котором
+ * плагины отдаёт Bukkit, зависит от порядка загрузки и человеку ни о чём не
+ * говорит.
+ */
+export function byProtectedThenName(a: InstalledPluginDto, b: InstalledPluginDto): number {
+  if (a.protected !== b.protected) return a.protected ? -1 : 1;
+  return a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
 }

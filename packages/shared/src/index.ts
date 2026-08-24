@@ -9,5 +9,6 @@ export * from './ascii-art';
 export * from './marketplace';
 export * from './modules/minecraft';
 export * from './modules/minecraft-console';
+export * from './modules/minecraft-loaders';
 export * from './modules/palworld';
 export * from './modules/sevendays';

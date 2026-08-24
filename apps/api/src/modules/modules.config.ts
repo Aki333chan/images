@@ -2,4 +2,11 @@
  * Список включённых игровых модулей. Убрать id из списка — безопасно скрыть
  * роуты, крон и вкладки UI модуля; данные в БД не затрагиваются.
  */
-export const ENABLED_MODULE_IDS: string[] = ['minecraft', 'palworld', 'sevendays', 'test-dummy'];
+export const ENABLED_MODULE_IDS: string[] = [
+  'minecraft',
+  'minecraft-forge',
+  'minecraft-neoforge',
+  'palworld',
+  'sevendays',
+  'test-dummy',
+];

@@ -12,7 +12,8 @@ import { InventoryGrid } from './InventoryGrid';
 import { PermissionsPanel } from './PermissionsPanel';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 
-const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
+/** Тот же принцип, что и во вкладках: префикс берётся из модуля сервера. */
+const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
 
 /**
  * Что должно стоять на сервере, чтобы действие работало.
@@ -75,12 +76,15 @@ function ActionButton({
  */
 export function PlayerDetail({
   serverId,
+  moduleId,
   player,
   plugins,
   onChanged,
   onPunish,
 }: {
   serverId: string;
+  /** Модуль сервера: от него зависят и адрес API, и набор вкладок карточки. */
+  moduleId: string;
   player: MinecraftPlayerDto;
   /** Уже загруженный список плагинов сервера; null — выяснить не удалось. */
   plugins: MinecraftPluginsDto | null;
@@ -91,12 +95,22 @@ export function PlayerDetail({
   const { hasPermission } = useAuth();
   const [tab, setTab] = useState<'actions' | 'inventory' | 'rights'>('actions');
 
+  /**
+   * Инвентарь, группа прав и валюта — работа companion-плагина Bukkit.
+   * На Forge и NeoForge его не существует, поэтому эти разделы не просто
+   * пустуют, а не показываются вовсе: вкладка, которая всегда отвечает
+   * «недоступно», хуже её отсутствия.
+   */
+  const bukkit = moduleId === 'minecraft';
+
   const has = useCallback(
     (id: string) => !!plugins?.known.find((p) => p.id === id)?.installed,
     [plugins],
   );
 
-  const canAct = hasPermission('minecraft.quick-commands');
+  // Право быстрых действий у каждого модуля своё: на Forge-сервере кнопки
+  // открывает `minecraft-forge.quick-commands`, а не право от Paper.
+  const canAct = hasPermission(`${moduleId}.quick-commands`);
 
   return (
     <div className="space-y-4">
@@ -105,21 +119,24 @@ export function PlayerDetail({
       {/* Тот же компонент, что и у вкладок сервера: и вид, и едущая подложка
           общие. Отдельная реализация здесь означала бы, что одинаковое на вид
           переключение ведёт себя по-разному в двух местах одного экрана. */}
-      <Tabs
-        fill
-        active={tab}
-        onChange={(id) => setTab(id as typeof tab)}
-        tabs={[
-          { id: 'actions', label: 'Действия' },
-          { id: 'inventory', label: 'Инвентарь' },
-          { id: 'rights', label: 'Группа прав' },
-        ]}
-      />
+      {bukkit && (
+        <Tabs
+          fill
+          active={tab}
+          onChange={(id) => setTab(id as typeof tab)}
+          tabs={[
+            { id: 'actions', label: 'Действия' },
+            { id: 'inventory', label: 'Инвентарь' },
+            { id: 'rights', label: 'Группа прав' },
+          ]}
+        />
+      )}
 
       {tab === 'actions' && (
         <div className="space-y-4">
           <PlayerActions
             serverId={serverId}
+            moduleId={moduleId}
             player={player}
             has={has}
             canAct={canAct}
@@ -130,7 +147,7 @@ export function PlayerDetail({
           {/* Валюта — отдельным блоком, а не четвёртой вкладкой: на телефоне
               вкладки и так делят ширину поровну, и четвёртая сделала бы
               подписи нечитаемыми. */}
-          {hasPermission('minecraft.economy.view') && (
+          {bukkit && hasPermission('minecraft.economy.view') && (
             <div className="space-y-2 border-t border-border pt-4">
               <Label>Валюта</Label>
               {player.uuid ? (
@@ -153,7 +170,7 @@ export function PlayerDetail({
           ложной всегда: вкладка инвентаря пропадала ровно тогда, когда
           companion работал, и появлялась, когда список вовсе не удалось
           получить. */}
-      {tab === 'inventory' &&
+      {bukkit && tab === 'inventory' &&
         (plugins === null || plugins.available ? (
           <PlayerInventory serverId={serverId} name={player.name} />
         ) : (
@@ -163,7 +180,7 @@ export function PlayerDetail({
           </p>
         ))}
 
-      {tab === 'rights' &&
+      {bukkit && tab === 'rights' &&
         (player.uuid ? (
           <PermissionsPanel serverId={serverId} uuid={player.uuid} />
         ) : (
@@ -210,12 +227,14 @@ function PlayerStats({ player }: { player: MinecraftPlayerDto }) {
 function PlayerActions({
   serverId,
   player,
+  moduleId,
   has,
   canAct,
   onChanged,
   onPunish,
 }: {
   serverId: string;
+  moduleId: string;
   player: MinecraftPlayerDto;
   has: (id: string) => boolean;
   canAct: boolean;
@@ -230,14 +249,14 @@ function PlayerActions({
   const [target, setTarget] = useState('');
   // Кого предлагать в поле телепорта. Себя из списка убираем: «телепорт
   // Steve к Steve» — не действие, а недоразумение.
-  const online = useOnlinePlayers(serverId, true).filter((n) => n !== player.name);
+  const online = useOnlinePlayers(serverId, true, moduleId).filter((n) => n !== player.name);
 
   async function runQuick(id: string, args: Record<string, string>) {
     setBusy(true);
     setError('');
     setResult('');
     try {
-      const res = await api<{ output: string }>(`${base(serverId)}/quick-commands/${id}`, {
+      const res = await api<{ output: string }>(`${base(moduleId, serverId)}/quick-commands/${id}`, {
         method: 'POST',
         body: JSON.stringify({ args }),
       });
@@ -355,7 +374,13 @@ function PlayerActions({
   );
 }
 
-/** Инвентарь конкретного игрока — ник уже известен, вводить его не нужно. */
+/**
+ * Инвентарь конкретного игрока — ник уже известен, вводить его не нужно.
+ *
+ * Модуль здесь фиксированный, и это не недосмотр: инвентарь показывает
+ * companion-плагин Bukkit, а он бывает только на Paper. Компонент и
+ * рендерится только оттуда — см. флаг `bukkit` в PlayerDetail.
+ */
 function PlayerInventory({ serverId, name }: { serverId: string; name: string }) {
   const [data, setData] = useState<MinecraftInventoryResponse | null>(null);
   const [error, setError] = useState('');
@@ -363,7 +388,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
   useEffect(() => {
     setData(null);
     setError('');
-    api<MinecraftInventoryResponse>(`${base(serverId)}/inventory/${encodeURIComponent(name)}`)
+    api<MinecraftInventoryResponse>(`${base('minecraft', serverId)}/inventory/${encodeURIComponent(name)}`)
       .then(setData)
       .catch((e: Error) => setError(e.message));
   }, [serverId, name]);

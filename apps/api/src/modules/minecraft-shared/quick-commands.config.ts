@@ -252,29 +252,20 @@ const ESSENTIALS_X: QuickCommandDefinition[] = [
     plugin: 'Essentials',
     destructive: true,
   },
-  {
-    id: 'ess-gamemode',
-    label: 'Сменить режим игры',
-    description: 'EssentialsX: survival, creative, adventure или spectator',
-    template: 'gamemode {mode} {player}',
-    permission: MINECRAFT_PERMISSIONS.quickCommands,
-    args: [MODE_ARG, PLAYER_ARG],
-    plugin: 'Essentials',
-    destructive: true,
-  },
-  {
-    id: 'ess-tp-to-player',
-    label: 'Телепорт к игроку',
-    description: 'EssentialsX: переносит игрока к другому игроку (tp)',
-    template: 'tp {player} {target}',
-    permission: MINECRAFT_PERMISSIONS.quickCommands,
-    args: [
-      { name: 'player', label: 'Кого телепортировать', required: true, placeholder: 'Steve' },
-      { name: 'target', label: 'К кому', required: true, placeholder: 'Alex' },
-    ],
-    plugin: 'Essentials',
-    destructive: true,
-  },
+  /*
+   * ЗДЕСЬ НАМЕРЕННО НЕТ gamemode И tp.
+   *
+   * Раньше они были продублированы: ванильные и «EssentialsX» с ровно теми же
+   * шаблонами `gamemode {mode} {player}` и `tp {player} {target}`. На сервере
+   * с EssentialsX человек видел две одинаковые кнопки с одинаковой подписью и
+   * гадал, чем они отличаются, — а не отличались они ничем.
+   *
+   * EssentialsX перехватывает /gamemode и /tp прозрачно: ванильный вариант на
+   * нём работает так же. Значит правильный вариант — ванильный: он есть на
+   * любом сервере и не зависит от того, стоит ли плагин.
+   *
+   * Сюда стоит добавлять только то, чего в ванили НЕТ (heal, god, fly, kit).
+   */
 ];
 
 export const MINECRAFT_QUICK_COMMANDS: QuickCommandDefinition[] = [...VANILLA, ...ESSENTIALS_X];

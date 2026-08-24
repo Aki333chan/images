@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { constantTimeEquals, isPrivateAddress } from '../../common/private-network';
-import { MinecraftConfigService } from './minecraft-config.service';
+import { MinecraftConfigService } from '../minecraft-shared/minecraft-config.service';
 
 /**
  * Авторизация companion-плагина по токену сервера.

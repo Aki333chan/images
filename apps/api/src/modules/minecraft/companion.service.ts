@@ -10,7 +10,7 @@ import type {
   MinecraftPermissionsDto,
   MinecraftPlayerDto,
 } from '@aurum/shared';
-import { MinecraftConfigService } from './minecraft-config.service';
+import { MinecraftConfigService } from '../minecraft-shared/minecraft-config.service';
 
 /** Ссылка на инструкцию по установке плагина. */
 export const COMPANION_DOCS_URL =

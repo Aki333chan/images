@@ -6,15 +6,13 @@ import {
   ActivitySamplerScheduler,
   ACTIVITY_QUEUE,
 } from './activity-sampler.processor';
-import { BanExpiryProcessor, BanExpiryScheduler, BAN_EXPIRY_QUEUE } from './ban-expiry.processor';
 import { CompanionService } from './companion.service';
 import { CompanionTokenGuard } from './companion-token.guard';
-import { MinecraftConfigService } from './minecraft-config.service';
+import { MinecraftSharedModule } from '../minecraft-shared/minecraft-shared.module';
 import { MinecraftController } from './minecraft.controller';
 import { MinecraftInternalController } from './minecraft-internal.controller';
 import { MinecraftTicketDelivery } from './minecraft-ticket-delivery';
 import { MinecraftService } from './minecraft.service';
-import { RconService } from './rcon/rcon.service';
 import { MarketService } from './plugins/market.service';
 import { PluginFilesService } from './plugins/plugin-files.service';
 import { PluginTargetsService } from './plugins/plugin-targets.service';
@@ -22,7 +20,9 @@ import { PluginsController } from './plugins/plugins.controller';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: BAN_EXPIRY_QUEUE }),
+    // Транспорт RCON, креды и ванильные операции — общие для Paper, Forge и
+    // NeoForge, поэтому берутся из общего модуля, а не заводятся здесь.
+    MinecraftSharedModule,
     BullModule.registerQueue({ name: ACTIVITY_QUEUE }),
     // ActivityService живёт в ядре: график активности — свойство сервера,
     // а не игрового модуля. Модуль только поставляет замеры.
@@ -31,14 +31,10 @@ import { PluginsController } from './plugins/plugins.controller';
   ],
   controllers: [MinecraftController, MinecraftInternalController, PluginsController],
   providers: [
-    RconService,
-    MinecraftConfigService,
     CompanionService,
     CompanionTokenGuard,
     MinecraftService,
     MinecraftTicketDelivery,
-    BanExpiryScheduler,
-    BanExpiryProcessor,
     ActivitySamplerScheduler,
     ActivitySamplerProcessor,
     MarketService,

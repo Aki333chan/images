@@ -6,7 +6,7 @@ import {
   completeFromDictionary,
   type MinecraftConsoleCommandDto,
 } from '@aurum/shared';
-import { MINECRAFT_QUICK_COMMANDS, catalogConsoleCommands } from './quick-commands.config';
+import { MINECRAFT_QUICK_COMMANDS, catalogConsoleCommands } from '../minecraft-shared/quick-commands.config';
 
 /** Небольшой словарь: тесты про алгоритм, а не про полноту списка команд. */
 const DICTIONARY: MinecraftConsoleCommandDto[] = [

@@ -22,6 +22,7 @@ export interface BackendGameModule {
 
 import { testDummyModule } from './test-dummy/test-dummy.def';
 import { minecraftModule } from './minecraft/minecraft.def';
+import { minecraftForgeModule, minecraftNeoForgeModule } from './minecraft-loader/loaders.def';
 import { palworldModule } from './palworld/palworld.def';
 import { sevenDaysModule } from './sevendays/sevendays.def';
 import { ENABLED_MODULE_IDS } from './modules.config';
@@ -30,6 +31,8 @@ import { ENABLED_MODULE_IDS } from './modules.config';
 const ALL_MODULES: BackendGameModule[] = [
   testDummyModule,
   minecraftModule,
+  minecraftForgeModule,
+  minecraftNeoForgeModule,
   palworldModule,
   sevenDaysModule,
 ];

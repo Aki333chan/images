@@ -10,13 +10,19 @@ import { Input } from '../../components/ui';
  * Если список получить не удалось, поле остаётся обычным вводом, и
  * действие по-прежнему выполнимо.
  */
-export function useOnlinePlayers(serverId: string, enabled: boolean): string[] {
+export function useOnlinePlayers(
+  serverId: string,
+  enabled: boolean,
+  // Модуль сервера: Paper, Forge и NeoForge отвечают на одинаковый по форме
+  // роут, но каждый на своём префиксе.
+  moduleId: string = 'minecraft',
+): string[] {
   const [players, setPlayers] = useState<string[]>([]);
 
   useEffect(() => {
     if (!enabled) return;
     let stopped = false;
-    api<MinecraftPlayersResponse>(`/api/modules/minecraft/servers/${serverId}/players`)
+    api<MinecraftPlayersResponse>(`/api/modules/${moduleId}/servers/${serverId}/players`)
       .then((r) => {
         if (!stopped) setPlayers(r.players.map((p) => p.name));
       })
@@ -24,7 +30,7 @@ export function useOnlinePlayers(serverId: string, enabled: boolean): string[] {
     return () => {
       stopped = true;
     };
-  }, [serverId, enabled]);
+  }, [serverId, enabled, moduleId]);
 
   return players;
 }

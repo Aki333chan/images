@@ -15,7 +15,22 @@ import { PlayerDetail } from './PlayerDetail';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 
-const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
+/**
+ * Базовый путь API берётся из moduleId, а не зашит строкой.
+ *
+ * Один и тот же набор вкладок обслуживает Paper, Forge и NeoForge: за ними
+ * стоят одни и те же команды сервера Minecraft, только на разных префиксах.
+ * Зашитый 'minecraft' означал бы три копии одинаковых компонентов, которые
+ * разъедутся при первой же правке.
+ */
+const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
+
+/**
+ * Плагины Bukkit есть только у Paper. На загрузчиках модов их не существует,
+ * и спрашивать о них незачем: роута там нет, а 404 в консоли браузера
+ * выглядит как поломка, хотя это норма.
+ */
+const hasBukkitPlugins = (moduleId: string) => moduleId === 'minecraft';
 
 /**
  * Подписи групп действий. Ключ — bukkit-имя плагина, значение — то, как его
@@ -62,7 +77,7 @@ function HealthBar({ health, maxHealth }: { health: number; maxHealth: number })
 
 // ---------------------------------------------------------------- Игроки
 
-export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
+export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
   const [data, setData] = useState<MinecraftPlayersResponse | null>(null);
   const [error, setError] = useState('');
   const [punish, setPunish] = useState<{ player: string; kind: 'kick' | 'ban' } | null>(null);
@@ -76,17 +91,18 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
   const [plugins, setPlugins] = useState<MinecraftPluginsDto | null>(null);
 
   useEffect(() => {
-    api<MinecraftPluginsDto>(`${base(serverId)}/plugins`)
+    if (!hasBukkitPlugins(moduleId)) return setPlugins(null);
+    api<MinecraftPluginsDto>(`${base(moduleId, serverId)}/plugins`)
       .then(setPlugins)
       .catch(() => setPlugins(null));
-  }, [serverId]);
+  }, [serverId, moduleId]);
 
   const load = useCallback(() => {
     setError('');
-    return api<MinecraftPlayersResponse>(`${base(serverId)}/players`)
+    return api<MinecraftPlayersResponse>(`${base(moduleId, serverId)}/players`)
       .then(setData)
       .catch((e: Error) => setError(e.message));
-  }, [serverId]);
+  }, [serverId, moduleId]);
 
   useEffect(() => {
     void load();
@@ -233,8 +249,8 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
             onSubmit={async (reason, expiresAt) => {
               const path =
                 punish.kind === 'kick'
-                  ? `${base(serverId)}/players/${punish.player}/kick`
-                  : `${base(serverId)}/players/${punish.player}/ban`;
+                  ? `${base(moduleId, serverId)}/players/${punish.player}/kick`
+                  : `${base(moduleId, serverId)}/players/${punish.player}/ban`;
               await api(path, {
                 method: 'POST',
                 body: JSON.stringify(
@@ -252,6 +268,7 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
           <Modal title={`Игрок ${selectedPlayer.name}`} onClose={() => setSelected(null)}>
             <PlayerDetail
               serverId={serverId}
+              moduleId={moduleId}
               player={selectedPlayer}
               plugins={plugins}
               onChanged={() => void load()}
@@ -268,7 +285,7 @@ export function MinecraftPlayersTab({ serverId }: ModuleTabProps) {
 
 // ------------------------------------------------------------------ Баны
 
-export function MinecraftBansTab({ serverId }: ModuleTabProps) {
+export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
   const { hasPermission } = useAuth();
   const [bans, setBans] = useState<MinecraftBanDto[] | null>(null);
   const [search, setSearch] = useState('');
@@ -278,11 +295,11 @@ export function MinecraftBansTab({ serverId }: ModuleTabProps) {
     (q = '') => {
       setError('');
       const qs = q ? `?search=${encodeURIComponent(q)}` : '';
-      return api<MinecraftBanDto[]>(`${base(serverId)}/bans${qs}`)
+      return api<MinecraftBanDto[]>(`${base(moduleId, serverId)}/bans${qs}`)
         .then(setBans)
         .catch((e: Error) => setError(e.message));
     },
-    [serverId],
+    [serverId, moduleId],
   );
 
   useEffect(() => {
@@ -291,7 +308,7 @@ export function MinecraftBansTab({ serverId }: ModuleTabProps) {
 
   async function pardon(banId: string) {
     try {
-      await api(`${base(serverId)}/bans/${banId}/pardon`, { method: 'POST' });
+      await api(`${base(moduleId, serverId)}/bans/${banId}/pardon`, { method: 'POST' });
       await load(search);
     } catch (e) {
       setError((e as Error).message);
@@ -401,17 +418,17 @@ export function MinecraftBansTab({ serverId }: ModuleTabProps) {
 
 // ------------------------------------------------------------- Whitelist
 
-export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
+export function MinecraftWhitelistTab({ serverId, moduleId }: ModuleTabProps) {
   const [players, setPlayers] = useState<string[] | null>(null);
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
 
   const load = useCallback(() => {
     setError('');
-    return api<MinecraftWhitelistResponse>(`${base(serverId)}/whitelist`)
+    return api<MinecraftWhitelistResponse>(`${base(moduleId, serverId)}/whitelist`)
       .then((r) => setPlayers(r.players))
       .catch((e: Error) => setError(e.message));
-  }, [serverId]);
+  }, [serverId, moduleId]);
 
   useEffect(() => {
     void load();
@@ -419,7 +436,7 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
 
   async function remove(name: string) {
     try {
-      const r = await api<MinecraftWhitelistResponse>(`${base(serverId)}/whitelist/${name}`, {
+      const r = await api<MinecraftWhitelistResponse>(`${base(moduleId, serverId)}/whitelist/${name}`, {
         method: 'DELETE',
       });
       setPlayers(r.players);
@@ -473,7 +490,7 @@ export function MinecraftWhitelistTab({ serverId }: ModuleTabProps) {
           placeholder="Steve"
           onClose={() => setAdding(false)}
           onSubmit={async (name) => {
-            const r = await api<MinecraftWhitelistResponse>(`${base(serverId)}/whitelist`, {
+            const r = await api<MinecraftWhitelistResponse>(`${base(moduleId, serverId)}/whitelist`, {
               method: 'POST',
               body: JSON.stringify({ name }),
             });
@@ -496,7 +513,7 @@ function defaultArgs(command: MinecraftQuickCommandDto): Record<string, string> 
   return values;
 }
 
-export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
+export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabProps) {
   const [commands, setCommands] = useState<MinecraftQuickCommandDto[] | null>(null);
   const [active, setActive] = useState<MinecraftQuickCommandDto | null>(null);
   const [args, setArgs] = useState<Record<string, string>>({});
@@ -507,20 +524,20 @@ export function MinecraftQuickCommandsWidget({ serverId }: ModuleTabProps) {
   // Список онлайна нужен, только когда открыто действие, спрашивающее ник:
   // лишний поход к игровому серверу на каждый показ дашборда ни к чему.
   const needsPlayers = !!active?.args.some((a) => a.suggest === 'online-players');
-  const onlinePlayers = useOnlinePlayers(serverId, needsPlayers);
+  const onlinePlayers = useOnlinePlayers(serverId, needsPlayers, moduleId);
 
   useEffect(() => {
-    void api<{ commands: MinecraftQuickCommandDto[] }>(`${base(serverId)}/quick-commands`)
+    void api<{ commands: MinecraftQuickCommandDto[] }>(`${base(moduleId, serverId)}/quick-commands`)
       .then((r) => setCommands(r.commands))
       .catch((e: Error) => setError(e.message));
-  }, [serverId]);
+  }, [serverId, moduleId]);
 
   async function run(command: MinecraftQuickCommandDto, values: Record<string, string>) {
     setBusy(true);
     setError('');
     setResult('');
     try {
-      const res = await api<{ output: string }>(`${base(serverId)}/quick-commands/${command.id}`, {
+      const res = await api<{ output: string }>(`${base(moduleId, serverId)}/quick-commands/${command.id}`, {
         method: 'POST',
         body: JSON.stringify({ args: values }),
       });

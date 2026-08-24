@@ -6,7 +6,8 @@ import { Badge, Button, Card, ErrorText, Input, Label } from '../../components/u
 import type { ModuleTabProps } from '../registry';
 import { InstalledPluginsPanel } from './InstalledPluginsPanel';
 
-const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
+/** Тот же принцип, что и во вкладках: префикс берётся из модуля сервера. */
+const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
 
 /**
  * Настройки подключения модуля: RCON, companion-плагин и управление
@@ -21,25 +22,32 @@ const base = (serverId: string) => `/api/modules/minecraft/servers/${serverId}`;
  * стоит на сервере, можно и без неё — в блоке «Поддерживаемые плагины» по
  * кнопке «Показать все плагины сервера».
  */
-export function MinecraftSettingsTab({ serverId }: ModuleTabProps) {
+export function MinecraftSettingsTab({ serverId, moduleId }: ModuleTabProps) {
   const { hasPermission } = useAuth();
   const [status, setStatus] = useState<MinecraftConfigStatusDto | null>(null);
   const [error, setError] = useState('');
 
+  /**
+   * companion-плагин и маркет плагинов есть только у Paper. На Forge и
+   * NeoForge плагинов Bukkit не существует, и показывать здесь форму адреса
+   * плагина значило бы предлагать настроить то, чего не бывает.
+   */
+  const bukkit = moduleId === 'minecraft';
+
   const load = useCallback(() => {
-    api<MinecraftConfigStatusDto>(`${base(serverId)}/config`)
+    api<MinecraftConfigStatusDto>(`${base(moduleId, serverId)}/config`)
       .then(setStatus)
       .catch((e: Error) => setError(e.message));
-  }, [serverId]);
+  }, [serverId, moduleId]);
 
   useEffect(load, [load]);
 
   return (
     <div className="space-y-4">
       {error && <ErrorText>{error}</ErrorText>}
-      <RconForm serverId={serverId} status={status} onSaved={load} />
-      <CompanionForm serverId={serverId} status={status} onSaved={load} />
-      {hasPermission(PLUGIN_PERMISSIONS.manage) && (
+      <RconForm serverId={serverId} moduleId={moduleId} status={status} onSaved={load} />
+      {bukkit && <CompanionForm serverId={serverId} status={status} onSaved={load} />}
+      {bukkit && hasPermission(PLUGIN_PERMISSIONS.manage) && (
         <InstalledPluginsPanel
           serverId={serverId}
           onRestart={
@@ -59,10 +67,12 @@ export function MinecraftSettingsTab({ serverId }: ModuleTabProps) {
 
 function RconForm({
   serverId,
+  moduleId,
   status,
   onSaved,
 }: {
   serverId: string;
+  moduleId: string;
   status: MinecraftConfigStatusDto | null;
   onSaved: () => void;
 }) {
@@ -80,7 +90,7 @@ function RconForm({
     try {
       // Сервер сразу выполняет проверочную команду и возвращает её вывод,
       // чтобы неверный пароль или порт всплыли здесь, а не у модератора.
-      const res = await api<{ ok: boolean; probe: string }>(`${base(serverId)}/config/rcon`, {
+      const res = await api<{ ok: boolean; probe: string }>(`${base(moduleId, serverId)}/config/rcon`, {
         method: 'PUT',
         body: JSON.stringify({ host: host.trim(), port: Number(port), password }),
       });
@@ -181,7 +191,7 @@ function CompanionForm({
     setError('');
     setSaved(false);
     try {
-      await api<{ ok: boolean; configured: boolean }>(`${base(serverId)}/config/companion`, {
+      await api<{ ok: boolean; configured: boolean }>(`${base('minecraft', serverId)}/config/companion`, {
         method: 'PUT',
         body: JSON.stringify(
           disable ? { baseUrl: null, token: null } : { baseUrl: baseUrl.trim(), token },

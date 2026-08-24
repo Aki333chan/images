@@ -6,7 +6,7 @@ import {
   matchLoader,
   type ServerTargetDto,
 } from '@aurum/shared';
-import { parseVersionOutput } from './plugin-targets.service';
+import { loaderFromStartup, parseVersionOutput } from './plugin-targets.service';
 import { isAllowedIconUrl } from './market.service';
 
 /**
@@ -188,5 +188,46 @@ describe('прокси иконок маркета', () => {
   it('мусор вместо адреса — отказ, а не исключение', () => {
     expect(isAllowedIconUrl('не адрес')).toBe(false);
     expect(isAllowedIconUrl('')).toBe(false);
+  });
+});
+
+/**
+ * Загрузчик по строке запуска Pterodactyl.
+ *
+ * Единственный способ узнать про Forge и Fabric: команды `version` в ванильном
+ * Minecraft нет — её добавляет Bukkit, и на Fabric-сервере RCON ответит
+ * «Unknown command». А знать загрузчик надо: от него зависит, какая вкладка
+ * маркета откроется по умолчанию.
+ */
+describe('загрузчик по строке запуска', () => {
+  it('NeoForge не принимается за Forge', () => {
+    // Наивный поиск подстроки «forge» назвал бы NeoForge обычным Forge, и
+    // человеку показали бы моды не под тот загрузчик.
+    expect(loaderFromStartup('java -jar neoforge-1.21.4-server.jar nogui')).toBe('neoforge');
+  });
+
+  it('Quilt не принимается за Fabric', () => {
+    // Quilt собран на API Fabric и обычно упоминает оба имени сразу.
+    expect(loaderFromStartup('quilt-server-launch.jar (fabric-compatible)')).toBe('quilt');
+  });
+
+  it('Fabric распознаётся по имени jar', () => {
+    expect(loaderFromStartup('java -Xms128M -jar fabric-server-launch.jar')).toBe('fabric');
+  });
+
+  it('Forge распознаётся', () => {
+    expect(loaderFromStartup('SERVER_JARFILE forge-1.20.1-47.2.0-shim.jar')).toBe('forge');
+  });
+
+  it('ядра Bukkit тоже узнаются', () => {
+    expect(loaderFromStartup('java -jar paper-1.21.4-40.jar')).toBe('paper');
+    expect(loaderFromStartup('ghcr.io/pterodactyl/yolks:java_21 purpur.jar')).toBe('purpur');
+  });
+
+  it('ничего не узнали — null, а не догадка', () => {
+    // Пустой loader честнее выдуманного: бейдж скажет «не с чем сравнивать»,
+    // а вкладка останется на плагинах.
+    expect(loaderFromStartup('java -jar server.jar nogui')).toBe(null);
+    expect(loaderFromStartup('')).toBe(null);
   });
 });
