@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import type {
   MinecraftBalanceChangeDto,
   MinecraftBalanceDto,
@@ -17,48 +17,44 @@ import { MINECRAFT_SERVER_COMMANDS } from '@aurum/shared';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionService } from './companion.service';
-import { MinecraftConfigService } from './minecraft-config.service';
+import { MinecraftConfigService } from '../minecraft-shared/minecraft-config.service';
 import { KNOWN_PLUGINS } from '@aurum/shared';
 import {
-  escapeForJsonLiteral,
-  isValidNickname,
   looksLikeUnknownCommand,
   parseMspt,
   parsePlayerList,
   parseTps,
-  parseWhitelist,
-  sanitizeCommandArgument,
-} from './minecraft-parsers';
+} from '../minecraft-shared/minecraft-parsers';
 import {
-  MINECRAFT_QUICK_COMMANDS,
-  NICKNAME_ARG_NAMES,
   catalogConsoleCommands,
-} from './quick-commands.config';
-import { RconService } from './rcon/rcon.service';
+} from '../minecraft-shared/quick-commands.config';
+import { VanillaRconService } from '../minecraft-shared/vanilla-rcon.service';
 
 @Injectable()
 export class MinecraftService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: MinecraftConfigService,
-    private readonly rcon: RconService,
+    private readonly vanilla: VanillaRconService,
     private readonly companion: CompanionService,
     private readonly audit: AuditService,
   ) {}
 
-  /** Единая точка выполнения RCON-команд: берёт креды и отмечает доступность. */
-  async runCommand(serverId: string, command: string): Promise<string> {
-    const rconConfig = await this.config.requireRcon(serverId);
-    const output = await this.rcon.execute(serverId, rconConfig, command);
-    await this.config.markSeen(serverId).catch(() => undefined);
-    return output;
+  /**
+   * Всё, что умеет любой сервер Minecraft, живёт в общем VanillaRconService и
+   * отсюда только делегируется. Второй реализации тех же команд быть не
+   * должно: `ban` на Paper и `ban` на Forge — это буквально одна и та же
+   * команда сервера, и разъехавшись однажды, они разъедутся молча.
+   *
+   * В этом классе остаётся ТОЛЬКО то, чего на загрузчиках модов нет:
+   * companion-плагин, плагины Bukkit, TPS, права LuckPerms и валюта Vault.
+   */
+  runCommand(serverId: string, command: string): Promise<string> {
+    return this.vanilla.runCommand(serverId, command);
   }
 
   private assertNickname(name: string): string {
-    if (!isValidNickname(name)) {
-      throw new BadRequestException('Некорректный ник Minecraft (3–16 символов A-Z, 0-9, _)');
-    }
-    return name;
+    return this.vanilla.assertNickname(name);
   }
 
   // ---------- Игроки ----------
@@ -116,158 +112,56 @@ export class MinecraftService {
     };
   }
 
-  async kick(serverId: string, name: string, reason: string): Promise<string> {
-    this.assertNickname(name);
-    const safeReason = sanitizeCommandArgument(reason) || 'Кик модератором';
-    return this.runCommand(serverId, `kick ${name} ${safeReason}`);
+  kick(serverId: string, name: string, reason: string): Promise<string> {
+    return this.vanilla.kick(serverId, name, reason);
   }
 
-  // ---------- Баны ----------
+  // ---------- Баны, whitelist, быстрые команды ----------
+  //
+  // Всё это команды самого сервера Minecraft, одинаковые на Paper, Forge и
+  // NeoForge, — поэтому реализация одна, в общем слое, а здесь только проброс.
+  // Таблица банов тоже общая: причина, срок и модератор это данные панели.
 
-  private async toBanDto(ban: {
-    id: string;
-    serverId: string;
-    playerName: string;
-    playerUuid: string | null;
-    reason: string;
-    expiresAt: Date | null;
-    createdAt: Date;
-    createdById: string | null;
-    pardonedAt: Date | null;
-    pardonedById: string | null;
-  }): Promise<MinecraftBanDto> {
-    const ids = [ban.createdById, ban.pardonedById].filter((v): v is string => !!v);
-    const users = ids.length
-      ? await this.prisma.user.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, nickname: true, email: true },
-        })
-      : [];
-    // Ник — единственное имя сотрудника. Пока он не выбран (человек ещё не
-    // входил), в журнале банов честнее показать email, чем пустоту.
-    const nameById = new Map(users.map((u) => [u.id, u.nickname ?? u.email]));
-    const expired = !!ban.expiresAt && ban.expiresAt <= new Date();
-    return {
-      id: ban.id,
-      serverId: ban.serverId,
-      playerName: ban.playerName,
-      playerUuid: ban.playerUuid,
-      reason: ban.reason,
-      expiresAt: ban.expiresAt?.toISOString() ?? null,
-      createdAt: ban.createdAt.toISOString(),
-      createdByName: ban.createdById ? (nameById.get(ban.createdById) ?? null) : null,
-      pardonedAt: ban.pardonedAt?.toISOString() ?? null,
-      pardonedByName: ban.pardonedById ? (nameById.get(ban.pardonedById) ?? null) : null,
-      active: !ban.pardonedAt && !expired,
-    };
+  listBans(serverId: string, search?: string): Promise<MinecraftBanDto[]> {
+    return this.vanilla.listBans(serverId, search);
   }
 
-  async listBans(serverId: string, search?: string): Promise<MinecraftBanDto[]> {
-    const bans = await this.prisma.minecraftBan.findMany({
-      where: {
-        serverId,
-        ...(search ? { playerName: { contains: search, mode: 'insensitive' } } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-    return Promise.all(bans.map((b) => this.toBanDto(b)));
-  }
-
-  /**
-   * Бан: сначала запись в свою таблицу (источник истины о причине, сроке и
-   * модераторе), затем RCON-команда для мгновенного эффекта на сервере.
-   * Временные баны снимает крон (у ванильного сервера нет срочных банов).
-   */
-  async ban(
+  ban(
     serverId: string,
     name: string,
     reason: string,
     expiresAt: Date | null,
     actorId: string,
   ): Promise<MinecraftBanDto> {
-    this.assertNickname(name);
-    if (expiresAt && expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('Срок бана должен быть в будущем');
-    }
-    const safeReason = sanitizeCommandArgument(reason) || 'Бан модератором';
-
-    const ban = await this.prisma.minecraftBan.create({
-      data: {
-        serverId,
-        playerName: name,
-        reason: safeReason,
-        expiresAt,
-        createdById: actorId,
-      },
-    });
-    // Если сервер сейчас недоступен, запись о бане уже есть: игрока забанит
-    // синхронизация при следующем успешном обращении (см. TODO в README модуля).
-    await this.runCommand(serverId, `ban ${name} ${safeReason}`);
-    return this.toBanDto(ban);
+    return this.vanilla.ban(serverId, name, reason, expiresAt, actorId);
   }
 
-  async pardon(serverId: string, banId: string, actorId: string): Promise<MinecraftBanDto> {
-    const ban = await this.prisma.minecraftBan.findUnique({ where: { id: banId } });
-    if (!ban || ban.serverId !== serverId) throw new NotFoundException('Бан не найден');
-    if (ban.pardonedAt) throw new BadRequestException('Бан уже снят');
-
-    const updated = await this.prisma.minecraftBan.update({
-      where: { id: banId },
-      data: { pardonedAt: new Date(), pardonedById: actorId },
-    });
-    await this.runCommand(serverId, `pardon ${ban.playerName}`);
-    return this.toBanDto(updated);
+  pardon(serverId: string, banId: string, actorId: string): Promise<MinecraftBanDto> {
+    return this.vanilla.pardon(serverId, banId, actorId);
   }
 
-  // ---------- Whitelist ----------
-
-  async getWhitelist(serverId: string): Promise<MinecraftWhitelistResponse> {
-    const raw = await this.runCommand(serverId, 'whitelist list');
-    return { players: parseWhitelist(raw) };
+  getWhitelist(serverId: string): Promise<MinecraftWhitelistResponse> {
+    return this.vanilla.getWhitelist(serverId);
   }
 
-  async addToWhitelist(serverId: string, name: string): Promise<MinecraftWhitelistResponse> {
-    this.assertNickname(name);
-    await this.runCommand(serverId, `whitelist add ${name}`);
-    return this.getWhitelist(serverId);
+  addToWhitelist(serverId: string, name: string): Promise<MinecraftWhitelistResponse> {
+    return this.vanilla.addToWhitelist(serverId, name);
   }
 
-  async removeFromWhitelist(serverId: string, name: string): Promise<MinecraftWhitelistResponse> {
-    this.assertNickname(name);
-    await this.runCommand(serverId, `whitelist remove ${name}`);
-    return this.getWhitelist(serverId);
+  removeFromWhitelist(serverId: string, name: string): Promise<MinecraftWhitelistResponse> {
+    return this.vanilla.removeFromWhitelist(serverId, name);
   }
-
-  // ---------- Быстрые команды ----------
 
   /**
    * Каталог быстрых действий.
    *
    * @param installedPlugins имена плагинов, реально стоящих на сервере;
    *   null — список получить не удалось (нет companion-плагина или он молчит).
-   *   В этом случае показываем только ванильные действия: кнопка, ведущая в
+   *   Тогда показываем только ванильные действия: кнопка, ведущая в
    *   «Unknown command», хуже, чем её отсутствие.
    */
   listQuickCommands(installedPlugins: string[] | null): MinecraftQuickCommandDto[] {
-    const installed = new Set((installedPlugins ?? []).map((name) => name.toLowerCase()));
-    return MINECRAFT_QUICK_COMMANDS.filter(
-      (c) => c.plugin === null || installed.has(c.plugin.toLowerCase()),
-    ).map(({ id, label, description, permission, args, plugin, destructive }) => ({
-      id,
-      label,
-      description,
-      // Пометку «здесь ожидается ник» выводим из того же набора имён, по
-      // которому аргумент проходит валидацию ника. Так подсказка не может
-      // разойтись с проверкой: поле, куда панель подставляет игроков, — это
-      // ровно то поле, значение которого потом обязано быть валидным ником.
-      args: args.map((arg) =>
-        NICKNAME_ARG_NAMES.has(arg.name) ? { ...arg, suggest: 'online-players' as const } : arg,
-      ),
-      permission,
-      plugin,
-      destructive,
-    }));
+    return this.vanilla.listQuickCommands(installedPlugins);
   }
 
   // ---------- Автодополнение в консоли ----------
@@ -376,61 +270,19 @@ export class MinecraftService {
     return installed ? installed.filter((p) => p.enabled).map((p) => p.name) : null;
   }
 
-  /** Подставляет аргументы в шаблон. Ники валидируются, остальное санитизируется. */
+  /**
+   * Сборка и запуск быстрых действий — тоже общий слой: шаблоны команд
+   * ванильные, а разбор аргументов и экранирование одинаковы везде.
+   */
   buildQuickCommand(
     id: string,
     args: Record<string, string>,
   ): { commands: string[]; permission: string } {
-    const definition = MINECRAFT_QUICK_COMMANDS.find((c) => c.id === id);
-    if (!definition) throw new NotFoundException('Быстрая команда не найдена');
-
-    const templates = Array.isArray(definition.template)
-      ? definition.template
-      : [definition.template];
-
-    const filled = templates.map((template) => {
-      let command = template;
-      for (const arg of definition.args) {
-        const rawValue = args[arg.name];
-        if (!rawValue) {
-          if (arg.required) throw new BadRequestException(`Не заполнено поле «${arg.label}»`);
-          continue;
-        }
-        let value = NICKNAME_ARG_NAMES.has(arg.name)
-          ? this.assertNickname(rawValue)
-          : sanitizeCommandArgument(rawValue);
-        // Значение уходит внутрь JSON-литерала команды — экранируем кавычки и
-        // обратные слэши, иначе текст с кавычкой разорвёт JSON и сервер
-        // отвергнет команду целиком.
-        if (arg.escape === 'json') value = escapeForJsonLiteral(value);
-        command = command.replaceAll(`{${arg.name}}`, value);
-      }
-      return command.replace(/\s+/g, ' ').trim();
-    });
-
-    // Строку с незаполненным плейсхолдером выбрасываем целиком, а не
-    // подставляем в неё пустоту: «title @a subtitle с пустым текстом» — это
-    // видимая игроку пустая надпись, а не отсутствие подзаголовка.
-    const commands = filled.filter((command) => !/\{[a-zA-Z0-9_]+\}/.test(command));
-    if (commands.length === 0) {
-      throw new BadRequestException('Нечего выполнять: не заполнено ни одно поле');
-    }
-    return { commands, permission: definition.permission };
+    return this.vanilla.buildQuickCommand(id, args);
   }
 
-  /** Выполняет быстрое действие: одну команду или пару, по порядку. */
-  async runQuickCommand(
-    serverId: string,
-    id: string,
-    args: Record<string, string>,
-  ): Promise<string> {
-    const { commands } = this.buildQuickCommand(id, args);
-    // По порядку и последовательно: у команд, идущих парой, порядок значим.
-    const outputs: string[] = [];
-    for (const command of commands) {
-      outputs.push(await this.runCommand(serverId, command));
-    }
-    return outputs.filter((o) => o.trim().length > 0).join('\n');
+  runQuickCommand(serverId: string, id: string, args: Record<string, string>): Promise<string> {
+    return this.vanilla.runQuickCommand(serverId, id, args);
   }
 
   // ---------- Инвентарь ----------

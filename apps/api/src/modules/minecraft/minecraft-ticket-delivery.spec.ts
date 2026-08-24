@@ -1,6 +1,6 @@
 process.env.NODE_ENV = 'test';
 
-import { escapeForJsonLiteral, sanitizeCommandArgument } from './minecraft-parsers';
+import { escapeForJsonLiteral, sanitizeCommandArgument } from '../minecraft-shared/minecraft-parsers';
 import { MinecraftTicketDelivery, buildActionbar, buildTellraw } from './minecraft-ticket-delivery';
 import type { TicketDeliveryRegistry } from '../../tickets/ticket-delivery.registry';
 import type { MinecraftService } from './minecraft.service';

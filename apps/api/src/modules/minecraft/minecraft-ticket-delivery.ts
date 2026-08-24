@@ -5,7 +5,7 @@ import {
   escapeForJsonLiteral,
   isValidNickname,
   sanitizeCommandArgument,
-} from './minecraft-parsers';
+} from '../minecraft-shared/minecraft-parsers';
 
 /** Префикс, по которому игрок узнаёт сообщение от администрации. */
 const PREFIX = '[Поддержка] ';

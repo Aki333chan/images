@@ -27,7 +27,7 @@ import { AuthUser, CurrentUser } from '../../auth/decorators';
 import { AuditRedactBody } from '../../audit/audit.decorators';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
 import { COMPANION_DOCS_URL, CompanionService } from './companion.service';
-import { MinecraftConfigService } from './minecraft-config.service';
+import { MinecraftConfigService } from '../minecraft-shared/minecraft-config.service';
 import { MinecraftService } from './minecraft.service';
 import {
   BalanceChangeDto,
