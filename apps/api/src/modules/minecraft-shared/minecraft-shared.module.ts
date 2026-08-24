@@ -1,6 +1,8 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { ServerMetricsModule } from '../../servers/metrics/server-metrics.module';
 import { BanExpiryProcessor, BanExpiryScheduler, BAN_EXPIRY_QUEUE } from './ban-expiry.processor';
+import { MinecraftPlayerCount } from './minecraft-player-count';
 import { MinecraftConfigService } from './minecraft-config.service';
 import { RconService } from './rcon/rcon.service';
 import { VanillaRconService } from './vanilla-rcon.service';
@@ -21,11 +23,17 @@ import { VanillaRconService } from './vanilla-rcon.service';
  * остановило бы снятие банов на серверах с модами.
  */
 @Module({
-  imports: [BullModule.registerQueue({ name: BAN_EXPIRY_QUEUE })],
+  imports: [
+    BullModule.registerQueue({ name: BAN_EXPIRY_QUEUE }),
+    // Листовой модуль ядра: даёт реестр счётчика игроков. Обратной связи
+    // из него сюда нет — см. пояснение в server-metrics.module.ts.
+    ServerMetricsModule,
+  ],
   providers: [
     RconService,
     MinecraftConfigService,
     VanillaRconService,
+    MinecraftPlayerCount,
     BanExpiryScheduler,
     BanExpiryProcessor,
   ],

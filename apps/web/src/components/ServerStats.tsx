@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { MinecraftEconomyDto, MinecraftPerformanceDto } from '@aurum/shared';
+import {
+  cpuUsage,
+  formatCpu,
+  memoryUsage,
+  resourceTone,
+  type MinecraftEconomyDto,
+  type MinecraftPerformanceDto,
+} from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { RUNTIME_POLL_MS, useServerRuntime } from '../lib/server-runtime';
@@ -35,7 +42,11 @@ function Metric({
   label: string;
   value: string;
   hint?: string;
-  tone?: 'normal' | 'warn' | 'bad';
+  /**
+   * 'unknown' — сравнивать не с чем (у сервера нет лимита), и красить
+   * нечем: показываем обычным цветом, как любое информационное число.
+   */
+  tone?: 'normal' | 'warn' | 'bad' | 'unknown';
 }) {
   const color =
     tone === 'bad' ? 'text-red-400' : tone === 'warn' ? 'text-amber-400' : 'text-neutral-100';
@@ -151,25 +162,42 @@ export function ServerStats({
   }
   if (!resources) return null;
 
-  const memoryHint =
-    resources.memoryLimitBytes > 0 ? `из ${formatBytes(resources.memoryLimitBytes)}` : 'без лимита';
   const diskHint =
     resources.diskLimitBytes > 0 ? `из ${formatBytes(resources.diskLimitBytes)}` : 'без лимита';
-  const memoryRatio =
-    resources.memoryLimitBytes > 0 ? resources.memoryBytes / resources.memoryLimitBytes : 0;
+
+  /**
+   * ЦПУ считается ОТ ЛИМИТА СЕРВЕРА, а не от абстрактных 100%.
+   *
+   * У Pterodactyl лимит задаётся в процентах от одного ядра: 200 — два ядра.
+   * Значение потребления приходит в тех же единицах, поэтому «150%» — это
+   * перегрузка на сервере с одним ядром и половина выделенного на сервере с
+   * тремя. Раньше здесь стояло сравнение с 90 и 70, и панель красила в
+   * красный совершенно здоровый сервер.
+   *
+   * Крупным показываем долю от лимита — она отвечает на вопрос «всё ли в
+   * порядке». Абсолютные цифры идут подсказкой: они отвечают на другой
+   * вопрос — «сколько это в ядрах», — и без них доля повисает в воздухе.
+   */
+  const cpu = cpuUsage(resources.cpuPercent, resources.cpuLimitPercent);
+  const memory = memoryUsage(resources.memoryBytes, resources.memoryLimitBytes);
 
   return (
     <Card className="flex flex-wrap items-start gap-x-6 gap-y-3">
       <Metric
         label="ЦПУ"
-        value={`${resources.cpuPercent.toFixed(1)} %`}
-        tone={resources.cpuPercent > 90 ? 'bad' : resources.cpuPercent > 70 ? 'warn' : 'normal'}
+        value={
+          cpu.unlimited ? `${cpu.absolutePercent.toFixed(1)} %` : `${Math.round(cpu.percentOfLimit ?? 0)} %`
+        }
+        hint={formatCpu(cpu)}
+        tone={resourceTone(cpu.percentOfLimit)}
       />
       <Metric
         label="Память"
         value={formatBytes(resources.memoryBytes)}
-        hint={memoryHint}
-        tone={memoryRatio > 0.9 ? 'bad' : memoryRatio > 0.75 ? 'warn' : 'normal'}
+        hint={
+          memory.unlimited ? 'без лимита' : `из ${formatBytes(resources.memoryLimitBytes)}`
+        }
+        tone={resourceTone(memory.percentOfLimit)}
       />
       <Metric label="Диск" value={formatBytes(resources.diskBytes)} hint={diskHint} />
       <Metric

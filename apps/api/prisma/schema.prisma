@@ -150,8 +150,66 @@ model Server {
   palworldBans    PalworldBan[]
   sevenDaysEvents SevenDaysEvent[]
   activitySamples ServerActivitySample[]
+  metrics         ServerMetricSample?
+  alertStates     ServerAlertState[]
 
   @@map("servers")
+}
+
+/// Последний снимок нагрузки сервера. РОВНО ОДНА строка на сервер.
+///
+/// Именно снимок, а не история: список серверов показывает «сейчас», а не
+/// график, и хранить ряд на каждый опрос значило бы растить таблицу
+/// бесконечно ради данных, которые никто не читает. История нагрузки — это
+/// отдельная задача с агрегацией по времени, как у ServerActivitySample.
+///
+/// Нужен он в базе, а не в памяти процесса, по двум причинам: список
+/// серверов не должен ходить в Pterodactyl за каждым сервером на каждое
+/// открытие (десятки серверов — десятки запросов), и снимок должен пережить
+/// перезапуск панели, иначе после деплоя карточки полминуты стоят пустыми.
+model ServerMetricSample {
+  serverId    String   @id @map("server_id")
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  /// running / offline / starting / stopping
+  state       String?
+  /// Сырое значение Pterodactyl: 200 = два ядра целиком.
+  cpuAbsolute Float?   @map("cpu_absolute")
+  memoryBytes BigInt?  @map("memory_bytes")
+  /// Игроки от игрового модуля. null — модуля нет или он не ответил;
+  /// это НЕ то же самое, что ноль игроков.
+  playersOnline Int?   @map("players_online")
+  playersMax    Int?   @map("players_max")
+  sampledAt   DateTime @default(now()) @map("sampled_at")
+
+  @@map("server_metric_samples")
+}
+
+/// Состояние одного вида алерта по одному серверу.
+///
+/// Здесь живут две вещи, без которых алерты превращаются в спам:
+///   breachingSince — момент, с которого превышение держится непрерывно.
+///     Письмо уходит, только если оно продержалось дольше настроенного
+///     времени: сервер уходит в потолок на запуске и на генерации чанков, и
+///     мгновенный триггер сделал бы почту нечитаемой в первую же неделю.
+///   lastNotifiedAt — когда в последний раз отправили. Пока проблема длится,
+///     повтор возможен не чаще кулдауна.
+///
+/// Строка на пару (сервер, тип), а не на событие: это именно СОСТОЯНИЕ, а
+/// журнал отправленных писем и так есть в audit_log.
+model ServerAlertState {
+  serverId       String    @map("server_id")
+  server         Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  /// Вид алерта: cpu, memory и всё, что появится дальше.
+  type           String
+  /// С какого момента порог превышен непрерывно. null — сейчас всё в норме.
+  breachingSince DateTime? @map("breaching_since")
+  lastNotifiedAt DateTime? @map("last_notified_at")
+  /// Значение в процентах от лимита на момент последней отправки — для письма.
+  lastValue      Float?    @map("last_value")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@id([serverId, type])
+  @@map("server_alert_states")
 }
 
 /// Замер числа игроков онлайн: по ним строится график активности.

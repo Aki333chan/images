@@ -3,6 +3,8 @@ import { PalworldApiService } from './palworld-api.service';
 import { PalworldConfigService } from './palworld-config.service';
 import { PalworldController } from './palworld.controller';
 import { PalworldService } from './palworld.service';
+import { ServerMetricsModule } from '../../servers/metrics/server-metrics.module';
+import { PalworldPlayerCount } from './palworld-player-count';
 
 /**
  * Модуль Palworld.
@@ -13,7 +15,8 @@ import { PalworldService } from './palworld.service';
  * а замеры онлайна снимает ядро.
  */
 @Module({
+  imports: [ServerMetricsModule],
   controllers: [PalworldController],
-  providers: [PalworldConfigService, PalworldApiService, PalworldService],
+  providers: [PalworldPlayerCount, PalworldConfigService, PalworldApiService, PalworldService],
 })
 export class PalworldModule {}
