@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   completeFromDictionary,
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
 } from '@aurum/shared';
 import { api } from '../lib/api';
+import { parseAnsi } from '../lib/ansi';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/cn';
 import { Button, Card, Dot, Input } from './ui';
@@ -25,6 +26,19 @@ const CONNECTION_TONE: Record<string, string> = {
   reconnecting: 'text-warn',
   error: 'text-destructive',
 };
+
+/**
+ * Строка журнала.
+ *
+ * Собственный id, а не индекс в массиве: окно журнала скользящее (старые
+ * строки выбрасываются), и при индексных ключах React считал бы изменившейся
+ * каждую строку на экране — то есть заново разбирал бы ANSI во всех восьмистах
+ * при каждой новой строке лога.
+ */
+interface LogLine {
+  id: number;
+  text: string;
+}
 
 /** Сколько живёт кэш словаря: за это время список игроков успевает устареть. */
 const DICTIONARY_TTL_MS = 30_000;
@@ -67,7 +81,8 @@ const STICK_TO_BOTTOM_PX = 24;
  */
 export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId: string }) {
   const { hasPermission } = useAuth();
-  const [lines, setLines] = useState<string[]>([]);
+  const [lines, setLines] = useState<LogLine[]>([]);
+  const lineIdRef = useRef(0);
   const [state, setState] = useState<'connecting' | 'online' | 'reconnecting' | 'error'>(
     'connecting',
   );
@@ -109,9 +124,12 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
     /** Хоть раз авторизовались: значит адрес и CSP в порядке, дело в обрыве. */
     let everOnline = false;
 
-    const push = (text: string) =>
+    const push = (text: string) => {
+      lineIdRef.current += 1;
+      const line = { id: lineIdRef.current, text };
       // Держим окно в разумных пределах, иначе вкладка съест память.
-      setLines((prev) => [...prev.slice(-800), text]);
+      setLines((prev) => [...prev.slice(-800), line]);
+    };
 
     /**
      * Пауза перед следующей попыткой.
@@ -188,7 +206,10 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
               // Перечитываем журнал с нуля, а не дописываем: Wings отдаёт
               // хвост файла целиком, и дописанный он дал бы десятки уже
               // показанных строк — человек читал бы одно и то же дважды.
-              setLines(['— соединение восстановлено, журнал перечитан —']);
+              lineIdRef.current += 1;
+              setLines([
+                { id: lineIdRef.current, text: '— соединение восстановлено, журнал перечитан —' },
+              ]);
             }
             everOnline = true;
             // Просим Wings прислать историю и текущее состояние.
@@ -459,10 +480,8 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
               {state === 'connecting' ? 'Подключение к консоли…' : 'Вывода пока нет'}
             </p>
           )}
-          {lines.map((line, i) => (
-            <div key={i} className="whitespace-pre-wrap break-all">
-              {line}
-            </div>
+          {lines.map((line) => (
+            <ConsoleLine key={line.id} text={line.text} />
           ))}
         </Card>
       </div>
@@ -528,6 +547,21 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
               }}
               placeholder="Команда в консоль сервера…"
               disabled={state !== 'online'}
+              /* ПОЧЕМУ ЭТИ ЧЕТЫРЕ АТРИБУТА ЗДЕСЬ ОБЯЗАТЕЛЬНЫ.
+                 Консоль сервера ждёт команду без ведущего слэша: «lp editor»,
+                 а не «/lp editor». Но экранная клавиатура телефона по
+                 умолчанию делает заглавной первую букву поля — и в консоль
+                 уходило «Lp editor», которое сервер не знает. С «/» этого не
+                 происходило (после слэша буква уже не первая), и выглядело
+                 это как «без слэша команды не работают». Автозамена туда же:
+                 ники и аргументы она правит на слова из словаря.
+                 В Pterodactyl на поле команды стоят ровно autoCapitalize
+                 none и autoCorrect off — поэтому там команды без слэша и
+                 набираются спокойно. */
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
             />
             <Button onClick={sendCommand} disabled={state !== 'online' || !command.trim()}>
               Отправить
@@ -546,3 +580,61 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
     </div>
   );
 }
+
+/**
+ * Одна строка журнала: цвет, начертание и кликабельные ссылки.
+ *
+ * memo — не преждевременная оптимизация: при запуске сервера строки идут
+ * десятками в секунду, а разбор ANSI выполняется для каждой. Без memo панель
+ * пересчитывала бы весь видимый журнал на каждую новую строку.
+ */
+const ConsoleLine = memo(function ConsoleLine({ text }: { text: string }) {
+  const segments = useMemo(() => parseAnsi(text), [text]);
+
+  return (
+    <div className="whitespace-pre-wrap break-all">
+      {/* Пустая строка в логе — это отбивка между блоками, и в терминале она
+          занимает высоту строки. Пустой div схлопнулся бы. */}
+      {segments.length === 0
+        ? '\u00a0'
+        : segments.map((segment, i) => {
+            const style: CSSProperties = {
+              color: segment.style.color,
+              background: segment.style.background,
+              fontWeight: segment.style.bold ? 600 : undefined,
+              fontStyle: segment.style.italic ? 'italic' : undefined,
+              opacity: segment.style.dim ? 0.65 : undefined,
+              textDecoration:
+                [
+                  segment.style.underline ? 'underline' : null,
+                  segment.style.strike ? 'line-through' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined,
+            };
+
+            // Ссылки открываются в новой вкладке: консоль — единственное
+            // место панели с постоянным соединением, и уводить с неё страницу
+            // значит оборвать журнал ровно тогда, когда он нужен.
+            // rel обязателен: без него открытая страница получает доступ к
+            // window.opener панели.
+            return segment.href ? (
+              <a
+                key={i}
+                href={segment.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={style}
+                className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+              >
+                {segment.text}
+              </a>
+            ) : (
+              <span key={i} style={style}>
+                {segment.text}
+              </span>
+            );
+          })}
+    </div>
+  );
+});
