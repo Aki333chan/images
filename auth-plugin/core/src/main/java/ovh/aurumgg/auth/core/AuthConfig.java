@@ -37,7 +37,19 @@ public record AuthConfig(
         JoinMessageMode joinMessageMode,
         /** Разрешить право aurumauth.bypass пропускать вход. См. предупреждение в config.yml. */
         boolean permissionBypass,
-        MessageSettings messages) {
+        /** Допуск на расхождение часов в интервалах по 30 секунд. */
+        int totpWindow,
+        /** Как называться в приложении-аутентификаторе. */
+        String totpIssuer,
+        /** Сколько хранить историю входов. */
+        Duration historyRetention,
+        /** Имя этого сервера в истории входов: база одна на всю сеть. */
+        String serverId,
+        MessageSettings messages,
+        /** Как выглядит просьба войти: title, строка над панелью, чат. */
+        PromptSettings prompt,
+        /** Прятать от невошедшего команды, которые ему всё равно запрещены. */
+        boolean hideOtherCommands) {
 
     /** Что делать с сообщениями о входе и выходе, пока игрок не авторизован. */
     public enum JoinMessageMode {
@@ -94,7 +106,20 @@ public record AuthConfig(
                 minutes(clamp(integer(raw, "premium.cache-minutes", 60), 1, 24 * 60)),
                 JoinMessageMode.parse(raw.get("join-messages.mode")),
                 bool(raw, "login.permission-bypass", false),
-                MessageSettings.fromMap(raw));
+                // Допуск на расхождение часов. Один интервал в каждую сторону
+                // — общепринятый компромисс: телефоны расходятся на секунды,
+                // а каждый лишний интервал втрое увеличивает окно, в котором
+                // годен подсмотренный код.
+                clamp(integer(raw, "totp.window", 1), 0, 5),
+                string(raw, "totp.issuer", "Aurum"),
+                // Срок хранения истории. Девяносто дней хватает на любой
+                // разбор «меня взломали», а бесконечная история — это таблица,
+                // которая растёт весь срок жизни сервера.
+                Duration.ofDays(clamp(integer(raw, "history.keep-days", 90), 1, 3650)),
+                string(raw, "server-id", "server"),
+                MessageSettings.fromMap(raw),
+                PromptSettings.fromMap(raw),
+                bool(raw, "login.hide-other-commands", true));
     }
 
     /** Имя таблицы по умолчанию — оно же запасное при негодном значении. */

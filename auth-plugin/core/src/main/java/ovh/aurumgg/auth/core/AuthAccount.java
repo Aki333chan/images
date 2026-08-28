@@ -17,6 +17,12 @@ import java.util.UUID;
  * @param lastLoginAt  когда входил в последний раз (null у только что
  *                     зарегистрированного)
  * @param lastIp       адрес последнего входа: по нему проверяется сессия
+ * @param totpSecret   секрет двухфакторки в base32; null — не настроена
+ * @param totpEnabled  включена ли двухфакторка. Отдельно от секрета: между
+ *                     «сгенерировали секрет» и «игрок подтвердил кодом» есть
+ *                     промежуток, и в нём пускать по коду ещё нельзя
+ * @param totpLastCounter номер последнего принятого интервала — защита от
+ *                     повторного использования подсмотренного кода
  */
 public record AuthAccount(
         UUID uuid,
@@ -25,4 +31,13 @@ public record AuthAccount(
         String email,
         Instant registeredAt,
         Instant lastLoginAt,
-        String lastIp) {}
+        String lastIp,
+        String totpSecret,
+        boolean totpEnabled,
+        Long totpLastCounter) {
+
+    /** Настроена и подтверждена ли двухфакторка. */
+    public boolean hasTotp() {
+        return totpEnabled && totpSecret != null && !totpSecret.isBlank();
+    }
+}

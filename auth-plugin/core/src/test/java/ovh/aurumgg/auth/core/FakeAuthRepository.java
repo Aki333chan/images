@@ -52,7 +52,8 @@ final class FakeAuthRepository implements AuthRepository {
         AuthAccount existing = byUuid.get(uuid);
         if (existing == null) return;
         byUuid.put(uuid, new AuthAccount(existing.uuid(), existing.username(), existing.passwordHash(),
-                existing.email(), existing.registeredAt(), at, ip));
+                existing.email(), existing.registeredAt(), at, ip,
+                existing.totpSecret(), existing.totpEnabled(), existing.totpLastCounter()));
     }
 
     @Override
@@ -61,7 +62,8 @@ final class FakeAuthRepository implements AuthRepository {
         AuthAccount existing = byUuid.get(uuid);
         if (existing == null) return;
         byUuid.put(uuid, new AuthAccount(existing.uuid(), existing.username(), passwordHash,
-                existing.email(), existing.registeredAt(), existing.lastLoginAt(), existing.lastIp()));
+                existing.email(), existing.registeredAt(), existing.lastLoginAt(), existing.lastIp(),
+                existing.totpSecret(), existing.totpEnabled(), existing.totpLastCounter()));
     }
 
     // ---------------------------------------------------------- токены сброса
@@ -92,6 +94,66 @@ final class FakeAuthRepository implements AuthRepository {
         int before = resets.size();
         resets.values().removeIf(r -> r.used() || !now.isBefore(r.expiresAt()));
         return before - resets.size();
+    }
+
+    // ------------------------------------------------ удаление и история
+
+    /** Записанные попытки входа: ник (в нижнем регистре) → строки истории. */
+    final Map<String, List<LoginRecord>> history = new ConcurrentHashMap<>();
+
+    @Override
+    public boolean deleteAccount(UUID uuid) throws Exception {
+        record();
+        resets.values().removeIf(r -> r.uuid().equals(uuid));
+        return byUuid.remove(uuid) != null;
+    }
+
+    @Override
+    public void recordLogin(UUID uuid, String username, LoginRecord entry) throws Exception {
+        record();
+        history.computeIfAbsent(username.toLowerCase(Locale.ROOT), k -> new java.util.ArrayList<>())
+                .add(entry);
+    }
+
+    @Override
+    public List<LoginRecord> loginHistory(String username, Instant since, int limit) throws Exception {
+        record();
+        return history.getOrDefault(username.toLowerCase(Locale.ROOT), List.of()).stream()
+                .filter(entry -> !entry.at().isBefore(since))
+                .sorted((a, b) -> b.at().compareTo(a.at()))
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public int purgeLoginHistory(Instant before) throws Exception {
+        int removed = 0;
+        for (List<LoginRecord> entries : history.values()) {
+            int size = entries.size();
+            entries.removeIf(entry -> entry.at().isBefore(before));
+            removed += size - entries.size();
+        }
+        return removed;
+    }
+
+    @Override
+    public void setTotp(UUID uuid, String secretBase32, boolean enabled) throws Exception {
+        record();
+        AuthAccount existing = byUuid.get(uuid);
+        if (existing == null) return;
+        byUuid.put(uuid, new AuthAccount(existing.uuid(), existing.username(), existing.passwordHash(),
+                existing.email(), existing.registeredAt(), existing.lastLoginAt(), existing.lastIp(),
+                secretBase32, enabled, null));
+    }
+
+    @Override
+    public void setTotpCounter(UUID uuid, long counter) throws Exception {
+        record();
+        AuthAccount existing = byUuid.get(uuid);
+        if (existing == null) return;
+        byUuid.put(uuid, new AuthAccount(existing.uuid(), existing.username(), existing.passwordHash(),
+                existing.email(), existing.registeredAt(), existing.lastLoginAt(), existing.lastIp(),
+                existing.totpSecret(), existing.totpEnabled(), counter));
     }
 
     Optional<AuthAccount> peek(UUID uuid) {

@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -15,6 +16,7 @@ import org.bukkit.entity.Player;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.core.AuthAccount;
 import ovh.aurumgg.auth.core.AuthService;
+import ovh.aurumgg.auth.core.LoginRecord;
 
 /**
  * Администраторские команды: /auth &lt;подкоманда&gt;.
@@ -24,7 +26,10 @@ import ovh.aurumgg.auth.core.AuthService;
  * /auth info   &lt;ник&gt;  — что известно об аккаунте
  * /auth unlock &lt;ник&gt;  — снять блокировку по неудачным попыткам
  * /auth logout &lt;ник&gt;  — разавторизовать игрока в сети и погасить сессию
- * /auth reload        — перечитать тексты сообщений
+ * /auth history &lt;ник&gt; [24h|3d|7d|30d] — история входов
+ * /auth unregister &lt;ник&gt; confirm — снять регистрацию
+ * /auth 2fa-off &lt;ник&gt; — выключить двухфакторку потерявшему телефон
+ * /auth reload        — перечитать тексты сообщений и подсказок
  * </pre>
  *
  * ОДНА КОМАНДА С ПОДКОМАНДАМИ, А НЕ ПЯТЬ ОТДЕЛЬНЫХ. Пять команд верхнего
@@ -38,14 +43,29 @@ import ovh.aurumgg.auth.core.AuthService;
  */
 final class AuthAdminCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("reset", "info", "unlock", "logout", "reload");
+    private static final List<String> SUBCOMMANDS =
+            List.of("reset", "info", "unlock", "logout", "history", "unregister", "2fa-off", "reload");
+
+    /** Сколько строк истории показывать за раз: чат больше не вмещает. */
+    private static final int HISTORY_LIMIT = 30;
+
+    /** Периоды для /auth history. Ключ — то, что набирает человек. */
+    private static final Map<String, Duration> PERIODS = Map.of(
+            "1h", Duration.ofHours(1),
+            "24h", Duration.ofHours(24),
+            "3d", Duration.ofDays(3),
+            "7d", Duration.ofDays(7),
+            "30d", Duration.ofDays(30));
 
     private final AurumAuthPlugin plugin;
     private final AuthService service;
+    /** Нужен ровно для одного: вернуть подсказку и отсчёт разавторизованному. */
+    private final AuthGuardListener guard;
 
-    AuthAdminCommand(AurumAuthPlugin plugin, AuthService service) {
+    AuthAdminCommand(AurumAuthPlugin plugin, AuthService service, AuthGuardListener guard) {
         this.plugin = plugin;
         this.service = service;
+        this.guard = guard;
     }
 
     @Override
@@ -59,7 +79,7 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (sub.equals("reload")) {
             if (!allowed(sender, "aurumauth.admin.reload")) return true;
             plugin.reloadMessages();
-            sender.sendMessage(AurumAuthPlugin.prefixed("Тексты сообщений перечитаны"));
+            sender.sendMessage(AurumAuthPlugin.prefixed("Тексты сообщений и подсказок перечитаны"));
             return true;
         }
 
@@ -74,6 +94,9 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
             case "info" -> info(sender, name);
             case "unlock" -> unlock(sender, name);
             case "logout" -> logout(sender, name);
+            case "history" -> history(sender, name, args.length > 2 ? args[2] : "24h");
+            case "unregister" -> unregister(sender, name, args.length > 2 && args[2].equalsIgnoreCase("confirm"));
+            case "2fa-off" -> disableTotp(sender, name);
             default -> usage(sender);
         }
         return true;
@@ -122,6 +145,9 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
                         + (account.lastIp() == null ? "нет данных" : account.lastIp())));
             }
 
+            sender.sendMessage(Component.text("  Двухфакторка: "
+                    + (account.hasTotp() ? "включена" : "выключена")));
+
             Optional<AuthStatus> status = onlineStatus(account.username());
             sender.sendMessage(Component.text("  Сейчас: "
                     + status.map(Enum::name).orElse("не в сети")));
@@ -143,9 +169,116 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         }
         boolean changed = service.forceLogout(player.getUniqueId());
         player.sendMessage(AurumAuthPlugin.prefixed("Вход сброшен администратором: /login <пароль>"));
+        // Возвращаем игрока в то же положение, что и сразу после захода:
+        // подсказка на экране, отсчёт до кика, только команды входа.
+        guard.onDeauthenticated(player);
         sender.sendMessage(AurumAuthPlugin.prefixed(changed
                 ? "Игрок «" + name + "» разавторизован, сессия погашена"
                 : "Игрок «" + name + "» и так не был авторизован; сессия погашена"));
+    }
+
+    /**
+     * История входов за период.
+     *
+     * Показываются и неудачные попытки: серия отказов перед успешным входом —
+     * это и есть картина «пароль подбирали, и подобрали». Одни успехи такой
+     * картины не дают.
+     */
+    private void history(CommandSender sender, String name, String periodKey) {
+        if (!allowed(sender, "aurumauth.admin.history")) return;
+        Duration period = PERIODS.get(periodKey.toLowerCase(Locale.ROOT));
+        if (period == null) {
+            sender.sendMessage(AurumAuthPlugin.prefixed(
+                    "Период: " + String.join(", ", PERIODS.keySet().stream().sorted().toList())));
+            return;
+        }
+
+        service.loginHistory(name, period, HISTORY_LIMIT).thenAccept(records -> back(() -> {
+            if (records.isEmpty()) {
+                sender.sendMessage(AurumAuthPlugin.prefixed(
+                        "За " + periodKey + " входов игрока «" + name + "» не было"));
+                return;
+            }
+            sender.sendMessage(AurumAuthPlugin.prefixed(
+                    "Входы «" + name + "» за " + periodKey + " (" + records.size() + "):"));
+            boolean showIp = sender.hasPermission("aurumauth.admin.info.ip");
+            for (LoginRecord record : records) {
+                sender.sendMessage(Component.text("  " + TIME.format(record.at())
+                        + "  " + describe(record.result())
+                        // Адрес — сведения о человеке, и он под тем же
+                        // отдельным правом, что и в /auth info.
+                        + (showIp && record.ip() != null ? "  " + record.ip() : "")
+                        + (record.serverId() == null ? "" : "  [" + record.serverId() + "]")));
+            }
+            if (records.size() == HISTORY_LIMIT) {
+                sender.sendMessage(AurumAuthPlugin.prefixed(
+                        "Показаны последние " + HISTORY_LIMIT + " — возьмите период поменьше"));
+            }
+        }));
+    }
+
+    private static final java.time.format.DateTimeFormatter TIME =
+            java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm:ss")
+                    .withZone(java.time.ZoneId.systemDefault());
+
+    /** По-русски и коротко: список читают глазами в чате. */
+    private static String describe(LoginRecord.Result result) {
+        return switch (result) {
+            case SUCCESS -> "вошёл";
+            case WRONG_PASSWORD -> "неверный пароль";
+            case WRONG_CODE -> "неверный код 2FA";
+            case SESSION -> "по сессии";
+            case BYPASS -> "без пароля";
+            case RESET -> "сброс пароля";
+        };
+    }
+
+    /**
+     * Снять регистрацию.
+     *
+     * Требует слова confirm. Действие необратимое, а ник после него
+     * освобождается — и занять его сможет уже кто угодно; об этом сказано
+     * прямо, потому что как наказание это работает не так, как ожидается.
+     */
+    private void unregister(CommandSender sender, String name, boolean confirmed) {
+        if (!allowed(sender, "aurumauth.admin.unregister")) return;
+        if (!confirmed) {
+            sender.sendMessage(AurumAuthPlugin.prefixed(
+                    "Аккаунт «" + name + "» будет удалён без возможности восстановления."));
+            sender.sendMessage(AurumAuthPlugin.prefixed(
+                    "Ник при этом освободится: зарегистрировать его сможет любой. "
+                            + "Если нужно закрыть ник — забаньте отдельно."));
+            sender.sendMessage(AurumAuthPlugin.prefixed(
+                    "Подтвердите: /auth unregister " + name + " confirm"));
+            return;
+        }
+
+        service.unregisterByAdmin(name).thenAccept(removed -> back(() -> {
+            if (!removed) {
+                sender.sendMessage(AurumAuthPlugin.prefixed("Аккаунт «" + name + "» не найден"));
+                return;
+            }
+            sender.sendMessage(AurumAuthPlugin.prefixed("Регистрация «" + name + "» снята"));
+            Player player = Bukkit.getPlayerExact(name);
+            if (player != null) {
+                player.kick(Component.text("Ваша регистрация снята администратором"));
+            }
+        }));
+    }
+
+    /**
+     * Выключить двухфакторку игроку.
+     *
+     * Нужно, когда телефон потерян: без этого аккаунт становится недоступен
+     * навсегда. Это обход второго фактора, пусть и законный, поэтому право
+     * отдельное, а сам факт пишется в лог сервера.
+     */
+    private void disableTotp(CommandSender sender, String name) {
+        if (!allowed(sender, "aurumauth.admin.2fa")) return;
+        service.disableTotpByAdmin(name).thenAccept(done -> back(() -> sender.sendMessage(
+                AurumAuthPlugin.prefixed(done
+                        ? "Двухфакторка «" + name + "» выключена"
+                        : "У «" + name + "» двухфакторка не включена или аккаунта нет"))));
     }
 
     private Optional<AuthStatus> onlineStatus(String username) {
@@ -166,7 +299,8 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
     }
 
     private void usage(CommandSender sender) {
-        sender.sendMessage(AurumAuthPlugin.prefixed("/auth reset|info|unlock|logout <ник> | /auth reload"));
+        sender.sendMessage(AurumAuthPlugin.prefixed(
+                "/auth reset|info|unlock|logout|history|unregister|2fa-off <ник> | /auth reload"));
     }
 
     @Override
@@ -174,6 +308,13 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
             return SUBCOMMANDS.stream().filter(s -> s.startsWith(prefix)).toList();
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("history")) {
+            String prefix = args[2].toLowerCase(Locale.ROOT);
+            return PERIODS.keySet().stream().sorted().filter(p -> p.startsWith(prefix)).toList();
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("unregister")) {
+            return List.of("confirm");
         }
         if (args.length == 2 && !args[0].equalsIgnoreCase("reload")) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
