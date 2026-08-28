@@ -24,6 +24,7 @@ import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
+import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
@@ -50,6 +51,7 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  *   POST /players/{uuid}/balance/withdraw
  *   GET  /economy?top=...
  *   POST /webtoken/{code}
+ *   POST /auth/reset/{name}
  */
 public final class CompanionHttpServer {
 
@@ -159,6 +161,26 @@ public final class CompanionHttpServer {
             }
             respond(exchange, 200,
                     PayloadWriter.webToken(issued.get().playerUuid(), issued.get().username()));
+            return;
+        }
+
+        // POST /auth/reset/{name} — выдать игроку токен сброса пароля.
+        //
+        // Отдельная ветка /auth, а не /players/{uuid}/…: сброс нужен как раз
+        // тем, кто войти не может, и UUID у панели зачастую нет — есть ник.
+        if (parts.length == 3
+                && parts[0].equals("auth")
+                && parts[1].equals("reset")
+                && method.equals("POST")) {
+            Optional<PasswordReset> reset = bridge.issuePasswordReset(decode(parts[2]));
+            if (reset.isEmpty()) {
+                // Один ответ на «нет плагина авторизации» и «нет такого
+                // аккаунта»: различать их значит помогать перебирать ники.
+                respond(exchange, 404,
+                        PayloadWriter.error("Сбросить пароль не удалось", "reset-unavailable"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.passwordReset(reset.get()));
             return;
         }
 

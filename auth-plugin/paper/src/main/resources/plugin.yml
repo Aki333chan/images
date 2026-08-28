@@ -20,7 +20,9 @@ loadbefore: [AurumCompanion]
 
 # EssentialsX в softdepend НЕ ставится намеренно. Порядок загрузки на разведение
 # приоритетов не влияет — оно целиком в аннотациях @EventHandler, — а лишняя
-# зависимость только сделала бы старт плагина зависимым от чужого.
+# зависимость сделала бы старт этого плагина зависимым от чужого. Плагин
+# полностью работоспособен и без EssentialsX: свои сообщения о входе-выходе и
+# приветствие у него есть собственные (раздел messages в config.yml).
 
 commands:
   login:
@@ -31,3 +33,49 @@ commands:
     description: Зарегистрироваться
     usage: /register <пароль> <пароль ещё раз>
     aliases: [reg]
+  reset:
+    description: Сбросить пароль по токену от администратора
+    usage: /reset <токен> — затем /reset <пароль> <пароль ещё раз>
+  auth:
+    description: Администрирование авторизации
+    usage: /auth reset|info|unlock|logout <ник> | /auth reload
+    permission: aurumauth.admin
+
+permissions:
+  # Зонтичное право: у кого оно есть, тому доступны все подкоманды /auth.
+  aurumauth.admin:
+    description: Доступ к команде /auth
+    default: op
+    children:
+      aurumauth.admin.reset: true
+      aurumauth.admin.info: true
+      aurumauth.admin.unlock: true
+      aurumauth.admin.logout: true
+      aurumauth.admin.reload: true
+  aurumauth.admin.reset:
+    description: Выдавать токены сброса пароля
+    default: op
+  aurumauth.admin.info:
+    description: Смотреть сведения об аккаунте
+    default: op
+  aurumauth.admin.info.ip:
+    description: Видеть в /auth info адрес последнего входа
+    # НЕ входит в зонтичное aurumauth.admin намеренно: адрес игрока — сведения
+    # о человеке, а не о сервере, и выдавать их вместе с остальным
+    # администрированием не стоит. Право даётся отдельно и осознанно.
+    default: false
+  aurumauth.admin.unlock:
+    description: Снимать блокировку по неудачным попыткам входа
+    default: op
+  aurumauth.admin.logout:
+    description: Разавторизовывать игроков
+    default: op
+  aurumauth.admin.reload:
+    description: Перечитывать тексты сообщений
+    default: op
+  aurumauth.bypass:
+    description: Входить без пароля. ОПАСНО на offline-сервере — см. config.yml
+    # default: false и ни в каких children: это право нельзя получить случайно,
+    # вместе с чем-то ещё. Плюс оно ничего не делает, пока в конфиге не включён
+    # login.permission-bypass.
+    default: false

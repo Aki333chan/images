@@ -6,6 +6,7 @@ import java.util.concurrent.CompletableFuture;
 import ovh.aurumgg.auth.api.AurumAuthApi;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.api.PremiumVerdict;
+import ovh.aurumgg.auth.api.ResetToken;
 import ovh.aurumgg.auth.core.AuthService;
 
 /**
@@ -17,10 +18,16 @@ import ovh.aurumgg.auth.core.AuthService;
  * пришлось идти в MariaDB, мы бы своими руками вернули ровно ту проблему, от
  * которой ушли, отказавшись читать чужую таблицу.
  *
- * ЧЕГО ЗДЕСЬ НАМЕРЕННО НЕТ. Ни «залогинить игрока», ни «сменить пароль», ни
- * «выдать сессию». Права входа не должны раздаваться извне: чем меньше
+ * ЧЕГО ЗДЕСЬ НАМЕРЕННО НЕТ. Ни «залогинить игрока», ни «задать ему пароль»,
+ * ни «выдать сессию». Права входа не должны раздаваться извне: чем меньше
  * поверхность, тем меньше способов ошибиться в чужом плагине так, чтобы это
  * стоило пароля.
+ *
+ * Единственное исключение — issueResetToken. Он тоже привилегированный, но
+ * принципиально слабее: выдаёт не вход, а одноразовый ключ на двадцать минут,
+ * которым всё равно придётся воспользоваться самому игроку, зайдя под своим
+ * ником. Без него сброс пароля из панели был бы невозможен, а обходной путь
+ * (лезть в чужую базу) — ровно то, от чего мы уходили.
  */
 final class BukkitAuthApi implements AurumAuthApi {
 
@@ -51,5 +58,10 @@ final class BukkitAuthApi implements AurumAuthApi {
     @Override
     public Optional<PremiumVerdict> premiumVerdict(UUID playerUuid) {
         return service.premiumVerdict(playerUuid);
+    }
+
+    @Override
+    public CompletableFuture<Optional<ResetToken>> issueResetToken(String username) {
+        return service.issueResetToken(username);
     }
 }

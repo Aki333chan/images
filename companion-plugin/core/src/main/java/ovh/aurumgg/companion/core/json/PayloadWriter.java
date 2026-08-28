@@ -154,6 +154,15 @@ public final class PayloadWriter {
         return Json.object(fields);
     }
 
+    /** Токен сброса пароля: он же одноразовый ключ, поэтому в лог его не пишут. */
+    public static String passwordReset(ovh.aurumgg.companion.core.model.PasswordReset reset) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("username", Json.string(reset.username()));
+        fields.put("token", Json.string(reset.token()));
+        fields.put("expiresAt", String.valueOf(reset.expiresAtEpochMs()));
+        return Json.object(fields);
+    }
+
     public static String error(String message, String code) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("error", Json.string(message));

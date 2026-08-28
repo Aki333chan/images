@@ -2,9 +2,11 @@ package ovh.aurumgg.companion.paper;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import ovh.aurumgg.auth.api.AurumAuthApi;
+import ovh.aurumgg.auth.api.ResetToken;
 
 /**
  * Система авторизации — через её собственный API, а не через её базу.
@@ -59,5 +61,20 @@ final class AuthIntegration {
     /** Установлена ли система авторизации — для понятных сообщений и логов. */
     static boolean installed() {
         return provider().isPresent();
+    }
+
+    /**
+     * Выдать игроку токен сброса пароля.
+     *
+     * Вызывается из HTTP-обработчика, то есть уже вне главного потока, и
+     * возвращает future — сам плагин авторизации ходит за этим в MariaDB.
+     *
+     * Пусто, если AurumAuth не установлен: сбрасывать нечего, паролей у
+     * сервера просто нет.
+     */
+    static CompletableFuture<Optional<ResetToken>> issueResetToken(String username) {
+        return provider()
+                .map(api -> api.issueResetToken(username))
+                .orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()));
     }
 }

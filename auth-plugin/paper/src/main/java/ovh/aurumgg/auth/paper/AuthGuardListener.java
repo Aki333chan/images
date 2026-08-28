@@ -40,7 +40,19 @@ import ovh.aurumgg.auth.core.AuthService;
 final class AuthGuardListener implements Listener {
 
     /** Команды, доступные до входа. Всё остальное отклоняется. */
-    private static final Set<String> ALLOWED = Set.of("login", "l", "register", "reg");
+    private static final Set<String> ALLOWED = Set.of("login", "l", "register", "reg", "reset");
+
+    /**
+     * Право пропустить вход.
+     *
+     * ОПАСНАЯ НАСТРОЙКА НА OFFLINE-СЕРВЕРЕ, и поэтому она под двумя замками:
+     * само право (по умолчанию ни у кого) и переключатель в конфиге. Причина:
+     * в offline-mode UUID вычисляется из ника, значит зашедший под ником
+     * администратора получает и его UUID, и его права — включая это самое
+     * право обойти пароль. Осмысленна она в основном за прокси, где вход уже
+     * подтверждён по-настоящему.
+     */
+    private static final String BYPASS_PERMISSION = "aurumauth.bypass";
 
     private final AurumAuthPlugin plugin;
     private final AuthService service;
@@ -73,11 +85,26 @@ final class AuthGuardListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
+        // Байпас проверяется здесь, а не на pre-login: права в Bukkit
+        // привязаны к объекту Player, которого там ещё не существует.
+        if (config.permissionBypass()
+                && player.hasPermission(BYPASS_PERMISSION)
+                && service.authenticateByBypass(uuid)) {
+            // В лог обязательно: вход без пароля должен быть виден при
+            // разборе инцидента, а не только в чьей-то памяти.
+            plugin.getLogger().info("Игрок " + player.getName()
+                    + " пропущен без пароля по праву " + BYPASS_PERMISSION);
+            player.sendMessage(AurumAuthPlugin.prefixed("Вход без пароля по праву администратора"));
+            announce(uuid);
+            return;
+        }
+
         AuthStatus status = service.status(uuid).orElse(AuthStatus.AWAITING_LOGIN);
         if (status.isAuthenticated()) {
             if (status == AuthStatus.AUTHENTICATED_BY_SESSION) {
                 player.sendMessage(AurumAuthPlugin.prefixed("С возвращением, пароль не нужен"));
             }
+            announce(uuid);
             return;
         }
 
@@ -86,6 +113,19 @@ final class AuthGuardListener implements Listener {
                 : AurumAuthPlugin.prefixed("Войдите: /login <пароль>"));
 
         scheduleTimeout(player);
+    }
+
+    /**
+     * Показать сообщение о входе и приветствие тому, кто вошёл без команды —
+     * по сессии, через прокси или по байпасу.
+     *
+     * Следующим тиком, а не сразу: сейчас идёт PlayerJoinEvent, и слушатель
+     * сообщений (он на MONITOR, то есть позже нас) ещё не решил судьбу
+     * стандартного текста. Показать своё раньше него значило бы получить два
+     * сообщения о входе в неверном порядке.
+     */
+    private void announce(UUID uuid) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> plugin.releaseJoinMessage(uuid));
     }
 
     private void scheduleTimeout(Player player) {
@@ -167,7 +207,14 @@ final class AuthGuardListener implements Listener {
         if (ALLOWED.contains(command)) return;
 
         event.setCancelled(true);
-        event.getPlayer().sendMessage(AurumAuthPlugin.prefixed("Сначала войдите: /login <пароль>"));
+        // Подсказка по состоянию: тому, кто уже ввёл токен, «войдите» ничего
+        // не объясняет — ему нужен новый пароль.
+        boolean settingPassword = service.status(event.getPlayer().getUniqueId())
+                .filter(s -> s == AuthStatus.AWAITING_NEW_PASSWORD)
+                .isPresent();
+        event.getPlayer().sendMessage(AurumAuthPlugin.prefixed(settingPassword
+                ? "Сначала задайте новый пароль: /reset <пароль> <пароль ещё раз>"
+                : "Сначала войдите: /login <пароль>"));
     }
 
     @EventHandler(priority = EventPriority.LOWEST)

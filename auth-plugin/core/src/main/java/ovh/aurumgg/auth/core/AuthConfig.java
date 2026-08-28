@@ -28,12 +28,16 @@ public record AuthConfig(
         Duration lockout,
         Duration attemptDelay,
         int bcryptCost,
+        Duration resetTokenTtl,
         boolean premiumEnabled,
         boolean premiumSkipPassword,
         String premiumEndpoint,
         Duration premiumTimeout,
         Duration premiumCacheTtl,
-        JoinMessageMode joinMessageMode) {
+        JoinMessageMode joinMessageMode,
+        /** Разрешить право aurumauth.bypass пропускать вход. См. предупреждение в config.yml. */
+        boolean permissionBypass,
+        MessageSettings messages) {
 
     /** Что делать с сообщениями о входе и выходе, пока игрок не авторизован. */
     public enum JoinMessageMode {
@@ -78,13 +82,19 @@ public record AuthConfig(
                 // ядре; выше 14 вход начинает ощущаться даже асинхронно, ниже
                 // 10 нет смысла брать bcrypt вообще.
                 clamp(integer(raw, "login.bcrypt-cost", 12), 10, 14),
+                // Срок жизни токена сброса. Двадцать минут — столько, чтобы
+                // человек успел зайти на сервер, и не столько, чтобы забытый
+                // в переписке токен работал завтра.
+                minutes(clamp(integer(raw, "login.reset-token-minutes", 20), 1, 24 * 60)),
 
                 bool(raw, "premium.enabled", true),
                 bool(raw, "premium.skip-password", true),
                 string(raw, "premium.endpoint", PremiumChecker.DEFAULT_ENDPOINT),
                 seconds(clamp(integer(raw, "premium.timeout-seconds", 5), 1, 20)),
                 minutes(clamp(integer(raw, "premium.cache-minutes", 60), 1, 24 * 60)),
-                JoinMessageMode.parse(raw.get("join-messages.mode")));
+                JoinMessageMode.parse(raw.get("join-messages.mode")),
+                bool(raw, "login.permission-bypass", false),
+                MessageSettings.fromMap(raw));
     }
 
     /** Имя таблицы по умолчанию — оно же запасное при негодном значении. */

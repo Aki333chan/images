@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -22,6 +23,7 @@ import {
   type MinecraftPermissionsDto,
   type MinecraftPluginsDto,
   type MinecraftInventoryStatusDto,
+  type MinecraftPasswordResetDto,
 } from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../../auth/decorators';
 import { AuditRedactBody } from '../../audit/audit.decorators';
@@ -279,6 +281,33 @@ export class MinecraftController {
    * Экономика сервера целиком. refresh=1 — пересчитать, минуя кэш; обычное
    * открытие страницы кэш не сбрасывает, иначе смысл кэша теряется.
    */
+  /**
+   * Сброс пароля игрока: выдать одноразовый токен.
+   *
+   * Токен возвращается один раз и живёт двадцать минут. В журнал он не
+   * попадает: аудит записывает адрес запроса и тело (там только ник), а тела
+   * ответа не хранит — что и нужно, потому что токен это временный ключ к
+   * чужому аккаунту.
+   */
+  @Post('players/:name/password-reset')
+  @RequirePermission(MINECRAFT_PERMISSIONS.passwordReset)
+  @ServerScoped('serverId')
+  async resetPassword(
+    @Param('serverId') serverId: string,
+    @Param('name') name: string,
+  ): Promise<MinecraftPasswordResetDto> {
+    const reset = await this.companion.resetPassword(serverId, name);
+    if (!reset) {
+      // 409, а не 404: запрос корректен, отказало состояние сервера — нет
+      // плагина авторизации либо нет такого аккаунта. Различать эти случаи
+      // в ответе не станем: это подсказка тому, кто перебирает ники.
+      throw new ConflictException(
+        'Сбросить пароль не удалось: проверьте, что на сервере установлен AurumAuth и такой игрок зарегистрирован',
+      );
+    }
+    return reset;
+  }
+
   @Get('economy')
   @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
   @ServerScoped('serverId')

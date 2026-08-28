@@ -16,6 +16,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.api.PremiumVerdict;
+import ovh.aurumgg.auth.api.ResetToken;
 
 /**
  * Вся работа с аккаунтами: регистрация, вход, состояние игроков в сети.
@@ -107,7 +108,7 @@ public final class AuthService implements AutoCloseable {
             status = AuthStatus.AWAITING_LOGIN;
         }
 
-        online.put(uuid, new PlayerState(username, ip, status, premium));
+        online.put(uuid, new PlayerState(username, ip, status, premium, false));
         if (status.isAuthenticated()) {
             markLoggedIn(uuid, username, ip);
         }
@@ -226,7 +227,7 @@ public final class AuthService implements AutoCloseable {
                 repository.touchLogin(uuid, now, ip);
                 sessions.remember(uuid, ip, now);
                 throttle.recordSuccess(username);
-                setStatus(uuid, AuthStatus.AUTHENTICATED);
+                setStatus(uuid, AuthStatus.AUTHENTICATED, true);
                 return AuthOutcome.ok("Регистрация завершена, вы вошли");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка регистрации игрока " + username, e);
@@ -234,6 +235,172 @@ public final class AuthService implements AutoCloseable {
             } finally {
                 java.util.Arrays.fill(password, '\0');
                 java.util.Arrays.fill(confirmation, '\0');
+            }
+        }, worker);
+    }
+
+    // -------------------------------------------------------- сброс пароля
+
+    /**
+     * Выдать токен сброса по нику.
+     *
+     * Вызывает администраторский инструмент — панель или команда /auth reset.
+     * Игрок при этом может быть не в сети: сброс на то и нужен, что войти он
+     * как раз не может.
+     *
+     * Токен возвращается в открытом виде РОВНО ЗДЕСЬ И ОДИН РАЗ; в базу
+     * уходит только его хеш.
+     */
+    public CompletableFuture<Optional<ResetToken>> issueResetToken(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<AuthAccount> account = repository.findByUsername(username);
+                if (account.isEmpty()) return Optional.empty();
+
+                Instant now = clock.get();
+                Instant expiresAt = now.plus(config.resetTokenTtl());
+                String token = ResetTokens.generate();
+                repository.createResetToken(
+                        account.get().uuid(), ResetTokens.hash(token), now, expiresAt);
+                // Сброс — повод снять блокировку по неудачным попыткам: иначе
+                // игрок с токеном упёрся бы в лимит, набранный тем, кто как
+                // раз и подбирал его пароль.
+                throttle.recordSuccess(account.get().username());
+                return Optional.of(new ResetToken(account.get().username(), token, expiresAt));
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Не удалось выдать токен сброса для " + username, e);
+                return Optional.empty();
+            }
+        }, worker);
+    }
+
+    /**
+     * Первая ступень сброса: игрок вводит токен.
+     *
+     * Успех НЕ пускает в игру — он лишь переводит игрока в состояние «ждём
+     * новый пароль». Пускать здесь значило бы сделать токен полноценным
+     * входом, а он одноразовый ключ к смене пароля, и не более.
+     */
+    public CompletableFuture<AuthOutcome> redeemResetToken(UUID uuid, String token) {
+        PlayerState state = online.get(uuid);
+        if (state == null) return CompletableFuture.completedFuture(AuthOutcome.error());
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<UUID> owner =
+                        repository.consumeResetToken(ResetTokens.hash(token), clock.get());
+                // Токен привязан к аккаунту: выданный для Стива не сработает
+                // у того, кто зашёл под другим ником.
+                if (owner.isEmpty() || !owner.get().equals(uuid)) {
+                    return AuthOutcome.resetTokenInvalid();
+                }
+                setStatus(uuid, AuthStatus.AWAITING_NEW_PASSWORD);
+                return AuthOutcome.resetReady();
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка проверки токена сброса", e);
+                return AuthOutcome.error();
+            }
+        }, worker);
+    }
+
+    /**
+     * Вторая ступень: новый пароль.
+     *
+     * Работает только из состояния AWAITING_NEW_PASSWORD — то есть лишь после
+     * принятого токена. Проверка обязательна: без неё команда стала бы
+     * способом сменить пароль любому, кто просто зашёл под чужим ником.
+     */
+    public CompletableFuture<AuthOutcome> setNewPassword(
+            UUID uuid, char[] password, char[] confirmation, String ip) {
+        PlayerState state = online.get(uuid);
+        if (state == null || state.status != AuthStatus.AWAITING_NEW_PASSWORD) {
+            java.util.Arrays.fill(password, '\0');
+            java.util.Arrays.fill(confirmation, '\0');
+            return CompletableFuture.completedFuture(AuthOutcome.resetTokenInvalid());
+        }
+        String username = state.username;
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (!java.util.Arrays.equals(password, confirmation)) return AuthOutcome.mismatch();
+                String problem = config.validatePassword(new String(password));
+                if (problem != null) return AuthOutcome.badPassword(problem);
+
+                Instant now = clock.get();
+                repository.updatePasswordHash(uuid, hasher.hash(password.clone()));
+                repository.touchLogin(uuid, now, ip);
+                sessions.remember(uuid, ip, now);
+                throttle.recordSuccess(username);
+                setStatus(uuid, AuthStatus.AUTHENTICATED);
+                return AuthOutcome.ok("Пароль изменён, вы вошли");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка смены пароля игрока " + username, e);
+                return AuthOutcome.error();
+            } finally {
+                java.util.Arrays.fill(password, '\0');
+                java.util.Arrays.fill(confirmation, '\0');
+            }
+        }, worker);
+    }
+
+    /**
+     * Пропустить вход по праву aurumauth.bypass.
+     *
+     * Проверить право можно только когда игрок уже в мире: права в Bukkit
+     * привязаны к объекту Player, которого на стадии pre-login ещё нет.
+     * Поэтому решение принимается здесь, а не в onPreLogin.
+     *
+     * @return false, если байпас не потребовался (игрок и так вошёл)
+     */
+    public boolean authenticateByBypass(UUID uuid) {
+        PlayerState state = online.get(uuid);
+        if (state == null || state.status.isAuthenticated()) return false;
+        setStatus(uuid, AuthStatus.AUTHENTICATED_BY_BYPASS);
+        // Сессию по байпасу НЕ запоминаем: право может быть снято, и тогда
+        // сохранённая сессия ещё пятнадцать минут пускала бы без пароля.
+        return true;
+    }
+
+    /** Только что зарегистрировался в этой сессии — для приветствия новичка. */
+    public boolean isFreshRegistration(UUID uuid) {
+        PlayerState state = online.get(uuid);
+        return state != null && state.freshRegistration;
+    }
+
+    // ------------------------------------------------- администрирование
+
+    /**
+     * Снять блокировку по неудачным попыткам.
+     *
+     * Нужна, когда игрока закрыли чужим перебором: ждать пять минут, объясняя
+     * это в чате, — не лучший способ провести вечер.
+     */
+    public void unlock(String username) {
+        throttle.recordSuccess(username);
+    }
+
+    /**
+     * Разавторизовать игрока в сети и погасить его сессию.
+     *
+     * Для случая «аккаунт увели»: пароль сменят потом, а перестать пускать
+     * нужно прямо сейчас.
+     */
+    public boolean forceLogout(UUID uuid) {
+        sessions.forget(uuid);
+        PlayerState state = online.get(uuid);
+        if (state == null || !state.status.isAuthenticated()) return false;
+        setStatus(uuid, AuthStatus.AWAITING_LOGIN);
+        return true;
+    }
+
+    /** Сведения об аккаунте для команды /auth info. Блокирующий — из своего пула. */
+    public CompletableFuture<Optional<AuthAccount>> lookup(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return repository.findByUsername(username);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Не удалось прочитать аккаунт " + username, e);
+                return Optional.<AuthAccount>empty();
             }
         }, worker);
     }
@@ -250,16 +417,30 @@ public final class AuthService implements AutoCloseable {
         }, worker);
     }
 
-    /** Периодическая уборка протухших сессий и записей троттлинга. */
+    /** Периодическая уборка протухших сессий, записей троттлинга и токенов. */
     public void purge() {
         Instant now = clock.get();
         sessions.purgeExpired(now);
         throttle.purgeExpired(now);
+        try {
+            repository.purgeResetTokens(now);
+        } catch (Exception e) {
+            // Уборка — дело фоновое: не вышло сейчас, выйдет через пять минут.
+            logger.log(Level.WARNING, "Не удалось убрать истёкшие токены сброса", e);
+        }
     }
 
     private void setStatus(UUID uuid, AuthStatus status) {
-        online.computeIfPresent(uuid, (k, state) ->
-                new PlayerState(state.username, state.ip, status, state.premium));
+        setStatus(uuid, status, false);
+    }
+
+    private void setStatus(UUID uuid, AuthStatus status, boolean freshRegistration) {
+        online.computeIfPresent(uuid, (k, state) -> new PlayerState(
+                state.username,
+                state.ip,
+                status,
+                state.premium,
+                freshRegistration || state.freshRegistration));
     }
 
     private void markLoggedIn(UUID uuid, String username, String ip) {
@@ -292,5 +473,10 @@ public final class AuthService implements AutoCloseable {
     }
 
     /** Неизменяемый снимок состояния игрока в сети. */
-    private record PlayerState(String username, String ip, AuthStatus status, PremiumVerdict premium) {}
+    private record PlayerState(
+            String username,
+            String ip,
+            AuthStatus status,
+            PremiumVerdict premium,
+            boolean freshRegistration) {}
 }

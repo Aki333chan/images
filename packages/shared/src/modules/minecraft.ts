@@ -224,6 +224,14 @@ export const KNOWN_PLUGINS = [
     displayName: 'Vault',
     gives: 'блок «Валюта» у игрока и баланс сервера: начисления и списания через Economy-провайдер',
   },
+  {
+    // Наш собственный плагин авторизации. Панель обращается к нему не
+    // напрямую, а через companion: тот спрашивает у AurumAuth по его
+    // публичному API и отдаёт результат сюда.
+    id: 'AurumAuth',
+    displayName: 'AurumAuth',
+    gives: 'кнопка «Сбросить пароль» в карточке игрока: одноразовый токен на 20 минут',
+  },
 ] as const;
 
 export type KnownPluginId = (typeof KNOWN_PLUGINS)[number]['id'];
@@ -242,7 +250,28 @@ export const MINECRAFT_PERMISSIONS = {
   permissionsEdit: 'minecraft.permissions.edit',
   economyView: 'minecraft.economy.view',
   economyEdit: 'minecraft.economy.edit',
+  /**
+   * Сброс пароля игрока.
+   *
+   * Отдельным правом, а не под кик/бан: выданный токен на двадцать минут даёт
+   * доступ к чужому аккаунту, и это заметно весомее, чем выгнать с сервера.
+   */
+  passwordReset: 'minecraft.password.reset',
 } as const;
+
+/**
+ * Выданный токен сброса пароля.
+ *
+ * Показывается администратору ровно один раз — сервер его не хранит в
+ * открытом виде и повторить не сможет. Потерянный токен не восстанавливается,
+ * выдаётся новый.
+ */
+export interface MinecraftPasswordResetDto {
+  username: string;
+  token: string;
+  /** ISO-время, после которого токен перестаёт действовать. */
+  expiresAt: string;
+}
 
 /**
  * Производительность игрового сервера: TPS и время тика.

@@ -64,6 +64,36 @@ final class FakeAuthRepository implements AuthRepository {
                 existing.email(), existing.registeredAt(), existing.lastLoginAt(), existing.lastIp()));
     }
 
+    // ---------------------------------------------------------- токены сброса
+
+    private record Reset(UUID uuid, Instant expiresAt, boolean used) {}
+
+    private final Map<String, Reset> resets = new ConcurrentHashMap<>();
+
+    @Override
+    public void createResetToken(UUID uuid, String tokenHash, Instant issuedAt, Instant expiresAt)
+            throws Exception {
+        record();
+        resets.values().removeIf(r -> r.uuid().equals(uuid));
+        resets.put(tokenHash, new Reset(uuid, expiresAt, false));
+    }
+
+    @Override
+    public Optional<UUID> consumeResetToken(String tokenHash, Instant now) throws Exception {
+        record();
+        Reset reset = resets.get(tokenHash);
+        if (reset == null || reset.used() || !now.isBefore(reset.expiresAt())) return Optional.empty();
+        resets.put(tokenHash, new Reset(reset.uuid(), reset.expiresAt(), true));
+        return Optional.of(reset.uuid());
+    }
+
+    @Override
+    public int purgeResetTokens(Instant now) throws Exception {
+        int before = resets.size();
+        resets.values().removeIf(r -> r.used() || !now.isBefore(r.expiresAt()));
+        return before - resets.size();
+    }
+
     Optional<AuthAccount> peek(UUID uuid) {
         return Optional.ofNullable(byUuid.get(uuid));
     }
