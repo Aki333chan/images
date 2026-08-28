@@ -29,6 +29,8 @@ public final class MariaDbAuthRepository implements AuthRepository {
 
     private final HikariDataSource dataSource;
     private final String table;
+    /** Таблица токенов сброса — производная от основной, отдельной настройки не нужно. */
+    private final String resetTable;
 
     public MariaDbAuthRepository(AuthConfig config) {
         HikariConfig hikari = new HikariConfig();
@@ -47,6 +49,7 @@ public final class MariaDbAuthRepository implements AuthRepository {
         hikari.setMaxLifetime(15 * 60_000L);
         this.dataSource = new HikariDataSource(hikari);
         this.table = config.tableName();
+        this.resetTable = config.tableName() + "_resets";
     }
 
     /**
@@ -78,9 +81,100 @@ public final class MariaDbAuthRepository implements AuthRepository {
                   UNIQUE KEY uk_username (username)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
                 """.formatted(table);
+        // Токены сброса отдельной таблицей, а не колонками в аккаунте: у
+        // аккаунта может не быть ни одного токена месяцами, а колонки под него
+        // были бы в каждой строке. Плюс отдельная таблица чистится целиком,
+        // не трогая аккаунты.
+        //
+        // token_hash уникален и проиндексирован — по нему идёт поиск. Самого
+        // токена здесь нет нигде: см. пояснение в ResetTokens.
+        String resetDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  token_hash  CHAR(64)  NOT NULL PRIMARY KEY,
+                  uuid        CHAR(36)  NOT NULL,
+                  issued_at   TIMESTAMP NOT NULL,
+                  expires_at  TIMESTAMP NOT NULL,
+                  used_at     TIMESTAMP NULL,
+                  KEY idx_uuid (uuid),
+                  KEY idx_expires (expires_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(resetTable);
+
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate(ddl);
+            statement.executeUpdate(resetDdl);
+        }
+    }
+
+    // ---------------------------------------------------------- сброс пароля
+
+    @Override
+    public void createResetToken(UUID uuid, String tokenHash, Instant issuedAt, Instant expiresAt)
+            throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            // Прежние токены этого игрока гасим в той же транзакции: иначе
+            // между удалением и вставкой существовал бы момент, когда у
+            // игрока нет ни одного токена, а при сбое — момент, когда старый
+            // остался живым рядом с новым.
+            connection.setAutoCommit(false);
+            try (PreparedStatement drop = connection.prepareStatement(
+                            "DELETE FROM " + resetTable + " WHERE uuid = ?");
+                    PreparedStatement insert = connection.prepareStatement(
+                            "INSERT INTO " + resetTable
+                                    + " (token_hash, uuid, issued_at, expires_at) VALUES (?, ?, ?, ?)")) {
+                drop.setString(1, uuid.toString());
+                drop.executeUpdate();
+                insert.setString(1, tokenHash);
+                insert.setString(2, uuid.toString());
+                insert.setTimestamp(3, Timestamp.from(issuedAt));
+                insert.setTimestamp(4, Timestamp.from(expiresAt));
+                insert.executeUpdate();
+                connection.commit();
+            } catch (Exception e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    /**
+     * Гашение токена.
+     *
+     * Атомарность даёт сам UPDATE: снять used_at с NULL может ровно один
+     * запрос, остальные увидят 0 изменённых строк. Поэтому последующий SELECT
+     * безопасен — строка уже наша, и никто другой её не заберёт.
+     */
+    @Override
+    public Optional<UUID> consumeResetToken(String tokenHash, Instant now) throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            try (PreparedStatement claim = connection.prepareStatement(
+                    "UPDATE " + resetTable + " SET used_at = ? "
+                            + "WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")) {
+                claim.setTimestamp(1, Timestamp.from(now));
+                claim.setString(2, tokenHash);
+                claim.setTimestamp(3, Timestamp.from(now));
+                if (claim.executeUpdate() == 0) return Optional.empty();
+            }
+            try (PreparedStatement owner = connection.prepareStatement(
+                    "SELECT uuid FROM " + resetTable + " WHERE token_hash = ?")) {
+                owner.setString(1, tokenHash);
+                try (ResultSet rs = owner.executeQuery()) {
+                    return rs.next() ? Optional.of(UUID.fromString(rs.getString("uuid"))) : Optional.empty();
+                }
+            }
+        }
+    }
+
+    @Override
+    public int purgeResetTokens(Instant now) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM " + resetTable + " WHERE expires_at < ? OR used_at IS NOT NULL")) {
+            statement.setTimestamp(1, Timestamp.from(now));
+            return statement.executeUpdate();
         }
     }
 

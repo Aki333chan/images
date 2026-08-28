@@ -10,6 +10,7 @@ import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
+import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
@@ -60,6 +61,16 @@ public interface GameBridge {
 
     /** Все установленные плагины сервера: имя, версия, включён ли. */
     List<PluginInfo> installedPlugins();
+
+    /**
+     * Выдать игроку одноразовый токен сброса пароля.
+     *
+     * Пусто, если плагина авторизации нет или аккаунта с таким ником не
+     * существует. Различать эти два случая здесь не нужно: панель в обоих
+     * показывает «сбросить нечего», а подробности — повод для догадок тому,
+     * кто перебирает ники.
+     */
+    Optional<PasswordReset> issuePasswordReset(String username);
 
     /**
      * Горячее включение или выключение плагина без перезапуска сервера.

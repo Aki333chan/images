@@ -14,6 +14,7 @@ import ovh.aurumgg.auth.core.AuthService;
 import ovh.aurumgg.auth.core.DeferredMessages;
 import ovh.aurumgg.auth.core.LoginThrottle;
 import ovh.aurumgg.auth.core.MariaDbAuthRepository;
+import ovh.aurumgg.auth.core.MessageSettings;
 import ovh.aurumgg.auth.core.PasswordHasher;
 import ovh.aurumgg.auth.core.SessionStore;
 import ovh.aurumgg.auth.core.premium.PremiumChecker;
@@ -87,13 +88,19 @@ public final class AurumAuthPlugin extends JavaPlugin {
         // никуда не пускает. Поэтому не «пропускаем», а выключаемся.
         var login = getCommand("login");
         var register = getCommand("register");
-        if (login == null || register == null) {
-            getLogger().severe("Команды login/register не объявлены в plugin.yml");
+        var reset = getCommand("reset");
+        var admin = getCommand("auth");
+        if (login == null || register == null || reset == null || admin == null) {
+            getLogger().severe("Команды login/register/reset/auth не объявлены в plugin.yml");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
         login.setExecutor(new LoginCommand(this, service, guard));
         register.setExecutor(new RegisterCommand(this, service, guard));
+        reset.setExecutor(new ResetCommand(this, service, guard));
+        AuthAdminCommand adminCommand = new AuthAdminCommand(this, service);
+        admin.setExecutor(adminCommand);
+        admin.setTabCompleter(adminCommand);
 
         // Регистрация сервиса — то, ради чего companion больше не лазит в БД.
         // ServicePriority.Normal: провайдер у этого интерфейса один, но если
@@ -132,13 +139,28 @@ public final class AurumAuthPlugin extends JavaPlugin {
     }
 
     /**
-     * Показать сообщение о входе, придержанное до авторизации.
+     * Показать сообщение о входе, придержанное до авторизации, и приветствие.
      *
      * Только с главного потока — зовётся из обработчиков команд после того,
-     * как они туда вернулись.
+     * как они туда вернулись, и из слушателя входа следующим тиком.
      */
     void releaseJoinMessage(java.util.UUID uuid) {
         if (joinMessages != null) joinMessages.releaseJoinMessage(uuid);
+    }
+
+    /**
+     * Перечитать тексты сообщений с диска (/auth reload).
+     *
+     * Перечитываются ТОЛЬКО тексты, и это не полумера. Остальное — адрес базы,
+     * размер пула, стоимость bcrypt — нельзя поменять на живом сервере, не
+     * пересоздав пул соединений и не оставив на это время вход неработающим.
+     * А правят в конфиге чаще всего как раз тексты.
+     */
+    void reloadMessages() {
+        reloadConfig();
+        MessageSettings updated = MessageSettings.fromMap(getConfig().getValues(true));
+        if (joinMessages != null) joinMessages.updateMessages(updated);
+        getLogger().info("Тексты сообщений перечитаны");
     }
 
     /** Тик-эквивалент длительности: планировщик Bukkit меряет время только тиками. */

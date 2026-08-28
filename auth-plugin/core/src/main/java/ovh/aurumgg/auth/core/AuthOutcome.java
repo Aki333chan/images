@@ -28,6 +28,10 @@ public record AuthOutcome(Kind kind, String message) {
         BAD_PASSWORD,
         /** Пароль и подтверждение не совпали. */
         MISMATCH,
+        /** Токен сброса не подошёл: не тот, использован или истёк. */
+        RESET_TOKEN_INVALID,
+        /** Токен принят — ждём новый пароль. */
+        RESET_READY,
         /** База недоступна или ответила ошибкой. */
         ERROR;
 
@@ -76,6 +80,17 @@ public record AuthOutcome(Kind kind, String message) {
 
     static AuthOutcome mismatch() {
         return new AuthOutcome(Kind.MISMATCH, "Пароли не совпадают");
+    }
+
+    static AuthOutcome resetTokenInvalid() {
+        // Один и тот же текст на «не существует», «уже использован» и «истёк»:
+        // по разнице между ними подбор восьми символов стал бы осмысленнее.
+        return new AuthOutcome(Kind.RESET_TOKEN_INVALID, "Токен не подошёл или истёк");
+    }
+
+    static AuthOutcome resetReady() {
+        return new AuthOutcome(Kind.RESET_READY,
+                "Токен принят. Придумайте новый пароль: /reset <пароль> <пароль ещё раз>");
     }
 
     static AuthOutcome error() {

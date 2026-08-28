@@ -25,6 +25,7 @@ import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
+import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
@@ -302,5 +303,30 @@ public final class BukkitGameBridge implements GameBridge {
     public Optional<EconomySummary> economySummary(int topLimit) {
         return callSync(
                 () -> VaultEconomyIntegration.summary(topLimit), Optional.empty(), ECONOMY_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * Токен сброса пароля — через публичный API AurumAuth.
+     *
+     * join() здесь допустим и безопасен: метод вызывается из потока
+     * HTTP-сервера companion, а не из главного, и сам поход в базу происходит
+     * внутри пула плагина авторизации. На всякий случай стоит таймаут: висеть
+     * в ожидании ответа от чужого плагина дольше нескольких секунд нам незачем.
+     */
+    @Override
+    public Optional<PasswordReset> issuePasswordReset(String username) {
+        try {
+            return AuthIntegration.issueResetToken(username)
+                    .get(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .map(token -> new PasswordReset(
+                            token.username(), token.token(), token.expiresAt().toEpochMilli()));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        } catch (Exception e) {
+            // Ни текста ошибки, ни тем более токена в лог: панель получит
+            // общий отказ, а подробности здесь ничего не добавляют.
+            return Optional.empty();
+        }
     }
 }

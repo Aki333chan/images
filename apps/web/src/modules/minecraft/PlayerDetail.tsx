@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MinecraftInventoryResponse,
+  MinecraftPasswordResetDto,
   MinecraftPlayerDto,
   MinecraftPluginsDto,
 } from '@aurum/shared';
@@ -19,12 +20,13 @@ const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/s
  * Что должно стоять на сервере, чтобы действие работало.
  * null — ванильная команда, есть всегда.
  */
-type Requirement = null | 'Essentials' | 'LuckPerms' | 'companion';
+type Requirement = null | 'Essentials' | 'LuckPerms' | 'companion' | 'AurumAuth';
 
 const REQUIREMENT_HINT: Record<Exclude<Requirement, null>, string> = {
   Essentials: 'нужен EssentialsX',
   LuckPerms: 'нужен LuckPerms',
   companion: 'нужен companion-плагин',
+  AurumAuth: 'нужен AurumAuth',
 };
 
 /** Кнопка действия, которая честно объясняет, почему она неактивна. */
@@ -368,6 +370,15 @@ function PlayerActions({
         </div>
       </div>
 
+      {hasPermission('minecraft.password.reset') && (
+        <PasswordReset
+          serverId={serverId}
+          moduleId={moduleId}
+          player={name}
+          installed={has('AurumAuth')}
+        />
+      )}
+
       {error && <ErrorText>{error}</ErrorText>}
       {result && <p className="whitespace-pre-wrap text-xs text-emerald-400">{result}</p>}
     </div>
@@ -442,6 +453,107 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Сброс пароля игрока (плагин AurumAuth).
+ *
+ * Токен показывается ОДИН РАЗ: сервер хранит только его хеш и повторить не
+ * сможет. Поэтому здесь есть кнопка «копировать» и явная подпись про срок —
+ * человек должен унести токен отсюда сразу, а не возвращаться за ним.
+ *
+ * Без установленного AurumAuth кнопка не прячется, а гаснет с подсказкой —
+ * как и остальные действия, зависящие от плагинов. Спрятанная кнопка не
+ * объясняет, чего не хватает.
+ */
+function PasswordReset({
+  serverId,
+  moduleId,
+  player,
+  installed,
+}: {
+  serverId: string;
+  moduleId: string;
+  player: string;
+  installed: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [issued, setIssued] = useState<MinecraftPasswordResetDto | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function issue() {
+    setBusy(true);
+    setError('');
+    setCopied(false);
+    try {
+      setIssued(
+        await api<MinecraftPasswordResetDto>(
+          `${base(moduleId, serverId)}/players/${encodeURIComponent(player)}/password-reset`,
+          { method: 'POST' },
+        ),
+      );
+    } catch (e) {
+      setIssued(null);
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const minutes = issued
+    ? Math.max(1, Math.round((new Date(issued.expiresAt).getTime() - Date.now()) / 60000))
+    : 0;
+
+  return (
+    <div className="space-y-2">
+      <Label>Пароль от входа на сервер</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        <ActionButton
+          label={busy ? 'Выдаём…' : issued ? 'Выдать новый токен' : 'Сбросить пароль'}
+          hint="Одноразовый токен для входа: игрок задаст новый пароль сам"
+          requirement="AurumAuth"
+          available={installed}
+          disabled={busy}
+          onClick={() => void issue()}
+        />
+        <span className="text-xs text-muted">
+          Игрок вводит токен в игре: <code>/reset &lt;токен&gt;</code>
+        </span>
+      </div>
+
+      {issued && (
+        <Card className="border-primary/40">
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="select-all break-all font-mono text-lg tracking-widest text-primary">
+              {issued.token}
+            </code>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                // clipboard может быть недоступен (не-HTTPS, отказ в правах) —
+                // токен всё равно виден и выделяется целиком по клику.
+                void navigator.clipboard
+                  ?.writeText(issued.token)
+                  .then(() => setCopied(true))
+                  .catch(() => undefined);
+              }}
+            >
+              {copied ? 'Скопировано' : 'Копировать'}
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            Действует {minutes} мин и сработает один раз. Показан только сейчас — сервер хранит
+            его хеш и повторить не сможет; если токен потерян, выдайте новый.
+          </p>
+        </Card>
+      )}
+
+      {error && <ErrorText>{error}</ErrorText>}
     </div>
   );
 }

@@ -1,8 +1,11 @@
 package ovh.aurumgg.auth.paper;
 
+import java.util.Map;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -11,6 +14,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import ovh.aurumgg.auth.core.AuthConfig;
 import ovh.aurumgg.auth.core.AuthService;
 import ovh.aurumgg.auth.core.DeferredMessages;
+import ovh.aurumgg.auth.core.MessageSettings;
 
 /**
  * Сообщения о входе и выходе: отложить, а не заглушить.
@@ -59,22 +63,48 @@ import ovh.aurumgg.auth.core.DeferredMessages;
  */
 final class JoinMessageListener implements Listener {
 
+    /**
+     * Цвета задаются кодами вида &amp;a — так их пишут в конфигах EssentialsX и
+     * почти всех остальных плагинов. MiniMessage (&lt;green&gt;) здесь НЕ
+     * разбирается намеренно: человек, который переносит текст из старого
+     * конфига, не должен обнаружить в чате «&amp;e» вместо жёлтого.
+     */
+    private static final LegacyComponentSerializer COLORS = LegacyComponentSerializer.legacyAmpersand();
+
     private final AuthService service;
     private final AuthConfig config;
     private final DeferredMessages<Component> joins;
+    /** Тексты берутся из ссылки, а не копией: /auth reload меняет их на живом сервере. */
+    private volatile MessageSettings messages;
 
     JoinMessageListener(
             AuthService service, AuthConfig config, DeferredMessages<Component> joins) {
         this.service = service;
         this.config = config;
         this.joins = joins;
+        this.messages = config.messages();
+    }
+
+    void updateMessages(MessageSettings updated) {
+        this.messages = updated;
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        MessageSettings texts = messages;
+
+        // Свои тексты включены — чужое сообщение гасим всегда, даже у
+        // вошедшего по сессии. Иначе он увидел бы и стандартное, и наше.
+        // Своё покажется из releaseJoinMessage, когда игрок действительно
+        // окажется в игре.
+        if (texts.joinEnabled()) {
+            event.joinMessage(null);
+            return;
+        }
+
         if (config.joinMessageMode() == AuthConfig.JoinMessageMode.IGNORE) return;
 
-        UUID uuid = event.getPlayer().getUniqueId();
         // Вошедшего по сессии или через прокси объявляем как обычно: он уже
         // в игре, откладывать нечего.
         if (service.isAuthenticated(uuid)) return;
@@ -109,19 +139,75 @@ final class JoinMessageListener implements Listener {
         boolean wasAuthenticated = service.onQuit(uuid);
         joins.drop(uuid);
 
-        if (config.joinMessageMode() == AuthConfig.JoinMessageMode.IGNORE) return;
-        if (wasAuthenticated) return;
-        event.quitMessage(null);
+        if (!wasAuthenticated) {
+            // Не вошедшего не объявляли — и о выходе объявлять нечего.
+            if (config.joinMessageMode() != AuthConfig.JoinMessageMode.IGNORE) {
+                event.quitMessage(null);
+            }
+            return;
+        }
+
+        // Вошедший: если включены свои тексты, показываем их вместо чужого.
+        if (customQuit(event.getPlayer())) event.quitMessage(null);
     }
 
     /**
-     * Показать придержанное сообщение — вызывается после успешного входа.
+     * Показать сообщение о входе и приветствие — после успешного входа.
      *
      * Только с главного потока: рассылка сообщения всем — операция сервера,
      * а не рабочего потока авторизации.
+     *
+     * Если включены свои тексты, они ЗАМЕНЯЮТ придержанное чужое: два
+     * сообщения о входе подряд — худший из возможных исходов. Именно поэтому
+     * свои тексты по умолчанию выключены (см. MessageSettings).
      */
     void releaseJoinMessage(UUID uuid) {
-        if (config.joinMessageMode() != AuthConfig.JoinMessageMode.DEFER) return;
-        joins.take(uuid).ifPresent(message -> Bukkit.getServer().sendMessage(message));
+        Player player = Bukkit.getPlayer(uuid);
+        MessageSettings texts = messages;
+
+        if (texts.joinEnabled()) {
+            joins.drop(uuid);
+            if (player != null) {
+                boolean fresh = service.isFreshRegistration(uuid);
+                String template = fresh ? texts.firstJoinText() : texts.joinText();
+                broadcast(template, player);
+            }
+        } else if (config.joinMessageMode() == AuthConfig.JoinMessageMode.DEFER) {
+            joins.take(uuid).ifPresent(message -> Bukkit.getServer().sendMessage(message));
+        }
+
+        if (texts.motdEnabled() && player != null) {
+            for (String line : texts.motdLines()) {
+                player.sendMessage(COLORS.deserialize(MessageSettings.apply(line, placeholders(player))));
+            }
+        }
+    }
+
+    /**
+     * Своё сообщение о выходе.
+     *
+     * Возвращает true, если сообщение мы взяли на себя, — тогда исходное
+     * событие гасится, чтобы не показать оба.
+     */
+    private boolean customQuit(Player player) {
+        MessageSettings texts = messages;
+        if (!texts.quitEnabled()) return false;
+        broadcast(texts.quitText(), player);
+        return true;
+    }
+
+    private void broadcast(String template, Player player) {
+        String text = MessageSettings.apply(template, placeholders(player));
+        // Пустой текст — это «сообщения не нужно»: осмысленный способ
+        // выключить одно сообщение, оставив остальные.
+        if (text.isBlank()) return;
+        Bukkit.getServer().sendMessage(COLORS.deserialize(text));
+    }
+
+    private static Map<String, String> placeholders(Player player) {
+        return Map.of(
+                "player", player.getName(),
+                "online", String.valueOf(Bukkit.getOnlinePlayers().size()),
+                "max", String.valueOf(Bukkit.getMaxPlayers()));
     }
 }

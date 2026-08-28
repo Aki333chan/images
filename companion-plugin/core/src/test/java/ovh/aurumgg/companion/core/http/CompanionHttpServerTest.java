@@ -651,4 +651,44 @@ class CompanionHttpServerTest {
         String code = webTokens.issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
         assertEquals(401, post("/webtoken/" + code, null, "").statusCode());
     }
+
+    // ------------------------------------------------------- сброс пароля
+
+    @Test
+    void сбросВозвращаетТокенИСрок() throws Exception {
+        bridge.resetToIssue = new ovh.aurumgg.companion.core.model.PasswordReset(
+                "Steve", "ABCD2345", 1_800_000_000_000L);
+
+        HttpResponse<String> response = post("/auth/reset/Steve", TOKEN, "");
+        assertEquals(200, response.statusCode());
+        Map<?, ?> body = (Map<?, ?>) JsonParser.parse(response.body());
+        assertEquals("Steve", body.get("username"));
+        assertEquals("ABCD2345", body.get("token"));
+        assertEquals(java.util.List.of("Steve"), bridge.resetRequests);
+    }
+
+    @Test
+    void сбросБезПлагинаАвторизацииОтвечаетПонятнымКодом() throws Exception {
+        bridge.resetToIssue = null;
+        HttpResponse<String> response = post("/auth/reset/Steve", TOKEN, "");
+        assertEquals(404, response.statusCode());
+        Map<?, ?> body = (Map<?, ?>) JsonParser.parse(response.body());
+        assertEquals("reset-unavailable", body.get("code"));
+    }
+
+    @Test
+    void несуществующийНикОтвечаетТемЖе404() throws Exception {
+        // Тот же ответ, что и «плагина нет»: различать их значит помогать
+        // перебирать ники.
+        bridge.resetToIssue = null;
+        assertEquals(404, post("/auth/reset/НетТакого", TOKEN, "").statusCode());
+    }
+
+    @Test
+    void сбросТребуетТокен() throws Exception {
+        bridge.resetToIssue = new ovh.aurumgg.companion.core.model.PasswordReset(
+                "Steve", "ABCD2345", 1_800_000_000_000L);
+        assertEquals(401, post("/auth/reset/Steve", null, "").statusCode());
+        assertTrue(bridge.resetRequests.isEmpty(), "без токена запрос не должен доходить до плагина");
+    }
 }

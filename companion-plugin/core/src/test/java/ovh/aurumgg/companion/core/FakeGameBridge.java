@@ -225,4 +225,16 @@ public final class FakeGameBridge implements GameBridge {
         if (entries.size() > topLimit) entries = new ArrayList<>(entries.subList(0, topLimit));
         return Optional.of(new EconomySummary(total, money(total), "монет", balances.size(), List.copyOf(entries)));
     }
+
+    // -------------------------------------------------------- сброс пароля
+
+    /** Что вернуть на запрос сброса. null — «нельзя», как без плагина авторизации. */
+    public ovh.aurumgg.companion.core.model.PasswordReset resetToIssue;
+    public final java.util.List<String> resetRequests = new java.util.ArrayList<>();
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.PasswordReset> issuePasswordReset(String username) {
+        resetRequests.add(username);
+        return Optional.ofNullable(resetToIssue);
+    }
 }

@@ -3,6 +3,7 @@ import { request } from 'undici';
 import type {
   MinecraftBalanceChangeDto,
   MinecraftBalanceDto,
+  MinecraftPasswordResetDto,
   MinecraftEconomyDto,
   MinecraftInventoryItemDto,
   MinecraftInventoryResponse,
@@ -370,6 +371,33 @@ export class CompanionService {
   }
 
   /**
+   * Сброс пароля игрока: выдать одноразовый токен.
+   *
+   * Токен возвращается РОВНО ОДИН РАЗ — плагин авторизации хранит только его
+   * хеш и повторить не сможет. Поэтому и не кэшируется здесь, и не пишется в
+   * журнал: журнал фиксирует сам факт сброса и кто его сделал, а сам токен
+   * ему знать незачем.
+   *
+   * null — сбросить нечего: нет companion, нет плагина авторизации или нет
+   * аккаунта с таким ником. Плагин намеренно не различает эти случаи в
+   * ответе, и панель их тоже не различает.
+   */
+  async resetPassword(serverId: string, username: string): Promise<MinecraftPasswordResetDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<RawPasswordReset>(
+      serverId,
+      `/auth/reset/${encodeURIComponent(username)}`,
+      { method: 'POST' },
+    );
+    if (!result.ok || !result.body.token) return null;
+    return {
+      username: result.body.username ?? username,
+      token: result.body.token,
+      expiresAt: new Date(numberOr(result.body.expiresAt, Date.now())).toISOString(),
+    };
+  }
+
+  /**
    * Экономика сервера целиком.
    *
    * Таймаут здесь заметно больше обычного: плагин обходит всех, кто когда-либо
@@ -480,6 +508,12 @@ interface RawBalance {
   balance?: number;
   formatted?: string | null;
   currency?: string | null;
+}
+
+interface RawPasswordReset {
+  username?: string;
+  token?: string;
+  expiresAt?: number;
 }
 
 interface RawBalanceChange {

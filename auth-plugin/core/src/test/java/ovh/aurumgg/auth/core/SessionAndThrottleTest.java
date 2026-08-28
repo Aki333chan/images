@@ -214,4 +214,70 @@ class SessionAndThrottleTest {
         assertEquals(null, config.validatePassword("достаточнодлинный"));
         assertTrue(config.validatePassword("корот").contains("короче"));
     }
+
+    // ---------------------------------------------------- свои тексты
+
+    @Test
+    void своиСообщенияВыключеныПоУмолчанию() {
+        // На сервере с EssentialsX этим занимается он, и два включённых
+        // плагина дали бы два сообщения о входе подряд.
+        MessageSettings messages = AuthConfig.fromMap(Map.of()).messages();
+        assertFalse(messages.joinEnabled());
+        assertFalse(messages.quitEnabled());
+        assertFalse(messages.motdEnabled());
+    }
+
+    @Test
+    void плейсхолдерыПодставляются() {
+        assertEquals("Стив зашёл, онлайн 3/20",
+                MessageSettings.apply("{player} зашёл, онлайн {online}/{max}",
+                        Map.of("player", "Стив", "online", "3", "max", "20")));
+    }
+
+    @Test
+    void никСФигурнымиСкобкамиНеЛомаетПодстановку() {
+        // Замена идёт одним проходом по шаблону. Последовательными replace ник
+        // вида «{online}» на следующем шаге превратился бы в число — мелочь,
+        // которая всплывает раз в год и выглядит как мистика.
+        assertEquals("{online} зашёл, онлайн 3",
+                MessageSettings.apply("{player} зашёл, онлайн {online}",
+                        Map.of("player", "{online}", "online", "3")));
+    }
+
+    @Test
+    void неизвестныйПлейсхолдерОстаётсяВидимым() {
+        // Так опечатку в конфиге видно сразу, а не «пропало слово».
+        assertEquals("Привет, {nickname}",
+                MessageSettings.apply("Привет, {nickname}", Map.of("player", "Стив")));
+    }
+
+    @Test
+    void незакрытаяСкобкаНеРоняетПлагин() {
+        assertEquals("Привет, {player", MessageSettings.apply("Привет, {player", Map.of("player", "Стив")));
+        assertEquals("", MessageSettings.apply(null, Map.of()));
+    }
+
+    @Test
+    void строкиПриветствияЧитаютсяСписком() {
+        MessageSettings messages = AuthConfig.fromMap(Map.of(
+                "messages.motd.enabled", true,
+                "messages.motd.lines", java.util.List.of("первая", "вторая"))).messages();
+        assertTrue(messages.motdEnabled());
+        assertEquals(java.util.List.of("первая", "вторая"), messages.motdLines());
+    }
+
+    @Test
+    void однаСтрокаВместоСпискаТожеПринимается() {
+        // Обычная ошибка в YAML: написать строку там, где ожидается список.
+        // Падать из-за неё не за чем.
+        assertEquals(java.util.List.of("одна"),
+                AuthConfig.fromMap(Map.of("messages.motd.lines", "одна")).messages().motdLines());
+    }
+
+    @Test
+    void байпасПоПравуВыключенПоУмолчанию() {
+        // На offline-сервере это опасная настройка: UUID там считается из
+        // ника, значит вошедший под чужим ником получает и чужие права.
+        assertFalse(AuthConfig.fromMap(Map.of()).permissionBypass());
+    }
 }
