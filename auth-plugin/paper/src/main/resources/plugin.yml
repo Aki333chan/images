@@ -1,0 +1,33 @@
+name: AurumAuth
+version: '${version}'
+main: ovh.aurumgg.auth.paper.AurumAuthPlugin
+# Формат версии Paper с 26.1: год.выпуск (раньше было 1.21.x).
+api-version: '26.2'
+description: Авторизация игроков на смешанном сервере — своя, вместо AuthMe.
+author: Aurum
+
+# ЗАГРУЖАЕМСЯ РАНЬШЕ ВСЕХ, КОГО ЗНАЕМ.
+#
+# load: STARTUP и loadbefore нужны не ради приоритета событий (он задаётся в
+# аннотациях), а ради порядка регистрации: слушатели, зарегистрированные на
+# одном приоритете, вызываются в порядке регистрации плагинов. Мы хотим быть
+# первыми среди равных.
+#
+# Companion в loadbefore, чтобы к моменту его старта сервис AurumAuthApi уже
+# был зарегистрирован в ServicesManager.
+load: STARTUP
+loadbefore: [AurumCompanion]
+
+# EssentialsX в softdepend НЕ ставится намеренно. Порядок загрузки на разведение
+# приоритетов не влияет — оно целиком в аннотациях @EventHandler, — а лишняя
+# зависимость только сделала бы старт плагина зависимым от чужого.
+
+commands:
+  login:
+    description: Войти под своим паролем
+    usage: /login <пароль>
+    aliases: [l]
+  register:
+    description: Зарегистрироваться
+    usage: /register <пароль> <пароль ещё раз>
+    aliases: [reg]

@@ -29,6 +29,7 @@ class CompanionHttpServerTest {
 
     private FakeGameBridge bridge;
     private CompanionHttpServer server;
+    private ovh.aurumgg.companion.core.webtoken.WebTokenStore webTokens;
     private HttpClient client;
     private String base;
 
@@ -37,7 +38,8 @@ class CompanionHttpServerTest {
         bridge = new FakeGameBridge();
         CompanionConfig config =
                 new CompanionConfig("127.0.0.1", 0, TOKEN, "http://10.0.0.1:3001", "srv-1", 10);
-        server = new CompanionHttpServer(config, bridge, msg -> {});
+        webTokens = new ovh.aurumgg.companion.core.webtoken.WebTokenStore(java.time.Duration.ofMinutes(5));
+        server = new CompanionHttpServer(config, bridge, msg -> {}, webTokens);
         server.start();
         client = HttpClient.newHttpClient();
         base = "http://127.0.0.1:" + server.boundPort();
@@ -614,5 +616,39 @@ class CompanionHttpServerTest {
         assertEquals(400, post("/plugins/LuckPerms/enabled", TOKEN, "{}").statusCode());
         assertEquals(400, post("/plugins/LuckPerms/enabled", TOKEN, "").statusCode());
         assertEquals(400, post("/plugins/LuckPerms/enabled", TOKEN, "{\"enabled\":\"yes\"}").statusCode());
+    }
+
+    // ------------------------------------------------- одноразовый код входа
+
+    @Test
+    void кодОбмениваетсяНаИгрока() throws Exception {
+        String code = webTokens.issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
+
+        HttpResponse<String> response = post("/webtoken/" + code, TOKEN, "");
+        assertEquals(200, response.statusCode());
+        Map<?, ?> body = (Map<?, ?>) JsonParser.parse(response.body());
+        assertEquals(FakeGameBridge.STEVE.toString(), body.get("uuid"));
+        assertEquals("Steve", body.get("name"));
+        assertFalse(response.body().contains(code), "израсходованный код незачем повторять в ответе");
+    }
+
+    @Test
+    void повторныйОбменТогоЖеКодаНеПроходит() throws Exception {
+        String code = webTokens.issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
+        assertEquals(200, post("/webtoken/" + code, TOKEN, "").statusCode());
+        assertEquals(404, post("/webtoken/" + code, TOKEN, "").statusCode());
+    }
+
+    @Test
+    void несуществующийКодОтвечаетТемЖе404() throws Exception {
+        // Тот же ответ, что и на использованный код: по разнице между ними
+        // подбор стал бы заметно осмысленнее.
+        assertEquals(404, post("/webtoken/ZZZZZZZZ", TOKEN, "").statusCode());
+    }
+
+    @Test
+    void обменКодаТребуетТокен() throws Exception {
+        String code = webTokens.issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
+        assertEquals(401, post("/webtoken/" + code, null, "").statusCode());
     }
 }

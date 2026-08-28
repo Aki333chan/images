@@ -17,6 +17,10 @@ import ovh.aurumgg.companion.core.ticket.TicketCooldown;
  * Работает в обе стороны:
  *   панель → плагин  — локальный HTTP-сервер (игроки, инвентарь);
  *   плагин → панель  — команда /ticket отправляет обращение игрока.
+ *
+ * Отдельно стоит /webtoken: он выдаёт игроку одноразовый код для входа в
+ * панель и потому обязан знать, вошёл ли игрок в игру по-настоящему. Ответ на
+ * это даёт плагин авторизации через свой API — см. AuthIntegration.
  */
 public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
 
@@ -33,6 +37,7 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
 
         startHttpServer(config);
         registerTicketCommand(config);
+        registerWebTokenCommand();
     }
 
     @Override
@@ -85,6 +90,31 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
             return;
         }
         command.setExecutor(new TicketCommand(this, new TicketClient(config), cooldown, problem == null));
+    }
+
+    /**
+     * /webtoken работает только вместе с HTTP-сервером: код, который панели
+     * негде обменять, бесполезен и только вводит игрока в заблуждение.
+     */
+    private void registerWebTokenCommand() {
+        var command = getCommand("webtoken");
+        if (command == null) {
+            getLogger().severe("Команда webtoken не объявлена в plugin.yml");
+            return;
+        }
+        if (httpServer == null) {
+            getLogger().warning("Команда /webtoken отключена: HTTP-сервер не запущен");
+            return;
+        }
+        command.setExecutor(new WebTokenCommand(httpServer.webTokens()));
+
+        if (!AuthIntegration.installed()) {
+            // Не ошибка: companion работает и без плагина авторизации. Но об
+            // этом стоит сказать вслух — на сервере без авторизации /webtoken
+            // выдаст код любому подключившемуся под этим ником.
+            getLogger().warning("Плагин AurumAuth не найден: /webtoken не сможет проверить, "
+                    + "что игрок действительно вошёл");
+        }
     }
 
     /** Чтобы карта кулдаунов не росла бесконечно на долгоживущем сервере. */

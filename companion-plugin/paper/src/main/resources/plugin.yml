@@ -12,11 +12,16 @@ author: Aurum
 #   Vault          — блок «Валюта»: баланс, начисления и списания. Сам Vault
 #                    денег не хранит: за ним должен стоять плагин экономики,
 #                    зарегистрировавший провайдера Economy.
+#   AurumAuth      — «вошёл ли игрок» для /webtoken. Без него companion
+#                    работает, но подтвердить вход не у кого.
 # Имена именно такие, как их регистрируют сами плагины: InvSee++ зовётся
 # InvSeePlusPlus, а EssentialsX — Essentials (ему softdepend не нужен,
 # с ним работаем командами через RCON).
-softdepend: [LuckPerms, InvSeePlusPlus, Vault]
+softdepend: [LuckPerms, InvSeePlusPlus, Vault, AurumAuth]
 commands:
   ticket:
     description: Отправить сообщение администрации
     usage: /ticket <сообщение>
+  webtoken:
+    description: Одноразовый код для входа в панель
+    usage: /webtoken
