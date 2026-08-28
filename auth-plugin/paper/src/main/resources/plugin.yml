@@ -36,9 +36,15 @@ commands:
   reset:
     description: Сбросить пароль по токену от администратора
     usage: /reset <токен> — затем /reset <пароль> <пароль ещё раз>
+  2fa:
+    description: Двухфакторная авторизация по коду из приложения
+    usage: /2fa <код> | /2fa enable | /2fa confirm <код> | /2fa disable <код>
+  unregister:
+    description: Удалить свою регистрацию
+    usage: /unregister <ваш пароль>
   auth:
     description: Администрирование авторизации
-    usage: /auth reset|info|unlock|logout <ник> | /auth reload
+    usage: /auth reset|info|unlock|logout|history|unregister|2fa-off <ник> | /auth reload
     permission: aurumauth.admin
 
 permissions:
@@ -51,6 +57,9 @@ permissions:
       aurumauth.admin.info: true
       aurumauth.admin.unlock: true
       aurumauth.admin.logout: true
+      aurumauth.admin.history: true
+      aurumauth.admin.unregister: true
+      aurumauth.admin.2fa: true
       aurumauth.admin.reload: true
   aurumauth.admin.reset:
     description: Выдавать токены сброса пароля
@@ -69,6 +78,15 @@ permissions:
     default: op
   aurumauth.admin.logout:
     description: Разавторизовывать игроков
+    default: op
+  aurumauth.admin.history:
+    description: Смотреть историю входов игрока
+    default: op
+  aurumauth.admin.unregister:
+    description: Снимать регистрацию с игроков
+    default: op
+  aurumauth.admin.2fa:
+    description: Выключать двухфакторку игрокам (потерянный телефон)
     default: op
   aurumauth.admin.reload:
     description: Перечитывать тексты сообщений

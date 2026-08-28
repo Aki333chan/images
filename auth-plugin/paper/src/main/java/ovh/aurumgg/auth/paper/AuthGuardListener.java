@@ -40,7 +40,8 @@ import ovh.aurumgg.auth.core.AuthService;
 final class AuthGuardListener implements Listener {
 
     /** Команды, доступные до входа. Всё остальное отклоняется. */
-    private static final Set<String> ALLOWED = Set.of("login", "l", "register", "reg", "reset");
+    private static final Set<String> ALLOWED =
+            Set.of("login", "l", "register", "reg", "reset", "2fa");
 
     /**
      * Право пропустить вход.
@@ -108,9 +109,9 @@ final class AuthGuardListener implements Listener {
             return;
         }
 
-        player.sendMessage(status == AuthStatus.AWAITING_REGISTRATION
-                ? AurumAuthPlugin.prefixed("Зарегистрируйтесь: /register <пароль> <пароль ещё раз>")
-                : AurumAuthPlugin.prefixed("Войдите: /login <пароль>"));
+        player.sendMessage(AurumAuthPlugin.prefixed(status == AuthStatus.AWAITING_REGISTRATION
+                ? "Зарегистрируйтесь: /register <пароль> <пароль ещё раз>"
+                : "Войдите: /login <пароль>"));
 
         scheduleTimeout(player);
     }
@@ -209,12 +210,13 @@ final class AuthGuardListener implements Listener {
         event.setCancelled(true);
         // Подсказка по состоянию: тому, кто уже ввёл токен, «войдите» ничего
         // не объясняет — ему нужен новый пароль.
-        boolean settingPassword = service.status(event.getPlayer().getUniqueId())
-                .filter(s -> s == AuthStatus.AWAITING_NEW_PASSWORD)
-                .isPresent();
-        event.getPlayer().sendMessage(AurumAuthPlugin.prefixed(settingPassword
-                ? "Сначала задайте новый пароль: /reset <пароль> <пароль ещё раз>"
-                : "Сначала войдите: /login <пароль>"));
+        AuthStatus status = service.status(event.getPlayer().getUniqueId())
+                .orElse(AuthStatus.AWAITING_LOGIN);
+        event.getPlayer().sendMessage(AurumAuthPlugin.prefixed(switch (status) {
+            case AWAITING_NEW_PASSWORD -> "Сначала задайте новый пароль: /reset <пароль> <пароль ещё раз>";
+            case AWAITING_TOTP -> "Сначала введите код: /2fa <код>";
+            default -> "Сначала войдите: /login <пароль>";
+        }));
     }
 
     @EventHandler(priority = EventPriority.LOWEST)

@@ -1,6 +1,8 @@
 package ovh.aurumgg.auth.core;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,6 +19,7 @@ import java.util.logging.Logger;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.api.PremiumVerdict;
 import ovh.aurumgg.auth.api.ResetToken;
+import ovh.aurumgg.auth.core.totp.Totp;
 
 /**
  * Вся работа с аккаунтами: регистрация, вход, состояние игроков в сети.
@@ -110,7 +113,9 @@ public final class AuthService implements AutoCloseable {
 
         online.put(uuid, new PlayerState(username, ip, status, premium, false));
         if (status.isAuthenticated()) {
-            markLoggedIn(uuid, username, ip);
+            markLoggedIn(uuid, username, ip, status == AuthStatus.AUTHENTICATED_BY_SESSION
+                    ? LoginRecord.Result.SESSION
+                    : LoginRecord.Result.BYPASS);
         }
         return status;
     }
@@ -184,11 +189,21 @@ public final class AuthService implements AutoCloseable {
                 }
                 if (!hasher.verify(password, found.get().passwordHash())) {
                     throttle.recordFailure(username, now);
+                    history(uuid, username, LoginRecord.Result.WRONG_PASSWORD, ip, now);
                     return AuthOutcome.wrongPassword();
                 }
                 throttle.recordSuccess(username);
+
+                // Двухфакторка: пароль подошёл, но в игру ещё рано. Именно
+                // ради этого её и включают.
+                if (found.get().hasTotp()) {
+                    setStatus(uuid, AuthStatus.AWAITING_TOTP);
+                    return AuthOutcome.totpRequired();
+                }
+
                 repository.touchLogin(uuid, now, ip);
                 sessions.remember(uuid, ip, now);
+                history(uuid, username, LoginRecord.Result.SUCCESS, ip, now);
                 setStatus(uuid, AuthStatus.AUTHENTICATED);
                 return AuthOutcome.ok("Вы вошли");
             } catch (Exception e) {
@@ -223,10 +238,12 @@ public final class AuthService implements AutoCloseable {
 
                 Instant now = clock.get();
                 String hash = hasher.hash(password.clone());
-                repository.create(new AuthAccount(uuid, username, hash, null, now, null, ip));
+                // Двухфакторки у нового аккаунта нет: её включают потом и по желанию.
+                repository.create(new AuthAccount(uuid, username, hash, null, now, null, ip, null, false, null));
                 repository.touchLogin(uuid, now, ip);
                 sessions.remember(uuid, ip, now);
                 throttle.recordSuccess(username);
+                history(uuid, username, LoginRecord.Result.SUCCESS, ip, now);
                 setStatus(uuid, AuthStatus.AUTHENTICATED, true);
                 return AuthOutcome.ok("Регистрация завершена, вы вошли");
             } catch (Exception e) {
@@ -331,6 +348,7 @@ public final class AuthService implements AutoCloseable {
                 repository.touchLogin(uuid, now, ip);
                 sessions.remember(uuid, ip, now);
                 throttle.recordSuccess(username);
+                history(uuid, username, LoginRecord.Result.RESET, ip, now);
                 setStatus(uuid, AuthStatus.AUTHENTICATED);
                 return AuthOutcome.ok("Пароль изменён, вы вошли");
             } catch (Exception e) {
@@ -356,6 +374,7 @@ public final class AuthService implements AutoCloseable {
         PlayerState state = online.get(uuid);
         if (state == null || state.status.isAuthenticated()) return false;
         setStatus(uuid, AuthStatus.AUTHENTICATED_BY_BYPASS);
+        markLoggedIn(uuid, state.username, state.ip, LoginRecord.Result.BYPASS);
         // Сессию по байпасу НЕ запоминаем: право может быть снято, и тогда
         // сохранённая сессия ещё пятнадцать минут пускала бы без пароля.
         return true;
@@ -365,6 +384,245 @@ public final class AuthService implements AutoCloseable {
     public boolean isFreshRegistration(UUID uuid) {
         PlayerState state = online.get(uuid);
         return state != null && state.freshRegistration;
+    }
+
+    // -------------------------------------------------------- двухфакторка
+
+    /**
+     * Начать настройку: сгенерировать секрет.
+     *
+     * Секрет записывается СРАЗУ, но с выключенным флагом. Иначе его пришлось
+     * бы держать в памяти между двумя командами, и перезапуск сервера посреди
+     * настройки оставил бы игрока с наполовину настроенным приложением.
+     * Выключенный флаг значит «пускать по коду ещё нельзя».
+     *
+     * @return ссылка otpauth и сам секрет, либо пусто, если аккаунта нет
+     */
+    public CompletableFuture<Optional<TotpSetup>> beginTotpSetup(UUID uuid, String issuer) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<AuthAccount> account = repository.findByUuid(uuid);
+                if (account.isEmpty()) return Optional.<TotpSetup>empty();
+                String secret = Totp.generateSecret();
+                repository.setTotp(uuid, secret, false);
+                return Optional.of(new TotpSetup(
+                        secret, Totp.otpauthUri(issuer, account.get().username(), secret)));
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Не удалось начать настройку двухфакторки", e);
+                return Optional.<TotpSetup>empty();
+            }
+        }, worker);
+    }
+
+    /** Секрет и ссылка для приложения — показываются игроку один раз. */
+    public record TotpSetup(String secret, String otpauthUri) {}
+
+    /**
+     * Подтвердить настройку кодом из приложения.
+     *
+     * Без этого шага можно было бы включить двухфакторку с секретом, который
+     * никуда не записан, и запереть себя снаружи собственного аккаунта.
+     */
+    public CompletableFuture<AuthOutcome> confirmTotp(UUID uuid, String code) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<AuthAccount> account = repository.findByUuid(uuid);
+                if (account.isEmpty() || account.get().totpSecret() == null) {
+                    return AuthOutcome.totpInvalid();
+                }
+                var matched = Totp.verify(account.get().totpSecret(), code, clock.get(), config.totpWindow());
+                if (matched.isEmpty()) return AuthOutcome.totpInvalid();
+
+                repository.setTotp(uuid, account.get().totpSecret(), true);
+                repository.setTotpCounter(uuid, matched.getAsLong());
+                return AuthOutcome.ok("Двухфакторка включена. Код будет спрашиваться при каждом входе");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка подтверждения двухфакторки", e);
+                return AuthOutcome.error();
+            }
+        }, worker);
+    }
+
+    /**
+     * Код при входе.
+     *
+     * ЗАЩИТА ОТ ПОВТОРА обязательна: код живёт полминуты, и подсмотренный (или
+     * продиктованный мошеннику «сотрудником поддержки») он всё это время годен
+     * снова. Принятый номер интервала запоминается, и второй раз тот же код не
+     * проходит.
+     */
+    public CompletableFuture<AuthOutcome> submitTotp(UUID uuid, String code, String ip) {
+        PlayerState state = online.get(uuid);
+        if (state == null || state.status != AuthStatus.AWAITING_TOTP) {
+            return CompletableFuture.completedFuture(AuthOutcome.error());
+        }
+        String username = state.username;
+
+        return CompletableFuture.supplyAsync(() -> {
+            Instant now = clock.get();
+            try {
+                Optional<AuthAccount> account = repository.findByUuid(uuid);
+                if (account.isEmpty() || !account.get().hasTotp()) return AuthOutcome.error();
+
+                var matched = Totp.verify(account.get().totpSecret(), code, now, config.totpWindow());
+                Long used = account.get().totpLastCounter();
+                if (matched.isEmpty() || (used != null && matched.getAsLong() <= used)) {
+                    throttle.recordFailure(username, now);
+                    history(uuid, username, LoginRecord.Result.WRONG_CODE, ip, now);
+                    return AuthOutcome.totpInvalid();
+                }
+
+                repository.setTotpCounter(uuid, matched.getAsLong());
+                repository.touchLogin(uuid, now, ip);
+                sessions.remember(uuid, ip, now);
+                throttle.recordSuccess(username);
+                history(uuid, username, LoginRecord.Result.SUCCESS, ip, now);
+                setStatus(uuid, AuthStatus.AUTHENTICATED);
+                return AuthOutcome.ok("Вы вошли");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка проверки кода двухфакторки", e);
+                return AuthOutcome.error();
+            }
+        }, worker);
+    }
+
+    /** Выключить двухфакторку — игрок сам, по действующему коду. */
+    public CompletableFuture<AuthOutcome> disableTotp(UUID uuid, String code) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<AuthAccount> account = repository.findByUuid(uuid);
+                if (account.isEmpty() || !account.get().hasTotp()) {
+                    return AuthOutcome.badPassword("Двухфакторка и так выключена");
+                }
+                // Код обязателен: иначе выключить её мог бы любой, кто на
+                // минуту сел за чужой компьютер с уже вошедшим игроком.
+                if (Totp.verify(account.get().totpSecret(), code, clock.get(), config.totpWindow()).isEmpty()) {
+                    return AuthOutcome.totpInvalid();
+                }
+                repository.setTotp(uuid, null, false);
+                return AuthOutcome.ok("Двухфакторка выключена");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка выключения двухфакторки", e);
+                return AuthOutcome.error();
+            }
+        }, worker);
+    }
+
+    /**
+     * Выключить двухфакторку администратором.
+     *
+     * Нужна, когда телефон потерян: без неё аккаунт становится недоступен
+     * навсегда. Отдельным правом и с записью в лог — это обход второго
+     * фактора, пусть и законный.
+     */
+    public CompletableFuture<Boolean> disableTotpByAdmin(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<AuthAccount> account = repository.findByUsername(username);
+                if (account.isEmpty() || !account.get().hasTotp()) return false;
+                repository.setTotp(account.get().uuid(), null, false);
+                logger.info("Двухфакторка игрока " + account.get().username()
+                        + " выключена администратором");
+                return true;
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка выключения двухфакторки для " + username, e);
+                return false;
+            }
+        }, worker);
+    }
+
+    // ------------------------------------------------ удаление регистрации
+
+    /**
+     * Игрок удаляет свою регистрацию сам.
+     *
+     * Пароль обязателен: команда стирает аккаунт, и подтверждение здесь — не
+     * формальность, а единственное, что отличает решение владельца от шутки
+     * того, кто сел за его компьютер.
+     */
+    public CompletableFuture<AuthOutcome> unregisterSelf(UUID uuid, char[] password) {
+        PlayerState state = online.get(uuid);
+        if (state == null) {
+            java.util.Arrays.fill(password, '\0');
+            return CompletableFuture.completedFuture(AuthOutcome.error());
+        }
+        String username = state.username;
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<AuthAccount> account = repository.findByUuid(uuid);
+                if (account.isEmpty()) return AuthOutcome.notRegistered();
+                if (!hasher.verify(password, account.get().passwordHash())) {
+                    return AuthOutcome.wrongPassword();
+                }
+                repository.deleteAccount(uuid);
+                sessions.forget(uuid);
+                setStatus(uuid, AuthStatus.AWAITING_REGISTRATION);
+                logger.info("Игрок " + username + " удалил свою регистрацию");
+                return AuthOutcome.ok("Регистрация удалена");
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка удаления регистрации " + username, e);
+                return AuthOutcome.error();
+            } finally {
+                java.util.Arrays.fill(password, '\0');
+            }
+        }, worker);
+    }
+
+    /**
+     * Администратор снимает регистрацию с игрока.
+     *
+     * Ник при этом освобождается, и зарегистрировать его сможет кто угодно —
+     * в том числе не тот, у кого его отобрали. Это стоит понимать, применяя
+     * такое как наказание; при необходимости ник закрывается баном отдельно.
+     *
+     * @return false, если аккаунта не было
+     */
+    public CompletableFuture<Boolean> unregisterByAdmin(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Optional<AuthAccount> account = repository.findByUsername(username);
+                if (account.isEmpty()) return false;
+                repository.deleteAccount(account.get().uuid());
+                sessions.forget(account.get().uuid());
+                // Игрока в сети сразу возвращаем в состояние «не зарегистрирован»,
+                // иначе он продолжил бы играть по уже несуществующему аккаунту.
+                setStatus(account.get().uuid(), AuthStatus.AWAITING_REGISTRATION);
+                logger.info("Регистрация игрока " + account.get().username() + " снята администратором");
+                return true;
+            } catch (Exception e) {
+                logger.log(Level.SEVERE, "Ошибка снятия регистрации " + username, e);
+                return false;
+            }
+        }, worker);
+    }
+
+    // ---------------------------------------------------- история входов
+
+    /** Попытки входа по нику за период, новые сверху. */
+    public CompletableFuture<List<LoginRecord>> loginHistory(String username, Duration period, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return repository.loginHistory(username, clock.get().minus(period), limit);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Не удалось прочитать историю входов " + username, e);
+                return List.<LoginRecord>of();
+            }
+        }, worker);
+    }
+
+    /**
+     * Запись в историю.
+     *
+     * Ошибка записи НЕ роняет вход: история — вещь полезная, но не та, ради
+     * которой стоит не пустить человека на сервер.
+     */
+    private void history(UUID uuid, String username, LoginRecord.Result result, String ip, Instant at) {
+        try {
+            repository.recordLogin(uuid, username, new LoginRecord(at, ip, result, config.serverId()));
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Не удалось записать историю входа " + username, e);
+        }
     }
 
     // ------------------------------------------------- администрирование
@@ -424,6 +682,7 @@ public final class AuthService implements AutoCloseable {
         throttle.purgeExpired(now);
         try {
             repository.purgeResetTokens(now);
+            repository.purgeLoginHistory(now.minus(config.historyRetention()));
         } catch (Exception e) {
             // Уборка — дело фоновое: не вышло сейчас, выйдет через пять минут.
             logger.log(Level.WARNING, "Не удалось убрать истёкшие токены сброса", e);
@@ -443,17 +702,19 @@ public final class AuthService implements AutoCloseable {
                 freshRegistration || state.freshRegistration));
     }
 
-    private void markLoggedIn(UUID uuid, String username, String ip) {
+    private void markLoggedIn(UUID uuid, String username, String ip, LoginRecord.Result result) {
         // Вход по сессии или по premium тоже продлевает сессию: иначе окно
         // отсчитывалось бы от последнего ввода пароля и истекало посреди
         // нормальной игры.
         sessions.remember(uuid, ip, clock.get());
         worker.execute(() -> {
+            Instant now = clock.get();
             try {
-                repository.touchLogin(uuid, clock.get(), ip);
+                repository.touchLogin(uuid, now, ip);
             } catch (Exception e) {
                 logger.log(Level.WARNING, "Не удалось отметить вход игрока " + username, e);
             }
+            history(uuid, username, result, ip, now);
         });
     }
 

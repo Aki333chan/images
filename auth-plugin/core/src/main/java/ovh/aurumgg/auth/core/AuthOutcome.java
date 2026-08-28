@@ -28,6 +28,10 @@ public record AuthOutcome(Kind kind, String message) {
         BAD_PASSWORD,
         /** Пароль и подтверждение не совпали. */
         MISMATCH,
+        /** Пароль верный, нужен код двухфакторки. */
+        TOTP_REQUIRED,
+        /** Код двухфакторки не подошёл. */
+        TOTP_INVALID,
         /** Токен сброса не подошёл: не тот, использован или истёк. */
         RESET_TOKEN_INVALID,
         /** Токен принят — ждём новый пароль. */
@@ -80,6 +84,16 @@ public record AuthOutcome(Kind kind, String message) {
 
     static AuthOutcome mismatch() {
         return new AuthOutcome(Kind.MISMATCH, "Пароли не совпадают");
+    }
+
+    static AuthOutcome totpRequired() {
+        return new AuthOutcome(Kind.TOTP_REQUIRED, "Введите код из приложения: /2fa <код>");
+    }
+
+    static AuthOutcome totpInvalid() {
+        // Отдельно от «неверный пароль»: здесь скрывать нечего — пароль уже
+        // подошёл, и человеку важно понимать, что не так именно с кодом.
+        return new AuthOutcome(Kind.TOTP_INVALID, "Код не подошёл. Проверьте время на телефоне");
     }
 
     static AuthOutcome resetTokenInvalid() {

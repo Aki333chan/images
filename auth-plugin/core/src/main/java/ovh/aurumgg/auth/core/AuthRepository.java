@@ -1,6 +1,7 @@
 package ovh.aurumgg.auth.core;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -62,6 +63,44 @@ public interface AuthRepository extends AutoCloseable {
 
     /** Убрать использованные и истёкшие токены. */
     int purgeResetTokens(Instant now) throws Exception;
+
+    // ------------------------------------------------ удаление регистрации
+
+    /**
+     * Удалить аккаунт целиком.
+     *
+     * Вместе с ним уходят его токены сброса: оставленный токен от удалённого
+     * аккаунта — мусор, который однажды сработает не на том, кого ждали.
+     * История входов, наоборот, ОСТАЁТСЯ: она про то, что происходило, и
+     * удаление аккаунта этого не отменяет.
+     *
+     * @return false, если такого аккаунта не было
+     */
+    boolean deleteAccount(UUID uuid) throws Exception;
+
+    // ---------------------------------------------------- история входов
+
+    /** Записать попытку входа — и удачную, и нет. */
+    void recordLogin(UUID uuid, String username, LoginRecord record) throws Exception;
+
+    /** Последние попытки по нику за период, новые сверху. */
+    List<LoginRecord> loginHistory(String username, Instant since, int limit) throws Exception;
+
+    /** Убрать записи старше срока хранения. */
+    int purgeLoginHistory(Instant before) throws Exception;
+
+    // ------------------------------------------------------- двухфакторка
+
+    /**
+     * Записать секрет и состояние двухфакторки.
+     *
+     * Секрет и флаг вместе: они меняются только парой — «завели, но не
+     * подтвердили» и «подтвердили» отличаются ровно флагом.
+     */
+    void setTotp(UUID uuid, String secretBase32, boolean enabled) throws Exception;
+
+    /** Запомнить принятый интервал, чтобы тот же код не сработал повторно. */
+    void setTotpCounter(UUID uuid, long counter) throws Exception;
 
     @Override
     void close();

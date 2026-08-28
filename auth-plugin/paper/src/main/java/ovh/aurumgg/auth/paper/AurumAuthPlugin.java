@@ -90,14 +90,19 @@ public final class AurumAuthPlugin extends JavaPlugin {
         var register = getCommand("register");
         var reset = getCommand("reset");
         var admin = getCommand("auth");
-        if (login == null || register == null || reset == null || admin == null) {
-            getLogger().severe("Команды login/register/reset/auth не объявлены в plugin.yml");
+        var twoFactor = getCommand("2fa");
+        var unregister = getCommand("unregister");
+        if (login == null || register == null || reset == null || admin == null
+                || twoFactor == null || unregister == null) {
+            getLogger().severe("Команды плагина не объявлены в plugin.yml");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
         login.setExecutor(new LoginCommand(this, service, guard));
         register.setExecutor(new RegisterCommand(this, service, guard));
         reset.setExecutor(new ResetCommand(this, service, guard));
+        twoFactor.setExecutor(new TwoFactorCommand(this, service, guard, config));
+        unregister.setExecutor(new UnregisterCommand(this, service, guard));
         AuthAdminCommand adminCommand = new AuthAdminCommand(this, service);
         admin.setExecutor(adminCommand);
         admin.setTabCompleter(adminCommand);

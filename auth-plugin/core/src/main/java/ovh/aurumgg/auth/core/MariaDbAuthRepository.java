@@ -8,6 +8,8 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,6 +33,8 @@ public final class MariaDbAuthRepository implements AuthRepository {
     private final String table;
     /** Таблица токенов сброса — производная от основной, отдельной настройки не нужно. */
     private final String resetTable;
+    /** Таблица истории входов — там же. */
+    private final String historyTable;
 
     public MariaDbAuthRepository(AuthConfig config) {
         HikariConfig hikari = new HikariConfig();
@@ -50,6 +54,7 @@ public final class MariaDbAuthRepository implements AuthRepository {
         this.dataSource = new HikariDataSource(hikari);
         this.table = config.tableName();
         this.resetTable = config.tableName() + "_resets";
+        this.historyTable = config.tableName() + "_logins";
     }
 
     /**
@@ -100,10 +105,161 @@ public final class MariaDbAuthRepository implements AuthRepository {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
                 """.formatted(resetTable);
 
+        // История входов. Отдельной таблицей и без внешнего ключа на аккаунт:
+        // она переживает удаление аккаунта намеренно — история про то, что
+        // происходило, и удаление регистрации этого не отменяет. Ник хранится
+        // строкой по той же причине.
+        String historyDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  id         BIGINT      NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                  uuid       CHAR(36)    NOT NULL,
+                  username   VARCHAR(16) NOT NULL,
+                  at         TIMESTAMP   NOT NULL,
+                  ip         VARCHAR(45) NULL,
+                  result     VARCHAR(16) NOT NULL,
+                  server_id  VARCHAR(64) NULL,
+                  KEY idx_username_at (username, at),
+                  KEY idx_at (at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(historyTable);
+
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate(ddl);
             statement.executeUpdate(resetDdl);
+            statement.executeUpdate(historyDdl);
+
+            // ДОБАВЛЕНИЕ КОЛОНОК В УЖЕ СУЩЕСТВУЮЩУЮ ТАБЛИЦУ. CREATE TABLE IF
+            // NOT EXISTS выше ничего не сделает там, где таблица заведена
+            // прошлой версией плагина, — а колонок двухфакторки в ней нет.
+            // ADD COLUMN IF NOT EXISTS есть в MariaDB с 10.0.2, и это ровно
+            // тот случай, ради которого он существует.
+            for (String column : new String[] {
+                "totp_secret VARCHAR(64) NULL",
+                "totp_enabled TINYINT(1) NOT NULL DEFAULT 0",
+                "totp_last_counter BIGINT NULL",
+            }) {
+                statement.executeUpdate(
+                        "ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + column);
+            }
+        }
+    }
+
+    // ---------------------------------------------- удаление регистрации
+
+    @Override
+    public boolean deleteAccount(UUID uuid) throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement tokens = connection.prepareStatement(
+                            "DELETE FROM " + resetTable + " WHERE uuid = ?");
+                    PreparedStatement account = connection.prepareStatement(
+                            "DELETE FROM " + table + " WHERE uuid = ?")) {
+                tokens.setString(1, uuid.toString());
+                tokens.executeUpdate();
+                account.setString(1, uuid.toString());
+                boolean removed = account.executeUpdate() > 0;
+                connection.commit();
+                return removed;
+            } catch (Exception e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    // -------------------------------------------------- история входов
+
+    @Override
+    public void recordLogin(UUID uuid, String username, LoginRecord record) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO " + historyTable
+                                + " (uuid, username, at, ip, result, server_id) VALUES (?, ?, ?, ?, ?, ?)")) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, username);
+            statement.setTimestamp(3, Timestamp.from(record.at()));
+            statement.setString(4, record.ip());
+            statement.setString(5, record.result().name());
+            statement.setString(6, record.serverId());
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public List<LoginRecord> loginHistory(String username, Instant since, int limit) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT at, ip, result, server_id FROM " + historyTable
+                                + " WHERE LOWER(username) = LOWER(?) AND at >= ? ORDER BY at DESC LIMIT ?")) {
+            statement.setString(1, username);
+            statement.setTimestamp(2, Timestamp.from(since));
+            statement.setInt(3, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                List<LoginRecord> result = new ArrayList<>();
+                while (rs.next()) {
+                    result.add(new LoginRecord(
+                            rs.getTimestamp("at").toInstant(),
+                            rs.getString("ip"),
+                            parseResult(rs.getString("result")),
+                            rs.getString("server_id")));
+                }
+                return result;
+            }
+        }
+    }
+
+    /**
+     * Неизвестное значение в колонке — не повод падать.
+     *
+     * Строка, а не enum в схеме, выбрана намеренно: добавление нового исхода
+     * не должно требовать ALTER TABLE на живой базе. Обратная сторона — сюда
+     * может приехать значение от более новой версии плагина, и показать его
+     * как «неизвестно» честнее, чем уронить всю историю.
+     */
+    private static LoginRecord.Result parseResult(String raw) {
+        try {
+            return LoginRecord.Result.valueOf(raw);
+        } catch (IllegalArgumentException e) {
+            return LoginRecord.Result.WRONG_PASSWORD;
+        }
+    }
+
+    @Override
+    public int purgeLoginHistory(Instant before) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM " + historyTable + " WHERE at < ?")) {
+            statement.setTimestamp(1, Timestamp.from(before));
+            return statement.executeUpdate();
+        }
+    }
+
+    // ----------------------------------------------------- двухфакторка
+
+    @Override
+    public void setTotp(UUID uuid, String secretBase32, boolean enabled) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE " + table
+                                + " SET totp_secret = ?, totp_enabled = ?, totp_last_counter = NULL WHERE uuid = ?")) {
+            statement.setString(1, secretBase32);
+            statement.setBoolean(2, enabled);
+            statement.setString(3, uuid.toString());
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public void setTotpCounter(UUID uuid, long counter) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE " + table + " SET totp_last_counter = ? WHERE uuid = ?")) {
+            statement.setLong(1, counter);
+            statement.setString(2, uuid.toString());
+            statement.executeUpdate();
         }
     }
 
@@ -245,6 +401,11 @@ public final class MariaDbAuthRepository implements AuthRepository {
         try (ResultSet rs = statement.executeQuery()) {
             if (!rs.next()) return Optional.empty();
             Timestamp lastLogin = rs.getTimestamp("last_login_at");
+            // wasNull() относится к ПОСЛЕДНЕМУ прочитанному столбцу, поэтому
+            // его надо спросить сразу — после getBoolean ниже он отвечал бы
+            // уже про totp_enabled.
+            long counter = rs.getLong("totp_last_counter");
+            Long lastCounter = rs.wasNull() ? null : counter;
             return Optional.of(new AuthAccount(
                     UUID.fromString(rs.getString("uuid")),
                     rs.getString("username"),
@@ -252,7 +413,10 @@ public final class MariaDbAuthRepository implements AuthRepository {
                     rs.getString("email"),
                     rs.getTimestamp("registered_at").toInstant(),
                     lastLogin == null ? null : lastLogin.toInstant(),
-                    rs.getString("last_ip")));
+                    rs.getString("last_ip"),
+                    rs.getString("totp_secret"),
+                    rs.getBoolean("totp_enabled"),
+                    lastCounter));
         }
     }
 
