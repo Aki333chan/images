@@ -185,11 +185,20 @@ npm run lint      # ESLint
 npm run build     # сборка shared + api + web (полная проверка типов)
 ```
 
-Тесты плагина отдельно (нужен JDK 21+):
+Тесты плагинов отдельно (нужен JDK 21+):
 
 ```bash
 cd companion-plugin && ./gradlew :core:test
+cd auth-plugin      && ./gradlew :core:test
 ```
+
+В репозитории два плагина для Minecraft, и они намеренно разные:
+
+- [`companion-plugin/`](companion-plugin/) — то, чем панель управляет сервером:
+  инвентари, права, экономика, тикеты;
+- [`auth-plugin/`](auth-plugin/) — авторизация игроков вместо AuthMe. Отдельно,
+  потому что вмешательство в самый ранний этап входа не должно зависеть от
+  того, не подвиснет ли когда-нибудь HTTP-сервер компаньона.
 
 ## Настройка Pterodactyl
 

@@ -27,6 +27,7 @@ import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
+import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
 
 /**
  * Входящий HTTP-сервер плагина (панель → плагин).
@@ -48,6 +49,7 @@ import ovh.aurumgg.companion.core.model.PluginToggle;
  *   POST /players/{uuid}/balance/deposit
  *   POST /players/{uuid}/balance/withdraw
  *   GET  /economy?top=...
+ *   POST /webtoken/{code}
  */
 public final class CompanionHttpServer {
 
@@ -57,15 +59,32 @@ public final class CompanionHttpServer {
     private final GameBridge bridge;
     private final TokenAuth auth;
     private final Consumer<String> logger;
+    private final WebTokenStore webTokens;
 
     private HttpServer server;
     private ExecutorService executor;
 
     public CompanionHttpServer(CompanionConfig config, GameBridge bridge, Consumer<String> logger) {
+        this(config, bridge, logger, new WebTokenStore(java.time.Duration.ofMinutes(5)));
+    }
+
+    /**
+     * Хранилище кодов приходит снаружи: коды выдаёт команда /webtoken в слое
+     * Bukkit, а обменивает их панель через этот сервер — значит, это должен
+     * быть один и тот же экземпляр.
+     */
+    public CompanionHttpServer(
+            CompanionConfig config, GameBridge bridge, Consumer<String> logger, WebTokenStore webTokens) {
         this.config = config;
         this.bridge = bridge;
         this.auth = new TokenAuth(config.token());
         this.logger = logger;
+        this.webTokens = webTokens;
+    }
+
+    /** То же хранилище, что использует сервер, — для команды /webtoken. */
+    public WebTokenStore webTokens() {
+        return webTokens;
     }
 
     public void start() throws IOException {
@@ -119,6 +138,27 @@ public final class CompanionHttpServer {
         if (parts.length == 1 && parts[0].equals("players") && method.equals("GET")) {
             List<PlayerInfo> players = bridge.onlinePlayers();
             respond(exchange, 200, PayloadWriter.players(players));
+            return;
+        }
+
+        // POST /webtoken/{code} — панель обменивает код игрока на его личность.
+        //
+        // POST, а не GET, потому что запрос ИЗМЕНЯЕТ состояние: код
+        // одноразовый и после обмена перестаёт работать. GET, который гасит
+        // код, однажды сработал бы от превентивного запроса браузера или
+        // повтора при ретрае.
+        if (parts.length == 2 && parts[0].equals("webtoken") && method.equals("POST")) {
+            Optional<WebTokenStore.Issued> issued =
+                    webTokens.consume(decode(parts[1]), java.time.Instant.now());
+            if (issued.isEmpty()) {
+                // Один и тот же ответ на «не существует», «уже использован» и
+                // «протух»: по разнице между ними подбор кода стал бы заметно
+                // осмысленнее.
+                respond(exchange, 404, PayloadWriter.error("Код не найден или истёк", "token-invalid"));
+                return;
+            }
+            respond(exchange, 200,
+                    PayloadWriter.webToken(issued.get().playerUuid(), issued.get().username()));
             return;
         }
 

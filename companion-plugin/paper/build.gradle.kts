@@ -54,6 +54,12 @@ dependencies {
         exclude(group = "org.bukkit", module = "bukkit")
     }
 
+    // Публичный API нашей же системы авторизации. compileOnly: реализацию в
+    // рантайме регистрирует плагин AurumAuth в ServicesManager — тот же
+    // приём, что с Vault. Разрешается из составной сборки, см.
+    // settings.gradle.kts.
+    compileOnly("ovh.aurumgg:auth-api:0.1.0")
+
     // InvSee++ compileOnly-зависимостью НЕ подключается намеренно: его
     // артефакт лежит в GitHub Packages, требующем токен даже для публичных
     // пакетов, и сборка плагина стала бы невозможна без учётки GitHub.

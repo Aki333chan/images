@@ -141,6 +141,19 @@ public final class PayloadWriter {
      * «поставьте LuckPerms» — это не то же самое, что «игрок не найден»,
      * а разбирать русский текст на той стороне никуда не годится.
      */
+    /**
+     * Кому принадлежит одноразовый код входа в панель.
+     *
+     * Сам код в ответ НЕ кладётся: он уже израсходован, и повторять его в
+     * теле ответа — значит без нужды оставить его ещё и в логах панели.
+     */
+    public static String webToken(java.util.UUID playerUuid, String username) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("uuid", Json.string(playerUuid.toString()));
+        fields.put("name", Json.string(username));
+        return Json.object(fields);
+    }
+
     public static String error(String message, String code) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("error", Json.string(message));
