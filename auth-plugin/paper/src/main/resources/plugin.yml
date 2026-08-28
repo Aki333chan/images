@@ -89,7 +89,7 @@ permissions:
     description: Выключать двухфакторку игрокам (потерянный телефон)
     default: op
   aurumauth.admin.reload:
-    description: Перечитывать тексты сообщений
+    description: Перечитывать тексты сообщений и экранных подсказок
     default: op
   aurumauth.bypass:
     description: Входить без пароля. ОПАСНО на offline-сервере — см. config.yml

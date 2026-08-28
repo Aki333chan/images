@@ -6,6 +6,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.auth.api.AurumAuthApi;
@@ -16,6 +19,7 @@ import ovh.aurumgg.auth.core.LoginThrottle;
 import ovh.aurumgg.auth.core.MariaDbAuthRepository;
 import ovh.aurumgg.auth.core.MessageSettings;
 import ovh.aurumgg.auth.core.PasswordHasher;
+import ovh.aurumgg.auth.core.PromptSettings;
 import ovh.aurumgg.auth.core.SessionStore;
 import ovh.aurumgg.auth.core.premium.PremiumChecker;
 
@@ -34,6 +38,7 @@ public final class AurumAuthPlugin extends JavaPlugin {
     private AuthService service;
     private AuthConfig config;
     private JoinMessageListener joinMessages;
+    private LoginPrompt loginPrompt;
     private final DeferredMessages<Component> deferredJoins = new DeferredMessages<>();
 
     @Override
@@ -77,10 +82,20 @@ public final class AurumAuthPlugin extends JavaPlugin {
                 getLogger(),
                 Instant::now);
 
-        AuthGuardListener guard = new AuthGuardListener(this, service, config);
+        applyTexts(config.prompt());
+        loginPrompt = new LoginPrompt(this, service, config.prompt());
+
+        AuthGuardListener guard = new AuthGuardListener(this, service, config, loginPrompt);
         getServer().getPluginManager().registerEvents(guard, this);
         getServer().getPluginManager().registerEvents(
                 new PreLoginListener(service, premium, config), this);
+        // Подсказки по чужим командам невошедшему только мешают: выполнить их
+        // всё равно нельзя, а /login и /register теряются среди полусотни
+        // лишних строк.
+        getServer().getPluginManager().registerEvents(
+                new CommandVisibilityListener(
+                        service, AuthGuardListener.ALLOWED, config.hideOtherCommands()),
+                this);
         joinMessages = new JoinMessageListener(service, config, deferredJoins);
         getServer().getPluginManager().registerEvents(joinMessages, this);
 
@@ -103,7 +118,7 @@ public final class AurumAuthPlugin extends JavaPlugin {
         reset.setExecutor(new ResetCommand(this, service, guard));
         twoFactor.setExecutor(new TwoFactorCommand(this, service, guard, config));
         unregister.setExecutor(new UnregisterCommand(this, service, guard));
-        AuthAdminCommand adminCommand = new AuthAdminCommand(this, service);
+        AuthAdminCommand adminCommand = new AuthAdminCommand(this, service, guard);
         admin.setExecutor(adminCommand);
         admin.setTabCompleter(adminCommand);
 
@@ -138,9 +153,50 @@ public final class AurumAuthPlugin extends JavaPlugin {
         }
     }
 
-    /** Сообщение игроку с общим для плагина префиксом. */
+    /** Цвета кодами вида &amp;a — как в конфигах EssentialsX и почти всех остальных. */
+    private static final LegacyComponentSerializer COLORS = LegacyComponentSerializer.legacyAmpersand();
+
+    /**
+     * Легаси-коды цвета по порядку: &amp;0 … &amp;f. Порядок этот придуман не
+     * здесь — он такой же во всём Minecraft начиная с беты, и переставлять в
+     * нём ничего нельзя.
+     */
+    private static final NamedTextColor[] LEGACY_COLORS = {
+        NamedTextColor.BLACK, NamedTextColor.DARK_BLUE, NamedTextColor.DARK_GREEN,
+        NamedTextColor.DARK_AQUA, NamedTextColor.DARK_RED, NamedTextColor.DARK_PURPLE,
+        NamedTextColor.GOLD, NamedTextColor.GRAY, NamedTextColor.DARK_GRAY,
+        NamedTextColor.BLUE, NamedTextColor.GREEN, NamedTextColor.AQUA,
+        NamedTextColor.RED, NamedTextColor.LIGHT_PURPLE, NamedTextColor.YELLOW,
+        NamedTextColor.WHITE,
+    };
+
+    /**
+     * Префикс и цвет сообщений плагина.
+     *
+     * volatile и static: prefixed() зовут из десятка мест, в том числе из
+     * рабочих потоков сервиса, а /auth reload меняет тексты на живом сервере.
+     */
+    private static volatile Component prefix = COLORS.deserialize(PromptSettings.DEFAULT_PREFIX);
+    private static volatile TextColor textColor = NamedTextColor.WHITE;
+
+    /**
+     * Сообщение игроку с общим для плагина префиксом.
+     *
+     * Сам текст в цветной код НЕ разбирается — только красится целиком. Это
+     * не упрощение: сюда попадают и ники, и тексты ошибок, и разбирать в них
+     * «&amp;» значило бы дать любому, чья строка сюда доедет, раскрашивать
+     * служебные сообщения.
+     */
     static Component prefixed(String text) {
-        return Component.text("[Вход] " + text);
+        return prefix.append(Component.text(text).color(textColor));
+    }
+
+    /** Применить настроенные префикс и цвет — при старте и при /auth reload. */
+    private static void applyTexts(PromptSettings settings) {
+        prefix = COLORS.deserialize(settings.prefix());
+        // Значение уже проверено при разборе конфига: это ровно «&» и одна
+        // шестнадцатеричная цифра. Негодное там заменяется на белый.
+        textColor = LEGACY_COLORS[Character.digit(settings.textColor().charAt(1), 16)];
     }
 
     /**
@@ -163,9 +219,15 @@ public final class AurumAuthPlugin extends JavaPlugin {
      */
     void reloadMessages() {
         reloadConfig();
-        MessageSettings updated = MessageSettings.fromMap(getConfig().getValues(true));
+        Map<String, Object> raw = getConfig().getValues(true);
+        MessageSettings updated = MessageSettings.fromMap(raw);
         if (joinMessages != null) joinMessages.updateMessages(updated);
-        getLogger().info("Тексты сообщений перечитаны");
+
+        PromptSettings prompts = PromptSettings.fromMap(raw);
+        applyTexts(prompts);
+        if (loginPrompt != null) loginPrompt.updateSettings(prompts);
+
+        getLogger().info("Тексты сообщений и подсказок перечитаны");
     }
 
     /** Тик-эквивалент длительности: планировщик Bukkit меряет время только тиками. */

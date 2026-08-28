@@ -53,9 +53,19 @@ abstract class AuthCommandBase implements CommandExecutor {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
             player.sendMessage(AurumAuthPlugin.prefixed(outcome.message()));
-            if (!outcome.isSuccess()) return;
+            if (!outcome.isSuccess()) {
+                // Не вошёл. Показываем подсказку заново — уже по новой
+                // ступени: после верного пароля с двухфакторкой это «введите
+                // код», после принятого токена — «придумайте новый пароль».
+                // В чат при этом ничего не дублируется: текст ответа команды
+                // человек только что прочитал.
+                guard.onStageChanged(player);
+                return;
+            }
 
-            guard.cancelTimeout(player.getUniqueId());
+            // Вошёл: убрать подсказку, снять таймаут, вернуть полный список
+            // команд клиенту.
+            guard.onAuthenticated(player);
             // Придержанное сообщение о входе показываем только теперь —
             // ровно то, которое сформировал EssentialsX.
             plugin.releaseJoinMessage(player.getUniqueId());

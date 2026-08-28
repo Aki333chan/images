@@ -39,8 +39,14 @@ import ovh.aurumgg.auth.core.AuthService;
  */
 final class AuthGuardListener implements Listener {
 
-    /** Команды, доступные до входа. Всё остальное отклоняется. */
-    private static final Set<String> ALLOWED =
+    /**
+     * Команды, доступные до входа. Всё остальное отклоняется.
+     *
+     * Этот же список берёт CommandVisibilityListener, чтобы скрыть из подсказок
+     * ровно то, что и так не выполнится. Два списка рано или поздно разошлись
+     * бы, и игрок увидел бы в меню команду, которую сервер ему запрещает.
+     */
+    static final Set<String> ALLOWED =
             Set.of("login", "l", "register", "reg", "reset", "2fa");
 
     /**
@@ -58,13 +64,16 @@ final class AuthGuardListener implements Listener {
     private final AurumAuthPlugin plugin;
     private final AuthService service;
     private final AuthConfig config;
+    private final LoginPrompt prompt;
     /** Задачи «выкинуть, если не вошёл» — по одной на игрока. */
     private final Map<UUID, BukkitTask> timeouts = new ConcurrentHashMap<>();
 
-    AuthGuardListener(AurumAuthPlugin plugin, AuthService service, AuthConfig config) {
+    AuthGuardListener(
+            AurumAuthPlugin plugin, AuthService service, AuthConfig config, LoginPrompt prompt) {
         this.plugin = plugin;
         this.service = service;
         this.config = config;
+        this.prompt = prompt;
     }
 
     private boolean blocked(Player player) {
@@ -96,7 +105,7 @@ final class AuthGuardListener implements Listener {
             plugin.getLogger().info("Игрок " + player.getName()
                     + " пропущен без пароля по праву " + BYPASS_PERMISSION);
             player.sendMessage(AurumAuthPlugin.prefixed("Вход без пароля по праву администратора"));
-            announce(uuid);
+            authenticated(player);
             return;
         }
 
@@ -105,15 +114,67 @@ final class AuthGuardListener implements Listener {
             if (status == AuthStatus.AUTHENTICATED_BY_SESSION) {
                 player.sendMessage(AurumAuthPlugin.prefixed("С возвращением, пароль не нужен"));
             }
-            announce(uuid);
+            authenticated(player);
             return;
         }
 
-        player.sendMessage(AurumAuthPlugin.prefixed(status == AuthStatus.AWAITING_REGISTRATION
-                ? "Зарегистрируйтесь: /register <пароль> <пароль ещё раз>"
-                : "Войдите: /login <пароль>"));
-
+        // Подсказка идёт не строчкой в чат, а title на весь экран плюс строка
+        // над горячей панелью — и повторяется, пока человек не войдёт.
+        // Причина простая: чужой MOTD (у EssentialsX он приходит сразу после
+        // входа и не событием, а прямой отправкой текста) уносит одну строчку
+        // чата вверх раньше, чем её успевают прочитать. Подробности — в
+        // javadoc LoginPrompt.
+        prompt.start(player, config.loginTimeout());
         scheduleTimeout(player);
+    }
+
+    /**
+     * Игрок вошёл: убрать подсказку, снять таймаут и вернуть ему команды.
+     *
+     * Список команд клиент получает один раз, при подключении, — то есть
+     * тогда, когда игрок ещё не вошёл и CommandVisibilityListener показал ему
+     * только команды входа. updateCommands() отправляет список заново, уже
+     * полный. Без этого вошедший остался бы с обрезанным меню до перезахода.
+     */
+    void onAuthenticated(Player player) {
+        UUID uuid = player.getUniqueId();
+        cancelTimeout(uuid);
+        prompt.stop(uuid);
+        player.updateCommands();
+    }
+
+    /**
+     * Игрока разавторизовали командой, а он остался в сети (/auth logout).
+     *
+     * Всё возвращается в исходное: подсказка, отсчёт до кика и урезанный
+     * список команд. Без отсчёта разавторизованный висел бы в игре без
+     * пароля и без срока — то есть наказание превратилось бы в бессрочный
+     * карантин, из которого ничто не выводит.
+     */
+    void onDeauthenticated(Player player) {
+        prompt.start(player, config.loginTimeout());
+        scheduleTimeout(player);
+        player.updateCommands();
+    }
+
+    /**
+     * Ступень входа сменилась: был пароль — стал код двухфакторки или новый
+     * пароль после токена. Показываем подсказку заново, уже другую.
+     */
+    void onStageChanged(Player player) {
+        prompt.refresh(player);
+    }
+
+    /** Вошёл без команды — по сессии, через прокси или по байпасу. */
+    private void authenticated(Player player) {
+        prompt.stop(player.getUniqueId());
+        announce(player.getUniqueId());
+        // Следующим тиком, как и объявление: во время PlayerJoinEvent игрок
+        // ещё дообрабатывается, и посылать ему пакет со списком команд раньше,
+        // чем сервер закончит вход, незачем.
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) player.updateCommands();
+        });
     }
 
     /**
@@ -156,7 +217,11 @@ final class AuthGuardListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
-        cancelTimeout(event.getPlayer().getUniqueId());
+        UUID uuid = event.getPlayer().getUniqueId();
+        cancelTimeout(uuid);
+        // Иначе повторяющаяся задача осталась бы висеть на каждом, кого
+        // выкинуло по таймауту, и держала бы ссылку на объект игрока.
+        prompt.stop(uuid);
     }
 
     // ------------------------------------------------------------ запреты

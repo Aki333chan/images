@@ -45,7 +45,11 @@ public record AuthConfig(
         Duration historyRetention,
         /** Имя этого сервера в истории входов: база одна на всю сеть. */
         String serverId,
-        MessageSettings messages) {
+        MessageSettings messages,
+        /** Как выглядит просьба войти: title, строка над панелью, чат. */
+        PromptSettings prompt,
+        /** Прятать от невошедшего команды, которые ему всё равно запрещены. */
+        boolean hideOtherCommands) {
 
     /** Что делать с сообщениями о входе и выходе, пока игрок не авторизован. */
     public enum JoinMessageMode {
@@ -113,7 +117,9 @@ public record AuthConfig(
                 // которая растёт весь срок жизни сервера.
                 Duration.ofDays(clamp(integer(raw, "history.keep-days", 90), 1, 3650)),
                 string(raw, "server-id", "server"),
-                MessageSettings.fromMap(raw));
+                MessageSettings.fromMap(raw),
+                PromptSettings.fromMap(raw),
+                bool(raw, "login.hide-other-commands", true));
     }
 
     /** Имя таблицы по умолчанию — оно же запасное при негодном значении. */

@@ -29,7 +29,7 @@ import ovh.aurumgg.auth.core.LoginRecord;
  * /auth history &lt;ник&gt; [24h|3d|7d|30d] — история входов
  * /auth unregister &lt;ник&gt; confirm — снять регистрацию
  * /auth 2fa-off &lt;ник&gt; — выключить двухфакторку потерявшему телефон
- * /auth reload        — перечитать тексты сообщений
+ * /auth reload        — перечитать тексты сообщений и подсказок
  * </pre>
  *
  * ОДНА КОМАНДА С ПОДКОМАНДАМИ, А НЕ ПЯТЬ ОТДЕЛЬНЫХ. Пять команд верхнего
@@ -59,10 +59,13 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
 
     private final AurumAuthPlugin plugin;
     private final AuthService service;
+    /** Нужен ровно для одного: вернуть подсказку и отсчёт разавторизованному. */
+    private final AuthGuardListener guard;
 
-    AuthAdminCommand(AurumAuthPlugin plugin, AuthService service) {
+    AuthAdminCommand(AurumAuthPlugin plugin, AuthService service, AuthGuardListener guard) {
         this.plugin = plugin;
         this.service = service;
+        this.guard = guard;
     }
 
     @Override
@@ -76,7 +79,7 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (sub.equals("reload")) {
             if (!allowed(sender, "aurumauth.admin.reload")) return true;
             plugin.reloadMessages();
-            sender.sendMessage(AurumAuthPlugin.prefixed("Тексты сообщений перечитаны"));
+            sender.sendMessage(AurumAuthPlugin.prefixed("Тексты сообщений и подсказок перечитаны"));
             return true;
         }
 
@@ -166,6 +169,9 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         }
         boolean changed = service.forceLogout(player.getUniqueId());
         player.sendMessage(AurumAuthPlugin.prefixed("Вход сброшен администратором: /login <пароль>"));
+        // Возвращаем игрока в то же положение, что и сразу после захода:
+        // подсказка на экране, отсчёт до кика, только команды входа.
+        guard.onDeauthenticated(player);
         sender.sendMessage(AurumAuthPlugin.prefixed(changed
                 ? "Игрок «" + name + "» разавторизован, сессия погашена"
                 : "Игрок «" + name + "» и так не был авторизован; сессия погашена"));
