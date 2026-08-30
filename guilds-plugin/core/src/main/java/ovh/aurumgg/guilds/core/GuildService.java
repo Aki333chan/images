@@ -160,6 +160,20 @@ public final class GuildService implements AutoCloseable {
         return guild.members().stream().map(GuildMember::uuid).toList();
     }
 
+    /**
+     * Имена всех гильдий — для автодополнения команд.
+     *
+     * Синхронно и из памяти. Асинхронный summaries() здесь не годится:
+     * автодополнение вызывается в главном потоке, и join() на его future
+     * подвесил бы сервер ровно на время похода в рабочий поток.
+     */
+    public List<String> guildNames() {
+        return guilds.values().stream()
+                .map(StoredGuild::name)
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+    }
+
     public boolean bankAvailable() {
         return config.bankEnabled() && economy.available();
     }

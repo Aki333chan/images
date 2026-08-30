@@ -97,7 +97,7 @@ public final class HudLines {
      * Целое показывается целым: «Банк: 1200» читается быстрее, чем
      * «Банк: 1200.00», а сайдбар и без того узкий.
      */
-    static String money(double value) {
+    public static String money(double value) {
         if (value == Math.rint(value) && Math.abs(value) < 1e15) {
             return String.valueOf((long) value);
         }

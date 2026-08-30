@@ -49,6 +49,10 @@ dependencies {
     compileOnly("ovh.aurumgg:auth-events:0.1.0")
 }
 
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.add("-Xlint:deprecation")
+}
+
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }
