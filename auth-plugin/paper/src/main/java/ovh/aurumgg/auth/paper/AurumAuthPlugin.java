@@ -14,6 +14,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.auth.api.AurumAuthApi;
 import ovh.aurumgg.auth.core.AuthConfig;
 import ovh.aurumgg.auth.core.AuthService;
+import ovh.aurumgg.auth.event.PlayerAccountDeletedEvent;
 import ovh.aurumgg.auth.core.DeferredMessages;
 import ovh.aurumgg.auth.core.LoginThrottle;
 import ovh.aurumgg.auth.core.MariaDbAuthRepository;
@@ -81,6 +82,20 @@ public final class AurumAuthPlugin extends JavaPlugin {
                 new LoginThrottle(config.maxAttempts(), config.lockout(), config.attemptDelay()),
                 getLogger(),
                 Instant::now);
+
+        // Об удалении аккаунта сообщаем событием Bukkit: чужим плагинам
+        // (гильдиям, домам, кошелькам) нужно прибрать свои данные, а лезть за
+        // этим в нашу базу им незачем. Сервис зовёт нас из рабочего потока —
+        // событие шлём с главного, потому что обработчику почти наверняка
+        // понадобится Bukkit API.
+        service.setAccountListener((uuid, username, byAdmin) -> {
+            // Плагин может выключаться прямо сейчас: планировщик на этом
+            // бросает IllegalPluginAccessException, а падать из-за уведомления
+            // об уже выполненном удалении незачем.
+            if (!isEnabled()) return;
+            getServer().getScheduler().runTask(this, () -> getServer().getPluginManager()
+                    .callEvent(new PlayerAccountDeletedEvent(uuid, username, byAdmin)));
+        });
 
         applyTexts(config.prompt());
         loginPrompt = new LoginPrompt(this, service, config.prompt());

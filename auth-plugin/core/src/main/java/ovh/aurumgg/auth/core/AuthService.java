@@ -54,6 +54,15 @@ public final class AuthService implements AutoCloseable {
     /** Игроки в сети: UUID → что мы о них знаем прямо сейчас. */
     private final Map<UUID, PlayerState> online = new ConcurrentHashMap<>();
 
+    /**
+     * Кому сообщать об удалении аккаунта. Ставится адаптером после
+     * создания сервиса, а не через конструктор: слушатель нужен не всем
+     * (тестам, например), а конструктор и без того длинный.
+     *
+     * volatile: ставится с главного потока при старте, читается из рабочих.
+     */
+    private volatile AccountListener accountListener;
+
     public AuthService(
             AuthConfig config,
             AuthRepository repository,
@@ -79,6 +88,31 @@ public final class AuthService implements AutoCloseable {
             return thread;
         };
         this.worker = Executors.newFixedThreadPool(Math.max(2, config.poolSize()), factory);
+    }
+
+    /**
+     * Подписаться на удаление аккаунтов.
+     *
+     * Слушатель ровно один: это не шина событий, а мостик к настоящей шине
+     * Bukkit, которая живёт в адаптере. Второй подписчик здесь означал бы,
+     * что кто-то обошёл события сервера — а этого делать не надо.
+     */
+    public void setAccountListener(AccountListener listener) {
+        this.accountListener = listener;
+    }
+
+    /**
+     * Сообщить об удалении. Исключение подписчика не должно превращаться
+     * в «удаление не удалось»: аккаунта в базе уже нет, откатывать нечего.
+     */
+    private void notifyDeleted(UUID uuid, String username, boolean byAdmin) {
+        AccountListener listener = accountListener;
+        if (listener == null) return;
+        try {
+            listener.onAccountDeleted(uuid, username, byAdmin);
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Подписчик на удаление аккаунта " + username + " упал", e);
+        }
     }
 
     // ------------------------------------------------------------- состояние
@@ -559,6 +593,7 @@ public final class AuthService implements AutoCloseable {
                 sessions.forget(uuid);
                 setStatus(uuid, AuthStatus.AWAITING_REGISTRATION);
                 logger.info("Игрок " + username + " удалил свою регистрацию");
+                notifyDeleted(uuid, username, false);
                 return AuthOutcome.ok("Регистрация удалена");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка удаления регистрации " + username, e);
@@ -585,6 +620,7 @@ public final class AuthService implements AutoCloseable {
                 if (account.isEmpty()) return false;
                 repository.deleteAccount(account.get().uuid());
                 sessions.forget(account.get().uuid());
+                notifyDeleted(account.get().uuid(), account.get().username(), true);
                 // Игрока в сети сразу возвращаем в состояние «не зарегистрирован»,
                 // иначе он продолжил бы играть по уже несуществующему аккаунту.
                 setStatus(account.get().uuid(), AuthStatus.AWAITING_REGISTRATION);
