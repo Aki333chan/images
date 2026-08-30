@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -19,6 +20,8 @@ import {
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
   type MinecraftEconomyDto,
+  type MinecraftGuildDto,
+  type MinecraftGuildMembershipDto,
   type MinecraftPerformanceDto,
   type MinecraftPermissionsDto,
   type MinecraftPluginsDto,
@@ -26,6 +29,7 @@ import {
   type MinecraftPasswordResetDto,
 } from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../../auth/decorators';
+import { PrismaService } from '../../prisma/prisma.service';
 import { AuditRedactBody } from '../../audit/audit.decorators';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
 import { COMPANION_DOCS_URL, CompanionService } from './companion.service';
@@ -35,6 +39,8 @@ import {
   BalanceChangeDto,
   BanDto,
   CompanionConfigDto,
+  GuildRemoveMemberDto,
+  GuildTransferDto,
   KickDto,
   PermissionChangeDto,
   QuickCommandRunDto,
@@ -56,6 +62,7 @@ export class MinecraftController {
     private readonly minecraft: MinecraftService,
     private readonly config: MinecraftConfigService,
     private readonly companion: CompanionService,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ---------- Игроки ----------
@@ -306,6 +313,138 @@ export class MinecraftController {
       );
     }
     return reset;
+  }
+
+  // ------------------------------------------------------------- гильдии
+  //
+  // Раздел работает через companion, который спрашивает у AurumGuilds по его
+  // Java API. Плагина может не быть — тогда список приходит пустым, а действия
+  // отвечают 409 с объяснением. Отдельного «раздел выключен» в контракте нет
+  // намеренно: пустой список гильдий и отсутствие плагина выглядят для
+  // человека одинаково, а лишний флаг пришлось бы поддерживать во всех трёх
+  // слоях.
+
+  @Get('guilds')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsView)
+  @ServerScoped('serverId')
+  async guilds(
+    @Param('serverId') serverId: string,
+    @Query('query') query?: string,
+  ): Promise<MinecraftGuildDto[]> {
+    return (await this.companion.getGuilds(serverId, query?.trim() || null)) ?? [];
+  }
+
+  @Get('guilds/:guildId')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsView)
+  @ServerScoped('serverId')
+  async guild(
+    @Param('serverId') serverId: string,
+    @Param('guildId') guildId: string,
+  ): Promise<MinecraftGuildDto> {
+    const guild = await this.companion.getGuild(serverId, Number(guildId));
+    if (!guild) {
+      throw new NotFoundException('Гильдия не найдена или плагин гильдий недоступен');
+    }
+    return guild;
+  }
+
+  /**
+   * Гильдия игрока — для его карточки.
+   *
+   * null и когда игрок ни в какой гильдии не состоит, и когда плагина гильдий
+   * нет: для строки в карточке разницы нет, показывать всё равно нечего.
+   * Отдельный 404 здесь был бы ошибкой у каждого второго игрока.
+   */
+  @Get('players/:uuid/guild')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsView)
+  @ServerScoped('serverId')
+  guildOfPlayer(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<MinecraftGuildMembershipDto | null> {
+    return this.companion.getPlayerGuild(serverId, uuid);
+  }
+
+  /**
+   * Распустить гильдию помимо воли лидера.
+   *
+   * Необратимо и уносит состав вместе с общаком, поэтому право отдельное от
+   * просмотра. Кто это сделал, уходит и в журнал панели (глобальный
+   * AuditInterceptor), и в лог игрового сервера — там это видно тем, кто
+   * разбирается уже на месте.
+   */
+  @Post('guilds/:guildId/disband')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsManage)
+  @ServerScoped('serverId')
+  async disbandGuild(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('guildId') guildId: string,
+  ): Promise<MinecraftCommandResultDto> {
+    return this.guildAction(serverId, `/guilds/${Number(guildId)}/disband`, {
+      actor: await this.actorName(user.id),
+    });
+  }
+
+  @Post('guilds/:guildId/transfer')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsManage)
+  @ServerScoped('serverId')
+  async transferGuild(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('guildId') guildId: string,
+    @Body() dto: GuildTransferDto,
+  ): Promise<MinecraftCommandResultDto> {
+    return this.guildAction(serverId, `/guilds/${Number(guildId)}/transfer`, {
+      actor: await this.actorName(user.id),
+      target: dto.target,
+    });
+  }
+
+  @Post('guilds/members/remove')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsManage)
+  @ServerScoped('serverId')
+  async removeGuildMember(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Body() dto: GuildRemoveMemberDto,
+  ): Promise<MinecraftCommandResultDto> {
+    return this.guildAction(serverId, `/guilds/members/${encodeURIComponent(dto.target)}/remove`, {
+      actor: await this.actorName(user.id),
+    });
+  }
+
+  /**
+   * Общий хвост трёх действий с гильдиями.
+   *
+   * Отказ превращается в 409, а не в 200 с флагом: панель обязана показать
+   * человеку, что действие не выполнено, и делать это по полю в теле успешного
+   * ответа — верный способ однажды пропустить неудачу.
+   */
+  private async guildAction(
+    serverId: string,
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<MinecraftCommandResultDto> {
+    const result = await this.companion.guildAction(serverId, path, body);
+    if (!result.ok) throw new ConflictException(result.message);
+    return { output: result.message };
+  }
+
+  /**
+   * Как назвать сотрудника в логе ИГРОВОГО сервера.
+   *
+   * Ник, а не id: журнал панели и так знает, кто это, а строчку в консоли
+   * сервера читает администратор, у которого панели под рукой может и не быть.
+   * Пока ник не выбран (человек ещё не входил), честнее показать email, чем
+   * пустоту — так же, как в журнале банов.
+   */
+  private async actorName(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { nickname: true, email: true },
+    });
+    return user?.nickname ?? user?.email ?? 'панель';
   }
 
   @Get('economy')

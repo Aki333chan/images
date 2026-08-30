@@ -1,0 +1,47 @@
+name: AurumGuilds
+version: '${version}'
+main: ovh.aurumgg.guilds.paper.AurumGuildsPlugin
+# Формат версии Paper с 26.1: год.выпуск (раньше было 1.21.x).
+api-version: '26.2'
+description: Пати и гильдии — группы игроков, HUD и общак.
+author: Aurum
+
+# НИ ОДНОГО depend, И ЭТО ГЛАВНОЕ.
+#
+# LuckPerms, Vault и AurumAuth перечислены в softdepend, то есть плагин
+# запускается и без них — каждый из них влияет только на свою часть:
+#   LuckPerms нет  → тег не показывается суффиксом, гильдии работают;
+#   Vault нет      → банк гильдии недоступен, гильдии работают;
+#   AurumAuth нет  → удаление аккаунта не убирает игрока из гильдии
+#                    автоматически, для этого есть /guild admin remove.
+#
+# softdepend нужен только для порядка загрузки: если сосед есть, он поднимется
+# раньше нас, и на старте мы увидим его уже готовым.
+softdepend: [LuckPerms, Vault, AurumAuth]
+
+commands:
+  guild:
+    description: Гильдии — постоянные объединения игроков
+    usage: /guild help
+    aliases: [гильдия, gu]
+  party:
+    description: Пати — временная группа
+    usage: /party help
+    aliases: [пати, pt]
+  p:
+    description: Написать в чат пати
+    usage: /p <сообщение>
+  g:
+    description: Написать в чат гильдии
+    usage: /g <сообщение>
+
+permissions:
+  aurumguilds.create:
+    description: Создавать гильдии. Проверяется, только если включено в config.yml
+    # true по умолчанию: гильдии — это возможность для игроков, а не привилегия.
+    # Ограничить её можно переключателем guild.require-create-permission,
+    # и тогда это право придётся выдать явно.
+    default: true
+  aurumguilds.admin:
+    description: Вмешиваться в чужие гильдии — /guild admin
+    default: op

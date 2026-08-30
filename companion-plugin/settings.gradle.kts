@@ -20,6 +20,12 @@ rootProject.name = "aurum-companion"
 // работает, просто /webtoken отвечает, что авторизация недоступна.
 includeBuild("../auth-plugin")
 
+// То же самое для плагина гильдий: companion собирается против ovh.aurumgg:
+// guilds-api, а реализацию в рантайме отдаёт сам AurumGuilds через
+// ServicesManager. Зависимость compileOnly и мягкая — без установленного
+// AurumGuilds companion работает, просто раздел гильдий отвечает 503.
+includeBuild("../guilds-plugin")
+
 // core — чистая Java без Bukkit: HTTP-сервер, JSON, авторизация, клиент тикетов.
 //        Собирается и тестируется где угодно, включая CI без доступа к репозиторию Paper.
 // paper — адаптер к Bukkit/Paper API: точка входа плагина, команда /ticket.

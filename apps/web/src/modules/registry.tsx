@@ -20,6 +20,7 @@ import {
   MinecraftQuickCommandsWidget,
   MinecraftWhitelistTab,
 } from './minecraft/tabs';
+import { MinecraftGuildsTab } from './minecraft/GuildsTab';
 import { MinecraftSettingsTab } from './minecraft/SettingsTab';
 import {
   PalworldBansTab,
@@ -88,6 +89,13 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
         label: 'Whitelist',
         permission: 'minecraft.whitelist',
         component: MinecraftWhitelistTab,
+      },
+      // Только у Paper: гильдии даёт плагин Bukkit, которого на загрузчиках
+      // модов не существует — там эта capability в манифесте не объявлена.
+      guilds: {
+        label: 'Гильдии',
+        permission: 'minecraft.guilds.view',
+        component: MinecraftGuildsTab,
       },
     },
     dashboard: {

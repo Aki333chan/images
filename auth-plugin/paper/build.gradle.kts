@@ -15,6 +15,8 @@ dependencies {
     // api тянется транзитивно через core (там он объявлен как api),
     // но объявляем явно: этот модуль реализует интерфейс напрямую.
     implementation(project(":auth-api"))
+    // События плагина. Отдельным модулем — см. auth-events/build.gradle.kts.
+    implementation(project(":auth-events"))
 
     // Схема версий Paper (с 26.1 суффикс -R0.1-SNAPSHOT не используется):
     // {ВЕРСИЯ}.build.+ — последний билд ветки.
@@ -40,6 +42,7 @@ tasks.jar {
     archiveBaseName.set("AurumAuth")
     from(project(":core").sourceSets["main"].output)
     from(project(":auth-api").sourceSets["main"].output)
+    from(project(":auth-events").sourceSets["main"].output)
     from({
         project(":core").configurations["runtimeClasspath"]
             .filter { it.name.endsWith(".jar") }

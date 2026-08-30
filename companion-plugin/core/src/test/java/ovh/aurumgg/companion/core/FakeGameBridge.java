@@ -237,4 +237,62 @@ public final class FakeGameBridge implements GameBridge {
         resetRequests.add(username);
         return Optional.ofNullable(resetToIssue);
     }
+
+    // ------------------------------------------------------------ гильдии
+
+    /** Стоит ли «плагин гильдий»: так проверяется ответ 503 без него. */
+    public boolean guildsInstalled;
+    public final java.util.List<ovh.aurumgg.companion.core.model.GuildInfo> guilds =
+            new java.util.ArrayList<>();
+    public ovh.aurumgg.companion.core.model.GuildMembershipInfo membership;
+    /** Что вернуть на любое административное действие. */
+    public ovh.aurumgg.companion.core.model.GuildActionOutcome guildOutcome =
+            new ovh.aurumgg.companion.core.model.GuildActionOutcome(true, "готово");
+    public final java.util.List<String> guildActions = new java.util.ArrayList<>();
+
+    @Override
+    public boolean guildsAvailable() {
+        return guildsInstalled;
+    }
+
+    @Override
+    public List<ovh.aurumgg.companion.core.model.GuildInfo> guilds(String query, int limit) {
+        if (query == null || query.isBlank()) return List.copyOf(guilds);
+        String key = query.toLowerCase(java.util.Locale.ROOT);
+        return guilds.stream()
+                .filter(guild -> guild.name().toLowerCase(java.util.Locale.ROOT).contains(key)
+                        || guild.tag().toLowerCase(java.util.Locale.ROOT).contains(key))
+                .toList();
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildInfo> guild(long guildId) {
+        return guilds.stream().filter(guild -> guild.id() == guildId).findFirst();
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildMembershipInfo> guildOf(UUID playerUuid) {
+        return Optional.ofNullable(membership);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildDisband(
+            long guildId, String actor) {
+        guildActions.add("disband " + guildId + " " + actor);
+        return Optional.of(guildOutcome);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildTransfer(
+            long guildId, String targetName, String actor) {
+        guildActions.add("transfer " + guildId + " " + targetName + " " + actor);
+        return Optional.of(guildOutcome);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildRemoveMember(
+            String targetName, String actor) {
+        guildActions.add("remove " + targetName + " " + actor);
+        return Optional.of(guildOutcome);
+    }
 }

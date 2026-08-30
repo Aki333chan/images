@@ -368,4 +368,36 @@ class TwoFactorAndHistoryTest {
         service.unregisterByAdmin("Стив").join();
         assertFalse(sessions.isValid(STEVE, IP, now.get()));
     }
+
+    @Test
+    void обУдаленииСообщаетсяПодписчику() {
+        // На этом уведомлении держатся чужие данные, привязанные к игроку:
+        // гильдии, дома, кошельки. Если оно не придёт, они останутся висеть
+        // на UUID, за которым больше никого нет.
+        List<String> heard = new java.util.ArrayList<>();
+        service.setAccountListener((uuid, username, byAdmin) ->
+                heard.add(uuid + " " + username + " " + (byAdmin ? "админ" : "сам")));
+
+        register();
+        service.unregisterSelf(STEVE, PASSWORD.toCharArray()).join();
+        assertEquals(List.of(STEVE + " Стив сам"), heard);
+
+        heard.clear();
+        register();
+        service.unregisterByAdmin("Стив").join();
+        assertEquals(List.of(STEVE + " Стив админ"), heard);
+    }
+
+    @Test
+    void упавшийПодписчикНеЛомаетУдаление() {
+        // Аккаунта в базе уже нет, откатывать нечего — превращать чужую
+        // ошибку в «удаление не удалось» значило бы врать вызвавшему.
+        service.setAccountListener((uuid, username, byAdmin) -> {
+            throw new IllegalStateException("подписчик сломался");
+        });
+
+        register();
+        assertTrue(service.unregisterSelf(STEVE, PASSWORD.toCharArray()).join().isSuccess());
+        assertTrue(repository.peek(STEVE).isEmpty());
+    }
 }

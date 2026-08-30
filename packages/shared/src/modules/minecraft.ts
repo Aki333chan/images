@@ -232,6 +232,14 @@ export const KNOWN_PLUGINS = [
     displayName: 'AurumAuth',
     gives: 'кнопка «Сбросить пароль» в карточке игрока: одноразовый токен на 20 минут',
   },
+  {
+    // Наш плагин гильдий и пати. Панель, как и с AurumAuth, ходит к нему не
+    // напрямую: companion берёт его Java API из ServicesManager и отдаёт
+    // результат сюда. Второго HTTP-сервера на игровом сервере не появляется.
+    id: 'AurumGuilds',
+    displayName: 'AurumGuilds',
+    gives: 'вкладка «Гильдии»: состав, общак и вмешательство администрации; гильдия в карточке игрока',
+  },
 ] as const;
 
 export type KnownPluginId = (typeof KNOWN_PLUGINS)[number]['id'];
@@ -257,6 +265,15 @@ export const MINECRAFT_PERMISSIONS = {
    * доступ к чужому аккаунту, и это заметно весомее, чем выгнать с сервера.
    */
   passwordReset: 'minecraft.password.reset',
+  /** Смотреть гильдии и их состав. */
+  guildsView: 'minecraft.guilds.view',
+  /**
+   * Вмешиваться в чужие гильдии: распустить, передать лидерство, исключить.
+   *
+   * Отдельно от просмотра и намеренно весомее: роспуск необратим и уносит
+   * состав вместе с общаком, а посмотреть список гильдий безобидно.
+   */
+  guildsManage: 'minecraft.guilds.manage',
 } as const;
 
 /**
@@ -339,3 +356,64 @@ export interface MinecraftEconomyDto {
   /** true — отдана закэшированная величина, а не свежий пересчёт. */
   cached?: boolean;
 }
+
+/**
+ * Гильдия в панели.
+ *
+ * Один тип и на строку списка, и на карточку: отличаются они только тем,
+ * заполнен ли `members`. Разводить их на два интерфейса значило бы дублировать
+ * восемь полей ради одного различия.
+ */
+export interface MinecraftGuildDto {
+  id: number;
+  name: string;
+  tag: string;
+  leaderUuid: string;
+  leaderName: string;
+  memberCount: number;
+  /** Баланс общака. 0, если Vault на игровом сервере нет. */
+  bankBalance: number;
+  /** ISO-время создания. */
+  createdAt: string;
+  /** Состав. Пуст в списке, заполнен в карточке. */
+  members: MinecraftGuildMemberDto[];
+}
+
+/** Ранг в гильдии. Тот же набор, что и в самом плагине. */
+export type MinecraftGuildRank = 'leader' | 'officer' | 'member';
+
+export interface MinecraftGuildMemberDto {
+  uuid: string;
+  name: string;
+  rank: MinecraftGuildRank;
+  /** ISO-время вступления. */
+  joinedAt: string;
+}
+
+/** В какой гильдии состоит игрок — для его карточки. */
+export interface MinecraftGuildMembershipDto {
+  guildId: number;
+  guildName: string;
+  guildTag: string;
+  rank: MinecraftGuildRank;
+  joinedAt: string;
+}
+
+/** Кого назначить лидером при принудительной передаче. */
+export interface MinecraftGuildTransferDto {
+  /** Ник участника этой же гильдии. */
+  target: string;
+}
+
+/** Кого исключить из его гильдии. */
+export interface MinecraftGuildRemoveMemberDto {
+  /** Ник игрока. Гильдию искать не нужно: он состоит максимум в одной. */
+  target: string;
+}
+
+/** Названия рангов по-русски — одни и те же в списке, карточке и модалке игрока. */
+export const MINECRAFT_GUILD_RANK_TITLES: Record<MinecraftGuildRank, string> = {
+  leader: 'лидер',
+  officer: 'офицер',
+  member: 'участник',
+};

@@ -329,4 +329,47 @@ public final class BukkitGameBridge implements GameBridge {
             return Optional.empty();
         }
     }
+
+    // ---------------------------------------------------- гильдии и пати
+    //
+    // Всё делегируется мосту: он один знает про классы AurumGuilds, и на
+    // сервере без этого плагина они не загружаются вовсе.
+
+    @Override
+    public boolean guildsAvailable() {
+        return GuildsIntegration.installed();
+    }
+
+    @Override
+    public java.util.List<ovh.aurumgg.companion.core.model.GuildInfo> guilds(String query, int limit) {
+        return GuildsIntegration.guilds(query, limit);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildInfo> guild(long guildId) {
+        return GuildsIntegration.guild(guildId);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildMembershipInfo> guildOf(UUID playerUuid) {
+        return GuildsIntegration.membership(playerUuid);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildDisband(
+            long guildId, String actor) {
+        return GuildsIntegration.disband(guildId, actor);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildTransfer(
+            long guildId, String targetName, String actor) {
+        return GuildsIntegration.transfer(guildId, targetName, actor);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildRemoveMember(
+            String targetName, String actor) {
+        return GuildsIntegration.removeMember(targetName, actor);
+    }
 }

@@ -88,3 +88,25 @@ export class BalanceChangeDto {
   @MaxLength(200)
   reason?: string;
 }
+
+/**
+ * Кого назначить лидером при принудительной передаче.
+ *
+ * Ник, а не UUID: администратор в панели видит состав гильдии именно никами, а
+ * заставлять его копировать UUID ради одного клика — лишний шаг там, где
+ * ошибиться легко.
+ */
+export class GuildTransferDto {
+  @IsString()
+  @MinLength(1, { message: 'Укажите ник участника' })
+  @MaxLength(16)
+  target!: string;
+}
+
+/** Кого исключить из его гильдии. Гильдию искать не нужно: она у игрока одна. */
+export class GuildRemoveMemberDto {
+  @IsString()
+  @MinLength(1, { message: 'Укажите ник игрока' })
+  @MaxLength(16)
+  target!: string;
+}

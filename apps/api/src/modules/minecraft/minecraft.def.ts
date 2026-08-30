@@ -20,6 +20,9 @@ export const minecraftManifest: GameModuleManifest = {
     inventory: 'requires-plugin',
     quickCommands: true,
     tickets: true,
+    // Гильдии дают только плагин AurumGuilds: без него вкладка показывает,
+    // чего не хватает, — так же, как вкладка инвентаря без companion.
+    guilds: 'requires-plugin',
   },
   permissions: [
     {
@@ -91,6 +94,19 @@ export const minecraftManifest: GameModuleManifest = {
       // кику, и раздавать его модераторам по умолчанию не стоит.
       key: MINECRAFT_PERMISSIONS.passwordReset,
       description: 'Сброс пароля игрока: выдача одноразового токена (AurumAuth)',
+      defaultRoles: ['ADMIN'],
+    },
+    {
+      key: MINECRAFT_PERMISSIONS.guildsView,
+      description: 'Просмотр гильдий и их состава (нужен AurumGuilds)',
+      defaultRoles: ['ADMIN', 'MODERATOR'],
+    },
+    {
+      // Роспуск необратим и уносит состав вместе с общаком, а передача
+      // лидерства меняет, кто распоряжается чужими деньгами. Модератору по
+      // умолчанию не даём: смотреть он может, вмешиваться — нет.
+      key: MINECRAFT_PERMISSIONS.guildsManage,
+      description: 'Роспуск гильдии, передача лидерства и исключение участника',
       defaultRoles: ['ADMIN'],
     },
     {
