@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { MINECRAFT_GUILD_RANK_TITLES } from '@aurum/shared';
 import type {
+  MinecraftGuildMembershipDto,
   MinecraftInventoryResponse,
   MinecraftPasswordResetDto,
   MinecraftPlayerDto,
@@ -20,13 +22,14 @@ const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/s
  * Что должно стоять на сервере, чтобы действие работало.
  * null — ванильная команда, есть всегда.
  */
-type Requirement = null | 'Essentials' | 'LuckPerms' | 'companion' | 'AurumAuth';
+type Requirement = null | 'Essentials' | 'LuckPerms' | 'companion' | 'AurumAuth' | 'AurumGuilds';
 
 const REQUIREMENT_HINT: Record<Exclude<Requirement, null>, string> = {
   Essentials: 'нужен EssentialsX',
   LuckPerms: 'нужен LuckPerms',
   companion: 'нужен companion-плагин',
   AurumAuth: 'нужен AurumAuth',
+  AurumGuilds: 'нужен AurumGuilds',
 };
 
 /** Кнопка действия, которая честно объясняет, почему она неактивна. */
@@ -145,6 +148,14 @@ export function PlayerDetail({
             onChanged={onChanged}
             onPunish={onPunish}
           />
+
+          {/* Гильдия — одной строкой, а не блоком: это справка «кто он на
+              сервере», и разворачивать под неё отдельный раздел незачем.
+              Полный состав и действия администрации живут во вкладке
+              «Гильдии», куда эта строка и отсылает. */}
+          {bukkit && hasPermission('minecraft.guilds.view') && player.uuid && (
+            <PlayerGuild serverId={serverId} moduleId={moduleId} uuid={player.uuid} />
+          )}
 
           {/* Валюта — отдельным блоком, а не четвёртой вкладкой: на телефоне
               вкладки и так делят ширину поровну, и четвёртая сделала бы
@@ -561,4 +572,56 @@ function PasswordReset({
 /** Значок «плагина нет» для строки списка — чтобы это было видно заранее. */
 export function MissingBadge({ label }: { label: string }) {
   return <Badge variant="outline">{label}</Badge>;
+}
+
+/**
+ * Гильдия игрока — одна строка в карточке.
+ *
+ * Молчит, если игрок ни в какой гильдии не состоит ИЛИ плагина гильдий на
+ * сервере нет: и то, и другое отдаётся одинаково пустым ответом, а для этой
+ * строки разницы нет — показывать всё равно нечего. Отдельная надпись «плагин
+ * не установлен» здесь была бы шумом в карточке каждого игрока.
+ */
+function PlayerGuild({
+  serverId,
+  moduleId,
+  uuid,
+}: {
+  serverId: string;
+  moduleId: string;
+  uuid: string;
+}) {
+  const [membership, setMembership] = useState<MinecraftGuildMembershipDto | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api<MinecraftGuildMembershipDto | null>(
+      `/api/modules/${moduleId}/servers/${serverId}/players/${uuid}/guild`,
+    )
+      .then((data) => {
+        if (alive) setMembership(data);
+      })
+      .catch(() => {
+        // Молча: раздел гильдий необязателен, и ошибка здесь не должна
+        // портить карточку игрока красной строкой.
+        if (alive) setMembership(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [serverId, moduleId, uuid]);
+
+  if (!membership) return null;
+
+  return (
+    <div className="space-y-1 border-t border-border pt-4">
+      <Label>Гильдия</Label>
+      <p className="text-sm">
+        <span className="font-medium">
+          [{membership.guildTag}] {membership.guildName}
+        </span>
+        <span className="text-muted"> — {MINECRAFT_GUILD_RANK_TITLES[membership.rank]}</span>
+      </p>
+    </div>
+  );
 }

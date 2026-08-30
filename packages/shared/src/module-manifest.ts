@@ -12,6 +12,7 @@ export const MODULE_CAPABILITIES = [
   'inventory',
   'quickCommands',
   'tickets',
+  'guilds',
 ] as const;
 export type ModuleCapability = (typeof MODULE_CAPABILITIES)[number];
 

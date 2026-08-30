@@ -5,6 +5,9 @@ import type {
   MinecraftBalanceDto,
   MinecraftPasswordResetDto,
   MinecraftEconomyDto,
+  MinecraftGuildDto,
+  MinecraftGuildMembershipDto,
+  MinecraftGuildRank,
   MinecraftInventoryItemDto,
   MinecraftInventoryResponse,
   MinecraftPermissionChangeDto,
@@ -43,6 +46,40 @@ interface RawInventory {
   items?: RawItem[];
   armor?: RawItem[];
   offhand?: RawItem | null;
+}
+
+interface RawGuildMember {
+  uuid?: string;
+  name?: string;
+  rank?: string;
+  joinedAt?: number;
+}
+
+interface RawGuild {
+  id?: number;
+  name?: string;
+  tag?: string;
+  leaderUuid?: string;
+  leaderName?: string;
+  memberCount?: number;
+  bankBalance?: number;
+  createdAt?: number;
+  members?: RawGuildMember[];
+}
+
+interface RawGuildMembership {
+  membership?: {
+    guildId?: number;
+    guildName?: string;
+    guildTag?: string;
+    rank?: string;
+    joinedAt?: number;
+  } | null;
+}
+
+interface RawGuildOutcome {
+  ok?: boolean;
+  message?: string;
 }
 
 /**
@@ -397,6 +434,77 @@ export class CompanionService {
     };
   }
 
+  // ------------------------------------------------------------- гильдии
+  //
+  // Плагин гильдий — отдельный от companion, и его может не быть. Ответ 503 с
+  // кодом guilds-unavailable означает именно это, и панель по нему прячет
+  // раздел, а не показывает ошибку.
+
+  /** Список гильдий с поиском по имени и тегу. null — раздел недоступен. */
+  async getGuilds(serverId: string, query: string | null): Promise<MinecraftGuildDto[] | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const suffix = query ? `?query=${encodeURIComponent(query)}` : '';
+    const result = await this.callRaw<{ guilds?: RawGuild[] }>(serverId, `/guilds${suffix}`);
+    if (!result.ok) return null;
+    return (result.body.guilds ?? []).map(toGuild);
+  }
+
+  /** Гильдия вместе с составом. null — нет такой или раздел недоступен. */
+  async getGuild(serverId: string, guildId: number): Promise<MinecraftGuildDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<RawGuild>(serverId, `/guilds/${guildId}`);
+    return result.ok ? toGuild(result.body) : null;
+  }
+
+  /**
+   * Гильдия игрока.
+   *
+   * null здесь означает и «не состоит», и «раздела нет». Для карточки игрока
+   * разницы нет: в обоих случаях блок про гильдию просто не показывается.
+   */
+  async getPlayerGuild(
+    serverId: string,
+    uuid: string,
+  ): Promise<MinecraftGuildMembershipDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<RawGuildMembership>(serverId, `/players/${uuid}/guild`);
+    if (!result.ok || !result.body.membership) return null;
+    const raw = result.body.membership;
+    return {
+      guildId: numberOr(raw.guildId, 0),
+      guildName: raw.guildName ?? '',
+      guildTag: raw.guildTag ?? '',
+      rank: toRank(raw.rank),
+      joinedAt: new Date(numberOr(raw.joinedAt, Date.now())).toISOString(),
+    };
+  }
+
+  /**
+   * Вмешательство администрации.
+   *
+   * Возвращается и текст отказа: он приходит из самого плагина гильдий, где
+   * написан рядом с условием, при котором возникает. Панели остаётся показать
+   * его человеку, а не придумывать свою формулировку.
+   */
+  async guildAction(
+    serverId: string,
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!(await this.isConfigured(serverId))) {
+      return { ok: false, message: 'Companion-плагин на игровом сервере не настроен' };
+    }
+    const result = await this.callRaw<RawGuildOutcome>(serverId, path, {
+      method: 'POST',
+      body,
+    });
+    if (result.ok) return { ok: true, message: result.body.message ?? 'Готово' };
+    if (result.code === 'guilds-unavailable') {
+      return { ok: false, message: 'На игровом сервере не установлен плагин гильдий' };
+    }
+    return { ok: false, message: result.error ?? 'Игровой сервер не ответил' };
+  }
+
   /**
    * Экономика сервера целиком.
    *
@@ -574,5 +682,29 @@ function economyFailure(
     available: false,
     code: 'error',
     reason: error ?? 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+  };
+}
+
+/** Ранг из ответа плагина. Неизвестное — участник: понижение безопаснее повышения. */
+function toRank(raw: string | undefined): MinecraftGuildRank {
+  return raw === 'leader' || raw === 'officer' ? raw : 'member';
+}
+
+function toGuild(raw: RawGuild): MinecraftGuildDto {
+  return {
+    id: numberOr(raw.id, 0),
+    name: raw.name ?? '',
+    tag: raw.tag ?? '',
+    leaderUuid: raw.leaderUuid ?? '',
+    leaderName: raw.leaderName ?? '',
+    memberCount: numberOr(raw.memberCount, 0),
+    bankBalance: numberOr(raw.bankBalance, 0),
+    createdAt: new Date(numberOr(raw.createdAt, 0)).toISOString(),
+    members: (raw.members ?? []).map((member) => ({
+      uuid: member.uuid ?? '',
+      name: member.name ?? '',
+      rank: toRank(member.rank),
+      joinedAt: new Date(numberOr(member.joinedAt, 0)).toISOString(),
+    })),
   };
 }
