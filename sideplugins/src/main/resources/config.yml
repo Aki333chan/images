@@ -1,0 +1,51 @@
+economy:
+  # true — использовать Vault. При недоступном провайдере ставки блокируются без отката на предметы.
+  use_vault: false
+  vault_symbol: "$"
+  min_vault_bet: 3.0
+  main_currency: GOLD_INGOT
+  sub_currency: GOLD_NUGGET
+
+database:
+  # sqlite работает без внешней БД; mariadb подходит для базы из Pterodactyl.
+  type: sqlite
+  sqlite:
+    file: statistics.db
+  mariadb:
+    # Необязательно: полный jdbc:mariadb://... URL. Если заполнен, host/port/database/use_ssl не используются.
+    jdbc_url: ""
+    host: 127.0.0.1
+    port: 3306
+    database: gladiatorarena
+    username: gladiatorarena
+    password: change_me
+    use_ssl: false
+    pool_size: 5
+    connection_timeout_ms: 10000
+
+settings:
+  # Восстанавливать сохранённый инвентарь при следующем входе после сбоя сервера.
+  recover_inventories_on_join: true
+  # Возвращать незавершённые ставки после перезапуска.
+  refund_interrupted_bets: true
+  # Максимальный размер одной команды.
+  max_team_size_limit: 20
+  betting_seconds: 45
+  countdown_seconds: 5
+  combat_log_is_loss: true
+  boundary_leave_is_loss: true
+  casino_commission_percent: 0.0
+  min_bet: 0.1
+  max_bet_per_player: 1000000.0
+  spectators:
+    enabled: true
+    restore_on_join: true
+
+messages:
+  final_stats: "§6§l🏆 ЧЕМПИОНСКИЙ ПУЛ 🏆\n\n§eФонд: §f%pool% %currency%\n\n§c§lПрошлые чемпионы:\n%champions%"
+  prefix: "§6[Арена] §r"
+  database_unavailable: "§cСтатистика временно недоступна. Ставки и матчи продолжают работать."
+  vault_unavailable: "§cVault или провайдер экономики недоступен. Денежные операции заблокированы."
+  no_permission: "§cНедостаточно прав."
+
+arenas: {}

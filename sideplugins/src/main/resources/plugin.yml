@@ -1,0 +1,23 @@
+name: GladiatorArena
+version: '1.1.0'
+main: org.ChisaO_o.gladiatorArena.GladiatorArena
+api-version: '26.2'
+description: Настраиваемые гладиаторские арены со ставками и комплектами
+softdepend: [Vault, VaultUnlocked, PlaceholderAPI]
+
+commands:
+  arena:
+    description: Управление гладиаторскими аренами
+    usage: /arena help
+    aliases: [ga]
+
+permissions:
+  arena.admin:
+    description: Управление аренами
+    default: op
+  arena.use:
+    description: Участие в аренах и просмотр коэффициентов
+    default: true
+  arena.spectate:
+    description: Наблюдение за боями
+    default: true
