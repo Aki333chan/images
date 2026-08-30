@@ -21,6 +21,7 @@ import {
   type MinecraftConsoleDictionaryDto,
   type MinecraftEconomyDto,
   type MinecraftGuildDto,
+  type MinecraftGuildMembershipDto,
   type MinecraftPerformanceDto,
   type MinecraftPermissionsDto,
   type MinecraftPluginsDto,
@@ -345,6 +346,23 @@ export class MinecraftController {
       throw new NotFoundException('Гильдия не найдена или плагин гильдий недоступен');
     }
     return guild;
+  }
+
+  /**
+   * Гильдия игрока — для его карточки.
+   *
+   * null и когда игрок ни в какой гильдии не состоит, и когда плагина гильдий
+   * нет: для строки в карточке разницы нет, показывать всё равно нечего.
+   * Отдельный 404 здесь был бы ошибкой у каждого второго игрока.
+   */
+  @Get('players/:uuid/guild')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsView)
+  @ServerScoped('serverId')
+  guildOfPlayer(
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<MinecraftGuildMembershipDto | null> {
+    return this.companion.getPlayerGuild(serverId, uuid);
   }
 
   /**
