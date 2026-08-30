@@ -21,6 +21,9 @@ import ovh.aurumgg.companion.core.json.PayloadWriter;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GuildActionOutcome;
+import ovh.aurumgg.companion.core.model.GuildInfo;
+import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -181,6 +184,95 @@ public final class CompanionHttpServer {
                 return;
             }
             respond(exchange, 200, PayloadWriter.passwordReset(reset.get()));
+            return;
+        }
+
+        // ---------------------------------------------------------- гильдии
+        //
+        // Раздел целиком отвечает 503, если плагина гильдий на сервере нет.
+        // Именно 503, а не 404: маршрут существует и заработает, как только
+        // плагин поставят, — а 404 панель истолковала бы как «такой гильдии
+        // нет» и показала бы пустой список вместо объяснения.
+
+        // GET /guilds?query=дра&limit=50
+        if (parts.length == 1 && parts[0].equals("guilds") && method.equals("GET")) {
+            if (guildsUnavailable(exchange)) return;
+            List<GuildInfo> guilds =
+                    bridge.guilds(queryParam(exchange, "query"), parseGuildLimit(queryParam(exchange, "limit")));
+            respond(exchange, 200, PayloadWriter.guilds(guilds));
+            return;
+        }
+
+        // GET /guilds/{id} — гильдия вместе с составом
+        if (parts.length == 2 && parts[0].equals("guilds") && method.equals("GET")) {
+            if (guildsUnavailable(exchange)) return;
+            Optional<GuildInfo> guild = bridge.guild(parseGuildId(parts[1]));
+            if (guild.isEmpty()) {
+                respond(exchange, 404, PayloadWriter.error("Гильдия не найдена", "guild-not-found"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.guild(guild.get()));
+            return;
+        }
+
+        // POST /guilds/{id}/disband — тело {"actor":"ГМ"}
+        if (parts.length == 3
+                && parts[0].equals("guilds")
+                && parts[2].equals("disband")
+                && method.equals("POST")) {
+            if (guildsUnavailable(exchange)) return;
+            respondOutcome(exchange,
+                    bridge.guildDisband(parseGuildId(parts[1]), actorFrom(readBody(exchange))));
+            return;
+        }
+
+        // POST /guilds/{id}/transfer — тело {"actor":"ГМ","target":"Стив"}
+        if (parts.length == 3
+                && parts[0].equals("guilds")
+                && parts[2].equals("transfer")
+                && method.equals("POST")) {
+            if (guildsUnavailable(exchange)) return;
+            Map<String, Object> body = JsonParser.parseObject(readBody(exchange));
+            String target = stringField(body, "target");
+            if (target.isBlank()) {
+                respond(exchange, 400, PayloadWriter.error("Не указан игрок", "target-required"));
+                return;
+            }
+            respondOutcome(exchange, bridge.guildTransfer(
+                    parseGuildId(parts[1]), target, stringField(body, "actor")));
+            return;
+        }
+
+        // POST /guilds/members/{ник}/remove — исключить игрока из его гильдии.
+        //
+        // По нику, а не по id гильдии: игрок состоит максимум в одной, и
+        // заставлять панель сначала выяснять, в какой именно, значило бы
+        // требовать лишний запрос ради того, что плагин гильдий знает и так.
+        if (parts.length == 4
+                && parts[0].equals("guilds")
+                && parts[1].equals("members")
+                && parts[3].equals("remove")
+                && method.equals("POST")) {
+            if (guildsUnavailable(exchange)) return;
+            respondOutcome(exchange,
+                    bridge.guildRemoveMember(decode(parts[2]), actorFrom(readBody(exchange))));
+            return;
+        }
+
+        // GET /players/{uuid}/guild — для карточки игрока
+        if (parts.length == 3
+                && parts[0].equals("players")
+                && parts[2].equals("guild")
+                && method.equals("GET")) {
+            if (guildsUnavailable(exchange)) return;
+            Optional<GuildMembershipInfo> membership = bridge.guildOf(parseUuid(parts[1]));
+            if (membership.isEmpty()) {
+                // 200 с пустым телом, а не 404: «не состоит в гильдии» — это
+                // обычное состояние игрока, а не отсутствие ресурса.
+                respond(exchange, 200, "{\"membership\":null}");
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.guildMembership(membership.get()));
             return;
         }
 
@@ -471,6 +563,59 @@ public final class CompanionHttpServer {
     }
 
     /** Значение параметра строки запроса или null. */
+    /**
+     * Ответить 503, если плагина гильдий нет.
+     *
+     * @return true, если ответ уже отправлен и обработку пора прекратить
+     */
+    private boolean guildsUnavailable(HttpExchange exchange) throws IOException {
+        if (bridge.guildsAvailable()) return false;
+        respond(exchange, 503,
+                PayloadWriter.error("Плагин гильдий не установлен", "guilds-unavailable"));
+        return true;
+    }
+
+    private void respondOutcome(HttpExchange exchange, Optional<GuildActionOutcome> outcome)
+            throws IOException {
+        if (outcome.isEmpty()) {
+            respond(exchange, 503,
+                    PayloadWriter.error("Плагин гильдий не установлен", "guilds-unavailable"));
+            return;
+        }
+        // 409 при отказе: запрос корректен, отказало состояние игрового
+        // сервера — например, такой гильдии уже нет.
+        respond(exchange, outcome.get().ok() ? 200 : 409, PayloadWriter.guildOutcome(outcome.get()));
+    }
+
+    /** Кто выполняет действие. Пустое значение — не ошибка: в логе будет «панель». */
+    private static String actorFrom(String body) {
+        String actor = stringField(JsonParser.parseObject(body), "actor");
+        return actor.isBlank() ? "панель" : actor;
+    }
+
+    private static String stringField(Map<String, Object> body, String key) {
+        Object raw = body.get(key);
+        return raw == null ? "" : String.valueOf(raw).trim();
+    }
+
+    /** Негодный id — это «такой гильдии нет», а не ошибка разбора. */
+    private static long parseGuildId(String raw) {
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    private static int parseGuildLimit(String raw) {
+        if (raw == null || raw.isBlank()) return 100;
+        try {
+            return Math.max(1, Math.min(500, Integer.parseInt(raw.trim())));
+        } catch (NumberFormatException e) {
+            return 100;
+        }
+    }
+
     private static String queryParam(HttpExchange exchange, String key) {
         String query = exchange.getRequestURI().getRawQuery();
         if (query == null || query.isBlank()) return null;

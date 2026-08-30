@@ -60,6 +60,9 @@ dependencies {
     // settings.gradle.kts.
     compileOnly("ovh.aurumgg:auth-api:0.1.0")
 
+    // Публичный API плагина гильдий — по тем же правилам, что и auth-api.
+    compileOnly("ovh.aurumgg:guilds-api:0.1.0")
+
     // InvSee++ compileOnly-зависимостью НЕ подключается намеренно: его
     // артефакт лежит в GitHub Packages, требующем токен даже для публичных
     // пакетов, и сборка плагина стала бы невозможна без учётки GitHub.

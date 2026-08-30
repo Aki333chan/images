@@ -691,4 +691,106 @@ class CompanionHttpServerTest {
         assertEquals(401, post("/auth/reset/Steve", null, "").statusCode());
         assertTrue(bridge.resetRequests.isEmpty(), "без токена запрос не должен доходить до плагина");
     }
+
+    // ------------------------------------------------------------ гильдии
+
+    private void withGuild() {
+        bridge.guildsInstalled = true;
+        bridge.guilds.add(new ovh.aurumgg.companion.core.model.GuildInfo(
+                7, "Драконы", "DRG", "11111111-1111-1111-1111-111111111111", "Лидер",
+                3, 1200, 1_700_000_000_000L,
+                List.of(new ovh.aurumgg.companion.core.model.GuildInfo.Member(
+                        "11111111-1111-1111-1111-111111111111", "Лидер", "leader",
+                        1_700_000_000_000L))));
+    }
+
+    @Test
+    @DisplayName("Без плагина гильдий раздел отвечает 503, а не 404")
+    void guildsUnavailable() throws Exception {
+        // 404 панель истолковала бы как «гильдий нет» и показала бы пустой
+        // список вместо объяснения, почему раздел не работает.
+        HttpResponse<String> response = get("/guilds", TOKEN);
+        assertEquals(503, response.statusCode());
+        assertTrue(response.body().contains("guilds-unavailable"), response.body());
+    }
+
+    @Test
+    @DisplayName("Список гильдий и поиск по имени")
+    void guildList() throws Exception {
+        withGuild();
+
+        Map<String, Object> all = JsonParser.parseObject(get("/guilds", TOKEN).body());
+        assertEquals(1, ((List<?>) all.get("guilds")).size());
+
+        assertEquals(1, ((List<?>) JsonParser.parseObject(
+                get("/guilds?query=дра", TOKEN).body()).get("guilds")).size());
+        assertEquals(0, ((List<?>) JsonParser.parseObject(
+                get("/guilds?query=пусто", TOKEN).body()).get("guilds")).size());
+    }
+
+    @Test
+    @DisplayName("Карточка гильдии отдаёт весь состав")
+    void guildDetail() throws Exception {
+        withGuild();
+
+        HttpResponse<String> response = get("/guilds/7", TOKEN);
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("Драконы", body.get("name"));
+        assertEquals(1, ((List<?>) body.get("members")).size());
+
+        assertEquals(404, get("/guilds/999", TOKEN).statusCode());
+    }
+
+    @Test
+    @DisplayName("Игрок без гильдии — это 200 с пустым полем, а не 404")
+    void membershipOfPlayerWithoutGuild() throws Exception {
+        // «Не состоит в гильдии» — обычное состояние игрока, а не отсутствие
+        // ресурса, и 404 заставил бы панель показывать ошибку каждому второму.
+        bridge.guildsInstalled = true;
+        HttpResponse<String> response =
+                get("/players/11111111-1111-1111-1111-111111111111/guild", TOKEN);
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("null"), response.body());
+    }
+
+    @Test
+    @DisplayName("Административные действия доходят до плагина вместе с исполнителем")
+    void adminActions() throws Exception {
+        withGuild();
+
+        assertEquals(200, post("/guilds/7/disband", TOKEN, "{\"actor\":\"ГМ\"}").statusCode());
+        assertEquals(200,
+                post("/guilds/7/transfer", TOKEN, "{\"actor\":\"ГМ\",\"target\":\"Стив\"}").statusCode());
+        assertEquals(200,
+                post("/guilds/members/%D0%A1%D1%82%D0%B8%D0%B2/remove", TOKEN, "{\"actor\":\"ГМ\"}")
+                        .statusCode());
+
+        assertEquals(
+                List.of("disband 7 ГМ", "transfer 7 Стив ГМ", "remove Стив ГМ"),
+                bridge.guildActions);
+    }
+
+    @Test
+    @DisplayName("Передача лидерства без игрока — 400, а отказ плагина — 409")
+    void adminActionErrors() throws Exception {
+        withGuild();
+
+        assertEquals(400, post("/guilds/7/transfer", TOKEN, "{\"actor\":\"ГМ\"}").statusCode());
+
+        bridge.guildOutcome =
+                new ovh.aurumgg.companion.core.model.GuildActionOutcome(false, "Такой гильдии нет");
+        // 409, а не 400: запрос корректен, отказало состояние игрового сервера.
+        HttpResponse<String> response = post("/guilds/7/disband", TOKEN, "{\"actor\":\"ГМ\"}");
+        assertEquals(409, response.statusCode());
+        assertTrue(response.body().contains("Такой гильдии нет"), response.body());
+    }
+
+    @Test
+    @DisplayName("Действия с гильдиями тоже закрыты токеном")
+    void guildActionsNeedToken() throws Exception {
+        withGuild();
+        assertEquals(401, get("/guilds", null).statusCode());
+        assertEquals(401, post("/guilds/7/disband", null, "{}").statusCode());
+    }
 }

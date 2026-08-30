@@ -6,6 +6,9 @@ import java.util.UUID;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GuildActionOutcome;
+import ovh.aurumgg.companion.core.model.GuildInfo;
+import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -141,4 +144,48 @@ public interface GameBridge {
      * @return пусто, если экономики нет
      */
     Optional<EconomySummary> economySummary(int topLimit);
+
+    // ---------- Гильдии и пати (AurumGuilds) ----------
+    //
+    // ПОЧЕМУ ЭТО ЗДЕСЬ, А НЕ ОТДЕЛЬНЫМ HTTP-СЕРВЕРОМ В ПЛАГИНЕ ГИЛЬДИЙ.
+    // У companion сервер, токен и канал к панели уже есть и уже проверены.
+    // Второй сервер означал бы второй порт наружу, второй секрет в конфиге и
+    // второе место, где это можно настроить неправильно. Поэтому AurumGuilds
+    // выставляет свой Java API через ServicesManager, а companion работает
+    // мостом — тем же приёмом, каким он уже работает с Vault, LuckPerms и
+    // системой авторизации.
+    //
+    // «Пусто» и false здесь означают «плагина гильдий на сервере нет». Это не
+    // ошибка: панель по этому признаку просто не показывает раздел гильдий.
+
+    /** Стоит ли на сервере плагин гильдий. */
+    boolean guildsAvailable();
+
+    /**
+     * Гильдии для списка, с поиском по имени и тегу.
+     *
+     * Состав участников здесь НЕ заполняется: список гильдий запрашивается
+     * часто, а тянуть по сотне участников ради строчки «Драконы [DRG], 12
+     * человек» — лишняя работа на каждый показ.
+     */
+    List<GuildInfo> guilds(String query, int limit);
+
+    /** Гильдия целиком, вместе с составом. Пусто — такой гильдии нет. */
+    Optional<GuildInfo> guild(long guildId);
+
+    /** В какой гильдии состоит игрок. Пусто — ни в какой. */
+    Optional<GuildMembershipInfo> guildOf(UUID playerUuid);
+
+    /**
+     * Распустить гильдию помимо воли лидера.
+     *
+     * @param actor кто это сделал — попадёт в лог игрового сервера
+     */
+    Optional<GuildActionOutcome> guildDisband(long guildId, String actor);
+
+    /** Назначить лидером указанного участника этой же гильдии. */
+    Optional<GuildActionOutcome> guildTransfer(long guildId, String targetName, String actor);
+
+    /** Убрать игрока из его гильдии, какой бы она ни была. */
+    Optional<GuildActionOutcome> guildRemoveMember(String targetName, String actor);
 }

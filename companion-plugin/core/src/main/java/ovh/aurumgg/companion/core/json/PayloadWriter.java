@@ -7,6 +7,9 @@ import java.util.Map;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GuildActionOutcome;
+import ovh.aurumgg.companion.core.model.GuildInfo;
+import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
@@ -160,6 +163,54 @@ public final class PayloadWriter {
         fields.put("username", Json.string(reset.username()));
         fields.put("token", Json.string(reset.token()));
         fields.put("expiresAt", String.valueOf(reset.expiresAtEpochMs()));
+        return Json.object(fields);
+    }
+
+    public static String guilds(List<GuildInfo> guilds) {
+        List<String> items = new ArrayList<>(guilds.size());
+        for (GuildInfo guild : guilds) items.add(guild(guild));
+        return Json.object(Map.of("guilds", Json.array(items)));
+    }
+
+    public static String guild(GuildInfo guild) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        // id числом, а не строкой: он же ключ в маршрутах панели.
+        fields.put("id", Json.number(guild.id()));
+        fields.put("name", Json.string(guild.name()));
+        fields.put("tag", Json.string(guild.tag()));
+        fields.put("leaderUuid", Json.string(guild.leaderUuid()));
+        fields.put("leaderName", Json.string(guild.leaderName()));
+        fields.put("memberCount", Json.number(guild.memberCount()));
+        fields.put("bankBalance", Json.number(guild.bankBalance()));
+        fields.put("createdAt", Json.number(guild.createdAtEpochMs()));
+
+        List<String> members = new ArrayList<>(guild.members().size());
+        for (GuildInfo.Member member : guild.members()) {
+            Map<String, String> row = new LinkedHashMap<>();
+            row.put("uuid", Json.string(member.uuid()));
+            row.put("name", Json.string(member.name()));
+            row.put("rank", Json.string(member.rank()));
+            row.put("joinedAt", Json.number(member.joinedAtEpochMs()));
+            members.add(Json.object(row));
+        }
+        fields.put("members", Json.array(members));
+        return Json.object(fields);
+    }
+
+    public static String guildMembership(GuildMembershipInfo membership) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("guildId", Json.number(membership.guildId()));
+        fields.put("guildName", Json.string(membership.guildName()));
+        fields.put("guildTag", Json.string(membership.guildTag()));
+        fields.put("rank", Json.string(membership.rank()));
+        fields.put("joinedAt", Json.number(membership.joinedAtEpochMs()));
+        return Json.object(Map.of("membership", Json.object(fields)));
+    }
+
+    public static String guildOutcome(GuildActionOutcome outcome) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("ok", outcome.ok() ? "true" : "false");
+        fields.put("message", Json.string(outcome.message()));
         return Json.object(fields);
     }
 
