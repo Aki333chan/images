@@ -1,3 +1,5 @@
+import { formatTransferLimit } from '@aurum/shared';
+
 /**
  * API-клиент: access-токен хранится только в памяти; при 401 делается
  * одна попытка /auth/refresh (httpOnly-cookie) и повтор запроса.
@@ -55,18 +57,39 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       onSessionExpired?.();
     }
   }
-  if (!res.ok) {
-    let message = `Ошибка ${res.status}`;
-    try {
-      const body = await res.json();
-      message = Array.isArray(body.message) ? body.message.join(', ') : (body.message ?? message);
-    } catch {
-      // тело не JSON
-    }
-    throw new ApiError(res.status, message);
-  }
+  if (!res.ok) throw new ApiError(res.status, await messageFor(res));
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/**
+ * Текст ошибки для человека.
+ *
+ * Обычно его присылает бэкенд в JSON. Но ответ может прийти и НЕ от него: до
+ * бэкенда стоит nginx, и на слишком большом теле он отвечает сам, HTML-
+ * страницей, — тогда разбор JSON не удаётся и остаётся голый код. «Ошибка 413»
+ * человеку не говорит ничего, поэтому у кодов, которые панель может получить
+ * от прокси, есть собственная формулировка.
+ */
+async function messageFor(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: string | string[] };
+    const message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+    if (message) return message;
+  } catch {
+    // тело не JSON — значит, отвечал не бэкенд
+  }
+  if (res.status === 413) {
+    return (
+      `Файл слишком большой — его не пропустил веб-сервер перед панелью. ` +
+      `Панель принимает до ${formatTransferLimit()}; если файл меньше, ` +
+      `значит на сервере занижен client_max_body_size в nginx.`
+    );
+  }
+  if (res.status === 502 || res.status === 504) {
+    return 'Панель не ответила вовремя. Если это повторяется, проверьте, запущен ли сервис API.';
+  }
+  return `Ошибка ${res.status}`;
 }
 
 /**
@@ -94,16 +117,7 @@ export async function apiRaw<T>(path: string, body: Blob | File): Promise<T> {
  */
 export async function apiDownload(path: string, fileName: string): Promise<void> {
   const res = await rawFetch(path);
-  if (!res.ok) {
-    let message = `Ошибка ${res.status}`;
-    try {
-      const body = (await res.json()) as { message?: string | string[] };
-      message = Array.isArray(body.message) ? body.message.join(', ') : (body.message ?? message);
-    } catch {
-      // тело не JSON
-    }
-    throw new ApiError(res.status, message);
-  }
+  if (!res.ok) throw new ApiError(res.status, await messageFor(res));
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

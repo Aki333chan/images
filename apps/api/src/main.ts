@@ -5,6 +5,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import { AppModule } from './app.module';
+import { MAX_TRANSFER_BYTES } from '@aurum/shared';
 import { env } from './config/env';
 
 async function bootstrap() {
@@ -19,9 +20,11 @@ async function bootstrap() {
   // работа на ровном месте. Правило по content-type, а не по пути: так
   // никакой новый файловый роут не окажется случайно без разбора тела.
   //
-  // Лимит держим тем же, что и в PteroFilesService.MAX_UPLOAD_BYTES: файл
-  // целиком оказывается в памяти процесса.
-  app.use(express.raw({ type: 'application/octet-stream', limit: '64mb' }));
+  // Лимит берётся из общего MAX_TRANSFER_BYTES, а не пишется числом рядом.
+  // Раньше он был задан здесь строкой '64mb', в сервисе — своей константой, а
+  // в nginx — третьим числом; они разошлись, и загрузка падала голым 413 от
+  // nginx, до которого панель не доходила и объяснить ничего не могла.
+  app.use(express.raw({ type: 'application/octet-stream', limit: MAX_TRANSFER_BYTES }));
   app.enableCors({
     origin: env.WEB_ORIGIN,
     credentials: true,
