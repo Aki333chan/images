@@ -176,18 +176,73 @@ class TicketClientTest {
     }
 
     @Test
-    @DisplayName("Недоступная панель даёт понятную ошибку без адреса внутри")
+    @DisplayName("Недоступная панель: названа причина и адрес, но не токен")
     void reportsUnreachablePanel() throws Exception {
         FakePanel panel = startPanel(200, "{}");
         String baseUrl = panel.baseUrl();
         panel.stop(); // панель «легла»
 
-        CompanionConfig config =
-                new CompanionConfig("127.0.0.1", 0, "server-1-secret-token-EXAMPLE", baseUrl, "srv-42", 10);
+        String token = "server-1-secret-token-EXAMPLE";
+        CompanionConfig config = new CompanionConfig("127.0.0.1", 0, token, baseUrl, "srv-42", 10);
         TicketClient.TicketException error = assertThrows(
                 TicketClient.TicketException.class,
                 () -> new TicketClient(config).send(UUID.randomUUID(), "Steve", "текст"));
-        assertEquals("панель недоступна", error.getMessage());
+
+        // Прежде здесь на все случаи стояло одно «панель недоступна», и по нему
+        // нельзя было отличить закрытый порт от опечатки в адресе. Адрес в
+        // сообщении теперь есть намеренно: это строка из config.yml того же
+        // сервера. Токен — по-прежнему нет и быть не должно.
+        assertTrue(error.getMessage().contains("подключиться"), error.getMessage());
+        assertTrue(error.getMessage().contains("127.0.0.1"), error.getMessage());
+        assertFalse(error.getMessage().contains(token), error.getMessage());
+    }
+
+    @Test
+    @DisplayName("Несуществующий хост панели назван проблемой адреса")
+    void reportsUnknownHost() {
+        CompanionConfig config = new CompanionConfig(
+                "127.0.0.1", 0, "server-1-secret-token-EXAMPLE",
+                "http://net-takogo-hosta.invalid:3001", "srv-42", 10);
+        TicketClient.TicketException error = assertThrows(
+                TicketClient.TicketException.class,
+                () -> new TicketClient(config).send(UUID.randomUUID(), "Steve", "текст"));
+        assertTrue(error.getMessage().contains("panel.base-url"), error.getMessage());
+    }
+
+    @Test
+    @DisplayName("Адрес, из которого URI не собирается, не роняет задачу стектрейсом")
+    void reportsMalformedBaseUrl() {
+        // Кириллица, пробел, забытая схема — всё это IllegalArgumentException
+        // из URI.create. Он летел необработанным прямо из асинхронной задачи:
+        // игрок видел «попробуй позже», а в консоли был стектрейс без единого
+        // упоминания config.yml.
+        for (String bad : new String[] {"http://кириллица:3001", "10.0.0.1:3001", "не адрес"}) {
+            CompanionConfig config = new CompanionConfig(
+                    "127.0.0.1", 0, "server-1-secret-token-EXAMPLE", bad, "srv-42", 10);
+            TicketClient.TicketException error = assertThrows(
+                    TicketClient.TicketException.class,
+                    () -> new TicketClient(config).send(UUID.randomUUID(), "Steve", "текст"),
+                    "адрес: " + bad);
+            assertTrue(error.getMessage().contains("panel.base-url"), bad + " → " + error.getMessage());
+        }
+    }
+
+    @Test
+    @DisplayName("Проверка связи на старте: молчит при живой панели, объясняет при мёртвой")
+    void checkPanelReportsOnlyProblems() throws Exception {
+        FakePanel panel = startPanel(200, "{\"status\":\"ok\"}");
+        String baseUrl = panel.baseUrl();
+        try {
+            assertNull(new TicketClient(configFor(panel)).checkPanel());
+        } finally {
+            panel.stop();
+        }
+
+        CompanionConfig dead = new CompanionConfig(
+                "127.0.0.1", 0, "server-1-secret-token-EXAMPLE", baseUrl, "srv-42", 10);
+        String problem = new TicketClient(dead).checkPanel();
+        assertNotNull(problem);
+        assertTrue(problem.contains("подключиться"), problem);
     }
 
     @Test
@@ -250,6 +305,35 @@ class CompanionConfigTest {
         CompanionConfig config = new CompanionConfig(
                 "0.0.0.0", 70000, "long-enough-token-EXAMPLE", "http://10.0.0.1:3001", "srv", 10);
         assertTrue(config.httpConfigProblem().contains("порт"));
+    }
+
+    @Test
+    @DisplayName("Порт плагина в адресе панели — предупреждение о перепутанных полях")
+    void warnsWhenPanelUrlUsesPluginPort() {
+        // Настоящий случай: в panel.base-url вписали порт, выданный плагину
+        // secondary allocation. Плагин стучится в собственный номер порта на
+        // чужой машине, соединения нет — и «не удалось подключиться»
+        // отправляет чинить сеть, в которой всё цело.
+        CompanionConfig confused = new CompanionConfig(
+                "0.0.0.0", 8083, "long-enough-token-EXAMPLE", "http://10.0.0.1:8083", "srv", 10);
+        String warning = confused.ticketConfigWarning();
+        assertNotNull(warning);
+        assertTrue(warning.contains("8083"), warning);
+        assertTrue(warning.contains("http.port"), warning);
+        // Предупреждение, а не отказ: тикеты остаются включёнными.
+        assertNull(confused.ticketConfigProblem());
+
+        CompanionConfig fine = new CompanionConfig(
+                "0.0.0.0", 8083, "long-enough-token-EXAMPLE", "http://10.0.0.1:3001", "srv", 10);
+        assertNull(fine.ticketConfigWarning());
+    }
+
+    @Test
+    @DisplayName("Лишний слэш не мешает распознать перепутанные порты")
+    void warningSurvivesTrailingSlash() {
+        CompanionConfig confused = new CompanionConfig(
+                "0.0.0.0", 8083, "long-enough-token-EXAMPLE", "http://10.0.0.1:8083/", "srv", 10);
+        assertNotNull(confused.ticketConfigWarning());
     }
 }
 

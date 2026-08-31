@@ -61,6 +61,35 @@ public record CompanionConfig(
         return httpConfigProblem() == null ? null : "некорректный token";
     }
 
+    /**
+     * Подозрительное в настройке тикетов — предупредить, но не отключать.
+     *
+     * В config.yml два порта, и их путают: `http.port` — порт, который слушает
+     * САМ ПЛАГИН (его же выдают secondary allocation в Pterodactyl), а порт в
+     * `panel.base-url` — порт ПАНЕЛИ на другой машине. Совпадение почти всегда
+     * означает, что второй заполнили значением первого, и тогда плагин стучится
+     * в собственный порт на чужом хосте: соединения нет, а сообщение об этом
+     * («не удалось подключиться») отправляет чинить сеть, в которой всё цело.
+     *
+     * Именно предупреждение, а не отказ: теоретически панель может слушать тот
+     * же номер порта на своей машине, и запрещать это плагину не за что.
+     *
+     * @return текст предупреждения или null
+     */
+    public String ticketConfigWarning() {
+        if (panelBaseUrl == null || panelBaseUrl.isBlank()) return null;
+        if (!endsWithPort(panelBaseUrl, port)) return null;
+        return "в panel.base-url стоит порт " + port + " — это порт самого плагина (http.port),"
+                + " а нужен порт панели (обычно 3001). Похоже, поля перепутаны местами";
+    }
+
+    /** Порт в конце адреса, без разбора URI: адрес может быть и вовсе не адресом. */
+    private static boolean endsWithPort(String url, int port) {
+        String suffix = ":" + port;
+        String trimmed = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        return trimmed.endsWith(suffix);
+    }
+
     private static boolean isAscii(String value) {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
