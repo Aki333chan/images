@@ -306,6 +306,35 @@ class CompanionConfigTest {
                 "0.0.0.0", 70000, "long-enough-token-EXAMPLE", "http://10.0.0.1:3001", "srv", 10);
         assertTrue(config.httpConfigProblem().contains("порт"));
     }
+
+    @Test
+    @DisplayName("Порт плагина в адресе панели — предупреждение о перепутанных полях")
+    void warnsWhenPanelUrlUsesPluginPort() {
+        // Настоящий случай: в panel.base-url вписали порт, выданный плагину
+        // secondary allocation. Плагин стучится в собственный номер порта на
+        // чужой машине, соединения нет — и «не удалось подключиться»
+        // отправляет чинить сеть, в которой всё цело.
+        CompanionConfig confused = new CompanionConfig(
+                "0.0.0.0", 8083, "long-enough-token-EXAMPLE", "http://10.0.0.1:8083", "srv", 10);
+        String warning = confused.ticketConfigWarning();
+        assertNotNull(warning);
+        assertTrue(warning.contains("8083"), warning);
+        assertTrue(warning.contains("http.port"), warning);
+        // Предупреждение, а не отказ: тикеты остаются включёнными.
+        assertNull(confused.ticketConfigProblem());
+
+        CompanionConfig fine = new CompanionConfig(
+                "0.0.0.0", 8083, "long-enough-token-EXAMPLE", "http://10.0.0.1:3001", "srv", 10);
+        assertNull(fine.ticketConfigWarning());
+    }
+
+    @Test
+    @DisplayName("Лишний слэш не мешает распознать перепутанные порты")
+    void warningSurvivesTrailingSlash() {
+        CompanionConfig confused = new CompanionConfig(
+                "0.0.0.0", 8083, "long-enough-token-EXAMPLE", "http://10.0.0.1:8083/", "srv", 10);
+        assertNotNull(confused.ticketConfigWarning());
+    }
 }
 
 /** Регрессия: токен уходит в HTTP-заголовок, а заголовки обязаны быть ASCII. */

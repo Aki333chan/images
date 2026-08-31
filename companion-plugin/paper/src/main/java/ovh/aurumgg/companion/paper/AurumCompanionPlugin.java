@@ -89,6 +89,9 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
             getLogger().severe("Команда ticket не объявлена в plugin.yml");
             return;
         }
+        String warning = config.ticketConfigWarning();
+        if (warning != null) getLogger().warning("Проверьте config.yml: " + warning);
+
         TicketClient client = new TicketClient(config);
         command.setExecutor(new TicketCommand(this, client, cooldown, problem == null));
         if (problem == null) checkPanelReachable(client, config);
