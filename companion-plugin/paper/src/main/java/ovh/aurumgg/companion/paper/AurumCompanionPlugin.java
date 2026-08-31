@@ -91,7 +91,7 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
         }
         TicketClient client = new TicketClient(config);
         command.setExecutor(new TicketCommand(this, client, cooldown, problem == null));
-        if (problem == null) checkPanelReachable(client);
+        if (problem == null) checkPanelReachable(client, config);
     }
 
     /**
@@ -102,17 +102,26 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
      * тем, что панель слушает не тот адрес. Проверка идёт асинхронно — в
      * onEnable нельзя ходить в сеть, сервер ждёт возврата из метода.
      */
-    private void checkPanelReachable(TicketClient client) {
+    private void checkPanelReachable(TicketClient client, CompanionConfig config) {
+        // Адрес в обеих строках, и в успешной тоже: config.yml легко
+        // отредактировать не у того сервера, а плагин при этом читает свой —
+        // и человек ищет ошибку в сети, хотя правил чужой файл.
+        String panel = config.panelBaseUrl();
         getServer().getScheduler().runTaskAsynchronously(this, () -> {
             String problem = client.checkPanel();
             if (problem == null) {
-                getLogger().info("Связь с панелью есть — /ticket будет работать");
+                getLogger().info("Связь с панелью есть (" + panel + ") — /ticket будет работать");
                 return;
             }
-            getLogger().warning("Панель не отвечает: " + problem);
-            getLogger().warning("Пока это так, /ticket будет отвечать игрокам «попробуй позже». "
-                    + "Проверьте panel.base-url в config.yml и то, что панель слушает адрес туннеля "
-                    + "(на VDS: ss -tulpn | grep 3001 — должен быть 10.0.0.1, а не 127.0.0.1).");
+            getLogger().warning("Панель не отвечает (" + panel + "): " + problem);
+            getLogger().warning("Пока это так, /ticket будет отвечать игрокам «попробуй позже».");
+            // Именно «отсюда»: игровой сервер работает в контейнере Wings, и
+            // проверка с хоста домашнего сервера ничего про него не говорит —
+            // у контейнера своя сеть. Это самая частая ловушка в диагностике:
+            // curl с хоста отвечает 200, а плагин всё равно не достучаться.
+            getLogger().warning("Проверять связь надо ИЗ СЕТИ КОНТЕЙНЕРА, а не с хоста: "
+                    + "docker run --rm --network pterodactyl_nw busybox "
+                    + "wget -qO- --timeout=5 " + panel + "/api/health");
         });
     }
 
