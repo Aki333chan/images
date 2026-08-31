@@ -77,17 +77,45 @@ Pterodactyl, а в nginx перед панелью.
 sudo grep -n client_max_body_size /etc/nginx/sites-available/manage.aurumgg.ovh.conf
 ```
 
-Починка — взять свежий конфиг из репозитория (в нём стоит `66m`) и
-перечитать:
+**Способ 1 — правка на месте.** Не требует ни свежего кода, ни пересборки,
+работает сразу:
 
 ```bash
-sudo cp deploy/nginx/manage.aurumgg.ovh.conf /etc/nginx/sites-available/
+# если строка есть, но число другое
+sudo sed -i 's/client_max_body_size .*/client_max_body_size 66m;/' \
+  /etc/nginx/sites-available/manage.aurumgg.ovh.conf
+
+# если строки нет вовсе — дописать её в блок сервера на 443
+sudo sed -i '/listen 443 ssl http2;/a\    client_max_body_size 66m;' \
+  /etc/nginx/sites-available/manage.aurumgg.ovh.conf
+
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+Проверить, что получилось: `sudo grep -n client_max_body_size
+/etc/nginx/sites-available/manage.aurumgg.ovh.conf` — ожидается одна строка
+с `66m`.
+
+**Способ 2 — установить конфиг из репозитория**, когда обновлённый код уже
+выкачан на машину. Путь ОБЯЗАТЕЛЬНО абсолютный: относительный `deploy/…`
+существует только внутри клона, и из домашнего каталога `cp` скажет
+`No such file or directory`.
+
+```bash
+sudo install -m 0644 /opt/aurum-panel/deploy/nginx/manage.aurumgg.ovh.conf \
+  /etc/nginx/sites-available/manage.aurumgg.ovh.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Этот способ годится только после `git pull` в `/opt/aurum-panel`: до него в
+репозитории на машине лежит прежний файл, и установка вернёт старое число.
 
 `66m`, а не `64m`, намеренно: панель принимает файл до 64 МиБ, и запас в два
 мегабайта нужен, чтобы отказ выдавала она — с человеческим текстом «файл
 больше 64 МиБ, загрузите по SFTP», — а не nginx безымянной страницей.
+
+`reload`, а не `restart`: nginx дочитывает конфиг, не разрывая открытые
+соединения. Игроков это не касается вовсе — они ходят не через него.
 
 ### Про новое оформление
 
