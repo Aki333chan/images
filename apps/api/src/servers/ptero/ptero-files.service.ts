@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PteroDirectoryDto, PteroFileContentDto, PteroFileDto } from '@aurum/shared';
-import { MAX_EDITABLE_BYTES } from '@aurum/shared';
+import { MAX_EDITABLE_BYTES, MAX_TRANSFER_BYTES, formatTransferLimit } from '@aurum/shared';
 import { ClientApiService, type PteroFile } from '../../pterodactyl/client-api.service';
 import { ServersService } from '../servers.service';
 import { baseName, breadcrumbsFor, joinPath, normalizeName, normalizePath, parentOf } from './file-paths';
@@ -23,16 +23,16 @@ export class PteroFilesService {
   static readonly MAX_READ_BYTES = MAX_EDITABLE_BYTES;
 
   /**
-   * Потолок скачивания через панель — 64 МиБ.
+   * Потолок скачивания и загрузки через панель.
    *
-   * Не «сколько влезет»: файл целиком оказывается в памяти процесса, и
-   * несколько одновременных скачиваний мирового архива положили бы панель.
-   * Кому нужно больше — это уже бэкап.
+   * Значение общее с фронтендом и с конфигом nginx и объявлено в shared.
+   * Раньше здесь стояло собственное число, и это была ошибка: пределов в
+   * цепочке оказалось три, заданных независимо, они разошлись, и nginx рубил
+   * запрос голым 413 раньше, чем панель успевала объяснить, что не так.
    */
-  static readonly MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024;
+  static readonly MAX_DOWNLOAD_BYTES = MAX_TRANSFER_BYTES;
 
-  /** Потолок загрузки. Тот же довод, что и у скачивания. */
-  static readonly MAX_UPLOAD_BYTES = 64 * 1024 * 1024;
+  static readonly MAX_UPLOAD_BYTES = MAX_TRANSFER_BYTES;
 
   constructor(
     private readonly client: ClientApiService,
@@ -88,7 +88,7 @@ export class PteroFilesService {
   ): Promise<{ path: string }> {
     if (content.length > PteroFilesService.MAX_UPLOAD_BYTES) {
       throw new BadRequestException(
-        `Файл больше ${Math.round(PteroFilesService.MAX_UPLOAD_BYTES / 1024 / 1024)} МиБ — загрузите его иначе`,
+        `Файл больше ${formatTransferLimit()} — такой размер панель не пропускает. Загрузите его по SFTP.`,
       );
     }
     const path = joinPath(rawDirectory, normalizeName(fileName));
@@ -112,7 +112,7 @@ export class PteroFilesService {
       // Отдать обрезанный файл под видом целого — худшее, что можно сделать:
       // человек не заметит, а конфиг окажется битым.
       throw new BadRequestException(
-        `Файл больше ${Math.round(PteroFilesService.MAX_DOWNLOAD_BYTES / 1024 / 1024)} МиБ — скачайте его бэкапом`,
+        `Файл больше ${formatTransferLimit()} — скачайте его бэкапом или по SFTP.`,
       );
     }
     return { name: baseName(path), content: res.content, truncated: false, contentType: res.contentType };

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { PteroDirectoryDto, PteroFileContentDto, PteroFileDto } from '@aurum/shared';
-import { isEditableFile } from '@aurum/shared';
+import { MAX_TRANSFER_BYTES, formatTransferLimit, isEditableFile } from '@aurum/shared';
 import { api, apiDownload, apiRaw } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../components/ui';
@@ -147,6 +147,21 @@ export function FilesTab({ serverId }: ServerTabProps) {
 
   async function upload(files: FileList | null) {
     if (!files || files.length === 0) return;
+
+    // Размер проверяем ДО отправки. Иначе человек ждёт, пока мегабайты уедут
+    // на сервер, и только там получает отказ — а на мобильном интернете это
+    // ещё и потраченный трафик. Предел тот же, что и на бэкенде: общая
+    // константа, а не переписанное здесь число.
+    const tooBig = Array.from(files).find((file) => file.size > MAX_TRANSFER_BYTES);
+    if (tooBig) {
+      setError(
+        `«${tooBig.name}» больше ${formatTransferLimit()} — столько панель не пропускает. ` +
+          'Такие файлы загружают по SFTP.',
+      );
+      if (uploadInput.current) uploadInput.current.value = '';
+      return;
+    }
+
     setBusy(true);
     setError('');
     try {
