@@ -7,6 +7,7 @@ import java.util.Map;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
@@ -212,6 +213,26 @@ public final class PayloadWriter {
         fields.put("ok", outcome.ok() ? "true" : "false");
         fields.put("message", Json.string(outcome.message()));
         return Json.object(fields);
+    }
+
+    /**
+     * Итог выдачи — построчно, в том же порядке, в каком пришёл список.
+     *
+     * Ответ всегда 200, даже когда не легло ничего: запрос выполнен, а вот
+     * инвентарь оказался полон или в строке опечатка. Это не отказ сервера, и
+     * панели нужно показать человеку именно построчную картину.
+     */
+    public static String giveResults(List<GiveResult> results) {
+        List<String> items = new ArrayList<>(results.size());
+        for (GiveResult r : results) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("id", Json.string(r.id()));
+            fields.put("requested", Json.number(r.requested()));
+            fields.put("given", Json.number(r.given()));
+            fields.put("error", Json.string(r.error()));
+            items.add(Json.object(fields));
+        }
+        return Json.object(Map.of("results", Json.array(items)));
     }
 
     public static String error(String message, String code) {

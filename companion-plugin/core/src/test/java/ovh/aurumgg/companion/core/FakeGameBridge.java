@@ -10,7 +10,9 @@ import java.util.UUID;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
+import ovh.aurumgg.companion.core.model.InventorySelection;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -26,6 +28,11 @@ public final class FakeGameBridge implements GameBridge {
 
     public final List<String> messages = new ArrayList<>();
     public final List<String> slotWrites = new ArrayList<>();
+    /** Списки выдачи и очистки — по ним тесты сверяют, что именно доехало до игры. */
+    public final List<String> gives = new ArrayList<>();
+    public final List<String> clears = new ArrayList<>();
+    /** Сколько предметов помещается: тест переполнения ставит ноль. */
+    public int freeSpace = Integer.MAX_VALUE;
     public final List<String> permissionWrites = new ArrayList<>();
     public boolean steveOnline = true;
 
@@ -67,6 +74,35 @@ public final class FakeGameBridge implements GameBridge {
         }
         if (!spec.id().startsWith("minecraft:")) return false; // неизвестный материал
         slotWrites.add("set:" + slot + ":" + spec.id() + "x" + spec.count());
+        return true;
+    }
+
+    @Override
+    public Optional<List<GiveResult>> giveItems(UUID playerUuid, List<ItemSpec> items) {
+        if (!steveOnline || !playerUuid.equals(STEVE)) return Optional.empty();
+        List<GiveResult> results = new ArrayList<>();
+        for (ItemSpec spec : items) {
+            gives.add(spec.id() + "x" + spec.count());
+            if (!spec.id().startsWith("minecraft:")) {
+                results.add(GiveResult.failed(spec.id(), spec.count(), "Неизвестный предмет"));
+                continue;
+            }
+            int given = Math.min(spec.count(), freeSpace);
+            results.add(
+                    given == spec.count()
+                            ? GiveResult.ok(spec.id(), spec.count())
+                            : new GiveResult(spec.id(), spec.count(), given, "Инвентарь заполнен"));
+        }
+        return Optional.of(results);
+    }
+
+    @Override
+    public boolean clearInventory(UUID playerUuid, InventorySelection selection) {
+        if (!steveOnline || !playerUuid.equals(STEVE)) return false;
+        clears.add(
+                selection.all()
+                        ? "all"
+                        : "slots=" + selection.slots() + " armor=" + selection.armor() + " offhand=" + selection.offhand());
         return true;
     }
 

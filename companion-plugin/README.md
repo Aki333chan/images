@@ -17,6 +17,8 @@
 | `GET /players` | список онлайн: UUID, ник, здоровье, мир, координаты, пинг | Paper API |
 | `GET /players/{uuid}/inventory` | инвентарь игрока | Paper API, для офлайн — InvSee++ |
 | `POST /players/{uuid}/inventory/{slot}` | положить предмет в слот или очистить | Paper API |
+| `POST /players/{uuid}/inventory/give` | выдать список предметов, каждый в свободный слот | Paper API |
+| `POST /players/{uuid}/inventory/clear` | очистить выбранные слоты или инвентарь целиком | Paper API |
 | `GET /plugins` | все установленные плагины: имя, версия, включён ли | Paper API |
 | `GET /players/{uuid}/permissions` | группы и права игрока | LuckPerms |
 | `POST /players/{uuid}/permissions` | выдать или снять группу либо право | LuckPerms |

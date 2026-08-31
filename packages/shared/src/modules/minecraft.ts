@@ -182,6 +182,55 @@ export interface MinecraftInventoryResponse {
   offhand?: MinecraftInventoryItemDto | null;
 }
 
+/**
+ * Строка списка выдачи.
+ *
+ * Идентификатор — как его знает сам сервер (`minecraft:stone` либо просто
+ * `stone`), сверяет его игровой сервер, а не панель: список материалов зависит
+ * от версии и установленных модов, и зашитый в панель перечень устарел бы к
+ * следующему обновлению.
+ */
+export interface MinecraftGiveItemDto {
+  id: string;
+  count: number;
+}
+
+/**
+ * Итог по одной строке выдачи.
+ *
+ * Построчно, а не общим «получилось/не получилось»: список выдают целиком, и
+ * частичный успех тут норма — два предмета легли, третий не поместился, у
+ * четвёртого опечатка. Общий ответ заставил бы гадать, какая строка виновата.
+ */
+export interface MinecraftGiveResultDto {
+  id: string;
+  requested: number;
+  given: number;
+  /** null — строка выдана полностью. */
+  error: string | null;
+}
+
+export interface MinecraftGiveResponse {
+  results: MinecraftGiveResultDto[];
+}
+
+/**
+ * Что очистить в инвентаре.
+ *
+ * `all` — отдельным полем, а не «пустой выбор значит всё»: разница между
+ * «стереть выбранное» и «стереть весь инвентарь» необратима, и умолчание в
+ * такой операции рано или поздно сотрёт лишнее.
+ *
+ * Броня нумеруется своим индексом 0-3 в порядке Bukkit (ботинки, поножи,
+ * нагрудник, шлем) — тем же, в каком она приходит в `armor` инвентаря.
+ */
+export interface MinecraftInventoryClearDto {
+  all?: boolean;
+  slots?: number[];
+  armor?: number[];
+  offhand?: boolean;
+}
+
 /** Статус настройки модуля. Секреты сюда не попадают — только флаги. */
 export interface MinecraftConfigStatusDto {
   /** Настроен ли RCON (хост/порт/пароль сохранены). */
@@ -253,6 +302,14 @@ export const MINECRAFT_PERMISSIONS = {
   quickCommands: 'minecraft.quick-commands',
   commandRaw: 'minecraft.command.raw',
   inventoryView: 'minecraft.inventory.view',
+  /**
+   * Менять инвентарь: выдавать предметы, удалять выбранное, стирать целиком.
+   *
+   * Отдельно от просмотра и намеренно весомее. Посмотреть чужой инвентарь —
+   * рутина модерации, а вот полная очистка необратима: панель не умеет
+   * вернуть стёртое, и восстановить его можно разве что из бэкапа мира.
+   */
+  inventoryEdit: 'minecraft.inventory.edit',
   configure: 'minecraft.configure',
   permissionsView: 'minecraft.permissions.view',
   permissionsEdit: 'minecraft.permissions.edit',

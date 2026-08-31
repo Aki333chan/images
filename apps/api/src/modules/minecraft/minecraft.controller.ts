@@ -20,6 +20,7 @@ import {
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
   type MinecraftEconomyDto,
+  type MinecraftGiveResponse,
   type MinecraftGuildDto,
   type MinecraftGuildMembershipDto,
   type MinecraftPerformanceDto,
@@ -39,8 +40,10 @@ import {
   BalanceChangeDto,
   BanDto,
   CompanionConfigDto,
+  GiveItemsDto,
   GuildRemoveMemberDto,
   GuildTransferDto,
+  InventoryClearDto,
   KickDto,
   PermissionChangeDto,
   QuickCommandRunDto,
@@ -492,6 +495,44 @@ export class MinecraftController {
   @ServerScoped('serverId')
   inventory(@Param('serverId') serverId: string, @Param('name') name: string) {
     return this.minecraft.getInventory(serverId, name);
+  }
+
+  /**
+   * Выдать игроку набор предметов.
+   *
+   * Ответ построчный: список выдают целиком, и частичный успех тут норма —
+   * что-то не поместилось, где-то опечатка в идентификаторе. Общий
+   * «получилось/не получилось» заставил бы гадать, какая строка виновата.
+   */
+  @Post('inventory/:name/give')
+  @RequirePermission(MINECRAFT_PERMISSIONS.inventoryEdit)
+  @ServerScoped('serverId')
+  giveItems(
+    @Param('serverId') serverId: string,
+    @Param('name') name: string,
+    @Body() dto: GiveItemsDto,
+  ): Promise<MinecraftGiveResponse> {
+    return this.companion.giveItems(serverId, name, dto.items);
+  }
+
+  /**
+   * Очистить выбранные слоты или инвентарь целиком.
+   *
+   * Полная очистка — по явному `all`, а не по пустому выбору: вернуть стёртое
+   * панель не умеет. Подтверждение спрашивает интерфейс, а здесь остаётся
+   * запись в журнале — её делает общий аудит-перехватчик, тело запроса в нём
+   * видно, и по нему потом понятно, что именно стёрли.
+   */
+  @Post('inventory/:name/clear')
+  @RequirePermission(MINECRAFT_PERMISSIONS.inventoryEdit)
+  @ServerScoped('serverId')
+  async clearInventory(
+    @Param('serverId') serverId: string,
+    @Param('name') name: string,
+    @Body() dto: InventoryClearDto,
+  ): Promise<{ ok: true }> {
+    await this.companion.clearInventory(serverId, name, dto);
+    return { ok: true };
   }
 
   /** TPS и время тика. Право то же, что на просмотр игроков. */

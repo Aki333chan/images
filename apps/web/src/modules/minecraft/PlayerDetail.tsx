@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { MINECRAFT_GUILD_RANK_TITLES } from '@aurum/shared';
 import type {
+  MinecraftGiveResponse,
+  MinecraftGiveResultDto,
   MinecraftGuildMembershipDto,
+  MinecraftInventoryClearDto,
   MinecraftInventoryResponse,
   MinecraftPasswordResetDto,
   MinecraftPlayerDto,
@@ -9,9 +12,11 @@ import type {
 } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { Badge, Button, Card, ErrorText, Label, Select, Spinner, Tabs } from '../../components/ui';
+import { Badge, Button, Card, ErrorText, Label, Select, Spinner, Tabs, Textarea } from '../../components/ui';
+import { Modal } from '../../components/Modal';
 import { BalancePanel } from './BalancePanel';
 import { InventoryGrid } from './InventoryGrid';
+import { parseGiveList } from './give-list';
 import { PermissionsPanel } from './PermissionsPanel';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 
@@ -397,23 +402,70 @@ function PlayerActions({
 }
 
 /**
+ * Выбранные ячейки — в тело запроса на очистку.
+ *
+ * Три раздельных поля, а не один список номеров: основной инвентарь, броня и
+ * вторая рука приходят разными массивами и нумеруются каждый со своего нуля,
+ * так что «слот 3» без указания раздела означал бы сразу три разных места.
+ */
+function selectionToRequest(selected: Set<string>): MinecraftInventoryClearDto {
+  const slots: number[] = [];
+  const armor: number[] = [];
+  let offhand = false;
+
+  for (const key of selected) {
+    const [area, raw] = key.split(':');
+    if (area === 'main') slots.push(Number(raw));
+    else if (area === 'armor') armor.push(Number(raw));
+    else if (area === 'offhand') offhand = true;
+  }
+  return { slots, armor, offhand };
+}
+
+/**
  * Инвентарь конкретного игрока — ник уже известен, вводить его не нужно.
  *
  * Модуль здесь фиксированный, и это не недосмотр: инвентарь показывает
  * companion-плагин Bukkit, а он бывает только на Paper. Компонент и
  * рендерится только оттуда — см. флаг `bukkit` в PlayerDetail.
+ *
+ * Правка инвентаря отделена от просмотра отдельным правом: посмотреть чужой
+ * инвентарь — рутина модерации, а полная очистка необратима.
  */
 function PlayerInventory({ serverId, name }: { serverId: string; name: string }) {
+  const { hasPermission } = useAuth();
+  const canEdit = hasPermission('minecraft.inventory.edit');
+
   const [data, setData] = useState<MinecraftInventoryResponse | null>(null);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  /** Ключи выбранных ячеек — вида `main:5`, `armor:3`, `offhand:0`. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [giveText, setGiveText] = useState('');
+  const [giveResults, setGiveResults] = useState<MinecraftGiveResultDto[] | null>(null);
+  const [giveErrors, setGiveErrors] = useState<string[]>([]);
+  const [confirmWipe, setConfirmWipe] = useState(false);
+
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      const fresh = await api<MinecraftInventoryResponse>(
+        `${base('minecraft', serverId)}/inventory/${encodeURIComponent(name)}`,
+      );
+      setData(fresh);
+      // Выбор сбрасываем вместе с данными: слот, который был выбран, после
+      // перезагрузки может держать уже другой предмет.
+      setSelected(new Set());
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [serverId, name]);
 
   useEffect(() => {
     setData(null);
-    setError('');
-    api<MinecraftInventoryResponse>(`${base('minecraft', serverId)}/inventory/${encodeURIComponent(name)}`)
-      .then(setData)
-      .catch((e: Error) => setError(e.message));
-  }, [serverId, name]);
+    void load();
+  }, [load]);
 
   if (error) return <ErrorText>{error}</ErrorText>;
   if (!data) return <Spinner />;
@@ -436,36 +488,215 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
     );
   }
 
+  const toggle = (key: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+
+  const selectionProps = canEdit ? { selected, onToggle: toggle } : {};
+
   return (
     <div className="space-y-4">
       <div>
         <Label>Хотбар</Label>
         <div className="mt-1 max-w-[420px]">
-          <InventoryGrid items={data.items} size={9} cols={9} />
+          <InventoryGrid items={data.items} size={9} cols={9} area="main" {...selectionProps} />
         </div>
       </div>
       <div>
         <Label>Инвентарь</Label>
         <div className="mt-1 max-w-[420px]">
-          <InventoryGrid items={data.items} size={27} cols={9} slotOffset={9} />
+          <InventoryGrid
+            items={data.items}
+            size={27}
+            cols={9}
+            slotOffset={9}
+            area="main"
+            {...selectionProps}
+          />
         </div>
       </div>
       <div className="flex gap-6">
         <div>
           <Label>Броня</Label>
           <div className="mt-1 w-[52px]">
-            <InventoryGrid items={data.armor} size={4} cols={1} />
+            <InventoryGrid items={data.armor} size={4} cols={1} area="armor" {...selectionProps} />
           </div>
         </div>
         <div>
           <Label>Вторая рука</Label>
           <div className="mt-1 w-[52px]">
-            <InventoryGrid items={data.offhand ? [data.offhand] : []} size={1} cols={1} />
+            <InventoryGrid
+              items={data.offhand ? [data.offhand] : []}
+              size={1}
+              cols={1}
+              area="offhand"
+              {...selectionProps}
+            />
           </div>
         </div>
       </div>
+
+      {canEdit && (
+        <div className="space-y-3 border-t border-border pt-3">
+          {/* Выдача. Список, а не поле «предмет + количество»: набор выдают
+              целиком, и десять отдельных отправок — это десять шансов
+              ошибиться и десять записей в журнале вместо одной. */}
+          <div className="space-y-1">
+            <Label>Выдать предметы</Label>
+            <Textarea
+              rows={3}
+              className="font-mono text-xs"
+              placeholder={'minecraft:stone 64\nminecraft:golden_apple 3\ndiamond'}
+              value={giveText}
+              onChange={(e) => setGiveText(e.target.value)}
+            />
+            <p className="text-[11px] text-muted">
+              По предмету в строке: идентификатор и количество. Количество можно не писать —
+              выдастся один. Существование предмета проверяет игровой сервер, поэтому работают и
+              предметы модов.
+            </p>
+            <Button size="sm" disabled={busy || !giveText.trim()} onClick={() => void give()}>
+              Выдать
+            </Button>
+          </div>
+
+          {giveErrors.length > 0 && (
+            <ul className="space-y-0.5 text-xs text-red-400">
+              {giveErrors.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )}
+
+          {/* Итог построчно: что-то могло не поместиться или оказаться
+              опечаткой, и человеку нужно видеть, какая именно строка. */}
+          {giveResults && (
+            <ul className="space-y-0.5 text-xs">
+              {giveResults.map((r, i) => (
+                <li key={`${r.id}-${i}`} className={r.error ? 'text-amber-400' : 'text-emerald-400'}>
+                  {r.id} ×{r.requested}
+                  {r.error ? ` — ${r.error}` : ' — выдано'}
+                  {r.error && r.given > 0 ? ` (легло ${r.given})` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || selected.size === 0}
+              onClick={() => void removeSelected()}
+            >
+              Удалить выбранные{selected.size > 0 ? ` (${selected.size})` : ''}
+            </Button>
+            <Button size="sm" variant="destructive" disabled={busy} onClick={() => setConfirmWipe(true)}>
+              Очистить инвентарь
+            </Button>
+            <span className="text-[11px] text-muted">
+              {selected.size === 0
+                ? 'Щёлкните по ячейкам, чтобы выбрать их для удаления'
+                : 'Повторный щелчок снимает выбор'}
+            </span>
+          </div>
+
+          {notice && <p className="text-xs text-emerald-400">{notice}</p>}
+        </div>
+      )}
+
+      {/* Полная очистка — единственное здесь необратимое действие: вернуть
+          стёртое панель не умеет. Поэтому она спрашивает подтверждение и
+          называет игрока по нику, чтобы нельзя было очистить не того. */}
+      {confirmWipe && (
+        <Modal title="Очистить инвентарь целиком?" onClose={() => setConfirmWipe(false)}>
+          <div className="space-y-3">
+            <p className="text-sm">
+              У игрока <b>{name}</b> будет стёрт весь инвентарь: хотбар, основные слоты, броня и
+              вторая рука.
+            </p>
+            <p className="text-sm text-red-400">
+              Отменить это нельзя — панель не хранит копию инвентаря.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => setConfirmWipe(false)}>
+                Отмена
+              </Button>
+              <Button size="sm" variant="destructive" disabled={busy} onClick={() => void wipe()}>
+                Да, очистить
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
+
+  async function give() {
+    const parsed = parseGiveList(giveText);
+    setGiveErrors(parsed.errors);
+    setGiveResults(null);
+    setNotice('');
+    if (parsed.items.length === 0) return;
+
+    setBusy(true);
+    try {
+      const response = await api<MinecraftGiveResponse>(
+        `${base('minecraft', serverId)}/inventory/${encodeURIComponent(name)}/give`,
+        { method: 'POST', body: JSON.stringify({ items: parsed.items }) },
+      );
+      setGiveResults(response.results);
+      // Поле очищаем только когда всё легло: иначе человеку придётся заново
+      // набирать строки, которые не прошли.
+      if (response.results.every((r) => !r.error)) setGiveText('');
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSelected() {
+    setBusy(true);
+    setNotice('');
+    setGiveResults(null);
+    try {
+      await api(`${base('minecraft', serverId)}/inventory/${encodeURIComponent(name)}/clear`, {
+        method: 'POST',
+        body: JSON.stringify(selectionToRequest(selected)),
+      });
+      setNotice(`Удалено ячеек: ${selected.size}`);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function wipe() {
+    setBusy(true);
+    setNotice('');
+    setGiveResults(null);
+    try {
+      await api(`${base('minecraft', serverId)}/inventory/${encodeURIComponent(name)}/clear`, {
+        method: 'POST',
+        body: JSON.stringify({ all: true }),
+      });
+      setConfirmWipe(false);
+      setNotice('Инвентарь очищен');
+      await load();
+    } catch (e) {
+      setConfirmWipe(false);
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 }
 
 

@@ -215,6 +215,147 @@ class CompanionHttpServerTest {
                         .statusCode());
     }
 
+    // ---------------------------------------------- Выдача и очистка списком
+
+    private String givePath() {
+        return "/players/" + FakeGameBridge.STEVE + "/inventory/give";
+    }
+
+    private String clearPath() {
+        return "/players/" + FakeGameBridge.STEVE + "/inventory/clear";
+    }
+
+    @Test
+    @DisplayName("Выдача списком доезжает до игры целиком и по порядку")
+    void givesItemList() throws Exception {
+        HttpResponse<String> response = post(
+                givePath(),
+                TOKEN,
+                "{\"items\":[{\"id\":\"minecraft:stone\",\"count\":64},"
+                        + "{\"id\":\"minecraft:apple\",\"count\":3}]}");
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("minecraft:stonex64", "minecraft:applex3"), bridge.gives);
+        assertTrue(response.body().contains("\"given\":64"), response.body());
+    }
+
+    @Test
+    @DisplayName("count по умолчанию — один предмет")
+    void giveDefaultsToOne() throws Exception {
+        assertEquals(200, post(givePath(), TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\"}]}").statusCode());
+        assertEquals(List.of("minecraft:stonex1"), bridge.gives);
+    }
+
+    @Test
+    @DisplayName("Неизвестный предмет не отменяет остальные строки")
+    void giveReportsPerLine() throws Exception {
+        HttpResponse<String> response = post(
+                givePath(),
+                TOKEN,
+                "{\"items\":[{\"id\":\"made_up\",\"count\":1},"
+                        + "{\"id\":\"minecraft:stone\",\"count\":1}]}");
+        // 200, а не 400: запрос исполнен, просто одна строка не легла — и это
+        // видно построчно, иначе человек не поймёт, какая именно.
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("Неизвестный предмет"), response.body());
+        assertEquals(List.of("made_upx1", "minecraft:stonex1"), bridge.gives);
+    }
+
+    @Test
+    @DisplayName("Переполненный инвентарь — 200 с числом, сколько легло")
+    void giveReportsLeftover() throws Exception {
+        bridge.freeSpace = 0;
+        HttpResponse<String> response =
+                post(givePath(), TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\",\"count\":64}]}");
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"given\":0"), response.body());
+        assertTrue(response.body().contains("Инвентарь заполнен"), response.body());
+    }
+
+    @Test
+    @DisplayName("Пустой и слишком длинный список выдачи отклоняются")
+    void rejectsBadGiveList() throws Exception {
+        assertEquals(400, post(givePath(), TOKEN, "{\"items\":[]}").statusCode());
+        assertEquals(400, post(givePath(), TOKEN, "{}").statusCode());
+        assertEquals(400, post(givePath(), TOKEN, "").statusCode());
+
+        StringBuilder many = new StringBuilder("{\"items\":[");
+        for (int i = 0; i <= CompanionHttpServer.MAX_GIVE_ENTRIES; i++) {
+            if (i > 0) many.append(',');
+            many.append("{\"id\":\"minecraft:stone\"}");
+        }
+        many.append("]}");
+        assertEquals(400, post(givePath(), TOKEN, many.toString()).statusCode());
+        assertTrue(bridge.gives.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Абсурдный count отклоняется, а не собирает миллион стаков")
+    void rejectsAbsurdGiveCount() throws Exception {
+        assertEquals(
+                400,
+                post(givePath(), TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\",\"count\":64000000}]}")
+                        .statusCode());
+        assertEquals(
+                400,
+                post(givePath(), TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\",\"count\":0}]}")
+                        .statusCode());
+        assertTrue(bridge.gives.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Выдача офлайн-игроку — 404 с машиночитаемым кодом")
+    void giveOfflineIs404() throws Exception {
+        bridge.steveOnline = false;
+        HttpResponse<String> response =
+                post(givePath(), TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\"}]}");
+        assertEquals(404, response.statusCode());
+        assertTrue(response.body().contains("player-offline"), response.body());
+    }
+
+    @Test
+    @DisplayName("Очистка выбранных слотов, брони и второй руки")
+    void clearsSelection() throws Exception {
+        HttpResponse<String> response =
+                post(clearPath(), TOKEN, "{\"slots\":[0,9],\"armor\":[3],\"offhand\":true}");
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("slots=[0, 9] armor=[3] offhand=true"), bridge.clears);
+    }
+
+    @Test
+    @DisplayName("Полная очистка — только по явному all")
+    void clearsEverything() throws Exception {
+        assertEquals(200, post(clearPath(), TOKEN, "{\"all\":true}").statusCode());
+        assertEquals(List.of("all"), bridge.clears);
+    }
+
+    @Test
+    @DisplayName("Пустой выбор — 400, а не молчаливая полная очистка")
+    void emptySelectionIsNotWipe() throws Exception {
+        assertEquals(400, post(clearPath(), TOKEN, "{}").statusCode());
+        assertEquals(400, post(clearPath(), TOKEN, "{\"slots\":[]}").statusCode());
+        assertEquals(400, post(clearPath(), TOKEN, "").statusCode());
+        assertEquals(400, post(clearPath(), TOKEN, "{\"all\":false}").statusCode());
+        assertTrue(bridge.clears.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Слот и индекс брони вне диапазона отклоняются")
+    void rejectsOutOfRangeSelection() throws Exception {
+        assertEquals(400, post(clearPath(), TOKEN, "{\"slots\":[36]}").statusCode());
+        assertEquals(400, post(clearPath(), TOKEN, "{\"armor\":[4]}").statusCode());
+        assertEquals(400, post(clearPath(), TOKEN, "{\"slots\":[\"1\"]}").statusCode());
+        assertTrue(bridge.clears.isEmpty());
+    }
+
+    @Test
+    @DisplayName("give и clear не разбираются как номер слота")
+    void giveAndClearAreNotSlots() throws Exception {
+        // Пути одной формы: /inventory/{slot} против /inventory/give. Если
+        // порядок маршрутов перепутать, сюда прилетит 400 «некорректный слот».
+        assertEquals(200, post(clearPath(), TOKEN, "{\"all\":true}").statusCode());
+        assertTrue(bridge.slotWrites.isEmpty());
+    }
+
     @Test
     @DisplayName("В ответах об ошибке нет токена")
     void errorsDoNotLeakToken() throws Exception {
