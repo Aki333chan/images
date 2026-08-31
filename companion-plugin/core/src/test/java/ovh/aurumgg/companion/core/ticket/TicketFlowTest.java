@@ -8,8 +8,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -195,6 +204,88 @@ class TicketClientTest {
         assertTrue(error.getMessage().contains("подключиться"), error.getMessage());
         assertTrue(error.getMessage().contains("127.0.0.1"), error.getMessage());
         assertFalse(error.getMessage().contains(token), error.getMessage());
+    }
+
+    /**
+     * Панель так, как её видит сеть: сервер, который рвёт соединение на
+     * запросе с «Upgrade».
+     *
+     * Ровно это делает настоящая панель. Она на Node, и к её HTTP-серверу
+     * прицеплен socket.io; как только у Node-сервера появляется обработчик
+     * события upgrade, запросы с этим заголовком уходят в него мимо обычного
+     * конвейера, а socket.io на чужом пути молча закрывает сокет.
+     *
+     * Обычный FakePanel выше этого не воспроизводит: он на
+     * com.sun.net.httpserver, который заголовок Upgrade просто игнорирует и
+     * отвечает как ни в чём не бывало. Из-за этого тесты были зелёными, а на
+     * живой панели тикеты не отправлялись вообще ни разу.
+     */
+    private static ServerSocket startUpgradeHostilePanel() throws Exception {
+        ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        Thread thread = new Thread(() -> {
+            while (!socket.isClosed()) {
+                try (Socket client = socket.accept()) {
+                    BufferedReader in = new BufferedReader(
+                            new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII));
+                    boolean upgrade = false;
+                    for (String line = in.readLine(); line != null && !line.isEmpty(); line = in.readLine()) {
+                        if (line.toLowerCase(java.util.Locale.ROOT).startsWith("upgrade:")) upgrade = true;
+                    }
+                    if (upgrade) continue; // закрываем, не ответив, — как socket.io
+
+                    byte[] body = "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+                    OutputStream out = client.getOutputStream();
+                    out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                            + body.length + "\r\nConnection: close\r\n\r\n")
+                            .getBytes(StandardCharsets.US_ASCII));
+                    out.write(body);
+                    out.flush();
+                } catch (IOException e) {
+                    return;
+                }
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
+        return socket;
+    }
+
+    @Test
+    @DisplayName("Панель с socket.io: клиент не должен просить HTTP/2")
+    void survivesUpgradeHostilePanel() throws Exception {
+        // Регрессия на настоящую поломку: по умолчанию HttpClient просит
+        // HTTP/2 через «Upgrade: h2c», панель на это рвёт соединение, и
+        // тикеты не уходили никогда. curl и wget при этом до панели
+        // доходили — они шлют обычный HTTP/1.1, — из-за чего проверялась
+        // сеть, в которой всё было цело.
+        try (ServerSocket panel = startUpgradeHostilePanel()) {
+            String baseUrl = "http://127.0.0.1:" + panel.getLocalPort();
+            CompanionConfig config = new CompanionConfig(
+                    "127.0.0.1", 0, "server-1-secret-token-EXAMPLE", baseUrl, "srv-42", 10);
+
+            assertNull(new TicketClient(config).checkPanel(), "боевой клиент обязан работать");
+        }
+    }
+
+    @Test
+    @DisplayName("Разрыв без ответа не выдаётся за «панель недоступна»")
+    void namesConnectionResetHonestly() throws Exception {
+        // Если такое всё же случится, «недоступна» будет прямой ложью: сеть
+        // исправна, соединение состоялось. Человека это уводит проверять
+        // туннель и фаервол — там всё в порядке, и поиск заходит в тупик.
+        try (ServerSocket panel = startUpgradeHostilePanel()) {
+            String baseUrl = "http://127.0.0.1:" + panel.getLocalPort();
+            CompanionConfig config = new CompanionConfig(
+                    "127.0.0.1", 0, "server-1-secret-token-EXAMPLE", baseUrl, "srv-42", 10);
+
+            // Клиент с настройками по умолчанию — то есть с HTTP/2.
+            TicketClient broken = new TicketClient(
+                    config, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
+            String problem = broken.checkPanel();
+            assertNotNull(problem);
+            assertTrue(problem.contains("разорвала соединение"), problem);
+            assertFalse(problem.contains("недоступна"), problem);
+        }
     }
 
     @Test
