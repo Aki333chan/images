@@ -89,7 +89,31 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
             getLogger().severe("Команда ticket не объявлена в plugin.yml");
             return;
         }
-        command.setExecutor(new TicketCommand(this, new TicketClient(config), cooldown, problem == null));
+        TicketClient client = new TicketClient(config);
+        command.setExecutor(new TicketCommand(this, client, cooldown, problem == null));
+        if (problem == null) checkPanelReachable(client);
+    }
+
+    /**
+     * Проверка связи с панелью на старте.
+     *
+     * Без неё о разорванном канале узнают самым неудобным способом: игрок
+     * пишет /ticket, получает «попробуй позже», и никто не связывает это с
+     * тем, что панель слушает не тот адрес. Проверка идёт асинхронно — в
+     * onEnable нельзя ходить в сеть, сервер ждёт возврата из метода.
+     */
+    private void checkPanelReachable(TicketClient client) {
+        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+            String problem = client.checkPanel();
+            if (problem == null) {
+                getLogger().info("Связь с панелью есть — /ticket будет работать");
+                return;
+            }
+            getLogger().warning("Панель не отвечает: " + problem);
+            getLogger().warning("Пока это так, /ticket будет отвечать игрокам «попробуй позже». "
+                    + "Проверьте panel.base-url в config.yml и то, что панель слушает адрес туннеля "
+                    + "(на VDS: ss -tulpn | grep 3001 — должен быть 10.0.0.1, а не 127.0.0.1).");
+        });
     }
 
     /**
