@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,16 +20,36 @@ class HudAndNamesTest {
     // ------------------------------------------------------------ сайдбар
 
     @Test
-    @DisplayName("Строки сайдбара не повторяются — иначе строка молча пропадёт")
-    void одинаковыеСтрокиРазводятся() {
-        // В scoreboard строка — это запись, а записи уникальны по тексту.
-        // Две одинаковых не покажутся дважды: вторая перезапишет первую.
-        List<String> result = HudLines.dedupe(List.of("", "", "&7Гильдия", ""));
+    @DisplayName("Коды цвета доходят до вывода нетронутыми")
+    void цветаНеЭкранируются() {
+        // Регрессия на настоящую поломку: коды показывались буквами —
+        // «&7Пати &8(&f1&8/&f4&8)». Ломалось не здесь: строки были верные, а
+        // вывод писал их в запись scoreboard, где форматирование не
+        // разбирается вообще. Этот тест сторожит свою половину контракта —
+        // что core отдаёт коды как есть и ничего с ними не делает.
+        HudModel model = new HudModel(
+                List.of(new HudModel.Member("Steve", 100.0, true, true)),
+                4, null, null, null, 0, 0, null);
 
-        assertEquals(4, new HashSet<>(result).size(), "все строки должны различаться");
-        assertEquals("", result.get(0));
-        assertEquals("&r", result.get(1));
-        assertEquals("&r&r", result.get(3));
+        List<String> lines = HudLines.build(model);
+        assertTrue(lines.get(0).startsWith("&7Пати"), lines.get(0));
+        assertTrue(lines.get(0).contains("&8(&f1&8/&f4&8)"), lines.get(0));
+    }
+
+    @Test
+    @DisplayName("Одинаковые разделители больше не разводятся хвостами")
+    void разделителиОстаютсяПустыми() {
+        // Раньше повторяющиеся строки приходилось делать разными («&r» в
+        // конец), потому что записи scoreboard уникальны по тексту. Теперь
+        // строка — это префикс команды, а запись — невидимый ключ по номеру
+        // строки, и совпадение текста ничего не ломает.
+        HudModel model = new HudModel(
+                List.of(new HudModel.Member("Steve", 100.0, true, true)),
+                4, "Драконы", "DRG", GuildRank.LEADER, 1, 1, null);
+
+        for (String line : HudLines.build(model)) {
+            assertFalse(line.endsWith("&r"), "лишний хвост: " + line);
+        }
     }
 
     @Test
