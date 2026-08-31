@@ -66,6 +66,15 @@ export const minecraftManifest: GameModuleManifest = {
       defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {
+      // Только ADMIN, без MODERATOR: полная очистка необратима — панель не
+      // умеет вернуть стёртое, а из бэкапа мира это достаётся вместе со всем
+      // остальным, что случилось с тех пор. Смотреть инвентарь модератору
+      // по-прежнему можно.
+      key: MINECRAFT_PERMISSIONS.inventoryEdit,
+      description: 'Выдача предметов и очистка инвентаря игрока (нужен companion-плагин)',
+      defaultRoles: ['ADMIN'],
+    },
+    {
       key: MINECRAFT_PERMISSIONS.permissionsView,
       description: 'Просмотр прав игрока (нужны companion-плагин и LuckPerms)',
       defaultRoles: ['ADMIN', 'MODERATOR'],

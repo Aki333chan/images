@@ -1,13 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { request } from 'undici';
 import type {
   MinecraftBalanceChangeDto,
   MinecraftBalanceDto,
   MinecraftPasswordResetDto,
   MinecraftEconomyDto,
+  MinecraftGiveItemDto,
+  MinecraftGiveResponse,
   MinecraftGuildDto,
   MinecraftGuildMembershipDto,
   MinecraftGuildRank,
+  MinecraftInventoryClearDto,
   MinecraftInventoryItemDto,
   MinecraftInventoryResponse,
   MinecraftPermissionChangeDto,
@@ -46,6 +54,13 @@ interface RawInventory {
   items?: RawItem[];
   armor?: RawItem[];
   offhand?: RawItem | null;
+}
+
+interface RawGiveResult {
+  id?: string;
+  requested?: number;
+  given?: number;
+  error?: string | null;
 }
 
 interface RawGuildMember {
@@ -347,6 +362,93 @@ export class CompanionService {
       armor: (data.armor ?? []).map(toItemDto),
       offhand: data.offhand ? toItemDto(data.offhand) : null,
     };
+  }
+
+  /**
+   * Выдать игроку список предметов.
+   *
+   * Идентификаторы проверяет игровой сервер, а не панель: перечень материалов
+   * зависит от версии и установленных модов, и зашитый сюда список устарел бы
+   * к следующему обновлению. Поэтому неизвестный предмет — это не 400, а
+   * строка результата с причиной; остальные строки при этом выдаются.
+   */
+  async giveItems(
+    serverId: string,
+    player: string,
+    items: MinecraftGiveItemDto[],
+  ): Promise<MinecraftGiveResponse> {
+    const uuid = await this.requireOnline(serverId, player);
+    const result = await this.callRaw<{ results?: RawGiveResult[] }>(
+      serverId,
+      `/players/${uuid}/inventory/give`,
+      { method: 'POST', body: { items } },
+    );
+    if (!result.ok) throw this.inventoryEditFailure(result, player);
+    return {
+      results: (result.body.results ?? []).map((r) => ({
+        id: typeof r.id === 'string' ? r.id : '—',
+        requested: numberOr(r.requested, 0),
+        given: numberOr(r.given, 0),
+        error: typeof r.error === 'string' ? r.error : null,
+      })),
+    };
+  }
+
+  /**
+   * Очистить выбранные слоты или инвентарь целиком.
+   *
+   * Полная очистка передаётся отдельным флагом `all`, и пустой выбор плагин
+   * отвергает: разница необратимая, и поле, потерянное по дороге, не должно
+   * оборачиваться стёртым инвентарём.
+   */
+  async clearInventory(
+    serverId: string,
+    player: string,
+    selection: MinecraftInventoryClearDto,
+  ): Promise<void> {
+    const uuid = await this.requireOnline(serverId, player);
+    const result = await this.callRaw<unknown>(serverId, `/players/${uuid}/inventory/clear`, {
+      method: 'POST',
+      body: selection,
+    });
+    if (!result.ok) throw this.inventoryEditFailure(result, player);
+  }
+
+  /**
+   * UUID игрока, который сейчас в сети.
+   *
+   * Правка инвентаря — только для онлайн-игроков, и это не упрощение:
+   * InvSee++ даёт лишь ПОСМОТРЕТЬ сохранённые данные, а писать в них мимо
+   * живого игрока значит рисковать тем, что сервер перезапишет их обратно
+   * при следующем входе.
+   */
+  private async requireOnline(serverId: string, player: string): Promise<string> {
+    if (!(await this.isConfigured(serverId))) {
+      throw new ServiceUnavailableException(
+        'Для правки инвентаря нужен companion-плагин на игровом сервере',
+      );
+    }
+    const uuid = await this.resolveUuid(serverId, player);
+    if (!uuid) {
+      throw new NotFoundException(
+        `Игрок ${player} сейчас не в сети — менять инвентарь можно только у онлайн-игроков`,
+      );
+    }
+    return uuid;
+  }
+
+  /** Отказ плагина на правку инвентаря — своими словами, без адресов и токенов. */
+  private inventoryEditFailure(
+    result: { status: number | null; code: string | null; error: string | null },
+    player: string,
+  ): Error {
+    if (result.code === 'player-offline') {
+      return new NotFoundException(`Игрок ${player} вышел из сети — изменения не применены`);
+    }
+    if (result.error) return new ServiceUnavailableException(result.error);
+    return new ServiceUnavailableException(
+      'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+    );
   }
 
   // ---------------------------------------------------------- Экономика

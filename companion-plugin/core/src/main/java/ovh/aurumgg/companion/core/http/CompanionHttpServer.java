@@ -21,10 +21,12 @@ import ovh.aurumgg.companion.core.json.PayloadWriter;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
+import ovh.aurumgg.companion.core.model.InventorySelection;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PasswordReset;
@@ -44,6 +46,8 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  *   GET  /players
  *   GET  /players/{uuid}/inventory
  *   POST /players/{uuid}/inventory/{slot}
+ *   POST /players/{uuid}/inventory/give
+ *   POST /players/{uuid}/inventory/clear
  *   GET  /players/{uuid}/permissions
  *   POST /players/{uuid}/permissions
  *   GET  /plugins
@@ -442,6 +446,42 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // POST /players/{uuid}/inventory/give
+        //
+        // Раньше маршрута по номеру слота: у обоих одинаковая форма пути, и
+        // разбор «give» как номера слота свалился бы в 400 вместо выдачи.
+        if (parts.length == 4
+                && parts[0].equals("players")
+                && parts[2].equals("inventory")
+                && parts[3].equals("give")
+                && method.equals("POST")) {
+            UUID uuid = parseUuid(parts[1]);
+            List<ItemSpec> wanted = parseGiveList(readBody(exchange));
+            Optional<List<GiveResult>> results = bridge.giveItems(uuid, wanted);
+            if (results.isEmpty()) {
+                respond(exchange, 404, PayloadWriter.error("Игрок не в сети", "player-offline"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.giveResults(results.get()));
+            return;
+        }
+
+        // POST /players/{uuid}/inventory/clear
+        if (parts.length == 4
+                && parts[0].equals("players")
+                && parts[2].equals("inventory")
+                && parts[3].equals("clear")
+                && method.equals("POST")) {
+            UUID uuid = parseUuid(parts[1]);
+            InventorySelection selection = parseSelection(readBody(exchange));
+            if (!bridge.clearInventory(uuid, selection)) {
+                respond(exchange, 404, PayloadWriter.error("Игрок не в сети", "player-offline"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.ok());
+            return;
+        }
+
         // POST /players/{uuid}/inventory/{slot}
         if (parts.length == 4
                 && parts[0].equals("players")
@@ -718,6 +758,108 @@ public final class CompanionHttpServer {
         if (amount <= 0) return ItemSpec.clear();
         if (amount > 64) throw new IllegalArgumentException("count не может превышать 64");
         return new ItemSpec(idString, amount);
+    }
+
+    /** Столько строк за раз хватает на любой разумный набор — в инвентаре 36 слотов. */
+    static final int MAX_GIVE_ENTRIES = 45;
+
+    /**
+     * Больше одного инвентаря одной строкой выдать нельзя.
+     *
+     * 36 слотов по 64 — ровно столько влезает в основной инвентарь, и всё, что
+     * сверх, всё равно вернулось бы обратно как не поместившееся. Верхняя
+     * граница нужна не ради этого: без неё опечатка в поле count («64000000»)
+     * заставит сервер собирать миллион ItemStack в основном потоке.
+     */
+    static final int MAX_GIVE_COUNT = 36 * 64;
+
+    /**
+     * Тело: {"items":[{"id":"minecraft:stone","count":64}, ...]}.
+     *
+     * Список, а не один предмет: выдают обычно набор, и отдельный запрос на
+     * каждую строку означал бы частично применённую выдачу при обрыве связи
+     * посередине.
+     */
+    static List<ItemSpec> parseGiveList(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("Пустое тело запроса");
+        }
+        Object raw = JsonParser.parseObject(body).get("items");
+        if (!(raw instanceof List<?> rawItems) || rawItems.isEmpty()) {
+            throw new IllegalArgumentException("Поле items должно быть непустым списком");
+        }
+        if (rawItems.size() > MAX_GIVE_ENTRIES) {
+            throw new IllegalArgumentException("Не больше " + MAX_GIVE_ENTRIES + " строк за раз");
+        }
+        List<ItemSpec> result = new java.util.ArrayList<>(rawItems.size());
+        for (Object entry : rawItems) {
+            if (!(entry instanceof Map<?, ?> fields)) {
+                throw new IllegalArgumentException("Каждая строка items должна быть объектом");
+            }
+            Object id = fields.get("id");
+            if (!(id instanceof String idString) || idString.isBlank()) {
+                throw new IllegalArgumentException("Поле id должно быть непустой строкой");
+            }
+            Object rawCount = fields.get("count");
+            if (rawCount == null) rawCount = 1.0d;
+            if (!(rawCount instanceof Double count)) {
+                throw new IllegalArgumentException("Поле count должно быть числом");
+            }
+            int amount = (int) Math.round(count);
+            if (amount <= 0) {
+                throw new IllegalArgumentException("Поле count должно быть больше нуля");
+            }
+            if (amount > MAX_GIVE_COUNT) {
+                throw new IllegalArgumentException("count не может превышать " + MAX_GIVE_COUNT);
+            }
+            result.add(new ItemSpec(idString, amount));
+        }
+        return result;
+    }
+
+    /**
+     * Тело: {"all":true} либо {"slots":[..],"armor":[..],"offhand":true}.
+     *
+     * Пустой выбор — ошибка запроса, а не «очистить всё»: разница здесь
+     * необратимая, и потерянное по дороге поле не должно оборачиваться
+     * стёртым инвентарём.
+     */
+    static InventorySelection parseSelection(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("Пустое тело запроса");
+        }
+        Map<String, Object> parsed = JsonParser.parseObject(body);
+        if (Boolean.TRUE.equals(parsed.get("all"))) return InventorySelection.everything();
+
+        List<Integer> slots = parseIndexList(parsed.get("slots"), 35, "slots");
+        List<Integer> armor = parseIndexList(parsed.get("armor"), 3, "armor");
+        boolean offhand = Boolean.TRUE.equals(parsed.get("offhand"));
+
+        InventorySelection selection = new InventorySelection(false, slots, armor, offhand);
+        if (selection.isEmpty()) {
+            throw new IllegalArgumentException("Не выбрано ни одного слота");
+        }
+        return selection;
+    }
+
+    private static List<Integer> parseIndexList(Object raw, int max, String field) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> values)) {
+            throw new IllegalArgumentException("Поле " + field + " должно быть списком чисел");
+        }
+        List<Integer> result = new java.util.ArrayList<>(values.size());
+        for (Object value : values) {
+            if (!(value instanceof Double number)) {
+                throw new IllegalArgumentException("Поле " + field + " должно быть списком чисел");
+            }
+            int index = (int) Math.round(number);
+            if (index < 0 || index > max) {
+                throw new IllegalArgumentException(
+                        "Поле " + field + ": номер должен быть в диапазоне 0-" + max);
+            }
+            result.add(index);
+        }
+        return result;
     }
 
     private static String readBody(HttpExchange exchange) throws IOException {

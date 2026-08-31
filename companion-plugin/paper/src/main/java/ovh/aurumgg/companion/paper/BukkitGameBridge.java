@@ -21,7 +21,9 @@ import ovh.aurumgg.companion.core.GameBridge;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
+import ovh.aurumgg.companion.core.model.InventorySelection;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -150,6 +152,92 @@ public final class BukkitGameBridge implements GameBridge {
                     Material material = Material.matchMaterial(spec.id());
                     if (material == null || material == Material.AIR) return false;
                     player.getInventory().setItem(slot, new ItemStack(material, spec.count()));
+                    return true;
+                },
+                false);
+    }
+
+    @Override
+    public Optional<List<GiveResult>> giveItems(UUID playerUuid, List<ItemSpec> items) {
+        return callSync(
+                () -> {
+                    Player player = Bukkit.getPlayer(playerUuid);
+                    if (player == null) return Optional.<List<GiveResult>>empty();
+
+                    List<GiveResult> results = new ArrayList<>(items.size());
+                    for (ItemSpec spec : items) {
+                        results.add(giveOne(player, spec));
+                    }
+                    return Optional.of(results);
+                },
+                Optional.empty());
+    }
+
+    /**
+     * Одна строка списка выдачи.
+     *
+     * Стак режем сами, а не полагаемся на addItem: у разных предметов разный
+     * предельный размер стака (яйца — 16, зелья — 1), и передавать в API
+     * заведомо переполненный ItemStack значит зависеть от того, как именно он
+     * решит его разложить. Здесь же видно, сколько кусков ушло и сколько
+     * вернулось.
+     */
+    private static GiveResult giveOne(Player player, ItemSpec spec) {
+        Material material = Material.matchMaterial(spec.id());
+        if (material == null || material == Material.AIR || !material.isItem()) {
+            return GiveResult.failed(spec.id(), spec.count(), "Неизвестный предмет");
+        }
+        int perStack = Math.max(1, material.getMaxStackSize());
+
+        List<ItemStack> stacks = new ArrayList<>();
+        for (int left = spec.count(); left > 0; left -= perStack) {
+            stacks.add(new ItemStack(material, Math.min(perStack, left)));
+        }
+
+        Map<Integer, ItemStack> leftovers =
+                player.getInventory().addItem(stacks.toArray(new ItemStack[0]));
+        int notPlaced = 0;
+        for (ItemStack leftover : leftovers.values()) notPlaced += leftover.getAmount();
+
+        int given = spec.count() - notPlaced;
+        if (notPlaced == 0) return GiveResult.ok(spec.id(), spec.count());
+        return new GiveResult(
+                spec.id(),
+                spec.count(),
+                given,
+                given == 0 ? "Инвентарь заполнен" : "Инвентарь заполнен: не поместилось " + notPlaced);
+    }
+
+    @Override
+    public boolean clearInventory(UUID playerUuid, InventorySelection selection) {
+        return callSync(
+                () -> {
+                    Player player = Bukkit.getPlayer(playerUuid);
+                    if (player == null) return false;
+                    PlayerInventory inv = player.getInventory();
+
+                    if (selection.all()) {
+                        // Явно, а не одним clear(): у PlayerInventory он трогает
+                        // и слоты, которых панель не показывает вовсе, — а стирать
+                        // то, чего человек не видел, нельзя.
+                        for (int slot = 0; slot < 36; slot++) inv.setItem(slot, null);
+                        inv.setArmorContents(new ItemStack[4]);
+                        inv.setItemInOffHand(null);
+                        return true;
+                    }
+
+                    for (int slot : selection.slots()) {
+                        if (slot >= 0 && slot < 36) inv.setItem(slot, null);
+                    }
+                    if (!selection.armor().isEmpty()) {
+                        // Порядок массива Bukkit: ботинки, поножи, нагрудник, шлем.
+                        ItemStack[] armor = inv.getArmorContents();
+                        for (int index : selection.armor()) {
+                            if (index >= 0 && index < armor.length) armor[index] = null;
+                        }
+                        inv.setArmorContents(armor);
+                    }
+                    if (selection.offhand()) inv.setItemInOffHand(null);
                     return true;
                 },
                 false);

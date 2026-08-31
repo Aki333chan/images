@@ -6,10 +6,12 @@ import java.util.UUID;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
+import ovh.aurumgg.companion.core.model.InventorySelection;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
@@ -38,6 +40,25 @@ public interface GameBridge {
      * @return false, если игрок не в сети или материал неизвестен
      */
     boolean setInventorySlot(UUID playerUuid, int slot, ItemSpec spec);
+
+    /**
+     * Выдаёт игроку список предметов — каждый в первый подходящий слот.
+     *
+     * Именно «выдаёт», а не «кладёт в слот N»: администратор перечисляет, что
+     * должно оказаться у человека, и раскладывать это по свободным местам —
+     * работа сервера, а не панели. Стаки крупнее максимального размера
+     * разбиваются, не поместившееся возвращается в результате.
+     *
+     * @return пусто, если игрок не в сети; иначе построчный итог по списку
+     */
+    Optional<List<GiveResult>> giveItems(UUID playerUuid, List<ItemSpec> items);
+
+    /**
+     * Очищает выбранные слоты или инвентарь целиком.
+     *
+     * @return false, если игрок не в сети
+     */
+    boolean clearInventory(UUID playerUuid, InventorySelection selection);
 
     /** Отправляет игроку сообщение в чат. Тихо игнорируется, если он оффлайн. */
     void sendMessage(UUID playerUuid, String message);

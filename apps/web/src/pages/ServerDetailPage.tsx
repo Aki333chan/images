@@ -23,6 +23,8 @@ export function ServerDetailPage() {
   const runtime = useServerRuntime(serverId);
   const [server, setServer] = useState<ServerDto | null>(null);
   const [activeTab, setActiveTab] = useState<string>('');
+  /** Человек уже сам выбрал вкладку — автовыбор ниже больше не вмешивается. */
+  const [tabPickedByUser, setTabPickedByUser] = useState(false);
   const [error, setError] = useState('');
   /** Отказ Pterodactyl по кнопке питания: молча его терять нельзя. */
   const [powerError, setPowerError] = useState('');
@@ -34,6 +36,9 @@ export function ServerDetailPage() {
       navigate('/servers', { replace: true });
       return;
     }
+    // Другой сервер — снова открываем консоль: выбор вкладки относился к
+    // предыдущему серверу, а не к этому.
+    setTabPickedByUser(false);
     api<ServerDto>(`/api/servers/${serverId}`)
       .then(setServer)
       .catch((e: unknown) => {
@@ -105,11 +110,27 @@ export function ServerDetailPage() {
     return widget.component;
   }, [manifest, hasPermission]);
 
+  /**
+   * Какая вкладка открывается сама.
+   *
+   * КОНСОЛЬ, А НЕ ПЕРВАЯ ПОПАВШАЯСЯ. Открывая сервер, смотрят прежде всего на
+   * то, что он пишет; файлы открывают, когда уже знают зачем.
+   *
+   * Здесь же чинится вот что: список вкладок собирается из манифеста модуля, а
+   * манифест приезжает вместе с данными сервера, то есть ПОЗЖЕ первого
+   * рендера. До его прихода список состоит из одних общих вкладок, первая из
+   * которых — «Файлы». Прежний код выбирал tabs[0] и потом уже не трогал
+   * выбор, потому что «Файлы» никуда не девались и оставались допустимыми, —
+   * и панель стабильно открывалась на файлах. Поэтому автовыбор повторяется,
+   * пока человек сам не переключил вкладку.
+   */
   useEffect(() => {
-    if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
-      setActiveTab(tabs[0]?.id ?? '');
-    }
-  }, [tabs, activeTab]);
+    if (tabs.length === 0) return;
+    const known = tabs.some((t) => t.id === activeTab);
+    if (known && tabPickedByUser) return;
+    const preferred = tabs.find((t) => t.id === 'console') ?? tabs[0];
+    if (preferred && preferred.id !== activeTab) setActiveTab(preferred.id);
+  }, [tabs, activeTab, tabPickedByUser]);
 
   if (error) return <p className="text-red-400">{error}</p>;
   if (!server) return <Spinner />;
@@ -215,7 +236,14 @@ export function ServerDetailPage() {
         <p className="text-muted">Нет вкладок, доступных вашей роли.</p>
       ) : (
         <>
-          <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+          <Tabs
+            tabs={tabs}
+            active={activeTab}
+            onChange={(id) => {
+              setTabPickedByUser(true);
+              setActiveTab(id);
+            }}
+          />
           {ActiveComponent && active && (
             <ActiveComponent
               serverId={server.id}
