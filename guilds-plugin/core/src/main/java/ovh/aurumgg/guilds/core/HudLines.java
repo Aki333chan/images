@@ -1,26 +1,21 @@
 package ovh.aurumgg.guilds.core;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Содержимое сайдбара — строками, без единого обращения к Bukkit.
  *
- * <h2>Две особенности scoreboard, из-за которых это отдельный класс</h2>
- *
- * <b>Строки обязаны быть разными.</b> В сайдбаре каждая строка — это запись
- * (entry), а записи в scoreboard уникальны по своему тексту. Две одинаковые
- * строки не покажутся дважды: вторая просто перезапишет первую, и сайдбар
- * молча потеряет строчку. Больнее всего это бьёт по пустым строкам-разделителям
- * — их обычно несколько. Лечится добавлением невидимого «&amp;r» в конец
- * дубликата: текст остаётся тем же на вид, а строкой становится другим.
- * Приём известный, но именно из-за молчаливости ошибки его стоит держать в
- * одном месте и под тестом.
+ * <h2>Особенность scoreboard, из-за которой это отдельный класс</h2>
  *
  * <b>Строк не больше пятнадцати.</b> Столько влезает в сайдбар. Всё, что
  * не поместилось, обрезается здесь, а не превращается в невидимый хвост.
+ *
+ * <p>Раньше здесь была и вторая забота — разводить одинаковые строки хвостами
+ * «&amp;r», потому что записи scoreboard уникальны по тексту и два одинаковых
+ * разделителя схлопывались в один. Её больше нет: строки выводятся префиксами
+ * команд, а записи стали невидимыми ключами по номеру строки (см.
+ * SidebarKeeper). Совпадение видимого текста теперь никого не волнует.
  *
  * <h2>Что важнее при нехватке места</h2>
  *
@@ -64,7 +59,7 @@ public final class HudLines {
             lines.addAll(guildBlock(model));
         }
 
-        return dedupe(lines.size() > MAX_LINES ? lines.subList(0, MAX_LINES) : lines);
+        return lines.size() > MAX_LINES ? List.copyOf(lines.subList(0, MAX_LINES)) : lines;
     }
 
     private static List<String> guildBlock(HudModel model) {
@@ -104,20 +99,4 @@ public final class HudLines {
         return String.format(java.util.Locale.ROOT, "%.2f", value);
     }
 
-    /**
-     * Развести одинаковые строки, оставив их одинаковыми на вид.
-     *
-     * «&amp;r» — код сброса форматирования: в конце строки он ничего не
-     * меняет визуально, но делает её другой строкой для scoreboard.
-     */
-    static List<String> dedupe(List<String> lines) {
-        Set<String> seen = new LinkedHashSet<>();
-        List<String> result = new ArrayList<>(lines.size());
-        for (String line : lines) {
-            String candidate = line;
-            while (!seen.add(candidate)) candidate = candidate + "&r";
-            result.add(candidate);
-        }
-        return result;
-    }
 }

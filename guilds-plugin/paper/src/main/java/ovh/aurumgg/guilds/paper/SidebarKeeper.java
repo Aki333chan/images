@@ -1,11 +1,11 @@
 package ovh.aurumgg.guilds.paper;
 
-import java.util.HashSet;
+import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -13,11 +13,45 @@ import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
+import ovh.aurumgg.guilds.core.HudLines;
 
 /**
  * Сайдбар, который не воюет за слот с чужими плагинами.
  *
- * <h2>Проблема</h2>
+ * <h2>Как выводится текст: командами, а не записями</h2>
+ *
+ * Первая версия писала строку прямо в запись scoreboard:
+ * {@code objective.getScore(строка).setScore(n)}. Так делать нельзя, и на
+ * живом сервере это выглядело как «&amp;7Пати &amp;8(&amp;f1&amp;8/&amp;f4&amp;8)» —
+ * коды цвета показывались буквами. Причина в том, что запись — это не текст
+ * для показа, а ИМЯ участника таблицы, вроде ника игрока. Форматирование в ней
+ * не разбирается вообще.
+ *
+ * Правильный способ, он же единственный, дающий полноценные компоненты
+ * Adventure: запись делается невидимым ключом (одиночный символ §-кода,
+ * который ничего не рисует), а сам текст кладётся в ПРЕФИКС КОМАНДЫ, куда
+ * эта запись входит — {@link Team#prefix(Component)}.
+ *
+ * Побочно это чинит и вторую беду. Раньше строки приходилось искусственно
+ * разводить хвостами «&amp;r», потому что две одинаковые записи молча
+ * схлопывались в одну и сайдбар терял строчку. Теперь ключи фиксированы по
+ * номеру строки и уникальны по построению, а совпадение видимого текста
+ * никого не волнует — разделителей может быть сколько угодно.
+ *
+ * <h2>Красные цифры справа</h2>
+ *
+ * Это счёт записи, и он показывается клиентом по умолчанию. Убирается
+ * {@link NumberFormat#blank()}. Сам счёт при этом по-прежнему нужен — им
+ * задаётся порядок строк, — просто клиенту его рисовать не надо.
+ *
+ * <h2>Где сайдбар находится на экране</h2>
+ *
+ * Всегда у правого края, по вертикали — по центру. Это рисует КЛИЕНТ, и
+ * сервер на это влиять не может никак: ни через API, ни пакетами. Сдвинуть
+ * его выше может только ресурспак или клиентский мод.
+ *
+ * <h2>Проблема слота</h2>
  *
  * Слот SIDEBAR на сервере один. На этом же сервере стоит GladiatorArena, и по
  * её исходникам (метод {@code updateScoreboards}) видно, что во время боя она
@@ -57,6 +91,34 @@ final class SidebarKeeper {
 
     /** Имя нашей цели в scoreboard. По нему же мы узнаём свою доску. */
     static final String OBJECTIVE = "aurum_guilds";
+
+    /**
+     * Сколько строк вмещает сайдбар — столько же ключей ниже.
+     *
+     * Число берётся из HudLines, а не пишется своё: там строки обрезаются под
+     * этот же предел, и разъехавшиеся константы означали бы либо потерянные
+     * строки, либо неиспользуемые ключи.
+     */
+    static final int MAX_LINES = HudLines.MAX_LINES;
+
+    /**
+     * Невидимые ключи строк: §-код и больше ничего.
+     *
+     * Клиент такой код съедает как управляющий и не рисует ни пикселя, а для
+     * scoreboard это вполне себе разные записи. Именно они и делают строки
+     * независимыми от своего текста.
+     */
+    private static final String[] KEYS = new String[MAX_LINES];
+
+    static {
+        // \u00A7 — тот самый символ секции, которым в Minecraft начинается код
+        // форматирования. Escape-последовательностью, а не литералом: символ
+        // невидим в большинстве редакторов, и в патче его легко потерять.
+        String palette = "0123456789abcdef";
+        for (int i = 0; i < MAX_LINES; i++) {
+            KEYS[i] = "\u00A7" + palette.charAt(i);
+        }
+    }
 
     private static final LegacyComponentSerializer COLORS = LegacyComponentSerializer.legacyAmpersand();
 
@@ -99,25 +161,41 @@ final class SidebarKeeper {
             objective = board.registerNewObjective(OBJECTIVE, Criteria.DUMMY, COLORS.deserialize(title));
         }
         objective.displayName(COLORS.deserialize(title));
+        // Счёт задаёт порядок строк, но показывать его не надо — это те самые
+        // красные цифры у правого края.
+        objective.numberFormat(NumberFormat.blank());
         if (objective.getDisplaySlot() != DisplaySlot.SIDEBAR) {
             objective.setDisplaySlot(DisplaySlot.SIDEBAR);
         }
 
-        // Убираем строки, которых в новом наборе нет. Без этого сайдбар растёт:
-        // старые записи никуда не деваются сами, и вышедший из пати игрок
-        // остался бы в списке навсегда.
-        Set<String> wanted = new HashSet<>(lines);
-        for (String entry : new HashSet<>(board.getEntries())) {
-            if (!wanted.contains(entry)) board.resetScores(entry);
+        int shown = Math.min(lines.size(), MAX_LINES);
+        for (int i = 0; i < shown; i++) {
+            teamFor(board, i).prefix(COLORS.deserialize(lines.get(i)));
+            // Больше — выше: считаем сверху вниз, чтобы порядок совпал с тем,
+            // в котором строки собрали.
+            objective.getScore(KEYS[i]).setScore(shown - i);
         }
-
-        // Счёт задаёт порядок: больше — выше. Считаем сверху вниз, чтобы
-        // порядок строк совпал с тем, в котором их собрали.
-        int score = lines.size();
-        for (String line : lines) {
-            objective.getScore(line).setScore(score--);
+        // Хвост прошлого обновления. Без этого сайдбар не укорачивается:
+        // вышедший из пати остался бы в списке навсегда.
+        for (int i = shown; i < MAX_LINES; i++) {
+            board.resetScores(KEYS[i]);
         }
         return true;
+    }
+
+    /**
+     * Команда, отвечающая за строку с этим номером.
+     *
+     * Одна на номер, а не на текст: текст меняется каждый тик, а команда
+     * должна остаться той же — иначе клиент получал бы поток создания и
+     * удаления команд вместо правки префикса.
+     */
+    private static Team teamFor(Scoreboard board, int index) {
+        String name = OBJECTIVE + "_" + index;
+        Team team = board.getTeam(name);
+        if (team == null) team = board.registerNewTeam(name);
+        if (!team.hasEntry(KEYS[index])) team.addEntry(KEYS[index]);
+        return team;
     }
 
     /** Убрать наш сайдбар, не трогая чужой. */
