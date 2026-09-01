@@ -13,31 +13,29 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerExpChangeEvent;
 import org.bukkit.inventory.ItemStack;
 import ovh.aurumgg.guilds.api.BonusType;
+import ovh.aurumgg.guilds.core.BonusMath;
 import ovh.aurumgg.guilds.core.GuildService;
 
 /**
  * Множители бонусов: добыча из блоков, добыча с мобов, опыт.
  *
- * <h2>Дробный множитель — это шанс, а не округление</h2>
+ * <h2>Почему именно эти события: бонус СКЛАДЫВАЕТСЯ с зачарованиями</h2>
  *
- * Множитель 1.5 на одном алмазе не может дать полтора алмаза. Округлять вниз
- * значило бы, что купленный бонус ×1.5 не делает ничего для всего, что падает
- * поштучно, — а это почти вся ценная добыча. Округлять вверх — что ×1.1
- * работает как ×2.
+ * {@code BlockDropItemEvent} приходит уже после того, как сервер решил, что
+ * выпадет: с учётом удачи, шёлкового касания и того, роняет ли блок предметы
+ * вообще. У события даже нет ссылки на инструмент — оно несёт готовый список
+ * сущностей. Значит, спорить о порядке нечего: зачарование применено раньше,
+ * всегда.
  *
- * Поэтому целая часть выдаётся всегда, а дробная разыгрывается: при ×1.5 к
- * каждой единице добавляется ещё одна с вероятностью 50%. На длинной дистанции
- * это ровно обещанные полтора раза, а на одном блоке — честная монетка.
+ * Ровно поэтому кирка с «Удачей III» и гильдейский ×1.5 дают примерно
+ * четыре-пять алмазов, а не полтора: бонус умножает результат зачарования, а
+ * не сырую единицу. Гильдейское усиление тем ценнее, чем лучше инструмент.
  *
- * <h2>Почему именно эти события</h2>
+ * {@code EntityDeathEvent#getDrops()} — то же самое для мобов (там уже учтена
+ * «Добыча»), и там же лежит опыт за убийство.
  *
- * {@code BlockDropItemEvent} — уже после того, как сервер решил, что выпадет:
- * с учётом удачи, шёлкового касания и того, что блок вообще роняет предметы.
- * Считать от него безопаснее, чем от типа блока: правила выпадения знает игра,
- * а не мы.
- *
- * {@code EntityDeathEvent#getDrops()} — то же самое для мобов, и там же лежит
- * опыт за убийство.
+ * Сама арифметика — в {@link BonusMath}: там же объяснено, почему дробная
+ * часть разыгрывается, а не округляется, и там это проверяется тестами.
  *
  * <h2>Чего множитель НЕ трогает</h2>
  *
@@ -66,8 +64,7 @@ final class BonusDropListener implements Listener {
         // Список события менять нельзя — он про уже созданные сущности. Лишнее
         // выкидываем в мир сами, рядом с блоком.
         for (Item item : new ArrayList<>(event.getItems())) {
-            ItemStack extra = bonusPortion(item.getItemStack(), multiplier);
-            if (extra != null) {
+            for (ItemStack extra : bonusPortions(item.getItemStack(), multiplier)) {
                 item.getWorld().dropItemNaturally(item.getLocation(), extra);
             }
         }
@@ -82,8 +79,7 @@ final class BonusDropListener implements Listener {
         if (drops > 1.0) {
             List<ItemStack> extra = new ArrayList<>();
             for (ItemStack stack : event.getDrops()) {
-                ItemStack portion = bonusPortion(stack, drops);
-                if (portion != null) extra.add(portion);
+                extra.addAll(bonusPortions(stack, drops));
             }
             event.getDrops().addAll(extra);
         }
@@ -108,34 +104,49 @@ final class BonusDropListener implements Listener {
     }
 
     /**
-     * Добавка к стопке или null, если добавлять нечего.
+     * Добавка к стопке — СТОПКАМИ, а не одной кучей.
      *
-     * Предметы с метаданными не множатся: у них прочность, зачарования и имя,
-     * и копия — это дубликат чужой вещи, а не добыча.
+     * <h2>Почему список, а не один ItemStack</h2>
+     *
+     * Добавка легко перерастает предельный размер стопки: девять алмазов с
+     * «Удачей III» и множителем ×30 — это 261 сверху, а в стопку влезает 64.
+     * {@code ItemStack} с количеством больше предела — вещь, которой в игре не
+     * существует: клиент рисует её неправильно, а часть предметов при первой
+     * же попытке положить их в сундук просто исчезает.
+     *
+     * Поэтому добавка режется по {@code getMaxStackSize()} самого предмета:
+     * у ведра он равен единице, у зелий — тройке, и брать константу 64 нельзя.
+     *
+     * <h2>Про зачарования</h2>
+     *
+     * Пропускаются зачарования НА САМОМ ВЫПАВШЕМ ПРЕДМЕТЕ, а не на
+     * инструменте: зачарованный меч, упавший с зомби, не удваивается — копия
+     * чужой вещи с прочностью и именем это дубликат, а не добыча. К
+     * зачарованиям кирки, которой копали, это отношения не имеет: их результат
+     * уже лежит в {@code getAmount()} и множится как обычно.
+     *
+     * @return пустой список, если добавлять нечего
      */
-    private static ItemStack bonusPortion(ItemStack stack, double multiplier) {
-        if (stack == null || stack.getAmount() <= 0) return null;
+    private static List<ItemStack> bonusPortions(ItemStack stack, double multiplier) {
+        if (stack == null || stack.getAmount() <= 0) return List.of();
         if (stack.hasItemMeta() && stack.getItemMeta() != null && stack.getItemMeta().hasEnchants()) {
-            return null;
+            return List.of();
         }
-        int extra = scaled(stack.getAmount(), multiplier) - stack.getAmount();
-        if (extra <= 0) return null;
+        int extra = BonusMath.extra(stack.getAmount(), multiplier, ThreadLocalRandom.current());
+        if (extra <= 0) return List.of();
 
-        ItemStack portion = stack.clone();
-        portion.setAmount(extra);
-        return portion;
+        int perStack = Math.max(1, stack.getMaxStackSize());
+        List<ItemStack> portions = new ArrayList<>();
+        while (extra > 0) {
+            ItemStack portion = stack.clone();
+            portion.setAmount(Math.min(extra, perStack));
+            portions.add(portion);
+            extra -= portion.getAmount();
+        }
+        return portions;
     }
 
-    /**
-     * Умножение с розыгрышем дробной части.
-     *
-     * 3 × 1.5 = 4.5 → всегда 4, и ещё один с вероятностью 50%.
-     */
     private static int scaled(int amount, double multiplier) {
-        double exact = amount * multiplier;
-        int whole = (int) Math.floor(exact);
-        double fraction = exact - whole;
-        if (fraction > 0 && ThreadLocalRandom.current().nextDouble() < fraction) whole++;
-        return whole;
+        return BonusMath.scaled(amount, multiplier, ThreadLocalRandom.current());
     }
 }

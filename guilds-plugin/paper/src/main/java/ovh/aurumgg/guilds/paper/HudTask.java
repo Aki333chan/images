@@ -1,5 +1,7 @@
 package ovh.aurumgg.guilds.paper;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -7,6 +9,8 @@ import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
+import ovh.aurumgg.guilds.api.BonusType;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildMembership;
 import ovh.aurumgg.guilds.api.PartyView;
 import ovh.aurumgg.guilds.core.GuildService;
@@ -69,7 +73,7 @@ final class HudTask implements Runnable {
 
         Optional<GuildMembership> membership = guilds.membership(player.getUniqueId());
         if (membership.isEmpty()) {
-            return new HudModel(members, parties.maxMembers(), null, null, null, 0, 0, null);
+            return new HudModel(members, parties.maxMembers(), null, null, null, 0, 0, null, List.of());
         }
 
         StoredGuild guild = guilds.byId(membership.get().guildId()).orElse(null);
@@ -85,7 +89,34 @@ final class HudTask implements Runnable {
         Double bank = guilds.bankAvailable() && guild != null ? guild.bank() : null;
 
         return new HudModel(members, parties.maxMembers(), membership.get().guildName(),
-                membership.get().guildTag(), membership.get().rank(), online, total, bank);
+                membership.get().guildTag(), membership.get().rank(), online, total, bank,
+                bonusesOf(membership.get().guildId()));
+    }
+
+    /**
+     * Действующие бонусы гильдии — в вид, пригодный для сайдбара.
+     *
+     * Остаток времени считается ЗДЕСЬ, от текущего момента, и в core уезжает
+     * уже числом секунд: иначе строки сайдбара нельзя было бы проверить
+     * тестом, не подменяя часы.
+     *
+     * Истёкшие сюда не попадают — {@link GuildService#bonuses} отсеивает их
+     * при чтении, не дожидаясь уборки по расписанию.
+     */
+    private List<HudModel.Bonus> bonusesOf(long guildId) {
+        Instant now = Instant.now();
+        List<HudModel.Bonus> result = new ArrayList<>();
+        for (GuildBonus bonus : guilds.bonuses(guildId)) {
+            Long left = bonus.expiresAt() == null
+                    ? null
+                    : Math.max(0, Duration.between(now, bonus.expiresAt()).toSeconds());
+            result.add(new HudModel.Bonus(
+                    bonus.type().shortTitle(),
+                    bonus.magnitude(),
+                    bonus.type().kind() == BonusType.Kind.MULTIPLIER,
+                    left));
+        }
+        return result;
     }
 
     /**

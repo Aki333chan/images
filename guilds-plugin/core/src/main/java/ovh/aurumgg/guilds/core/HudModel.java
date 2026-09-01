@@ -18,6 +18,7 @@ import ovh.aurumgg.guilds.api.GuildRank;
  * @param guildOnline  сколько участников гильдии сейчас в сети
  * @param guildTotal   сколько всего участников
  * @param bankBalance  баланс банка; null — банка нет (нет Vault или он выключен)
+ * @param bonuses      действующие бонусы гильдии; пусто — их нет
  */
 public record HudModel(
         List<Member> partyMembers,
@@ -27,7 +28,8 @@ public record HudModel(
         GuildRank rank,
         int guildOnline,
         int guildTotal,
-        Double bankBalance) {
+        Double bankBalance,
+        List<Bonus> bonuses) {
 
     /**
      * Строчка про одного участника пати.
@@ -38,6 +40,26 @@ public record HudModel(
      * @param leader        лидер ли пати
      */
     public record Member(String name, double healthPercent, boolean online, boolean leader) {}
+
+    /**
+     * Строчка про один действующий бонус гильдии.
+     *
+     * Здесь уже НЕ {@code GuildBonus}, а готовые к показу поля: сколько
+     * осталось, считается один раз в момент сборки модели и от текущего
+     * времени. Тянуть в core момент истечения и {@code Instant.now()} значило
+     * бы, что строки сайдбара нельзя проверить тестом, не подменяя часы.
+     *
+     * @param title      короткое название вида — «Блоки», «Опыт»
+     * @param magnitude  величина: множитель или уровень эффекта
+     * @param multiplier true — величина это множитель, false — уровень
+     * @param secondsLeft сколько осталось; null — бонус постоянный
+     */
+    public record Bonus(String title, double magnitude, boolean multiplier, Long secondsLeft) {}
+
+    /** Есть ли что показывать в блоке бонусов. */
+    public boolean hasBonuses() {
+        return bonuses != null && !bonuses.isEmpty();
+    }
 
     public boolean hasParty() {
         return partyMembers != null && !partyMembers.isEmpty();

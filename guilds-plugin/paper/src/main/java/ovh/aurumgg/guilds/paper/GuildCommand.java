@@ -23,6 +23,7 @@ import ovh.aurumgg.guilds.api.GuildRank;
 import ovh.aurumgg.guilds.core.GuildRegion;
 import ovh.aurumgg.guilds.core.GuildService;
 import ovh.aurumgg.guilds.core.HelpBook;
+import ovh.aurumgg.guilds.core.HudLines;
 import ovh.aurumgg.guilds.core.StoredGuild;
 
 /**
@@ -345,12 +346,43 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         if (guilds.bankAvailable()) {
             player.sendMessage(Msg.colored("&7Банк: &6" + guilds.economy().format(guild.bank())));
         }
+        // Бонусы — одной зелёной строкой, как и в сайдбаре: карточка гильдии
+        // должна отвечать на вопрос «что у нас сейчас есть» целиком, а не
+        // отправлять за половиной ответа в другую команду.
+        List<GuildBonus> active = guilds.bonuses(guild.id());
+        if (!active.isEmpty()) {
+            StringBuilder line = new StringBuilder("&7Бонусы: ");
+            for (int i = 0; i < active.size(); i++) {
+                if (i > 0) line.append("&7, ");
+                line.append("&a").append(shortBonus(active.get(i)));
+            }
+            player.sendMessage(Msg.colored(line.toString()));
+        }
         player.sendMessage(Msg.colored("&7Состав (&f" + guild.members().size() + "&7):"));
         for (GuildMember member : guild.members()) {
             boolean online = Bukkit.getPlayer(member.uuid()) != null;
             player.sendMessage(Msg.colored((online ? "&a● &f" : "&8● &7") + member.username()
                     + " &8— " + member.rank().title()));
         }
+    }
+
+    /**
+     * Бонус в одну короткую запись: «Блоки ×1.5 (7д)».
+     *
+     * Тот же короткий вид, что и в сайдбаре, — человек, увидевший строку там,
+     * должен узнать её здесь. Подробности со сроком до минуты и тем, кто
+     * выдал, остаются в {@code /guild bonuses}.
+     */
+    private static String shortBonus(GuildBonus bonus) {
+        String value = bonus.type().kind() == BonusType.Kind.MULTIPLIER
+                ? "\u00D7" + HudLines.multiplierText(bonus.magnitude())
+                : String.valueOf(Math.round(bonus.magnitude()));
+        String left = bonus.expiresAt() == null
+                ? ""
+                : " (" + HudLines.shortDurationText(
+                        Math.max(0, Duration.between(Instant.now(), bonus.expiresAt()).toSeconds()))
+                        + ")";
+        return bonus.type().shortTitle() + " " + value + left;
     }
 
     private void list(CommandSender sender, String[] args) {
