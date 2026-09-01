@@ -5,6 +5,9 @@ import java.util.Locale;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.core.AuthConfig;
@@ -30,7 +33,7 @@ import ovh.aurumgg.auth.core.totp.Totp;
  * Ввод кода и подкоманды различаются по виду аргумента: код — это шесть цифр,
  * и спутать его с «enable» невозможно.
  */
-final class TwoFactorCommand extends AuthCommandBase {
+final class TwoFactorCommand extends AuthCommandBase implements TabCompleter {
 
     private final AuthConfig config;
 
@@ -59,7 +62,9 @@ final class TwoFactorCommand extends AuthCommandBase {
             case "enable", "on", "включить" -> begin(player);
             case "confirm", "подтвердить" -> {
                 if (args.length < 2) {
-                    player.sendMessage(AurumAuthPlugin.prefixed("Использование: /2fa confirm <код>"));
+                    player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
+                            "/2fa confirm <код>",
+                            "подтвердить подключение первым кодом из приложения")));
                     return;
                 }
                 service.confirmTotp(player.getUniqueId(), args[1])
@@ -69,7 +74,8 @@ final class TwoFactorCommand extends AuthCommandBase {
                 if (args.length < 2) {
                     // Код обязателен: иначе двухфакторку снял бы любой, кто на
                     // минуту сел за компьютер с уже вошедшим игроком.
-                    player.sendMessage(AurumAuthPlugin.prefixed("Использование: /2fa disable <код>"));
+                    player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
+                            "/2fa disable <код>", "выключить двухфакторку")));
                     return;
                 }
                 service.disableTotp(player.getUniqueId(), args[1])
@@ -126,6 +132,23 @@ final class TwoFactorCommand extends AuthCommandBase {
                 }));
     }
 
+    /**
+     * Подсказка — только названия шагов, никогда сам код.
+     *
+     * Код одноразовый и живёт полминуты, но он всё-таки секрет: подставлять
+     * его в строку команды, которая уходит в историю чата и в логи, плагин
+     * не должен ни при каких обстоятельствах.
+     */
+    @Override
+    public List<String> onTabComplete(
+            CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length != 1) return List.of();
+        String prefix = args[0].toLowerCase(Locale.ROOT);
+        return List.of("enable", "confirm", "disable", "help").stream()
+                .filter(option -> option.startsWith(prefix))
+                .toList();
+    }
+
     /** Справка: строка на команду, чтобы порядок шагов читался сверху вниз. */
     private void usage(Player player) {
         List<String> lines = HelpBook.titled("Двухфакторная авторизация", "/2fa help")
@@ -135,6 +158,6 @@ final class TwoFactorCommand extends AuthCommandBase {
                 .add("/2fa disable <код>", "выключить двухфакторку")
                 .build()
                 .page(1);
-        for (String line : lines) player.sendMessage(AurumAuthPlugin.colored(line));
+        AurumAuthPlugin.sendLines(player, lines);
     }
 }

@@ -76,7 +76,8 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
 
     private void invite(Player player, String[] args) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /party invite <ник>");
+            Msg.usage(player, "/party invite <ник>",
+                    "позвать игрока; приглашение живёт недолго, звать может любой");
             return;
         }
         Player target = Bukkit.getPlayerExact(args[1]);
@@ -120,7 +121,7 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
 
     private void kick(Player player, String[] args) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /party kick <ник>");
+            Msg.usage(player, "/party kick <ник>", "выгнать участника из пати (только лидер)");
             return;
         }
         UUID target = PlayerNames.uuidOf(args[1]);
@@ -141,7 +142,8 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
 
     private void promote(Player player, String[] args) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /party promote <ник>");
+            Msg.usage(player, "/party promote <ник>",
+                    "передать лидерство; вы останетесь в пати участником");
             return;
         }
         GuildActionResult result =
@@ -215,12 +217,69 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(
             CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) return prefixed(SUBCOMMANDS, args[0]);
-        if (args.length == 2 && List.of("invite", "kick", "promote", "accept")
-                .contains(args[0].toLowerCase(Locale.ROOT))) {
-            return prefixed(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
+        // Bukkit всегда передаёт хотя бы один (возможно пустой) токен, но
+        // падать в автодополнении нельзя: исключение здесь ломает нажатие Tab
+        // молча, и выглядит это как «подсказки просто не работают».
+        if (args.length == 0) return List.of();
+        return prefixed(options(sender, args), args[args.length - 1]);
+    }
+
+    /**
+     * Что можно набрать на этом месте.
+     *
+     * Раньше все команды с ником подсказывали ВЕСЬ ОНЛАЙН — и выгнать
+     * предлагалось того, кто в пати не состоит, а принять приглашение от того,
+     * кто его не присылал. Обе команды на такое отвечают отказом, то есть
+     * подсказка предлагала заведомо неработающее.
+     *
+     * Теперь у каждой свой источник: звать — из тех, кто в сети, выгонять и
+     * повышать — из состава пати, принимать — из тех, чьё приглашение ещё
+     * живо.
+     */
+    private List<String> options(CommandSender sender, String[] args) {
+        if (args.length <= 1) return SUBCOMMANDS;
+        if (args.length != 2 || !(sender instanceof Player player)) return List.of();
+
+        String sub = args[0].toLowerCase(Locale.ROOT);
+        if (is(sub, "invite", "позвать")) {
+            // Звать можно кого угодно из сети — кроме тех, кто уже здесь.
+            List<UUID> already = parties.members(player.getUniqueId());
+            return Bukkit.getOnlinePlayers().stream()
+                    .filter(online -> !already.contains(online.getUniqueId()))
+                    .map(Player::getName)
+                    .toList();
         }
+        if (is(sub, "kick", "выгнать", "promote", "лидер")) return partyNames(player);
+        if (is(sub, "accept", "принять")) return inviterNames(player);
         return List.of();
+    }
+
+    /** Состав пати, кроме самого игрока: выгонять и повышать себя незачем. */
+    private List<String> partyNames(Player player) {
+        List<String> names = new ArrayList<>();
+        for (UUID uuid : parties.members(player.getUniqueId())) {
+            if (uuid.equals(player.getUniqueId())) continue;
+            Player member = Bukkit.getPlayer(uuid);
+            if (member != null) names.add(member.getName());
+        }
+        return names;
+    }
+
+    /** Кто сейчас зовёт — только с живыми приглашениями. */
+    private List<String> inviterNames(Player player) {
+        List<String> names = new ArrayList<>();
+        for (UUID uuid : parties.pendingInviters(player.getUniqueId())) {
+            Player inviter = Bukkit.getPlayer(uuid);
+            if (inviter != null) names.add(inviter.getName());
+        }
+        return names;
+    }
+
+    private static boolean is(String typed, String... aliases) {
+        for (String alias : aliases) {
+            if (alias.equals(typed)) return true;
+        }
+        return false;
     }
 
     private static List<String> prefixed(List<String> options, String typed) {

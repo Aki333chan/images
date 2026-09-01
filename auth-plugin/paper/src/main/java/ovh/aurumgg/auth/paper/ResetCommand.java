@@ -1,6 +1,7 @@
 package ovh.aurumgg.auth.paper;
 
 import org.bukkit.entity.Player;
+import ovh.aurumgg.auth.core.HelpBook;
 import ovh.aurumgg.auth.core.AuthService;
 import ovh.aurumgg.auth.core.ResetTokens;
 
@@ -58,7 +59,9 @@ final class ResetCommand extends AuthCommandBase {
             return;
         }
 
-        player.sendMessage(AurumAuthPlugin.prefixed(
-                "Использование: /reset <токен> — затем /reset <пароль> <пароль ещё раз>"));
+        AurumAuthPlugin.sendLines(player, HelpBook.titled("Смена пароля", "/reset")
+                .add("/reset <токен>", "начать смену: токен выдаёт администратор")
+                .add("/reset <пароль> <пароль ещё раз>", "задать новый пароль после токена")
+                .build().page(1));
     }
 }

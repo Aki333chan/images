@@ -329,9 +329,7 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
                 .add("/auth reload", "перечитать тексты сообщений без перезапуска")
                 .build();
 
-        for (String line : book.page(parsePage(page))) {
-            sender.sendMessage(AurumAuthPlugin.colored(line));
-        }
+        AurumAuthPlugin.sendLines(sender, book.page(parsePage(page)));
     }
 
     /** Не число — первая страница: ругаться за «/auth помощь» незачем. */
@@ -345,24 +343,52 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) {
-            String prefix = args[0].toLowerCase(Locale.ROOT);
-            return SUBCOMMANDS.stream().filter(s -> s.startsWith(prefix)).toList();
+        if (args.length == 0) return List.of();
+        return prefixed(options(args), args[args.length - 1]);
+    }
+
+    /**
+     * Что можно набрать на этом месте.
+     *
+     * Прошлая версия на второй позиции подсказывала ники ДЛЯ ВСЕГО, кроме
+     * {@code reload}, — и на {@code /auth help} предлагала выбрать игрока,
+     * которого эта команда не принимает вовсе. Такое получается, когда
+     * исключения перечисляют списком «кроме»: стоит добавить команду без ника,
+     * и её забывают внести.
+     *
+     * Поэтому теперь наоборот: ники подсказываются только тем подкомандам,
+     * которые их действительно принимают.
+     *
+     * <h2>Почему только те, кто в сети</h2>
+     *
+     * Половина этих команд работает и с офлайн-игроками — на то они и
+     * администраторские. Но {@code getOfflinePlayers()} на живом сервере
+     * возвращает всех, кто когда-либо заходил, а это тысячи имён на каждое
+     * нажатие Tab в главном потоке. Ник офлайн-игрока администратор всё равно
+     * откуда-то берёт — из жалобы или из панели, — и допечатать его руками
+     * дешевле, чем подвесить сервер подсказкой.
+     */
+    private static List<String> options(String[] args) {
+        if (args.length <= 1) return SUBCOMMANDS;
+        String sub = args[0].toLowerCase(Locale.ROOT);
+
+        if (args.length == 2) {
+            if (sub.equals("help")) return List.of("1");
+            if (sub.equals("reload")) return List.of();
+            return Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
         }
-        if (args.length == 3 && args[0].equalsIgnoreCase("history")) {
-            String prefix = args[2].toLowerCase(Locale.ROOT);
-            return PERIODS.keySet().stream().sorted().filter(p -> p.startsWith(prefix)).toList();
-        }
-        if (args.length == 3 && args[0].equalsIgnoreCase("unregister")) {
-            return List.of("confirm");
-        }
-        if (args.length == 2 && !args[0].equalsIgnoreCase("reload")) {
-            String prefix = args[1].toLowerCase(Locale.ROOT);
-            return Bukkit.getOnlinePlayers().stream()
-                    .map(Player::getName)
-                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix))
-                    .toList();
+        if (args.length == 3) {
+            if (sub.equals("history")) return PERIODS.keySet().stream().sorted().toList();
+            // confirm — не украшение: без него команда только предупредит.
+            if (sub.equals("unregister")) return List.of("confirm");
         }
         return List.of();
+    }
+
+    private static List<String> prefixed(List<String> options, String typed) {
+        String prefix = typed.toLowerCase(Locale.ROOT);
+        return options.stream()
+                .filter(option -> option.toLowerCase(Locale.ROOT).startsWith(prefix))
+                .toList();
     }
 }

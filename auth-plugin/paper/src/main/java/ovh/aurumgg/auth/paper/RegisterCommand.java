@@ -1,6 +1,7 @@
 package ovh.aurumgg.auth.paper;
 
 import org.bukkit.entity.Player;
+import ovh.aurumgg.auth.core.HelpBook;
 import ovh.aurumgg.auth.core.AuthService;
 
 /**
@@ -22,8 +23,9 @@ final class RegisterCommand extends AuthCommandBase {
             return;
         }
         if (args.length != 2) {
-            player.sendMessage(AurumAuthPlugin.prefixed(
-                    "Использование: /register <пароль> <пароль ещё раз>"));
+            player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
+                    "/register <пароль> <пароль ещё раз>",
+                    "завести аккаунт; пароль вводится дважды, чтобы не опечататься")));
             return;
         }
 

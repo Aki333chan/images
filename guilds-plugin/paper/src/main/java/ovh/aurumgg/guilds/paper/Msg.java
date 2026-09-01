@@ -39,6 +39,22 @@ final class Msg {
         return COLORS.deserialize(text);
     }
 
+    /**
+     * Подсказка по команде: как набирать и что она делает.
+     *
+     * Без префикса плагина и тем же видом, что строка в {@code /guild help},
+     * — человек, ошибившийся аргументом, должен увидеть ровно ту строку,
+     * которую уже видел в справке, а не другую формулировку того же самого.
+     */
+    static void usage(CommandSender to, String command, String description) {
+        to.sendMessage(colored(ovh.aurumgg.guilds.core.HelpBook.line(command, description)));
+    }
+
+    /** Несколько строк справки подряд — без префикса на каждой. */
+    static void lines(CommandSender to, java.util.List<String> lines) {
+        for (String line : lines) to.sendMessage(colored(line));
+    }
+
     static void send(CommandSender to, String text) {
         to.sendMessage(of(text));
     }

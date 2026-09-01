@@ -2,6 +2,7 @@ package ovh.aurumgg.auth.paper;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
+import ovh.aurumgg.auth.core.HelpBook;
 import ovh.aurumgg.auth.core.AuthOutcome;
 import ovh.aurumgg.auth.core.AuthService;
 
@@ -25,7 +26,9 @@ final class UnregisterCommand extends AuthCommandBase {
     @Override
     protected void run(Player player, String[] args) {
         if (args.length != 1) {
-            player.sendMessage(AurumAuthPlugin.prefixed("Использование: /unregister <ваш пароль>"));
+            player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
+                    "/unregister <ваш пароль>",
+                    "удалить свой аккаунт; вход после этого — только заново через /register")));
             player.sendMessage(AurumAuthPlugin.prefixed(
                     "Аккаунт будет удалён, ник освободится. Отменить это нельзя."));
             return;
