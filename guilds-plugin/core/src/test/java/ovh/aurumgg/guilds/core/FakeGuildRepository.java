@@ -7,7 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildBankEntry;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildMember;
 import ovh.aurumgg.guilds.api.GuildRank;
 import ovh.aurumgg.guilds.api.GuildSettings;
@@ -25,6 +27,8 @@ final class FakeGuildRepository implements GuildRepository {
     private final AtomicLong nextId = new AtomicLong(1);
     private final Map<Long, StoredGuild> guilds = new HashMap<>();
     private final List<GuildBankEntry> bankLog = new ArrayList<>();
+    /** Бонусы: id гильдии → вид → бонус. Вложенная карта даёт «один вида на гильдию». */
+    final Map<Long, Map<BonusType, GuildBonus>> bonuses = new HashMap<>();
     /** Сколько раз просили записать что-либо — чтобы отличить «не сохранилось». */
     int writes;
 
@@ -121,6 +125,26 @@ final class FakeGuildRepository implements GuildRepository {
                     .map(member -> member.uuid().equals(uuid) ? member.withUsername(username) : member)
                     .toList()));
         }
+    }
+
+    @Override
+    public Map<Long, List<GuildBonus>> loadBonuses() {
+        Map<Long, List<GuildBonus>> result = new HashMap<>();
+        bonuses.forEach((guildId, byType) -> result.put(guildId, new ArrayList<>(byType.values())));
+        return result;
+    }
+
+    @Override
+    public void saveBonus(long guildId, GuildBonus bonus) {
+        writes++;
+        bonuses.computeIfAbsent(guildId, key -> new HashMap<>()).put(bonus.type(), bonus);
+    }
+
+    @Override
+    public void deleteBonus(long guildId, BonusType type) {
+        writes++;
+        Map<BonusType, GuildBonus> byType = bonuses.get(guildId);
+        if (byType != null) byType.remove(type);
     }
 
     @Override

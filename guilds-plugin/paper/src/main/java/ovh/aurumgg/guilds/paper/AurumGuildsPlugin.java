@@ -137,8 +137,14 @@ public final class AurumGuildsPlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(prompts, this);
         getServer().getPluginManager().registerEvents(menu, this);
-        getServer().getPluginManager().registerEvents(new FriendlyFireListener(guilds), this);
+        getServer().getPluginManager().registerEvents(
+                new FriendlyFireListener(guilds, parties, () -> this.config.partyFriendlyFire()), this);
         getServer().getPluginManager().registerEvents(new PlayerTracker(guilds, sidebar), this);
+        getServer().getPluginManager().registerEvents(new BonusDropListener(guilds), this);
+        // Эффекты-бонусы продлеваются задачей: выданный однажды эффект зелья
+        // кончился бы сам, а бесконечный остался бы после снятия бонуса.
+        getServer().getScheduler().runTaskTimer(this, new BonusEffectsTask(guilds),
+                BonusEffectsTask.PERIOD_TICKS, BonusEffectsTask.PERIOD_TICKS);
 
         if (!bindCommands(menu)) {
             getServer().getPluginManager().disablePlugin(this);
@@ -252,6 +258,24 @@ public final class AurumGuildsPlugin extends JavaPlugin {
                 this, new HudTask(guilds, parties, sidebar), period, period);
     }
 
+    /** Разрешён ли сейчас урон по своим внутри пати. */
+    boolean partyFriendlyFire() {
+        return config.partyFriendlyFire();
+    }
+
+    /**
+     * Переключить урон по своим в пати — и записать это в config.yml.
+     *
+     * Записать обязательно: настройка, которая слетает при перезапуске, хуже
+     * отсутствующей. Человек выключит её командой, забудет, а через неделю
+     * после рестарта получит жалобы на то, чего сам не менял.
+     */
+    void partyFriendlyFire(boolean allowed) {
+        getConfig().set("party.friendly-fire", allowed);
+        saveConfig();
+        this.config = GuildsConfig.fromMap(new HashMap<>(getConfig().getValues(true)));
+    }
+
     /**
      * Перечитать config.yml без перезапуска сервера.
      *
@@ -296,6 +320,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
 
     private void housekeeping() {
         guilds.purgeInvites();
+        guilds.purgeExpiredBonuses();
         int removed = parties.purgeIdle(
                 getServer().getOnlinePlayers().stream()
                         .map(Player::getUniqueId)

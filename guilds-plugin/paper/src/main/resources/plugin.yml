@@ -24,7 +24,7 @@ author: Aurum
 # не может — мы не знаем, какой стоит на сервере, — значит, его onEnable
 # вполне может пройти позже нашего. Поэтому наличие провайдера спрашивается
 # при каждом обращении, а не один раз на старте (см. VaultBridge).
-softdepend: [LuckPerms, Vault, AurumAuth]
+softdepend: [LuckPerms, Vault, AurumAuth, WorldGuard]
 
 commands:
   guild:

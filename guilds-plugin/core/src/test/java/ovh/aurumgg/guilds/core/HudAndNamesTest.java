@@ -97,10 +97,23 @@ class HudAndNamesTest {
 
         List<String> lines = HudLines.build(model);
 
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&a" + HealthGlyph.SYMBOL)));
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&c" + HealthGlyph.SYMBOL)));
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&8" + HealthGlyph.SYMBOL)));
+        // Число, а не цветной кружок: «зелёный» покрывал всё от 80 до 100
+        // процентов, и по нему не отличить целого человека от того, кому
+        // осталось два удара.
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&aHP: 100%")), lines.toString());
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&cHP: 30%")), lines.toString());
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&8HP: ?")), lines.toString());
         assertTrue(lines.stream().anyMatch(line -> line.contains("★")), "лидер помечен");
+    }
+
+    @Test
+    @DisplayName("Живой игрок не показывается как 0% — иначе он выглядит трупом")
+    void единицаЗдоровьяНеОкругляетсяВНоль() {
+        // Округлённая до нуля единица здоровья читается как «уже поздно», и
+        // союзник, которого ещё можно спасти, выглядел бы тем, к кому не бегут.
+        assertTrue(HealthGlyph.forHealth(0.4).endsWith("HP: 1%"), HealthGlyph.forHealth(0.4));
+        // А вот настоящий ноль так и остаётся нулём.
+        assertTrue(HealthGlyph.forHealth(0).endsWith("HP: 0%"), HealthGlyph.forHealth(0));
     }
 
     @Test

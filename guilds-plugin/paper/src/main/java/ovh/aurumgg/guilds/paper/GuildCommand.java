@@ -15,7 +15,9 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildActionResult;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildMember;
 import ovh.aurumgg.guilds.api.GuildRank;
 import ovh.aurumgg.guilds.core.GuildService;
@@ -48,7 +50,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
             "create", "invite", "join", "leave", "kick", "promote", "demote", "transfer",
-            "disband", "info", "list", "settings", "tag", "bank", "admin");
+            "disband", "info", "list", "settings", "tag", "bank", "bonuses", "admin");
 
     private final Plugin plugin;
     private final GuildService guilds;
@@ -56,11 +58,26 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
     /** Кто уже нажал «распустить» и до какого момента это засчитывается. */
     private final Map<UUID, Instant> pendingDisband = new ConcurrentHashMap<>();
 
+    private static final String BONUS_USAGE =
+            "/guild admin bonus grant|revoke|list …";
+
+    private static final String BONUS_GRANT_USAGE =
+            "/guild admin bonus grant <вид> <величина> [30m|2h|7d] <гильдия>";
+
     private static final String ADMIN_USAGE =
-            "/guild admin remove <ник> | transfer <гильдия> <ник> | disband <гильдия> | reload";
+            "/guild admin remove <ник> | transfer <гильдия> <ник> | disband <гильдия>"
+                    + " | reload | friendlyfire [on|off] | bonus …";
 
     /** Псевдонимы перезагрузки — русский вариант наравне с английским. */
     private static final List<String> ADMIN_RELOAD = List.of("reload", "перезагрузить", "рл");
+
+    private static final List<String> ADMIN_PARTY_FF =
+            List.of("friendlyfire", "ff", "свойогонь");
+
+    private static final List<String> ADMIN_BONUS = List.of("bonus", "бонус", "бонусы");
+
+    private static final List<String> YES = List.of("on", "true", "yes", "вкл", "да");
+    private static final List<String> NO = List.of("off", "false", "no", "выкл", "нет");
 
     GuildCommand(Plugin plugin, GuildService guilds, GuildSettingsMenu menu) {
         this.plugin = plugin;
@@ -106,6 +123,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             case "settings", "настройки" -> menu.open(player);
             case "tag", "тег" -> tag(player, args);
             case "bank", "банк" -> bank(player, args);
+            case "bonuses", "бонусы" -> bonuses(player);
             default -> usage(player);
         }
         return true;
@@ -347,6 +365,201 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     // ------------------------------------------------------- вмешательство
 
+    /**
+     * Что сейчас действует у моей гильдии.
+     *
+     * Отдельной командой, а не строкой в /guild info: бонусов бывает до пяти,
+     * у каждого величина и остаток срока, и в общей сводке это заняло бы
+     * больше места, чем всё остальное вместе.
+     */
+    private void bonuses(Player player) {
+        var membership = guilds.membership(player.getUniqueId());
+        if (membership.isEmpty()) {
+            Msg.send(player, "Вы не состоите в гильдии");
+            return;
+        }
+        List<GuildBonus> active = guilds.bonuses(membership.get().guildId());
+        if (active.isEmpty()) {
+            Msg.send(player, "У вашей гильдии сейчас нет бонусов");
+            return;
+        }
+        Msg.send(player, "Бонусы гильдии:");
+        for (GuildBonus bonus : active) Msg.send(player, "&8• " + describe(bonus));
+    }
+
+    /**
+     * Бонусы гильдии: выдать, снять, посмотреть.
+     *
+     * Гильдия называется ИМЕНЕМ, а не внутренним номером: номер знает база, а
+     * администратор в игре — имя, которое видит в списке.
+     */
+    private void adminBonus(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            Msg.send(sender, BONUS_USAGE);
+            Msg.send(sender, "Виды: &f" + bonusTypeNames());
+            return;
+        }
+        String action = args[2].toLowerCase(Locale.ROOT);
+
+        if (action.equals("list") || action.equals("список")) {
+            if (args.length < 4) {
+                Msg.send(sender, "Использование: /guild admin bonus list <гильдия>");
+                return;
+            }
+            withGuild(sender, join(args, 3), guild -> {
+                List<GuildBonus> active = guilds.bonuses(guild.id());
+                if (active.isEmpty()) {
+                    Msg.send(sender, "У гильдии «" + guild.name() + "» нет бонусов");
+                    return;
+                }
+                Msg.send(sender, "Бонусы гильдии «" + guild.name() + "»:");
+                for (GuildBonus bonus : active) Msg.send(sender, "&8• " + describe(bonus));
+            });
+            return;
+        }
+
+        boolean granting = action.equals("grant") || action.equals("выдать");
+        boolean revoking = action.equals("revoke") || action.equals("снять");
+        if (!granting && !revoking) {
+            Msg.send(sender, BONUS_USAGE);
+            return;
+        }
+        if (args.length < 5) {
+            Msg.send(sender, BONUS_USAGE);
+            return;
+        }
+
+        BonusType type = BonusType.parse(args[3]);
+        if (type == null) {
+            Msg.send(sender, "Нет такого вида. Есть: &f" + bonusTypeNames());
+            return;
+        }
+
+        if (revoking) {
+            withGuild(sender, join(args, 4), guild ->
+                    guilds.revokeBonus(guild.id(), type, sender.getName())
+                            .thenAccept(r -> sync(() -> Msg.result(sender, r))));
+            return;
+        }
+
+        // grant <вид> <величина> [<срок>] <гильдия>
+        if (args.length < 6) {
+            Msg.send(sender, "Использование: " + BONUS_GRANT_USAGE);
+            return;
+        }
+        double magnitude;
+        try {
+            magnitude = Double.parseDouble(args[4].replace(',', '.'));
+        } catch (NumberFormatException e) {
+            Msg.send(sender, "Величина должна быть числом. Для «" + type.title() + "» это "
+                    + (type.kind() == BonusType.Kind.EFFECT_LEVEL
+                            ? "уровень эффекта, 1-" + (int) type.max()
+                            : "множитель, 1.0-" + type.max()));
+            return;
+        }
+
+        // Срок необязателен, и отличить его от имени гильдии можно только по
+        // виду: «30m» — срок, «Драконы» — имя. Поэтому разбираем следующий
+        // аргумент как срок и, если не вышло, считаем началом имени.
+        Duration duration = parseDuration(args.length > 5 ? args[5] : null);
+        int nameFrom = duration == null ? 5 : 6;
+        if (args.length <= nameFrom) {
+            Msg.send(sender, "Использование: " + BONUS_GRANT_USAGE);
+            return;
+        }
+        String guildName = join(args, nameFrom);
+
+        withGuild(sender, guildName, guild ->
+                guilds.grantBonus(guild.id(), type, magnitude, duration, sender.getName())
+                        .thenAccept(r -> sync(() -> Msg.result(sender, r))));
+    }
+
+    /** Найти гильдию по имени и сделать с ней что-то, иначе сказать, что её нет. */
+    private void withGuild(CommandSender sender, String name, java.util.function.Consumer<StoredGuild> action) {
+        var guild = guilds.byName(name);
+        if (guild.isEmpty()) {
+            Msg.send(sender, "Гильдия «" + name + "» не найдена");
+            return;
+        }
+        action.accept(guild.get());
+    }
+
+    private static String join(String[] args, int from) {
+        return String.join(" ", java.util.Arrays.copyOfRange(args, from, args.length));
+    }
+
+    /**
+     * Срок вида «30m», «2h», «7d». null — не срок (значит, это уже имя
+     * гильдии) либо аргумента нет вовсе, и бонус выдаётся навсегда.
+     */
+    static Duration parseDuration(String raw) {
+        if (raw == null || raw.length() < 2) return null;
+        char unit = Character.toLowerCase(raw.charAt(raw.length() - 1));
+        String digits = raw.substring(0, raw.length() - 1);
+        long value;
+        try {
+            value = Long.parseLong(digits);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        if (value <= 0) return null;
+        return switch (unit) {
+            case 'm', 'м' -> Duration.ofMinutes(value);
+            case 'h', 'ч' -> Duration.ofHours(value);
+            case 'd', 'д' -> Duration.ofDays(value);
+            default -> null;
+        };
+    }
+
+    private static String bonusTypeNames() {
+        return java.util.Arrays.stream(BonusType.values())
+                .map(type -> type.name().toLowerCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /** Строка бонуса для чата: что, сколько и до каких пор. */
+    static String describe(GuildBonus bonus) {
+        String left = bonus.permanent()
+                ? "&aнавсегда"
+                : "&eещё " + GuildService.humanDuration(bonus.remaining(Instant.now()));
+        return "&f" + bonus.type().title() + " &7"
+                + GuildService.describe(bonus.type(), bonus.magnitude())
+                + " &8— " + left + " &8(выдал " + bonus.grantedBy() + ")";
+    }
+
+    /**
+     * Урон по своим внутри пати — настройка сервера, а не отдельной группы.
+     *
+     * Без аргумента показывает текущее состояние: переключатель, который
+     * нельзя посмотреть, заставляет угадывать, и рано или поздно его
+     * переключают «на всякий случай» в неверную сторону.
+     */
+    private void partyFriendlyFire(CommandSender sender, String[] args) {
+        if (!(plugin instanceof AurumGuildsPlugin guildsPlugin)) {
+            Msg.send(sender, "Настройка недоступна");
+            return;
+        }
+        if (args.length < 3) {
+            Msg.send(sender, "Урон по своим в пати сейчас: &f"
+                    + (guildsPlugin.partyFriendlyFire() ? "&cразрешён" : "&aвыключен"));
+            Msg.send(sender, "Переключить: /guild admin friendlyfire on|off");
+            return;
+        }
+        String value = args[2].toLowerCase(Locale.ROOT);
+        if (!YES.contains(value) && !NO.contains(value)) {
+            Msg.send(sender, "Ожидается on или off");
+            return;
+        }
+        boolean allowed = YES.contains(value);
+        guildsPlugin.partyFriendlyFire(allowed);
+        Msg.send(sender, allowed
+                ? "Урон по своим в пати &cразрешён&7. Записано в config.yml."
+                : "Урон по своим в пати &aвыключен&7. Записано в config.yml.");
+        // Про гильдии говорим отдельно: их настройка своя, и человек, только
+        // что переключивший общесерверную, вправе ждать, что она главнее.
+        Msg.send(sender, "&7Гильдий это не касается — у каждой свой переключатель в /guild settings.");
+    }
+
     private void admin(CommandSender sender, String[] args) {
         if (!sender.hasPermission(PERMISSION_ADMIN)) {
             Msg.send(sender, "Недостаточно прав");
@@ -360,6 +573,16 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             } else {
                 Msg.send(sender, "Перезагрузка недоступна");
             }
+            return;
+        }
+        if (args.length >= 2 && ADMIN_BONUS.contains(args[1].toLowerCase(Locale.ROOT))) {
+            adminBonus(sender, args);
+            return;
+        }
+        // friendlyfire без аргумента показывает текущее состояние, с
+        // аргументом — переключает. Отдельно от общего требования трёх слов.
+        if (args.length >= 2 && ADMIN_PARTY_FF.contains(args[1].toLowerCase(Locale.ROOT))) {
+            partyFriendlyFire(sender, args);
             return;
         }
         if (args.length < 3) {
@@ -475,7 +698,9 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             }
             if (sub.equals("bank")) return prefixed(List.of("deposit", "withdraw", "log"), args[1]);
             if (sub.equals("admin")) {
-                return prefixed(List.of("remove", "transfer", "disband", "reload"), args[1]);
+                return prefixed(
+                        List.of("remove", "transfer", "disband", "reload", "friendlyfire", "bonus"),
+                        args[1]);
             }
             if (List.of("join", "info").contains(sub)) return prefixed(guildNames(), args[1]);
         }

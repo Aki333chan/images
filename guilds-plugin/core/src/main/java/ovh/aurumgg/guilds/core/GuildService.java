@@ -18,7 +18,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildActionResult;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildBankEntry;
 import ovh.aurumgg.guilds.api.GuildDetail;
 import ovh.aurumgg.guilds.api.GuildMember;
@@ -82,6 +84,16 @@ public final class GuildService implements AutoCloseable {
     private final Supplier<Instant> clock;
     private final ExecutorService worker;
 
+    /**
+     * Бонусы в памяти: id гильдии → её действующие бонусы.
+     *
+     * Тоже в памяти, и по той же причине, что и сами гильдии: величину
+     * спрашивают в обработчике выпадения предметов, то есть на каждом
+     * сломанном блоке и каждом убитом мобе. Поход в базу на такой частоте убил
+     * бы главный поток вернее, чем что-либо ещё в этом плагине.
+     */
+    private final Map<Long, List<GuildBonus>> bonuses = new ConcurrentHashMap<>();
+
     /** Гильдии в памяти: ключ → неизменяемая запись. */
     private final Map<Long, StoredGuild> guilds = new ConcurrentHashMap<>();
     /** Игрок → его гильдия. Игрок состоит максимум в одной. */
@@ -114,19 +126,21 @@ public final class GuildService implements AutoCloseable {
         this.worker = Executors.newFixedThreadPool(Math.max(2, config.poolSize()), factory);
     }
 
-    /** Прочитать всё из базы в память. Зовётся один раз при старте. */
     /** Применить перечитанный config.yml. См. поле config. */
     public void applyConfig(GuildsConfig fresh) {
         this.config = fresh;
     }
 
+    /** Прочитать всё из базы в память. Зовётся один раз при старте. */
     public void load() throws Exception {
         for (StoredGuild guild : repository.loadAll()) {
             guilds.put(guild.id(), guild);
             for (GuildMember member : guild.members()) memberOf.put(member.uuid(), guild.id());
         }
+        bonuses.putAll(repository.loadBonuses());
         logger.info("Загружено гильдий: " + guilds.size()
-                + ", участников: " + memberOf.size());
+                + ", участников: " + memberOf.size()
+                + ", бонусов: " + bonuses.values().stream().mapToInt(List::size).sum());
     }
 
     // ------------------------------------------------------------- чтение
@@ -672,6 +686,160 @@ public final class GuildService implements AutoCloseable {
     }
 
     /** Выбросить истёкшие приглашения. */
+    // ------------------------------------------------------------ бонусы
+
+    /**
+     * Действующие бонусы гильдии. Истёкшие сюда не попадают.
+     *
+     * Фильтр по времени здесь, а не только в уборщике: уборщик ходит раз в
+     * минуту, и без проверки бонус продолжал бы действовать до его прихода —
+     * то есть срок «до 20:00» на деле означал бы «примерно до 20:01». За
+     * деньги это уже обман.
+     */
+    public List<GuildBonus> bonuses(long guildId) {
+        List<GuildBonus> all = bonuses.get(guildId);
+        if (all == null || all.isEmpty()) return List.of();
+        Instant now = clock.get();
+        return all.stream().filter(bonus -> !bonus.expired(now)).toList();
+    }
+
+    /** Бонус игрока по его гильдии. Пусто — нет гильдии, нет бонуса или истёк. */
+    public Optional<GuildBonus> bonusOf(UUID player, BonusType type) {
+        Long guildId = memberOf.get(player);
+        if (guildId == null) return Optional.empty();
+        Instant now = clock.get();
+        List<GuildBonus> all = bonuses.get(guildId);
+        if (all == null) return Optional.empty();
+        return all.stream()
+                .filter(bonus -> bonus.type() == type && !bonus.expired(now))
+                .findFirst();
+    }
+
+    /**
+     * Множитель бонуса или 1.0, если бонуса нет.
+     *
+     * Отдельным методом ради обработчиков дропа: там нужен именно множитель, и
+     * «нет бонуса» обязано означать «умножить на единицу», а не ветку if в
+     * каждом слушателе.
+     */
+    public double multiplier(UUID player, BonusType type) {
+        return bonusOf(player, type).map(GuildBonus::magnitude).orElse(1.0);
+    }
+
+    /**
+     * Выдать или продлить бонус.
+     *
+     * Величина зажимается в границы вида, а не отвергается: и панель, и
+     * торговец-NPC, и команда — три независимых источника, и требовать от
+     * каждого одинаковой проверки значит однажды получить «Спешку X» из того,
+     * кто проверку забыл.
+     */
+    public CompletableFuture<GuildActionResult> grantBonus(
+            long guildId, BonusType type, double magnitude, Duration duration, String actor) {
+        return async(() -> {
+            StoredGuild guild = guilds.get(guildId);
+            if (guild == null) return GuildActionResult.fail("Такой гильдии нет");
+            if (type == null) return GuildActionResult.fail("Не указан вид бонуса");
+
+            double value = Math.max(type.min(), Math.min(type.max(), magnitude));
+            Instant now = clock.get();
+            Instant expires = duration == null || duration.isZero() || duration.isNegative()
+                    ? null
+                    : now.plus(duration);
+            GuildBonus bonus = new GuildBonus(type, value, expires, actor, now);
+
+            write(() -> repository.saveBonus(guildId, bonus), "сохранить бонус гильдии");
+            replaceBonus(guildId, bonus);
+
+            // В лог сервера, а не только в ответ: бонус — это выданное
+            // преимущество, и вопрос «откуда у них это» возникает не в момент
+            // выдачи, а через неделю.
+            logger.info("Бонус " + type.name() + " " + value
+                    + (expires == null ? " (постоянно)" : " до " + expires)
+                    + " гильдии «" + guild.name() + "» — выдал " + actor);
+
+            return GuildActionResult.ok("Гильдии «" + guild.name() + "» выдан бонус «"
+                    + type.title() + "» " + describe(type, value)
+                    + (expires == null ? " навсегда" : " на " + humanDuration(duration)));
+        });
+    }
+
+    /** Снять бонус досрочно. */
+    public CompletableFuture<GuildActionResult> revokeBonus(
+            long guildId, BonusType type, String actor) {
+        return async(() -> {
+            StoredGuild guild = guilds.get(guildId);
+            if (guild == null) return GuildActionResult.fail("Такой гильдии нет");
+            if (type == null) return GuildActionResult.fail("Не указан вид бонуса");
+            if (bonuses(guildId).stream().noneMatch(bonus -> bonus.type() == type)) {
+                return GuildActionResult.fail("У гильдии нет такого бонуса");
+            }
+
+            write(() -> repository.deleteBonus(guildId, type), "снять бонус гильдии");
+            List<GuildBonus> left = new ArrayList<>(bonuses.getOrDefault(guildId, List.of()));
+            left.removeIf(bonus -> bonus.type() == type);
+            bonuses.put(guildId, List.copyOf(left));
+
+            logger.info("Бонус " + type.name() + " снят у гильдии «" + guild.name()
+                    + "» — " + actor);
+            return GuildActionResult.ok("Бонус «" + type.title() + "» снят");
+        });
+    }
+
+    /** Величина словами — «×2», «уровень 2». */
+    public static String describe(BonusType type, double magnitude) {
+        if (type.kind() == BonusType.Kind.EFFECT_LEVEL) {
+            return "уровень " + (int) Math.round(magnitude);
+        }
+        return "×" + HudLines.money(magnitude);
+    }
+
+    /** Срок словами. Часы и минуты: секунды в таком сроке никому не нужны. */
+    public static String humanDuration(Duration duration) {
+        if (duration == null) return "навсегда";
+        long minutes = Math.max(1, duration.toMinutes());
+        if (minutes < 60) return minutes + " мин";
+        long hours = minutes / 60;
+        long rest = minutes % 60;
+        if (hours < 24) return rest == 0 ? hours + " ч" : hours + " ч " + rest + " мин";
+        long days = hours / 24;
+        long restHours = hours % 24;
+        return restHours == 0 ? days + " д" : days + " д " + restHours + " ч";
+    }
+
+    private void replaceBonus(long guildId, GuildBonus bonus) {
+        List<GuildBonus> current = new ArrayList<>(bonuses.getOrDefault(guildId, List.of()));
+        current.removeIf(existing -> existing.type() == bonus.type());
+        current.add(bonus);
+        bonuses.put(guildId, List.copyOf(current));
+    }
+
+    /**
+     * Выбросить истёкшие бонусы из памяти и из базы.
+     *
+     * Само действие бонуса истечение и без уборки прекращает — чтение
+     * фильтрует по времени. Уборка нужна, чтобы таблица и память не росли
+     * вечно записями, которые уже ничего не значат.
+     */
+    public void purgeExpiredBonuses() {
+        Instant now = clock.get();
+        for (Map.Entry<Long, List<GuildBonus>> entry : bonuses.entrySet()) {
+            List<GuildBonus> alive = entry.getValue().stream()
+                    .filter(bonus -> !bonus.expired(now))
+                    .toList();
+            if (alive.size() == entry.getValue().size()) continue;
+
+            for (GuildBonus gone : entry.getValue()) {
+                if (!gone.expired(now)) continue;
+                // Не беда, если не выйдет: из памяти он уже ушёл и действовать
+                // перестал, а строка в базе отфильтруется при загрузке по сроку.
+                write(() -> repository.deleteBonus(entry.getKey(), gone.type()),
+                        "удалить истёкший бонус");
+            }
+            entry.setValue(alive);
+        }
+    }
+
     public synchronized void purgeInvites() {
         Instant now = clock.get();
         invites.entrySet().removeIf(entry -> {
