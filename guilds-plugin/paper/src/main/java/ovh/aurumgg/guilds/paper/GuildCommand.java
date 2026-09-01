@@ -20,6 +20,7 @@ import ovh.aurumgg.guilds.api.GuildActionResult;
 import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildMember;
 import ovh.aurumgg.guilds.api.GuildRank;
+import ovh.aurumgg.guilds.core.ArgWords;
 import ovh.aurumgg.guilds.core.GuildRegion;
 import ovh.aurumgg.guilds.core.GuildService;
 import ovh.aurumgg.guilds.core.HelpBook;
@@ -63,9 +64,6 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
     private final WorldGuardBridge regions;
     /** Кто уже нажал «распустить» и до какого момента это засчитывается. */
     private final Map<UUID, Instant> pendingDisband = new ConcurrentHashMap<>();
-
-    private static final String BONUS_USAGE =
-            "/guild admin bonus grant|revoke|list …";
 
     private static final String BONUS_GRANT_USAGE =
             "/guild admin bonus grant <вид> <величина> [30m|2h|7d] <гильдия>";
@@ -145,7 +143,8 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 3) {
-            Msg.send(player, "Использование: /guild create <имя> <тег>");
+            Msg.usage(player, "/guild create <имя> <тег>",
+                    "создать гильдию; тег — короткая метка у ника, 2-5 знаков");
             Msg.send(player, "Тег — до " + guilds.config().maxTagLength()
                     + " символов, он же будет видно рядом с ником.");
             return;
@@ -158,7 +157,8 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private void invite(Player player, String[] args) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /guild invite <ник>");
+            Msg.usage(player, "/guild invite <ник>",
+                    "позвать игрока в гильдию; звать могут лидер и офицеры");
             return;
         }
         Player target = Bukkit.getPlayerExact(args[1]);
@@ -189,7 +189,8 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private void kick(Player player, String[] args) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /guild kick <ник>");
+            Msg.usage(player, "/guild kick <ник>",
+                    "выгнать участника; только того, кто ниже вас по рангу");
             return;
         }
         UUID target = PlayerNames.uuidOf(args[1]);
@@ -213,8 +214,11 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private void setRank(Player player, String[] args, GuildRank rank) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /guild "
-                    + (rank == GuildRank.OFFICER ? "promote" : "demote") + " <ник>");
+            Msg.usage(player,
+                    rank == GuildRank.OFFICER ? "/guild promote <ник>" : "/guild demote <ник>",
+                    rank == GuildRank.OFFICER
+                            ? "сделать офицером — он сможет звать и выгонять (лидер)"
+                            : "снять офицера обратно в участники (лидер)");
             return;
         }
         reply(player, guilds.setRank(player.getUniqueId(), PlayerNames.uuidOf(args[1]), rank));
@@ -222,7 +226,8 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private void transfer(Player player, String[] args) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /guild transfer <ник>");
+            Msg.usage(player, "/guild transfer <ник>",
+                    "отдать гильдию другому; вы останетесь в ней офицером");
             return;
         }
         guilds.transfer(player.getUniqueId(), PlayerNames.uuidOf(args[1])).thenAccept(result ->
@@ -262,7 +267,8 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private void tag(Player player, String[] args) {
         if (args.length < 2) {
-            Msg.send(player, "Использование: /guild tag <новый тег>");
+            Msg.usage(player, "/guild tag <новый тег>",
+                    "сменить метку у ника; 2-5 знаков, без цветовых кодов (лидер)");
             return;
         }
         guilds.changeTag(player.getUniqueId(), args[1]).thenAccept(result -> sync(() -> {
@@ -288,7 +294,10 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 3) {
-            Msg.send(player, "Использование: /guild bank " + action + " <сумма>");
+            Msg.usage(player, "/guild bank " + action + " <сумма>",
+                    action.startsWith("d") || action.startsWith("в")
+                            ? "переложить свои деньги в общак — может любой участник"
+                            : "взять из общака; кому это можно, решает /guild settings");
             return;
         }
 
@@ -337,33 +346,84 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Msg.send(player, "Гильдия «" + guild.name() + "» [" + guild.tag() + "]");
+        // Карточка блоками с подписями, а не сплошной лентой: на вопрос «что у
+        // нас за гильдия» отвечают сразу несколько разных фактов, и без
+        // подписи слева читатель каждый раз гадает, что за число он видит.
+        Msg.lines(player, List.of(HelpBook.header(guild.name() + " [" + guild.tag() + "]")));
         if (!guild.settings().motd().isBlank()) {
             player.sendMessage(Msg.colored("&7" + guild.settings().motd()));
         }
-        player.sendMessage(Msg.colored("&7Вступление: &f" + guild.settings().joinPolicy().title()
-                + "&7, свой огонь: &f" + (guild.settings().friendlyFire() ? "разрешён" : "выключен")));
-        if (guilds.bankAvailable()) {
-            player.sendMessage(Msg.colored("&7Банк: &6" + guilds.economy().format(guild.bank())));
+
+        int online = 0;
+        for (GuildMember member : guild.members()) {
+            if (Bukkit.getPlayer(member.uuid()) != null) online++;
         }
-        // Бонусы — одной зелёной строкой, как и в сайдбаре: карточка гильдии
-        // должна отвечать на вопрос «что у нас сейчас есть» целиком, а не
-        // отправлять за половиной ответа в другую команду.
+
+        row(player, "Лидер", "&f" + leaderName(guild));
+        row(player, "Состав", "&f" + guild.members().size() + " &7чел., в сети &f" + online);
+        row(player, "Создана", "&f" + DATE.format(
+                guild.createdAt().atZone(java.time.ZoneId.systemDefault())));
+        row(player, "Вступление", "&f" + guild.settings().joinPolicy().title());
+        row(player, "Свой огонь", guild.settings().friendlyFire() ? "&cразрешён" : "&aвыключен");
+        // Банк — только если он вообще работает: строка «Банк: 0» на сервере
+        // без Vault выглядит как пропавшие деньги, а не как отсутствие банка.
+        if (guilds.bankAvailable()) {
+            row(player, "Общак", "&6" + guilds.economy().format(guild.bank()));
+        }
+
         List<GuildBonus> active = guilds.bonuses(guild.id());
         if (!active.isEmpty()) {
-            StringBuilder line = new StringBuilder("&7Бонусы: ");
+            StringBuilder line = new StringBuilder();
             for (int i = 0; i < active.size(); i++) {
                 if (i > 0) line.append("&7, ");
                 line.append("&a").append(shortBonus(active.get(i)));
             }
-            player.sendMessage(Msg.colored(line.toString()));
+            row(player, "Бонусы", line.toString());
         }
-        player.sendMessage(Msg.colored("&7Состав (&f" + guild.members().size() + "&7):"));
+
+        // Дома — только своей гильдии: где стоит чужой приват, посторонним
+        // знать незачем, это подсказка, куда идти грабить.
+        if (guilds.membership(player.getUniqueId())
+                .filter(own -> own.guildId() == guild.id()).isPresent()) {
+            List<GuildRegion> homes = guilds.regions(guild.id());
+            if (!homes.isEmpty()) {
+                StringBuilder line = new StringBuilder();
+                for (int i = 0; i < homes.size(); i++) {
+                    if (i > 0) line.append("&7, ");
+                    line.append("&f").append(homes.get(i).regionId());
+                }
+                row(player, "Дома", line.toString());
+            }
+        }
+
+        player.sendMessage(Msg.colored("&7Состав:"));
         for (GuildMember member : guild.members()) {
-            boolean online = Bukkit.getPlayer(member.uuid()) != null;
-            player.sendMessage(Msg.colored((online ? "&a● &f" : "&8● &7") + member.username()
+            boolean isOnline = Bukkit.getPlayer(member.uuid()) != null;
+            player.sendMessage(Msg.colored((isOnline ? "&a● &f" : "&8● &7") + member.username()
                     + " &8— " + member.rank().title()));
         }
+    }
+
+    /** Дата создания без времени: час и минуты тут никому ничего не говорят. */
+    private static final java.time.format.DateTimeFormatter DATE =
+            java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+    /**
+     * Строка карточки: подпись слева, значение справа.
+     *
+     * Подпись всегда серая, значение — цветное. Глаз бежит по левому столбцу и
+     * останавливается на нужном, а не вычитывает предложение целиком.
+     */
+    private static void row(Player player, String label, String value) {
+        player.sendMessage(Msg.colored("&7" + label + ": " + value));
+    }
+
+    /** Ник лидера из состава: в StoredGuild лежит только его uuid. */
+    private static String leaderName(StoredGuild guild) {
+        for (GuildMember member : guild.members()) {
+            if (member.rank() == GuildRank.LEADER) return member.username();
+        }
+        return "?";
     }
 
     /**
@@ -436,15 +496,19 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
                     Msg.send(player, "&8• &f" + region.regionId() + " &8(" + region.world() + ")");
                 }
             }
-            Msg.send(player, "&7/guild claim <регион> — привязать, "
-                    + "/guild claim remove <регион> — отвязать");
+            Msg.lines(player, HelpBook.titled("Дом гильдии", "/guild claim")
+                    .add("/guild claim <регион>", "пустить в свой приват всю гильдию")
+                    .add("/guild claim remove <регион>", "отвязать регион от гильдии")
+                    .build().page(1));
+            Msg.send(player, "Привязать можно только регион, где вы владелец (owner)");
             return;
         }
 
         boolean detaching = args[1].equalsIgnoreCase("remove") || args[1].equalsIgnoreCase("убрать");
         String regionId = detaching ? (args.length > 2 ? args[2] : null) : args[1];
         if (regionId == null) {
-            Msg.send(player, "Использование: /guild claim remove <регион>");
+            Msg.usage(player, "/guild claim remove <регион>",
+                    "отвязать регион от гильдии; участников уберём из него сами");
             return;
         }
 
@@ -505,7 +569,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             Msg.send(player, "У вашей гильдии сейчас нет бонусов");
             return;
         }
-        Msg.send(player, "Бонусы гильдии:");
+        Msg.lines(player, List.of(HelpBook.header("Бонусы гильдии")));
         for (GuildBonus bonus : active) Msg.send(player, "&8• " + describe(bonus));
     }
 
@@ -517,15 +581,15 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
      */
     private void adminBonus(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            Msg.send(sender, BONUS_USAGE);
-            Msg.send(sender, "Виды: &f" + bonusTypeNames());
+            bonusUsage(sender);
             return;
         }
         String action = args[2].toLowerCase(Locale.ROOT);
 
         if (action.equals("list") || action.equals("список")) {
             if (args.length < 4) {
-                Msg.send(sender, "Использование: /guild admin bonus list <гильдия>");
+                Msg.usage(sender, "/guild admin bonus list <гильдия>",
+                        "что сейчас действует на эту гильдию");
                 return;
             }
             withGuild(sender, join(args, 3), guild -> {
@@ -534,7 +598,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
                     Msg.send(sender, "У гильдии «" + guild.name() + "» нет бонусов");
                     return;
                 }
-                Msg.send(sender, "Бонусы гильдии «" + guild.name() + "»:");
+                Msg.lines(sender, List.of(HelpBook.header("Бонусы: " + guild.name())));
                 for (GuildBonus bonus : active) Msg.send(sender, "&8• " + describe(bonus));
             });
             return;
@@ -543,11 +607,12 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         boolean granting = action.equals("grant") || action.equals("выдать");
         boolean revoking = action.equals("revoke") || action.equals("снять");
         if (!granting && !revoking) {
-            Msg.send(sender, BONUS_USAGE);
+            Msg.send(sender, "Нет такого действия: " + args[2]);
+            bonusUsage(sender);
             return;
         }
         if (args.length < 5) {
-            Msg.send(sender, BONUS_USAGE);
+            bonusUsage(sender);
             return;
         }
 
@@ -566,7 +631,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
         // grant <вид> <величина> [<срок>] <гильдия>
         if (args.length < 6) {
-            Msg.send(sender, "Использование: " + BONUS_GRANT_USAGE);
+            bonusUsage(sender);
             return;
         }
         double magnitude;
@@ -586,7 +651,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         Duration duration = parseDuration(args.length > 5 ? args[5] : null);
         int nameFrom = duration == null ? 5 : 6;
         if (args.length <= nameFrom) {
-            Msg.send(sender, "Использование: " + BONUS_GRANT_USAGE);
+            bonusUsage(sender);
             return;
         }
         String guildName = join(args, nameFrom);
@@ -594,6 +659,31 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         withGuild(sender, guildName, guild ->
                 guilds.grantBonus(guild.id(), type, magnitude, duration, sender.getName())
                         .thenAccept(r -> sync(() -> Msg.result(sender, r))));
+    }
+
+    /**
+     * Подсказка по бонусам: три действия и перечень видов с границами.
+     *
+     * Границы здесь, а не в отдельной команде: человек, который набрал
+     * «bonus», следующим делом спросит «а сколько можно», и отправлять его за
+     * этим в README значит заставить выйти из игры.
+     */
+    private void bonusUsage(CommandSender sender) {
+        Msg.lines(sender, HelpBook.titled("Бонусы гильдии", "/guild admin bonus")
+                .add("/guild admin bonus list <гильдия>", "что действует сейчас")
+                .add(BONUS_GRANT_USAGE, "выдать; без срока — навсегда")
+                .add("/guild admin bonus revoke <вид> <гильдия>", "снять бонус")
+                .build().page(1));
+        Msg.send(sender, "Виды бонусов:");
+        for (BonusType type : BonusType.values()) {
+            Msg.lines(sender, List.of(HelpBook.line(
+                    type.name().toLowerCase(Locale.ROOT),
+                    type.title() + " \u2014 "
+                            + (type.kind() == BonusType.Kind.EFFECT_LEVEL
+                                    ? "уровень эффекта 1-" + (int) type.max()
+                                    : "множитель 1.0-" + type.max()))));
+        }
+        Msg.send(sender, "Играбельны множители до 3 и эффекты 1-2 уровня; выше — для тестов");
     }
 
     /** Найти гильдию по имени и сделать с ней что-то, иначе сказать, что её нет. */
@@ -615,22 +705,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
      * гильдии) либо аргумента нет вовсе, и бонус выдаётся навсегда.
      */
     static Duration parseDuration(String raw) {
-        if (raw == null || raw.length() < 2) return null;
-        char unit = Character.toLowerCase(raw.charAt(raw.length() - 1));
-        String digits = raw.substring(0, raw.length() - 1);
-        long value;
-        try {
-            value = Long.parseLong(digits);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-        if (value <= 0) return null;
-        return switch (unit) {
-            case 'm', 'м' -> Duration.ofMinutes(value);
-            case 'h', 'ч' -> Duration.ofHours(value);
-            case 'd', 'д' -> Duration.ofDays(value);
-            default -> null;
-        };
+        return ArgWords.duration(raw);
     }
 
     private static String bonusTypeNames() {
@@ -735,7 +810,8 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             }
             case "transfer", "передать" -> {
                 if (args.length < 4) {
-                    Msg.send(sender, "Использование: /guild admin transfer <гильдия> <ник>");
+                    Msg.usage(sender, "/guild admin transfer <гильдия> <ник>",
+                            "назначить лидером другого участника этой гильдии");
                     return;
                 }
                 // Имя гильдии — предпоследние аргументы, ник — последний:
@@ -765,6 +841,18 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
      * заодно лишняя страница пролистывать.
      */
     private void usage(CommandSender sender, String[] args) {
+        send(sender, helpFor(sender).page(page(args)));
+    }
+
+    /**
+     * Справка ровно того состава, который увидит этот человек.
+     *
+     * Одним методом, а не двумя: страницы для автодополнения должны считаться
+     * по той же книге, которую команда потом покажет. Иначе игроку без права
+     * администратора Tab предлагал бы третью страницу, а команда отвечала бы
+     * второй — расхождение, которое замечают не сразу и объясняют багом.
+     */
+    private HelpBook helpFor(CommandSender sender) {
         HelpBook.Builder help = HelpBook.titled("Гильдии", "/guild help")
                 .add("/guild create <имя> <тег>", "создать гильдию, стать её лидером")
                 .add("/guild join [имя]", "вступить — по приглашению или в открытую гильдию")
@@ -787,7 +875,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
         if (sender.hasPermission(PERMISSION_ADMIN)) adminEntries(help);
 
-        send(sender, help.build().page(page(args)));
+        return help.build();
     }
 
     /**
@@ -881,38 +969,224 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(
             CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) {
+        // Bukkit всегда передаёт хотя бы один (возможно пустой) токен, но
+        // падать в автодополнении нельзя: исключение здесь ломает нажатие Tab
+        // молча, и выглядит это как «подсказки просто не работают».
+        if (args.length == 0) return List.of();
+        return prefixed(options(sender, args), args[args.length - 1]);
+    }
+
+    /**
+     * Что можно набрать на этом месте.
+     *
+     * <h2>Почему разбор по позициям, а не одна лесенка if-ов</h2>
+     *
+     * Прошлая версия на третьем аргументе {@code /guild admin} возвращала
+     * имена гильдий ДЛЯ ЛЮБОГО действия — и на {@code /guild admin bonus}
+     * подсказывала гильдии там, где нужно {@code grant|revoke|list}. Такое
+     * получается само собой, когда общая ветка стоит после частных и ловит
+     * всё, что до неё не дошло.
+     *
+     * Поэтому каждая команда разбирается до конца в своём методе, и общего
+     * «а иначе имена гильдий» нет вовсе: место, для которого подсказки не
+     * придумано, честно возвращает пустой список.
+     *
+     * <h2>Русские псевдонимы</h2>
+     *
+     * Сравнение идёт по спискам псевдонимов, а не по английскому слову: игрок,
+     * набравший «/guild банк», должен получить подсказки банка, а не пустоту.
+     */
+    private List<String> options(CommandSender sender, String[] args) {
+        boolean admin = sender.hasPermission(PERMISSION_ADMIN);
+        if (args.length <= 1) {
             List<String> options = new ArrayList<>(SUBCOMMANDS);
-            if (!sender.hasPermission(PERMISSION_ADMIN)) options.remove("admin");
-            return prefixed(options, args[0]);
+            if (!admin) options.remove("admin");
+            return options;
         }
+
         String sub = args[0].toLowerCase(Locale.ROOT);
-        if (args.length == 2) {
-            if (List.of("invite", "kick", "promote", "demote", "transfer").contains(sub)) {
-                return prefixed(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
-            }
-            if (sub.equals("bank")) return prefixed(List.of("deposit", "withdraw", "log"), args[1]);
-            if (sub.equals("admin")) {
-                return prefixed(
-                        List.of("remove", "transfer", "disband", "reload", "friendlyfire", "bonus"),
-                        args[1]);
-            }
-            if (List.of("join", "info").contains(sub)) return prefixed(guildNames(), args[1]);
-            if (List.of("help", "помощь").contains(sub)) return prefixed(List.of("1", "2"), args[1]);
+        if (is(sub, "admin", "админ")) return admin ? adminOptions(sender, args) : List.of();
+        if (is(sub, "bank", "банк")) return bankOptions(args);
+        if (is(sub, "claim", "приват")) return claimOptions(sender, args);
+
+        // Дальше — команды, у которых ровно один аргумент.
+        if (args.length != 2) return List.of();
+
+        if (is(sub, "invite", "позвать")) return onlineNames();
+        // Выгнать и повысить можно только своего, и подсказывать весь онлайн
+        // значит предлагать команду, которая откажет: состав гильдии тут
+        // короче и точнее.
+        if (is(sub, "kick", "выгнать", "promote", "повысить", "demote", "понизить",
+                "transfer", "передать")) {
+            return ownGuildMembers(sender);
         }
-        if (args.length == 3 && sub.equals("admin")) {
-            String action = args[1].toLowerCase(Locale.ROOT);
-            if (action.equals("remove")) {
-                return prefixed(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[2]);
-            }
-            return prefixed(guildNames(), args[2]);
+        if (is(sub, "join", "вступить", "info", "инфо", "list", "список")) return guildNames();
+        if (is(sub, "help", "помощь", "?")) return helpPages(sender);
+        return List.of();
+    }
+
+    private List<String> adminOptions(CommandSender sender, String[] args) {
+        if (args.length == 2) {
+            return List.of("remove", "transfer", "disband", "bonus", "friendlyfire", "reload");
+        }
+        String action = args[1].toLowerCase(Locale.ROOT);
+
+        if (is(action, "bonus", "бонус", "бонусы")) return adminBonusOptions(args);
+        if (is(action, "friendlyfire", "ff", "свойогонь")) {
+            return args.length == 3 ? List.of("on", "off") : List.of();
+        }
+        if (is(action, "remove", "исключить")) {
+            return args.length == 3 ? onlineNames() : List.of();
+        }
+        if (is(action, "disband", "распустить")) return guildNameWords(args, 2);
+        if (is(action, "transfer", "передать")) {
+            // Имя гильдии может быть из нескольких слов, ник — последний
+            // аргумент. Пока имя не набрано целиком, подсказываем его слова;
+            // ники предлагаем заодно, потому что где кончается имя, знает
+            // только тот, кто набирает.
+            List<String> options = new ArrayList<>(guildNameWords(args, 2));
+            options.addAll(onlineNames());
+            return options;
         }
         return List.of();
+    }
+
+    /**
+     * Бонусы: у каждой позиции своё.
+     *
+     * <pre>
+     * 3: grant | revoke | list
+     * 4: вид бонуса (у list — уже имя гильдии)
+     * 5: величина (grant) | имя гильдии (revoke)
+     * 6: срок ИЛИ имя гильдии — оба тут допустимы, разбор их и различает
+     * 7+: имя гильдии, если на 6-й был срок
+     * </pre>
+     */
+    private List<String> adminBonusOptions(String[] args) {
+        if (args.length == 3) return List.of("list", "grant", "revoke");
+        String action = args[2].toLowerCase(Locale.ROOT);
+
+        if (is(action, "list", "список")) return guildNameWords(args, 3);
+        boolean granting = is(action, "grant", "выдать");
+        boolean revoking = is(action, "revoke", "снять");
+        if (!granting && !revoking) return List.of();
+
+        if (args.length == 4) return bonusTypes();
+        if (revoking) return guildNameWords(args, 4);
+
+        // grant <вид> <величина> [срок] <гильдия>
+        if (args.length == 5) return magnitudeHints(BonusType.parse(args[3]));
+        if (args.length == 6) {
+            // Здесь законны оба: и срок, и первое слово имени. Сроки первыми —
+            // их несколько штук и они короткие, имя всё равно допечатывается.
+            List<String> options = new ArrayList<>(List.of("30m", "2h", "12h", "7d", "30d"));
+            options.addAll(guildNameWords(args, 5));
+            return options;
+        }
+        // Дальше имя гильдии — со следующего слова, если на шестой позиции
+        // действительно стоял срок, и с той же самой, если это уже имя.
+        return guildNameWords(args, parseDuration(args[5]) == null ? 5 : 6);
+    }
+
+    private static List<String> magnitudeHints(BonusType type) {
+        if (type == null) return List.of();
+        if (type.kind() == BonusType.Kind.EFFECT_LEVEL) return List.of("1", "2", "3");
+        return List.of("1.25", "1.5", "2", "3");
+    }
+
+    private static List<String> bonusTypes() {
+        return java.util.Arrays.stream(BonusType.values())
+                .map(type -> type.name().toLowerCase(Locale.ROOT))
+                .toList();
+    }
+
+    private static List<String> bankOptions(String[] args) {
+        if (args.length == 2) return List.of("deposit", "withdraw", "log");
+        // Сумму не подсказываем: любое число здесь было бы выдумкой, а
+        // предложенное вслепую списание денег — плохая шутка.
+        return List.of();
+    }
+
+    /**
+     * Приват: {@code remove} и регионы.
+     *
+     * Для привязки предлагаются только регионы, ГДЕ ИГРОК ВЛАДЕЛЕЦ — привязать
+     * всё равно можно только свои, а список чужих приватов это карта того, где
+     * на сервере есть что взять. Для отвязки — только уже привязанные к его
+     * гильдии.
+     */
+    private List<String> claimOptions(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) return List.of();
+        long guildId = guilds.membership(player.getUniqueId()).map(m -> m.guildId()).orElse(-1L);
+
+        if (args.length == 2) {
+            List<String> options = new ArrayList<>();
+            options.add("remove");
+            if (regions != null) {
+                options.addAll(regions.ownedRegions(player.getWorld(), player.getUniqueId()));
+            }
+            return options;
+        }
+        if (args.length == 3 && is(args[1].toLowerCase(Locale.ROOT), "remove", "убрать")) {
+            if (guildId < 0) return List.of();
+            String world = player.getWorld().getName();
+            return guilds.regions(guildId).stream()
+                    .filter(region -> region.world().equals(world))
+                    .map(GuildRegion::regionId)
+                    .toList();
+        }
+        return List.of();
+    }
+
+    /** Номера страниц справки — ровно столько, сколько их есть у этого игрока. */
+    private List<String> helpPages(CommandSender sender) {
+        int pages = helpFor(sender).pages();
+        List<String> numbers = new ArrayList<>(pages);
+        for (int i = 1; i <= pages; i++) numbers.add(String.valueOf(i));
+        return numbers;
+    }
+
+    /** Состав гильдии того, кто набирает. Пусто, если он ни в какой не состоит. */
+    private List<String> ownGuildMembers(CommandSender sender) {
+        if (!(sender instanceof Player player)) return List.of();
+        return guilds.guildOf(player.getUniqueId())
+                .map(guild -> guild.members().stream()
+                        .filter(member -> !member.uuid().equals(player.getUniqueId()))
+                        .map(GuildMember::username)
+                        .toList())
+                .orElseGet(List::of);
+    }
+
+    private static List<String> onlineNames() {
+        return Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
     }
 
     /** Из памяти и синхронно: автодополнение идёт в главном потоке. */
     private List<String> guildNames() {
         return guilds.guildNames();
+    }
+
+    /**
+     * Имя гильдии по словам.
+     *
+     * Bukkit режет строку по пробелам, и двусловное имя «Ночные волки» одним
+     * токеном не дополнить. Поэтому подсказывается ОЧЕРЕДНОЕ СЛОВО тех имён,
+     * у которых предыдущие слова уже совпали: набрал «Ночные» — получил
+     * «волки». Без этого имена из двух слов не дополняются вовсе, а на сервере
+     * такие как раз и заводят.
+     *
+     * @param from индекс аргумента, с которого начинается имя
+     */
+    private List<String> guildNameWords(String[] args, int from) {
+        return ArgWords.nextWords(guilds.guildNames(), args, from);
+    }
+
+    /** Совпадает ли набранное с любым из псевдонимов команды. */
+    private static boolean is(String typed, String... aliases) {
+        for (String alias : aliases) {
+            if (alias.equals(typed)) return true;
+        }
+        return false;
     }
 
     private static List<String> prefixed(List<String> options, String typed) {

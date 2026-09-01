@@ -119,6 +119,21 @@ public final class PartyService {
         return left != null && left.equals(partyOf.get(second));
     }
 
+    /**
+     * Кто сейчас зовёт этого игрока — для автодополнения {@code /party accept}.
+     *
+     * Просроченные и осиротевшие приглашения отсеиваются тем же {@code active},
+     * что и при самом принятии: подсказывать ник, от которого приглашение уже
+     * истекло, значит предложить команду, которая тут же откажет.
+     */
+    public List<UUID> pendingInviters(UUID player) {
+        List<UUID> result = new ArrayList<>();
+        for (Invite invite : active(player, clock.get())) {
+            if (!result.contains(invite.inviter())) result.add(invite.inviter());
+        }
+        return result;
+    }
+
     public boolean isLeader(UUID player) {
         Party party = partyOf(player);
         return party != null && party.leader.equals(player);

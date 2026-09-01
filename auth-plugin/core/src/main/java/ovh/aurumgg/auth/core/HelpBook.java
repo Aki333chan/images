@@ -45,6 +45,20 @@ public final class HelpBook {
     /** Одна команда: как набирать и что делает. */
     public record Entry(String usage, String description) {}
 
+    /**
+     * Одна строка справки — тем же видом, что и в книге.
+     *
+     * Публичный и используется не только книгой: тем же форматом отвечают
+     * команды, набранные без аргументов. Раньше они писали «Использование:
+     * /guild kick &lt;ник&gt;» — что делает kick, из этого не следует никак, а
+     * человек, который ошибся аргументом, как раз и хочет это узнать. Если
+     * подсказка выглядит одинаково всюду, её достаточно научиться читать один
+     * раз.
+     */
+    public static String line(String usage, String description) {
+        return "&e" + usage + " &8\u2014 &7" + description;
+    }
+
     private final String title;
     private final List<Entry> entries;
     /** Команда, которой листают: «/auth help». */
@@ -82,7 +96,7 @@ public final class HelpBook {
         int to = Math.min(from + PER_PAGE, entries.size());
         for (int i = from; i < to; i++) {
             Entry entry = entries.get(i);
-            lines.add("&e" + entry.usage() + " &8— &7" + entry.description());
+            lines.add(line(entry.usage(), entry.description()));
         }
 
         // Подпись только когда есть куда листать: на однностраничной справке
@@ -95,7 +109,19 @@ public final class HelpBook {
 
     private String header(int page, int total) {
         String counter = total > 1 ? " &7(стр. " + page + " из " + total + ")" : "";
-        return "&6──── &e" + title + counter + " &6────";
+        return header(title + counter);
+    }
+
+    /**
+     * Заголовок-разделитель — тем же видом, что у справки.
+     *
+     * Публичный, потому что им подписаны и другие многострочные ответы:
+     * карточка гильдии, список бонусов. Одинаковая шапка отделяет «начался
+     * новый блок» от «продолжается прошлый» — в чате, где всё идёт сплошной
+     * лентой вперемешку с болтовнёй, это единственный доступный разделитель.
+     */
+    public static String header(String title) {
+        return "&6──── &e" + title + " &6────";
     }
 
     public static final class Builder {

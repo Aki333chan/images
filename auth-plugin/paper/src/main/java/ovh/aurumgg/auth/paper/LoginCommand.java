@@ -1,6 +1,7 @@
 package ovh.aurumgg.auth.paper;
 
 import org.bukkit.entity.Player;
+import ovh.aurumgg.auth.core.HelpBook;
 import ovh.aurumgg.auth.core.AuthService;
 
 /** /login &lt;пароль&gt; */
@@ -17,7 +18,8 @@ final class LoginCommand extends AuthCommandBase {
             return;
         }
         if (args.length != 1) {
-            player.sendMessage(AurumAuthPlugin.prefixed("Использование: /login <пароль>"));
+            player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
+                    "/login <пароль>", "войти под своим аккаунтом")));
             return;
         }
 

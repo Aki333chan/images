@@ -4,7 +4,9 @@ import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.protection.managers.RegionManager;
 import com.sk89q.worldguard.protection.regions.ProtectedRegion;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
@@ -102,6 +104,23 @@ final class WorldGuardBridge {
         ProtectedRegion region = manager.getRegion(regionId);
         if (region == null) return;
         region.getMembers().addPlayer(member);
+    }
+
+    /**
+     * Регионы этого мира, владелец которых — этот игрок.
+     *
+     * Для автодополнения {@code /guild claim}: подсказывать все регионы мира
+     * бессмысленно и вредно — привязать всё равно можно только свой, а список
+     * чужих приватов это карта того, где на сервере есть что взять.
+     */
+    List<String> ownedRegions(World world, UUID actor) {
+        RegionManager manager = managerFor(world);
+        if (manager == null) return List.of();
+        List<String> owned = new ArrayList<>();
+        for (ProtectedRegion region : manager.getRegions().values()) {
+            if (region.getOwners().contains(actor)) owned.add(region.getId());
+        }
+        return owned;
     }
 
     /** Существует ли такой регион — для подсказок и понятных отказов. */

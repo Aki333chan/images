@@ -131,7 +131,9 @@ public final class AurumAuthPlugin extends JavaPlugin {
         login.setExecutor(new LoginCommand(this, service, guard));
         register.setExecutor(new RegisterCommand(this, service, guard));
         reset.setExecutor(new ResetCommand(this, service, guard));
-        twoFactor.setExecutor(new TwoFactorCommand(this, service, guard, config));
+        TwoFactorCommand twoFactorCommand = new TwoFactorCommand(this, service, guard, config);
+        twoFactor.setExecutor(twoFactorCommand);
+        twoFactor.setTabCompleter(twoFactorCommand);
         unregister.setExecutor(new UnregisterCommand(this, service, guard));
         AuthAdminCommand adminCommand = new AuthAdminCommand(this, service, guard);
         admin.setExecutor(adminCommand);
@@ -220,6 +222,11 @@ public final class AurumAuthPlugin extends JavaPlugin {
      */
     static Component colored(String text) {
         return COLORS.deserialize(text);
+    }
+
+    /** Несколько строк справки подряд — без префикса на каждой. */
+    static void sendLines(org.bukkit.command.CommandSender to, java.util.List<String> lines) {
+        for (String line : lines) to.sendMessage(colored(line));
     }
 
     /** Применить настроенные префикс и цвет — при старте и при /auth reload. */

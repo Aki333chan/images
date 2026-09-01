@@ -58,7 +58,10 @@ final class ChannelCommand implements CommandExecutor {
             return true;
         }
         if (args.length == 0) {
-            Msg.send(player, "Использование: /" + label + " <сообщение>");
+            Msg.usage(player, "/" + label + " <сообщение>",
+                    channel == Channel.PARTY
+                            ? "написать своей пати; посторонние этого не увидят"
+                            : "написать своей гильдии; посторонние этого не увидят");
             return true;
         }
 
