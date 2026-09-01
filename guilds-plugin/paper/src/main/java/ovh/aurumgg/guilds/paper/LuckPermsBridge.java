@@ -68,9 +68,16 @@ final class LuckPermsBridge implements GuildHooks {
     /** Операции идут в хранилище LuckPerms — ждём, но не вечно. */
     private static final long TIMEOUT_SECONDS = 5;
 
-    private final String groupPrefix;
-    private final String suffixFormat;
+    // Не final: /guild admin reload их меняет.
+    private volatile String groupPrefix;
+    private volatile String suffixFormat;
     private final Logger logger;
+
+    /** Применить перечитанный config.yml. */
+    void applyConfig(String groupPrefix, String suffixFormat) {
+        this.groupPrefix = groupPrefix;
+        this.suffixFormat = suffixFormat;
+    }
 
     LuckPermsBridge(String groupPrefix, String suffixFormat, Logger logger) {
         this.groupPrefix = groupPrefix;

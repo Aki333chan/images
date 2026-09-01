@@ -37,20 +37,31 @@ final class VaultBridge implements EconomyBridge {
 
     /** Есть ли Vault и зарегистрирован ли за ним живой провайдер экономики. */
     static boolean installed() {
-        if (Bukkit.getPluginManager().getPlugin(PLUGIN_NAME) == null) return false;
-        try {
-            return provider().isPresent();
-        } catch (NoClassDefFoundError e) {
-            return false;
-        }
+        return provider().isPresent();
     }
 
     /**
-     * Провайдера НЕ держим в поле: плагин экономики могут перезагрузить на
-     * живом сервере, и ссылка на прежний экземпляр означала бы тихо
-     * неработающие начисления.
+     * Провайдера НЕ держим в поле, и это важнее, чем кажется.
+     *
+     * Vault сам денег не хранит — это шина. Провайдера за ней регистрирует
+     * ТРЕТИЙ плагин (EssentialsX, CMI, любой другой), и происходит это в его
+     * собственном onEnable, который вполне может пройти позже нашего: в
+     * softdepend его нет и быть не может, мы не знаем, какой именно стоит на
+     * сервере.
+     *
+     * Поэтому вопрос задаётся каждый раз. Тогда провайдер, появившийся через
+     * минуту после старта, подхватывается сам, а перезагруженный на живом
+     * сервере плагин экономики не оставляет нас со ссылкой на мёртвый
+     * экземпляр и тихо неработающими начислениями.
+     *
+     * Проверка «есть ли вообще Vault» стоит ПЕРВОЙ и намеренно: без неё на
+     * сервере без Vault каждое обращение упиралось бы в NoClassDefFoundError,
+     * а обращается сюда в том числе задача HUD — несколько раз в секунду на
+     * каждого игрока. Поиск плагина по имени — это просмотр карты, он ничего
+     * не стоит и не трогает классы Vault.
      */
     private static Optional<Economy> provider() {
+        if (Bukkit.getPluginManager().getPlugin(PLUGIN_NAME) == null) return Optional.empty();
         try {
             RegisteredServiceProvider<Economy> registration =
                     Bukkit.getServer().getServicesManager().getRegistration(Economy.class);

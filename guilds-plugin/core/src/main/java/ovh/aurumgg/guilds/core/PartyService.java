@@ -66,8 +66,10 @@ public final class PartyService {
 
     private final Supplier<Instant> clock;
     private final NameResolver names;
-    private final int maxMembers;
-    private final Duration inviteTtl;
+    // Не final: /guild admin reload их меняет. volatile — читаются из потока
+    // команд, а меняются из потока перезагрузки.
+    private volatile int maxMembers;
+    private volatile Duration inviteTtl;
 
     private final AtomicLong nextId = new AtomicLong(1);
     private final Map<Long, Party> parties = new ConcurrentHashMap<>();
@@ -107,6 +109,18 @@ public final class PartyService {
     public boolean isLeader(UUID player) {
         Party party = partyOf(player);
         return party != null && party.leader.equals(player);
+    }
+
+    /**
+     * Применить перечитанный config.yml.
+     *
+     * Уже собранные пати не трогаются: уменьшили лимит — существующие
+     * переполненные группы остаются как есть, новых сверх лимита не собрать.
+     * Разгонять людей по домам из-за правки числа в конфиге плагин не должен.
+     */
+    public void applyConfig(int maxMembers, Duration inviteTtl) {
+        this.maxMembers = maxMembers;
+        this.inviteTtl = inviteTtl;
     }
 
     public int maxMembers() {

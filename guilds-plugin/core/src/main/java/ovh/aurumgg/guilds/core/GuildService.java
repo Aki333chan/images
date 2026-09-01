@@ -62,7 +62,18 @@ public final class GuildService implements AutoCloseable {
     /** Приглашение в гильдию. */
     private record Invite(long guildId, UUID inviter, Instant expiresAt) {}
 
-    private final GuildsConfig config;
+    /**
+     * Не final: /guild admin reload подменяет его целиком.
+     *
+     * volatile, потому что читают его и основной поток, и рабочий пул. Замена
+     * атомарна — меняется ссылка, а не поля внутри, — поэтому операция,
+     * начавшаяся со старым конфигом, спокойно им и закончится.
+     *
+     * Размер пула отсюда берётся ровно один раз, при создании, и перезагрузке
+     * не поддаётся: менять число потоков под работающими задачами — способ
+     * получить незаметно потерянную операцию с чужими деньгами.
+     */
+    private volatile GuildsConfig config;
     private final GuildRepository repository;
     private final GuildHooks hooks;
     private final EconomyBridge economy;
@@ -104,6 +115,11 @@ public final class GuildService implements AutoCloseable {
     }
 
     /** Прочитать всё из базы в память. Зовётся один раз при старте. */
+    /** Применить перечитанный config.yml. См. поле config. */
+    public void applyConfig(GuildsConfig fresh) {
+        this.config = fresh;
+    }
+
     public void load() throws Exception {
         for (StoredGuild guild : repository.loadAll()) {
             guilds.put(guild.id(), guild);
