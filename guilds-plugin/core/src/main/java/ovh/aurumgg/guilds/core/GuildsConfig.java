@@ -141,6 +141,11 @@ public record GuildsConfig(
         return tablePrefix + "_bonuses";
     }
 
+    /** Таблица привязок регионов WorldGuard к гильдиям. */
+    public String regionsTable() {
+        return tablePrefix + "_regions";
+    }
+
     public String bankLogTable() {
         return tablePrefix + "_bank_log";
     }

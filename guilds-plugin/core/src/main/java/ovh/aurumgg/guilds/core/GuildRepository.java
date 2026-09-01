@@ -81,6 +81,15 @@ public interface GuildRepository extends AutoCloseable {
     /** Снять бонус. Тихо ничего не делает, если такого не было. */
     void deleteBonus(long guildId, BonusType type) throws Exception;
 
+    // --------------------------------------------------- регионы WorldGuard
+
+    /** Все привязки регионов к гильдиям — читается один раз при старте. */
+    List<GuildRegion> loadRegions() throws Exception;
+
+    void addRegion(GuildRegion region) throws Exception;
+
+    void removeRegion(GuildRegion region) throws Exception;
+
     void logBank(GuildBankEntry entry) throws Exception;
 
     /** Операции с банком, новые сверху. */

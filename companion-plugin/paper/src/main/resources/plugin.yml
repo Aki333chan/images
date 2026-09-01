@@ -21,7 +21,7 @@ softdepend: [LuckPerms, InvSeePlusPlus, Vault, AurumAuth]
 commands:
   ticket:
     description: Отправить сообщение администрации
-    usage: /ticket <сообщение>
+    usage: /ticket <сообщение> — написать администрации, ответ придёт в чат
   webtoken:
     description: Одноразовый код для входа в панель
-    usage: /webtoken
+    usage: /webtoken — одноразовый код для входа в панель

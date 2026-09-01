@@ -44,7 +44,10 @@ public final class TicketCommand implements CommandExecutor {
             return true;
         }
         if (args.length == 0) {
-            player.sendMessage(ChatColor.YELLOW + "Использование: /" + label + " <сообщение>");
+            // Подсказка говорит и как набрать, и что произойдёт: иначе половина
+            // игроков пишет второй тикет, решив, что первый никуда не ушёл.
+            player.sendMessage(ChatColor.YELLOW + "/" + label
+                    + " <сообщение> — написать администрации; ответ придёт сюда же, в чат");
             return true;
         }
 

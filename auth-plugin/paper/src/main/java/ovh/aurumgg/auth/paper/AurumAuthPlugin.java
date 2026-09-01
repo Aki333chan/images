@@ -206,6 +206,22 @@ public final class AurumAuthPlugin extends JavaPlugin {
         return prefix.append(Component.text(text).color(textColor));
     }
 
+    /**
+     * Строка с цветными кодами и БЕЗ префикса — для справки по командам.
+     *
+     * Разбор «&amp;» здесь безопасен ровно потому, что сюда попадают только
+     * собственные литералы плагина: строки справки собираются в коде и не
+     * содержат ни одного знака, введённого игроком. Всё, что пришло снаружи,
+     * по-прежнему идёт через {@link #prefixed(String)}, который цвета не
+     * разбирает.
+     *
+     * Без префикса — намеренно: справка выводится десятком строк подряд, и
+     * повторённый на каждой «[Авторизация]» съел бы половину ширины чата.
+     */
+    static Component colored(String text) {
+        return COLORS.deserialize(text);
+    }
+
     /** Применить настроенные префикс и цвет — при старте и при /auth reload. */
     private static void applyTexts(PromptSettings settings) {
         prefix = COLORS.deserialize(settings.prefix());

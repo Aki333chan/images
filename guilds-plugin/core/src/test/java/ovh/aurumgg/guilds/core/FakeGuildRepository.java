@@ -29,6 +29,7 @@ final class FakeGuildRepository implements GuildRepository {
     private final List<GuildBankEntry> bankLog = new ArrayList<>();
     /** Бонусы: id гильдии → вид → бонус. Вложенная карта даёт «один вида на гильдию». */
     final Map<Long, Map<BonusType, GuildBonus>> bonuses = new HashMap<>();
+    final List<GuildRegion> regions = new ArrayList<>();
     /** Сколько раз просили записать что-либо — чтобы отличить «не сохранилось». */
     int writes;
 
@@ -145,6 +146,23 @@ final class FakeGuildRepository implements GuildRepository {
         writes++;
         Map<BonusType, GuildBonus> byType = bonuses.get(guildId);
         if (byType != null) byType.remove(type);
+    }
+
+    @Override
+    public List<GuildRegion> loadRegions() {
+        return new ArrayList<>(regions);
+    }
+
+    @Override
+    public void addRegion(GuildRegion region) {
+        writes++;
+        if (!regions.contains(region)) regions.add(region);
+    }
+
+    @Override
+    public void removeRegion(GuildRegion region) {
+        writes++;
+        regions.remove(region);
     }
 
     @Override

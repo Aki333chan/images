@@ -1,5 +1,6 @@
 package ovh.aurumgg.auth.paper;
 
+import java.util.List;
 import java.util.Locale;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -8,6 +9,7 @@ import org.bukkit.entity.Player;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.core.AuthConfig;
 import ovh.aurumgg.auth.core.AuthService;
+import ovh.aurumgg.auth.core.HelpBook;
 import ovh.aurumgg.auth.core.totp.Totp;
 
 /**
@@ -124,9 +126,15 @@ final class TwoFactorCommand extends AuthCommandBase {
                 }));
     }
 
+    /** Справка: строка на команду, чтобы порядок шагов читался сверху вниз. */
     private void usage(Player player) {
-        player.sendMessage(AurumAuthPlugin.prefixed(
-                "/2fa enable — включить, /2fa confirm <код> — подтвердить, /2fa disable <код> — выключить"));
-        player.sendMessage(AurumAuthPlugin.prefixed("При входе: /2fa <код>"));
+        List<String> lines = HelpBook.titled("Двухфакторная авторизация", "/2fa help")
+                .add("/2fa <код>", "ввести код при входе — то, что нужно каждый день")
+                .add("/2fa enable", "начать подключение: покажет секрет для приложения")
+                .add("/2fa confirm <код>", "подтвердить подключение первым кодом")
+                .add("/2fa disable <код>", "выключить двухфакторку")
+                .build()
+                .page(1);
+        for (String line : lines) player.sendMessage(AurumAuthPlugin.colored(line));
     }
 }

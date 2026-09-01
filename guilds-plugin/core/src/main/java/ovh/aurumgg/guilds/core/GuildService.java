@@ -94,6 +94,14 @@ public final class GuildService implements AutoCloseable {
      */
     private final Map<Long, List<GuildBonus>> bonuses = new ConcurrentHashMap<>();
 
+    /**
+     * Регионы гильдий: id гильдии → её регионы.
+     *
+     * В памяти по той же причине, что и остальное: список нужен на каждом
+     * вступлении и выходе, чтобы поправить состав региона.
+     */
+    private final Map<Long, List<GuildRegion>> regions = new ConcurrentHashMap<>();
+
     /** Гильдии в памяти: ключ → неизменяемая запись. */
     private final Map<Long, StoredGuild> guilds = new ConcurrentHashMap<>();
     /** Игрок → его гильдия. Игрок состоит максимум в одной. */
@@ -138,6 +146,9 @@ public final class GuildService implements AutoCloseable {
             for (GuildMember member : guild.members()) memberOf.put(member.uuid(), guild.id());
         }
         bonuses.putAll(repository.loadBonuses());
+        for (GuildRegion region : repository.loadRegions()) {
+            regions.computeIfAbsent(region.guildId(), key -> new ArrayList<>()).add(region);
+        }
         logger.info("Загружено гильдий: " + guilds.size()
                 + ", участников: " + memberOf.size()
                 + ", бонусов: " + bonuses.values().stream().mapToInt(List::size).sum());
@@ -686,6 +697,54 @@ public final class GuildService implements AutoCloseable {
     }
 
     /** Выбросить истёкшие приглашения. */
+    // --------------------------------------------------- регионы WorldGuard
+    //
+    // Здесь только СВЯЗЬ гильдии с регионом. Сам WorldGuard живёт в модуле
+    // paper: core о нём не знает и знать не должен — тогда и вся логика
+    // гильдий по-прежнему проверяется тестами без единого плагина рядом.
+
+    /** Регионы гильдии. Пусто — ни одного не привязано. */
+    public List<GuildRegion> regions(long guildId) {
+        return List.copyOf(regions.getOrDefault(guildId, List.of()));
+    }
+
+    /** Привязан ли уже этот регион к какой-нибудь гильдии — и к какой. */
+    public Optional<Long> regionOwner(String world, String regionId) {
+        return regions.entrySet().stream()
+                .filter(entry -> entry.getValue().stream()
+                        .anyMatch(region -> region.world().equals(world)
+                                && region.regionId().equals(regionId)))
+                .map(Map.Entry::getKey)
+                .findFirst();
+    }
+
+    /**
+     * Запомнить, что регион принадлежит гильдии.
+     *
+     * Проверку прав на регион делает вызывающий: кто владелец региона, знает
+     * WorldGuard, а core о нём не знает. Здесь только связь.
+     */
+    public synchronized boolean attachRegion(long guildId, String world, String regionId) {
+        if (!guilds.containsKey(guildId)) return false;
+        GuildRegion region = new GuildRegion(guildId, world, regionId);
+        List<GuildRegion> current = new ArrayList<>(regions.getOrDefault(guildId, List.of()));
+        if (current.contains(region)) return true;
+        current.add(region);
+        regions.put(guildId, List.copyOf(current));
+        write(() -> repository.addRegion(region), "привязать регион к гильдии");
+        return true;
+    }
+
+    /** Забыть привязку. false — такой привязки не было. */
+    public synchronized boolean detachRegion(long guildId, String world, String regionId) {
+        List<GuildRegion> current = new ArrayList<>(regions.getOrDefault(guildId, List.of()));
+        GuildRegion region = new GuildRegion(guildId, world, regionId);
+        if (!current.remove(region)) return false;
+        regions.put(guildId, List.copyOf(current));
+        write(() -> repository.removeRegion(region), "отвязать регион от гильдии");
+        return true;
+    }
+
     // ------------------------------------------------------------ бонусы
 
     /**

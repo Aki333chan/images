@@ -8,6 +8,7 @@ import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
+import ovh.aurumgg.companion.core.model.GuildBonusInfo;
 import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
@@ -209,4 +210,19 @@ public interface GameBridge {
 
     /** Убрать игрока из его гильдии, какой бы она ни была. */
     Optional<GuildActionOutcome> guildRemoveMember(String targetName, String actor);
+
+    /** Действующие бонусы гильдии. Истёкшие сюда не попадают. */
+    List<GuildBonusInfo> guildBonuses(long guildId);
+
+    /**
+     * Выдать или продлить бонус.
+     *
+     * @param type     вид бонуса; неизвестный — отказ с объяснением
+     * @param seconds  сколько действовать; 0 — навсегда
+     */
+    Optional<GuildActionOutcome> guildGrantBonus(
+            long guildId, String type, double magnitude, long seconds, String actor);
+
+    /** Снять бонус досрочно. */
+    Optional<GuildActionOutcome> guildRevokeBonus(long guildId, String type, String actor);
 }

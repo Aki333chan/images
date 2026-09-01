@@ -20,7 +20,9 @@ import ovh.aurumgg.guilds.api.GuildActionResult;
 import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildMember;
 import ovh.aurumgg.guilds.api.GuildRank;
+import ovh.aurumgg.guilds.core.GuildRegion;
 import ovh.aurumgg.guilds.core.GuildService;
+import ovh.aurumgg.guilds.core.HelpBook;
 import ovh.aurumgg.guilds.core.StoredGuild;
 
 /**
@@ -50,11 +52,14 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = List.of(
             "create", "invite", "join", "leave", "kick", "promote", "demote", "transfer",
-            "disband", "info", "list", "settings", "tag", "bank", "bonuses", "admin");
+            "disband", "info", "list", "settings", "tag", "bank", "bonuses", "claim", "help",
+            "admin");
 
     private final Plugin plugin;
     private final GuildService guilds;
     private final GuildSettingsMenu menu;
+    /** Мост к WorldGuard или null, если его на сервере нет. */
+    private final WorldGuardBridge regions;
     /** Кто уже нажал «распустить» и до какого момента это засчитывается. */
     private final Map<UUID, Instant> pendingDisband = new ConcurrentHashMap<>();
 
@@ -63,10 +68,6 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
 
     private static final String BONUS_GRANT_USAGE =
             "/guild admin bonus grant <вид> <величина> [30m|2h|7d] <гильдия>";
-
-    private static final String ADMIN_USAGE =
-            "/guild admin remove <ник> | transfer <гильдия> <ник> | disband <гильдия>"
-                    + " | reload | friendlyfire [on|off] | bonus …";
 
     /** Псевдонимы перезагрузки — русский вариант наравне с английским. */
     private static final List<String> ADMIN_RELOAD = List.of("reload", "перезагрузить", "рл");
@@ -79,16 +80,17 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
     private static final List<String> YES = List.of("on", "true", "yes", "вкл", "да");
     private static final List<String> NO = List.of("off", "false", "no", "выкл", "нет");
 
-    GuildCommand(Plugin plugin, GuildService guilds, GuildSettingsMenu menu) {
+    GuildCommand(Plugin plugin, GuildService guilds, GuildSettingsMenu menu, WorldGuardBridge regions) {
         this.plugin = plugin;
         this.guilds = guilds;
         this.menu = menu;
+        this.regions = regions;
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0) {
-            usage(sender);
+            usage(sender, args);
             return true;
         }
 
@@ -124,7 +126,12 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             case "tag", "тег" -> tag(player, args);
             case "bank", "банк" -> bank(player, args);
             case "bonuses", "бонусы" -> bonuses(player);
-            default -> usage(player);
+            case "claim", "приват" -> claim(player, args);
+            case "help", "помощь", "?" -> usage(player, args);
+            default -> {
+                Msg.send(player, "Нет такой команды: " + args[0]);
+                usage(player, new String[] {"help"});
+            }
         }
         return true;
     }
@@ -366,6 +373,89 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
     // ------------------------------------------------------- вмешательство
 
     /**
+     * Дом гильдии: привязать регион WorldGuard к гильдии.
+     *
+     * Только лидер: регион — это общая собственность, и раздавать доступ к
+     * сундукам гильдии офицер не должен.
+     */
+    private void claim(Player player, String[] args) {
+        if (regions == null) {
+            Msg.send(player, "На сервере нет WorldGuard — привязывать регион не к чему");
+            return;
+        }
+        var membership = guilds.membership(player.getUniqueId());
+        if (membership.isEmpty()) {
+            Msg.send(player, "Вы не состоите в гильдии");
+            return;
+        }
+        long guildId = membership.get().guildId();
+        if (membership.get().rank() != GuildRank.LEADER) {
+            Msg.send(player, "Привязывать регионы может только лидер гильдии");
+            return;
+        }
+
+        if (args.length < 2) {
+            List<GuildRegion> attached = guilds.regions(guildId);
+            if (attached.isEmpty()) {
+                Msg.send(player, "К гильдии не привязано ни одного региона");
+            } else {
+                Msg.send(player, "Регионы гильдии:");
+                for (GuildRegion region : attached) {
+                    Msg.send(player, "&8• &f" + region.regionId() + " &8(" + region.world() + ")");
+                }
+            }
+            Msg.send(player, "&7/guild claim <регион> — привязать, "
+                    + "/guild claim remove <регион> — отвязать");
+            return;
+        }
+
+        boolean detaching = args[1].equalsIgnoreCase("remove") || args[1].equalsIgnoreCase("убрать");
+        String regionId = detaching ? (args.length > 2 ? args[2] : null) : args[1];
+        if (regionId == null) {
+            Msg.send(player, "Использование: /guild claim remove <регион>");
+            return;
+        }
+
+        String world = player.getWorld().getName();
+        List<UUID> members = guilds.memberUuids(guildId);
+
+        if (detaching) {
+            if (!guilds.detachRegion(guildId, world, regionId)) {
+                Msg.send(player, "Регион «" + regionId + "» не привязан к вашей гильдии "
+                        + "в этом мире");
+                return;
+            }
+            // Убираем именно участников гильдии. Владелец региона (обычно сам
+            // лидер) в другом списке и не трогается.
+            regions.removeMembers(player.getWorld(), regionId, members);
+            Msg.send(player, "Регион «" + regionId + "» отвязан от гильдии");
+            return;
+        }
+
+        // Чужой регион, уже отданный другой гильдии, перехватывать нельзя:
+        // иначе достаточно было бы стать владельцем на минуту.
+        var owner = guilds.regionOwner(world, regionId);
+        if (owner.isPresent() && owner.get() != guildId) {
+            Msg.send(player, "Этот регион уже принадлежит другой гильдии");
+            return;
+        }
+
+        WorldGuardBridge.Result result = regions.attach(
+                player.getWorld(), regionId, player.getUniqueId(), members);
+        switch (result) {
+            case NO_MANAGER -> Msg.send(player, "В этом мире регионы WorldGuard выключены");
+            case NO_REGION -> Msg.send(player, "В мире «" + world + "» нет региона «" + regionId + "»");
+            case NOT_OWNER -> Msg.send(player,
+                    "Вы не владелец этого региона. Гильдии можно отдать только свою землю");
+            case OK -> {
+                guilds.attachRegion(guildId, world, regionId);
+                Msg.send(player, "Регион «" + regionId + "» — теперь дом гильдии. "
+                        + "Все участники добавлены, новые будут добавляться сами");
+            }
+        }
+    }
+
+    /**
      * Что сейчас действует у моей гильдии.
      *
      * Отдельной командой, а не строкой в /guild info: бонусов бывает до пяти,
@@ -586,7 +676,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 3) {
-            Msg.send(sender, ADMIN_USAGE);
+            adminUsage(sender);
             return;
         }
 
@@ -629,20 +719,93 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
                 guilds.adminTransfer(guild.get().id(), targetName, actor)
                         .thenAccept(r -> sync(() -> Msg.result(sender, r)));
             }
-            default -> Msg.send(sender,
-                    ADMIN_USAGE);
+            default -> adminUsage(sender);
         }
     }
 
     // ------------------------------------------------------------ помощь
 
-    private void usage(CommandSender sender) {
-        Msg.send(sender, "/guild create <имя> <тег> — создать, join [имя] — вступить, leave — выйти");
-        Msg.send(sender, "invite, kick, promote, demote, transfer, disband — состав и лидерство");
-        Msg.send(sender, "info, list [поиск], settings, tag <тег>, bank — остальное");
-        Msg.send(sender, "Чат гильдии: /g <сообщение>");
-        if (sender.hasPermission(PERMISSION_ADMIN)) {
-            Msg.send(sender, "/guild admin remove|transfer|disband|reload — администрирование");
+    /**
+     * Справка: строка на команду, описание рядом.
+     *
+     * Администраторские команды показываются только тем, у кого есть право на
+     * них: остальным они не подсказка, а перечень того, чего нельзя, — и
+     * заодно лишняя страница пролистывать.
+     */
+    private void usage(CommandSender sender, String[] args) {
+        HelpBook.Builder help = HelpBook.titled("Гильдии", "/guild help")
+                .add("/guild create <имя> <тег>", "создать гильдию, стать её лидером")
+                .add("/guild join [имя]", "вступить — по приглашению или в открытую гильдию")
+                .add("/guild leave", "выйти из своей гильдии")
+                .add("/guild info [имя]", "состав, ранги и общак — свой или чужой гильдии")
+                .add("/guild list [поиск]", "все гильдии сервера")
+                .add("/guild invite <ник>", "позвать игрока к себе (лидер и офицеры)")
+                .add("/guild kick <ник>", "выгнать участника (лидер и офицеры)")
+                .add("/guild promote <ник>", "сделать офицером — он сможет звать и выгонять")
+                .add("/guild demote <ник>", "снять офицера обратно в участники")
+                .add("/guild transfer <ник>", "отдать гильдию другому: вы станете участником")
+                .add("/guild disband", "распустить гильдию — спросит подтверждение")
+                .add("/guild tag <тег>", "сменить тег — короткую метку у ника")
+                .add("/guild settings", "меню настроек: описание, приём заявок, PvP своих")
+                .add("/guild bank", "остаток общака; deposit и withdraw — внести и снять")
+                .add("/guild bonuses", "какие усиления действуют на гильдию и сколько ещё")
+                .add("/guild claim <регион>", "выдать всей гильдии доступ в приват — дом гильдии")
+                .add("/guild claim remove <регион>", "отвязать регион от гильдии")
+                .add("/g <сообщение>", "написать в чат гильдии, видят только свои");
+
+        if (sender.hasPermission(PERMISSION_ADMIN)) adminEntries(help);
+
+        send(sender, help.build().page(page(args)));
+    }
+
+    /**
+     * Справка только по администрированию — ответ на «/guild admin» без
+     * аргументов.
+     *
+     * Отдельной книгой, а не отсылкой к общей: человек уже набрал admin, и
+     * посылать его листать до нужной страницы значило бы ответить не на тот
+     * вопрос, который он задал.
+     */
+    private void adminUsage(CommandSender sender) {
+        send(sender, adminEntries(HelpBook.titled("Гильдии — администрирование", "/guild admin"))
+                .build().page(1));
+    }
+
+    /**
+     * Строки администрирования — одним списком на оба места, где они нужны.
+     *
+     * Иначе один и тот же перечень пришлось бы держать в двух копиях, и первая
+     * же новая подкоманда попала бы ровно в одну из них.
+     */
+    private static HelpBook.Builder adminEntries(HelpBook.Builder into) {
+        return into
+                .add("/guild admin remove <ник>", "выгнать игрока из его гильдии")
+                .add("/guild admin transfer <гильдия> <ник>", "назначить другого лидера")
+                .add("/guild admin disband <гильдия>", "распустить чужую гильдию")
+                .add("/guild admin bonus list <гильдия>", "что действует на гильдию")
+                .add(BONUS_GRANT_USAGE, "выдать усиление; без срока — навсегда")
+                .add("/guild admin bonus revoke <вид> <гильдия>", "снять усиление")
+                .add("/guild admin friendlyfire [on|off]", "урон своим в пати, для всего сервера")
+                .add("/guild admin reload", "перечитать config.yml без перезапуска");
+    }
+
+    private static void send(CommandSender sender, List<String> lines) {
+        for (String line : lines) sender.sendMessage(Msg.colored(line));
+    }
+
+    /**
+     * Номер страницы из аргументов.
+     *
+     * Не число — первая страница: «/guild помощь» набирают чаще, чем
+     * «/guild help 2», и отчитывать за это незачем. За границы страница не
+     * выйдет — об этом позаботится сам {@link HelpBook}.
+     */
+    private static int page(String[] args) {
+        if (args.length < 2) return 1;
+        try {
+            return Integer.parseInt(args[1]);
+        } catch (NumberFormatException ignored) {
+            return 1;
         }
     }
 
@@ -703,6 +866,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
                         args[1]);
             }
             if (List.of("join", "info").contains(sub)) return prefixed(guildNames(), args[1]);
+            if (List.of("help", "помощь").contains(sub)) return prefixed(List.of("1", "2"), args[1]);
         }
         if (args.length == 3 && sub.equals("admin")) {
             String action = args[1].toLowerCase(Locale.ROOT);

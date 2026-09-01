@@ -38,13 +38,13 @@ commands:
     usage: /reset <токен> — затем /reset <пароль> <пароль ещё раз>
   2fa:
     description: Двухфакторная авторизация по коду из приложения
-    usage: /2fa <код> | /2fa enable | /2fa confirm <код> | /2fa disable <код>
+    usage: /2fa help — список команд с описанием
   unregister:
     description: Удалить свою регистрацию
     usage: /unregister <ваш пароль>
   auth:
     description: Администрирование авторизации
-    usage: /auth reset|info|unlock|logout|history|unregister|2fa-off <ник> | /auth reload
+    usage: /auth help — список подкоманд с описанием
     permission: aurumauth.admin
 
 permissions:

@@ -58,6 +58,7 @@ public final class MariaDbGuildRepository implements GuildRepository {
     private final String members;
     private final String bankLog;
     private final String bonuses;
+    private final String regions;
 
     public MariaDbGuildRepository(GuildsConfig config) {
         HikariConfig hikari = new HikariConfig();
@@ -76,6 +77,7 @@ public final class MariaDbGuildRepository implements GuildRepository {
         this.members = config.membersTable();
         this.bankLog = config.bankLogTable();
         this.bonuses = config.bonusesTable();
+        this.regions = config.regionsTable();
     }
 
     @Override
@@ -165,12 +167,28 @@ public final class MariaDbGuildRepository implements GuildRepository {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
                 """.formatted(bonuses, guilds);
 
+        // Первичный ключ по тройке: регион уникален в пределах мира, а не
+        // сервера, и два мира вполне могут иметь регион с одним именем.
+        // Каскад по гильдии: распущенная гильдия не должна оставлять за собой
+        // привязки к регионам, которых больше некому принадлежать.
+        String regionsDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  guild_id  BIGINT      NOT NULL,
+                  world     VARCHAR(64) NOT NULL,
+                  region_id VARCHAR(64) NOT NULL,
+                  PRIMARY KEY (guild_id, world, region_id),
+                  CONSTRAINT fk_region_guild FOREIGN KEY (guild_id)
+                      REFERENCES %s (id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(regions, guilds);
+
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate(guildsDdl);
             statement.executeUpdate(membersDdl);
             statement.executeUpdate(bankDdl);
             statement.executeUpdate(bonusesDdl);
+            statement.executeUpdate(regionsDdl);
         }
     }
 
@@ -409,6 +427,45 @@ public final class MariaDbGuildRepository implements GuildRepository {
             statement.setLong(1, guildId);
             statement.setString(2, type.name());
         });
+    }
+
+    // --------------------------------------------------- регионы WorldGuard
+
+    @Override
+    public List<GuildRegion> loadRegions() throws Exception {
+        List<GuildRegion> result = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT guild_id, world, region_id FROM " + regions);
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                result.add(new GuildRegion(
+                        rs.getLong("guild_id"), rs.getString("world"), rs.getString("region_id")));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public void addRegion(GuildRegion region) throws Exception {
+        // IGNORE, а не проверка перед вставкой: привязать один и тот же регион
+        // дважды — не ошибка, а повтор команды.
+        update("INSERT IGNORE INTO " + regions + " (guild_id, world, region_id) VALUES (?, ?, ?)",
+                statement -> {
+                    statement.setLong(1, region.guildId());
+                    statement.setString(2, region.world());
+                    statement.setString(3, region.regionId());
+                });
+    }
+
+    @Override
+    public void removeRegion(GuildRegion region) throws Exception {
+        update("DELETE FROM " + regions + " WHERE guild_id = ? AND world = ? AND region_id = ?",
+                statement -> {
+                    statement.setLong(1, region.guildId());
+                    statement.setString(2, region.world());
+                    statement.setString(3, region.regionId());
+                });
     }
 
     @Override

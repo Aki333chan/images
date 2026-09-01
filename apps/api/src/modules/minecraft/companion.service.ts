@@ -12,6 +12,7 @@ import type {
   MinecraftEconomyDto,
   MinecraftGiveItemDto,
   MinecraftGiveResponse,
+  MinecraftGuildBonusDto,
   MinecraftGuildDto,
   MinecraftGuildMembershipDto,
   MinecraftGuildRank,
@@ -61,6 +62,17 @@ interface RawGiveResult {
   requested?: number;
   given?: number;
   error?: string | null;
+}
+
+interface RawGuildBonus {
+  type?: string;
+  title?: string;
+  magnitude?: number;
+  multiplier?: boolean;
+  /** 0 — постоянный. */
+  expiresAt?: number;
+  grantedBy?: string;
+  grantedAt?: number;
 }
 
 interface RawGuildMember {
@@ -129,7 +141,7 @@ export class CompanionService {
   private async callRaw<T>(
     serverId: string,
     path: string,
-    init?: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number },
+    init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; timeoutMs?: number },
   ): Promise<
     | { ok: true; body: T }
     | { ok: false; status: number | null; code: string | null; error: string | null }
@@ -581,6 +593,44 @@ export class CompanionService {
     };
   }
 
+  /** Действующие бонусы гильдии. null — companion или плагин гильдий недоступны. */
+  async getGuildBonuses(
+    serverId: string,
+    guildId: number,
+  ): Promise<MinecraftGuildBonusDto[] | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<{ bonuses?: RawGuildBonus[] }>(
+      serverId,
+      `/guilds/${guildId}/bonuses`,
+    );
+    if (!result.ok) return null;
+    return (result.body.bonuses ?? []).map(toBonus);
+  }
+
+  /**
+   * Выдать или снять бонус.
+   *
+   * Возвращает тот же вид ответа, что и остальное вмешательство администрации:
+   * текст отказа приходит из самого плагина, где он написан рядом с условием,
+   * при котором возникает. Панели остаётся показать его человеку.
+   */
+  async guildBonusAction(
+    serverId: string,
+    path: string,
+    method: 'POST' | 'DELETE',
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; message: string }> {
+    if (!(await this.isConfigured(serverId))) {
+      return { ok: false, message: 'Companion-плагин на игровом сервере не настроен' };
+    }
+    const result = await this.callRaw<RawGuildOutcome>(serverId, path, { method, body });
+    if (result.ok) return { ok: true, message: result.body.message ?? 'Готово' };
+    if (result.code === 'guilds-unavailable') {
+      return { ok: false, message: 'На игровом сервере не установлен плагин гильдий' };
+    }
+    return { ok: false, message: result.error ?? 'Игровой сервер не ответил' };
+  }
+
   /**
    * Вмешательство администрации.
    *
@@ -654,6 +704,25 @@ export class CompanionService {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Бонус из ответа плагина.
+ *
+ * Ноль в expiresAt означает «постоянный» — в панели это null, потому что для
+ * интерфейса «нет срока» и «срок в эпохе ноль» это разные вещи, а для JSON
+ * ноль был проще отсутствующего поля.
+ */
+function toBonus(raw: RawGuildBonus): MinecraftGuildBonusDto {
+  return {
+    type: raw.type ?? 'unknown',
+    title: raw.title ?? raw.type ?? 'Бонус',
+    magnitude: numberOr(raw.magnitude, 1),
+    multiplier: raw.multiplier !== false,
+    expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
+    grantedBy: raw.grantedBy ?? '—',
+    grantedAt: new Date(numberOr(raw.grantedAt, Date.now())).toISOString(),
+  };
 }
 
 function toItemDto(raw: RawItem): MinecraftInventoryItemDto {
