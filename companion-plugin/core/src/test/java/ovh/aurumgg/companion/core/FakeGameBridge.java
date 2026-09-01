@@ -331,4 +331,33 @@ public final class FakeGameBridge implements GameBridge {
         guildActions.add("remove " + targetName + " " + actor);
         return Optional.of(guildOutcome);
     }
+
+    /** Что панель просила сделать с бонусами — прогон это сверяет. */
+    public final List<String> bonusCalls = new ArrayList<>();
+    @Override
+    public List<ovh.aurumgg.companion.core.model.GuildBonusInfo> guildBonuses(long guildId) {
+        if (!guildsInstalled) return List.of();
+        return List.of(new ovh.aurumgg.companion.core.model.GuildBonusInfo(
+                "experience", "Опыт", 2.0, true, 0L, "ГМ", 1_700_000_000_000L));
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildGrantBonus(
+            long guildId, String type, double magnitude, long seconds, String actor) {
+        if (!guildsInstalled) return Optional.empty();
+        bonusCalls.add("grant " + guildId + " " + type + " " + magnitude + " " + seconds);
+        if (!type.equals("experience")) {
+            return Optional.of(new ovh.aurumgg.companion.core.model.GuildActionOutcome(
+                    false, "Неизвестный вид бонуса: " + type));
+        }
+        return Optional.of(new ovh.aurumgg.companion.core.model.GuildActionOutcome(true, "Выдан"));
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildRevokeBonus(
+            long guildId, String type, String actor) {
+        if (!guildsInstalled) return Optional.empty();
+        bonusCalls.add("revoke " + guildId + " " + type);
+        return Optional.of(new ovh.aurumgg.companion.core.model.GuildActionOutcome(true, "Снят"));
+    }
 }

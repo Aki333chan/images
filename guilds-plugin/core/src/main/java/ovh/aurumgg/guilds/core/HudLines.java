@@ -23,11 +23,31 @@ import java.util.List;
  * бой, но их здоровье видно и по строке «в пати 8 человек», а вот блок гильдии
  * занимает четыре строки и целиком помещается всегда. Обрезанный список пати
  * честно заканчивается строкой «и ещё N».
+ *
+ * <h2>Бонусы</h2>
+ *
+ * Действующие усиления показываются зелёным под блоком гильдии — чтобы человек
+ * ВИДЕЛ, что купленный гильдией бонус сейчас работает, а не гадал. Без этого
+ * бонус на добычу неотличим от его отсутствия: руда падает, а насколько её
+ * стало больше, на глаз не скажешь.
+ *
+ * Строк под них не больше трёх: видов бонусов всего пять, и в редком случае,
+ * когда действуют все, остальные сворачиваются в «и ещё N» — иначе блок
+ * гильдии съел бы список пати, ради которого сайдбар в бою и нужен.
  */
 public final class HudLines {
 
     /** Сколько строк влезает в сайдбар. */
     public static final int MAX_LINES = 15;
+
+    /**
+     * Сколько бонусов показывать строками.
+     *
+     * Больше трёх — и блок гильдии начинает вытеснять пати. Полный список
+     * всегда есть в {@code /guild bonuses}, а в сайдбаре важнее сам факт «у
+     * нас что-то действует» и ближайший срок.
+     */
+    static final int MAX_BONUS_LINES = 3;
 
     private HudLines() {}
 
@@ -73,7 +93,77 @@ public final class HudLines {
         if (model.bankBalance() != null) {
             block.add("&7Банк: &6" + money(model.bankBalance()));
         }
+        block.addAll(bonusLines(model));
         return block;
+    }
+
+    /**
+     * Действующие бонусы — зелёным, с остатком времени.
+     *
+     * Зелёный по всей строке, а не только у названия: это единственный блок
+     * сайдбара, который сообщает не факты о составе, а что игроку сейчас
+     * ХОРОШО, и цветом он отделяется от остального с одного взгляда.
+     */
+    private static List<String> bonusLines(HudModel model) {
+        List<String> lines = new ArrayList<>();
+        if (!model.hasBonuses()) return lines;
+
+        List<HudModel.Bonus> bonuses = model.bonuses();
+        boolean truncated = bonuses.size() > MAX_BONUS_LINES;
+        int shown = truncated ? MAX_BONUS_LINES - 1 : bonuses.size();
+
+        lines.add("&7Бонусы");
+        for (int i = 0; i < shown; i++) {
+            lines.add(bonusLine(bonuses.get(i)));
+        }
+        if (truncated) lines.add("&8… и ещё " + (bonuses.size() - shown));
+        return lines;
+    }
+
+    private static String bonusLine(HudModel.Bonus bonus) {
+        String value = bonus.multiplier()
+                ? "\u00D7" + multiplierText(bonus.magnitude())
+                : String.valueOf(Math.round(bonus.magnitude()));
+        String left = bonus.secondsLeft() == null ? "" : " &8" + shortDurationText(bonus.secondsLeft());
+        return "&a" + bonus.title() + " " + value + left;
+    }
+
+    /**
+     * Множитель без хвоста из нулей: «×1.5», а не «×1.50».
+     *
+     * Публичный: тем же видом бонус подписан и в {@code /guild info}, чтобы
+     * человек, увидевший строку в сайдбаре, узнал её в карточке гильдии.
+     *
+     * Отдельно от {@link #money(double)}: у денег два знака после запятой —
+     * это копейки, а у множителя второй знак ничего не значит и только ест
+     * ширину, которой в сайдбаре и так нет.
+     */
+    public static String multiplierText(double value) {
+        String text = String.format(java.util.Locale.ROOT, "%.2f", value);
+        // Хвостовые нули и осиротевшую точку — долой: «1.50» → «1.5», «2.00» → «2».
+        if (text.contains(".")) {
+            text = text.replaceAll("0+$", "").replaceAll("\\.$", "");
+        }
+        return text;
+    }
+
+    /**
+     * Остаток времени в два-три знака: «6д», «3ч», «12м».
+     *
+     * Публичный по той же причине, что и множитель: сроки в сайдбаре и в
+     * карточке гильдии должны читаться одинаково.
+     *
+     * Округление ВВЕРХ, а не вниз: выданный на неделю бонус живёт 167 часов с
+     * копейками, и «6д» сразу после выдачи читалось бы как обман. Меньше
+     * минуты — «&lt;1м», а не «0м»: ноль выглядит как «уже кончился», хотя
+     * бонус ещё действует.
+     */
+    public static String shortDurationText(long seconds) {
+        if (seconds <= 0) return "0м";
+        if (seconds < 60) return "<1м";
+        if (seconds < 3600) return (seconds + 59) / 60 + "м";
+        if (seconds < 86_400) return (seconds + 3599) / 3600 + "ч";
+        return (seconds + 86_399) / 86_400 + "д";
     }
 
     private static String memberLine(HudModel.Member member) {

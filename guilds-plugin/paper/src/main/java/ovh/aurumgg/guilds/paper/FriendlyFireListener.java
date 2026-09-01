@@ -6,10 +6,27 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import java.util.function.BooleanSupplier;
 import ovh.aurumgg.guilds.core.GuildService;
+import ovh.aurumgg.guilds.core.PartyService;
 
 /**
- * Не бить своих, если гильдия так решила.
+ * Не бить своих.
+ *
+ * <h2>Два разных «своих»</h2>
+ *
+ * <b>Гильдия</b> решает за себя: настройка лежит в самой гильдии, и лидер
+ * меняет её в меню. У разных гильдий она разная, и это правильно — одни
+ * собираются воевать вместе, другие устраивают спарринги.
+ *
+ * <b>Пати</b> — наоборот, настройка сервера, одна на всех. Пати живёт час и
+ * собирается на ходу; заводить в ней собственную политику значило бы спрашивать
+ * об этом при каждом сборе группы. По умолчанию урон по своим в пати выключен:
+ * группу собирают, чтобы идти вместе, и первое же случайное попадание — это
+ * ссора на ровном месте.
+ *
+ * Правило простое: своим считается тот, кто с тобой в пати ИЛИ в гильдии, и
+ * достаточно одной из двух защит, чтобы удар не прошёл.
  *
  * <h2>Про приоритет</h2>
  *
@@ -27,9 +44,18 @@ import ovh.aurumgg.guilds.core.GuildService;
 final class FriendlyFireListener implements Listener {
 
     private final GuildService guilds;
+    private final PartyService parties;
+    /**
+     * Поставщик, а не флаг: настройку меняют на ходу — командой и
+     * перезагрузкой конфига, — и снимок при создании слушателя устарел бы
+     * сразу же.
+     */
+    private final BooleanSupplier partyFriendlyFire;
 
-    FriendlyFireListener(GuildService guilds) {
+    FriendlyFireListener(GuildService guilds, PartyService parties, BooleanSupplier partyFriendlyFire) {
         this.guilds = guilds;
+        this.parties = parties;
+        this.partyFriendlyFire = partyFriendlyFire;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -39,10 +65,21 @@ final class FriendlyFireListener implements Listener {
         Player attacker = attacker(event);
         if (attacker == null || attacker.equals(victim)) return;
 
-        if (!guilds.sameGuild(attacker.getUniqueId(), victim.getUniqueId())) return;
-        if (guilds.friendlyFireAllowed(attacker.getUniqueId())) return;
+        if (protectedFromEachOther(attacker.getUniqueId(), victim.getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
 
-        event.setCancelled(true);
+    /**
+     * Защищает ли хоть одна из двух связей.
+     *
+     * Именно «хоть одна»: гильдия, разрешившая себе спарринги, не должна
+     * отменять защиту внутри пати — иначе включённый в гильдии свой огонь
+     * молча снимал бы её и с временной группы, куда человек зашёл на один бой.
+     */
+    private boolean protectedFromEachOther(java.util.UUID attacker, java.util.UUID victim) {
+        if (!partyFriendlyFire.getAsBoolean() && parties.sameParty(attacker, victim)) return true;
+        return guilds.sameGuild(attacker, victim) && !guilds.friendlyFireAllowed(attacker);
     }
 
     private static Player attacker(EntityDamageByEntityEvent event) {

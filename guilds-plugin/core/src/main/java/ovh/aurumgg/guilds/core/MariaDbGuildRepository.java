@@ -14,7 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import ovh.aurumgg.guilds.api.BankAccess;
+import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildBankEntry;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildMember;
 import ovh.aurumgg.guilds.api.GuildRank;
 import ovh.aurumgg.guilds.api.GuildSettings;
@@ -55,6 +57,8 @@ public final class MariaDbGuildRepository implements GuildRepository {
     private final String guilds;
     private final String members;
     private final String bankLog;
+    private final String bonuses;
+    private final String regions;
 
     public MariaDbGuildRepository(GuildsConfig config) {
         HikariConfig hikari = new HikariConfig();
@@ -72,6 +76,8 @@ public final class MariaDbGuildRepository implements GuildRepository {
         this.guilds = config.guildsTable();
         this.members = config.membersTable();
         this.bankLog = config.bankLogTable();
+        this.bonuses = config.bonusesTable();
+        this.regions = config.regionsTable();
     }
 
     @Override
@@ -138,11 +144,51 @@ public final class MariaDbGuildRepository implements GuildRepository {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
                 """.formatted(bankLog);
 
+        // Первичный ключ по паре (guild_id, type): один бонус каждого вида на
+        // гильдию. Складывать два множителя добычи не нужно — это превращается
+        // в гонку, где выгоднее купить пять слабых бонусов вместо одного
+        // сильного. Повторная выдача заменяет прежний, и следит за этим база,
+        // а не только код.
+        //
+        // expires_at допускает NULL, и это единственный признак постоянного
+        // бонуса. Отдельного флага нет намеренно: флаг и дата однажды
+        // разойдутся, и оба случая читаются как порча данных.
+        String bonusesDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  guild_id   BIGINT       NOT NULL,
+                  type       VARCHAR(32)  NOT NULL,
+                  magnitude  DOUBLE       NOT NULL,
+                  expires_at TIMESTAMP    NULL DEFAULT NULL,
+                  granted_by VARCHAR(48)  NOT NULL,
+                  granted_at TIMESTAMP    NOT NULL,
+                  PRIMARY KEY (guild_id, type),
+                  CONSTRAINT fk_bonus_guild FOREIGN KEY (guild_id)
+                      REFERENCES %s (id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(bonuses, guilds);
+
+        // Первичный ключ по тройке: регион уникален в пределах мира, а не
+        // сервера, и два мира вполне могут иметь регион с одним именем.
+        // Каскад по гильдии: распущенная гильдия не должна оставлять за собой
+        // привязки к регионам, которых больше некому принадлежать.
+        String regionsDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  guild_id  BIGINT      NOT NULL,
+                  world     VARCHAR(64) NOT NULL,
+                  region_id VARCHAR(64) NOT NULL,
+                  PRIMARY KEY (guild_id, world, region_id),
+                  CONSTRAINT fk_region_guild FOREIGN KEY (guild_id)
+                      REFERENCES %s (id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(regions, guilds);
+
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate(guildsDdl);
             statement.executeUpdate(membersDdl);
             statement.executeUpdate(bankDdl);
+            statement.executeUpdate(bonusesDdl);
+            statement.executeUpdate(regionsDdl);
         }
     }
 
@@ -326,6 +372,100 @@ public final class MariaDbGuildRepository implements GuildRepository {
             statement.setString(1, username);
             statement.setString(2, uuid.toString());
         });
+    }
+
+    // ------------------------------------------------------------ бонусы
+
+    @Override
+    public Map<Long, List<GuildBonus>> loadBonuses() throws Exception {
+        Map<Long, List<GuildBonus>> result = new java.util.HashMap<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT guild_id, type, magnitude, expires_at, granted_by, granted_at FROM "
+                                + bonuses);
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                BonusType type = BonusType.parse(rs.getString("type"));
+                // Незнакомый вид пропускаем, а не падаем: строка могла
+                // остаться от версии плагина, где такой бонус был. Уронить
+                // из-за неё загрузку всех гильдий было бы несоразмерно.
+                if (type == null) continue;
+                Timestamp expires = rs.getTimestamp("expires_at");
+                result.computeIfAbsent(rs.getLong("guild_id"), key -> new ArrayList<>())
+                        .add(new GuildBonus(
+                                type,
+                                rs.getDouble("magnitude"),
+                                expires == null ? null : expires.toInstant(),
+                                rs.getString("granted_by"),
+                                rs.getTimestamp("granted_at").toInstant()));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public void saveBonus(long guildId, GuildBonus bonus) throws Exception {
+        // Вставка с заменой по первичному ключу: выдать бонус повторно —
+        // обычное дело (продлить, усилить), и отдельный «проверить и обновить»
+        // означал бы гонку между двумя торговцами.
+        update("INSERT INTO " + bonuses + " (guild_id, type, magnitude, expires_at, granted_by, "
+                + "granted_at) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE "
+                + "magnitude = VALUES(magnitude), expires_at = VALUES(expires_at), "
+                + "granted_by = VALUES(granted_by), granted_at = VALUES(granted_at)", statement -> {
+            statement.setLong(1, guildId);
+            statement.setString(2, bonus.type().name());
+            statement.setDouble(3, bonus.magnitude());
+            statement.setTimestamp(4, bonus.expiresAt() == null ? null : Timestamp.from(bonus.expiresAt()));
+            statement.setString(5, bonus.grantedBy());
+            statement.setTimestamp(6, Timestamp.from(bonus.grantedAt()));
+        });
+    }
+
+    @Override
+    public void deleteBonus(long guildId, BonusType type) throws Exception {
+        update("DELETE FROM " + bonuses + " WHERE guild_id = ? AND type = ?", statement -> {
+            statement.setLong(1, guildId);
+            statement.setString(2, type.name());
+        });
+    }
+
+    // --------------------------------------------------- регионы WorldGuard
+
+    @Override
+    public List<GuildRegion> loadRegions() throws Exception {
+        List<GuildRegion> result = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT guild_id, world, region_id FROM " + regions);
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                result.add(new GuildRegion(
+                        rs.getLong("guild_id"), rs.getString("world"), rs.getString("region_id")));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public void addRegion(GuildRegion region) throws Exception {
+        // IGNORE, а не проверка перед вставкой: привязать один и тот же регион
+        // дважды — не ошибка, а повтор команды.
+        update("INSERT IGNORE INTO " + regions + " (guild_id, world, region_id) VALUES (?, ?, ?)",
+                statement -> {
+                    statement.setLong(1, region.guildId());
+                    statement.setString(2, region.world());
+                    statement.setString(3, region.regionId());
+                });
+    }
+
+    @Override
+    public void removeRegion(GuildRegion region) throws Exception {
+        update("DELETE FROM " + regions + " WHERE guild_id = ? AND world = ? AND region_id = ?",
+                statement -> {
+                    statement.setLong(1, region.guildId());
+                    statement.setString(2, region.world());
+                    statement.setString(3, region.regionId());
+                });
     }
 
     @Override

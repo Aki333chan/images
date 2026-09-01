@@ -16,6 +16,7 @@ import org.bukkit.entity.Player;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.core.AuthAccount;
 import ovh.aurumgg.auth.core.AuthService;
+import ovh.aurumgg.auth.core.HelpBook;
 import ovh.aurumgg.auth.core.LoginRecord;
 
 /**
@@ -44,7 +45,8 @@ import ovh.aurumgg.auth.core.LoginRecord;
 final class AuthAdminCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS =
-            List.of("reset", "info", "unlock", "logout", "history", "unregister", "2fa-off", "reload");
+            List.of("reset", "info", "unlock", "logout", "history", "unregister", "2fa-off",
+                    "reload", "help");
 
     /** Сколько строк истории показывать за раз: чат больше не вмещает. */
     private static final int HISTORY_LIMIT = 30;
@@ -75,6 +77,11 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
+
+        if (sub.equals("help") || sub.equals("помощь") || sub.equals("?")) {
+            usage(sender, args.length > 1 ? args[1] : "1");
+            return true;
+        }
 
         if (sub.equals("reload")) {
             if (!allowed(sender, "aurumauth.admin.reload")) return true;
@@ -298,9 +305,42 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         plugin.getServer().getScheduler().runTask(plugin, action);
     }
 
+    /**
+     * Справка: строка на подкоманду и что она делает.
+     *
+     * Раньше это была одна строка с подкомандами через вертикальную черту.
+     * Разница между unlock и logout из неё не следует никак, а ошибиться тут
+     * дорого: одна снимает блокировку, другая выкидывает игрока обратно на
+     * экран входа.
+     */
     private void usage(CommandSender sender) {
-        sender.sendMessage(AurumAuthPlugin.prefixed(
-                "/auth reset|info|unlock|logout|history|unregister|2fa-off <ник> | /auth reload"));
+        usage(sender, "1");
+    }
+
+    private void usage(CommandSender sender, String page) {
+        HelpBook book = HelpBook.titled("Авторизация — администрирование", "/auth help")
+                .add("/auth info <ник>", "что известно об аккаунте: когда и откуда заходил")
+                .add("/auth reset <ник>", "выдать одноразовый токен смены пароля")
+                .add("/auth unlock <ник>", "снять блокировку после неудачных попыток входа")
+                .add("/auth logout <ник>", "выкинуть на экран входа и погасить сессию")
+                .add("/auth history <ник> [24h|3d|7d|30d]", "история входов за период")
+                .add("/auth 2fa-off <ник>", "выключить двухфакторку потерявшему телефон")
+                .add("/auth unregister <ник> confirm", "снять регистрацию — потребует confirm")
+                .add("/auth reload", "перечитать тексты сообщений без перезапуска")
+                .build();
+
+        for (String line : book.page(parsePage(page))) {
+            sender.sendMessage(AurumAuthPlugin.colored(line));
+        }
+    }
+
+    /** Не число — первая страница: ругаться за «/auth помощь» незачем. */
+    private static int parsePage(String raw) {
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException ignored) {
+            return 1;
+        }
     }
 
     @Override

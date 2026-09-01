@@ -3,7 +3,9 @@ package ovh.aurumgg.guilds.core;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildBankEntry;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildRank;
 import ovh.aurumgg.guilds.api.GuildSettings;
 
@@ -63,6 +65,30 @@ public interface GuildRepository extends AutoCloseable {
      * никам годичной давности.
      */
     void updateUsername(UUID uuid, String username) throws Exception;
+
+    // ------------------------------------------------------------ бонусы
+
+    /**
+     * Все бонусы всех гильдий — читается один раз при старте, как и сами
+     * гильдии. Дальше живут в памяти: величины спрашивают на каждом сломанном
+     * блоке.
+     */
+    java.util.Map<Long, List<GuildBonus>> loadBonuses() throws Exception;
+
+    /** Выдать или заменить бонус этого вида у гильдии. */
+    void saveBonus(long guildId, GuildBonus bonus) throws Exception;
+
+    /** Снять бонус. Тихо ничего не делает, если такого не было. */
+    void deleteBonus(long guildId, BonusType type) throws Exception;
+
+    // --------------------------------------------------- регионы WorldGuard
+
+    /** Все привязки регионов к гильдиям — читается один раз при старте. */
+    List<GuildRegion> loadRegions() throws Exception;
+
+    void addRegion(GuildRegion region) throws Exception;
+
+    void removeRegion(GuildRegion region) throws Exception;
 
     void logBank(GuildBankEntry entry) throws Exception;
 

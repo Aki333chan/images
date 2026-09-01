@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  MINECRAFT_BONUS_TITLES,
+  MINECRAFT_BONUS_TYPES,
   MINECRAFT_GUILD_RANK_TITLES,
+  type MinecraftBonusType,
+  type MinecraftGuildBonusDto,
   type MinecraftGuildDto,
   type MinecraftGuildMemberDto,
 } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorText,
+  Input,
+  Label,
+  Select,
+  Spinner,
+} from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
 import { Modal, PromptModal } from './PlayerModal';
 
@@ -227,6 +240,13 @@ function GuildCard({
           </ul>
         </div>
 
+        <GuildBonuses
+          serverId={serverId}
+          moduleId={moduleId}
+          guildId={guild.id}
+          canManage={canManage}
+        />
+
         {canManage && (
           <div className="space-y-2 border-t border-border pt-4">
             <Label>Вмешательство администрации</Label>
@@ -314,4 +334,234 @@ function GuildCard({
 /** Сумма без хвоста из нулей: «1200» читается быстрее, чем «1200.00». */
 function formatMoney(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+/**
+ * Сколько действует бонус.
+ *
+ * Готовые сроки, а не поле для секунд: администратор думает «на неделю», а не
+ * «на 604800», и любая арифметика в голове тут лишний повод ошибиться на
+ * порядок. Постоянный бонус стоит первым — это то, что выдают за заслуги, а
+ * временный обычно приходит от NPC-торговца, а не из панели.
+ */
+const BONUS_DURATIONS: { value: string; label: string; seconds: number }[] = [
+  { value: 'forever', label: 'Навсегда', seconds: 0 },
+  { value: '1h', label: 'На час', seconds: 3600 },
+  { value: '1d', label: 'На сутки', seconds: 24 * 3600 },
+  { value: '7d', label: 'На неделю', seconds: 7 * 24 * 3600 },
+  { value: '30d', label: 'На месяц', seconds: 30 * 24 * 3600 },
+];
+
+/**
+ * Бонусы гильдии: что действует и выдача новых.
+ *
+ * Грузятся отдельным запросом при открытии карточки, а не вместе со списком
+ * гильдий: бонусы есть далеко не у всех, а спрашивать их для каждой строки
+ * списка — лишний поход на игровой сервер ради данных, которые почти всегда
+ * пустые.
+ *
+ * Плагина гильдий может не быть — тогда роут отвечает 404, и блок честно
+ * говорит, что бонусы недоступны, вместо того чтобы показать пустой список,
+ * неотличимый от «бонусов нет».
+ */
+function GuildBonuses({
+  serverId,
+  moduleId,
+  guildId,
+  canManage,
+}: {
+  serverId: string;
+  moduleId: string;
+  guildId: number;
+  canManage: boolean;
+}) {
+  const path = `${base(moduleId, serverId)}/guilds/${guildId}/bonuses`;
+  const [bonuses, setBonuses] = useState<MinecraftGuildBonusDto[] | null>(null);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [type, setType] = useState<MinecraftBonusType>('mining_speed');
+  const [magnitude, setMagnitude] = useState('1.5');
+  const [duration, setDuration] = useState('forever');
+
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      setBonuses(await api<MinecraftGuildBonusDto[]>(path));
+    } catch (e) {
+      setBonuses([]);
+      setError((e as Error).message);
+    }
+  }, [path]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (bonuses === null) return <Spinner />;
+
+  return (
+    <div className="space-y-2 border-t border-border pt-4">
+      <Label>Бонусы гильдии</Label>
+
+      {bonuses.length === 0 ? (
+        <p className="text-xs text-muted">Бонусов нет.</p>
+      ) : (
+        <ul className="divide-y divide-border rounded border border-border">
+          {bonuses.map((bonus) => (
+            <li key={bonus.type} className="flex items-center justify-between gap-2 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm">
+                  {bonus.title} · {describeMagnitude(bonus)}
+                </p>
+                <p className="text-xs text-muted">
+                  {describeExpiry(bonus.expiresAt)} · выдал {bonus.grantedBy}
+                </p>
+              </div>
+              {canManage && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void revoke(bonus)}
+                >
+                  Снять
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canManage && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted">
+            Один бонус каждого вида: выдача поверх действующего заменяет его, а не складывается с
+            ним. Множитель 1.5 значит «в полтора раза», для скорости и добычи — уровень эффекта
+            (1, 2, 3). С зачарованиями бонус <strong className="font-medium">складывается</strong>:
+            множитель считается от того, что выпало бы и так, уже с «Удачей» и «Добычей», — то есть
+            чем лучше инструмент, тем больше даёт бонус.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[10rem] flex-1">
+              <Label>Вид</Label>
+              <Select
+                value={type}
+                onChange={(v) => setType(v as MinecraftBonusType)}
+                options={MINECRAFT_BONUS_TYPES.map((id) => ({
+                  value: id,
+                  label: MINECRAFT_BONUS_TITLES[id],
+                }))}
+              />
+            </div>
+            <div className="w-24">
+              <Label>Величина</Label>
+              <Input
+                value={magnitude}
+                inputMode="decimal"
+                onChange={(e) => setMagnitude(e.target.value)}
+              />
+            </div>
+            <div className="min-w-[8rem]">
+              <Label>Срок</Label>
+              <Select
+                value={duration}
+                onChange={setDuration}
+                options={BONUS_DURATIONS.map((d) => ({ value: d.value, label: d.label }))}
+              />
+            </div>
+            <Button size="sm" disabled={busy} onClick={() => void grant()}>
+              Выдать
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {error && <ErrorText>{error}</ErrorText>}
+      {result && <p className="text-xs text-emerald-400">{result}</p>}
+    </div>
+  );
+
+  async function grant() {
+    // Запятая вместо точки — обычная опечатка русской раскладки, и отказывать
+    // из-за неё незачем: понятно же, что имелось в виду.
+    const value = Number(magnitude.replace(',', '.'));
+    if (!Number.isFinite(value) || value <= 0) {
+      setError('Величина — положительное число, например 1.5 или 2');
+      return;
+    }
+    const seconds = BONUS_DURATIONS.find((d) => d.value === duration)?.seconds ?? 0;
+    await send(() =>
+      api<{ output: string }>(path, {
+        method: 'POST',
+        body: JSON.stringify({ type, magnitude: value, seconds }),
+      }),
+    );
+  }
+
+  async function revoke(bonus: MinecraftGuildBonusDto) {
+    await send(() =>
+      api<{ output: string }>(`${path}/${encodeURIComponent(bonus.type)}`, { method: 'DELETE' }),
+    );
+  }
+
+  /**
+   * Общая обвязка: и выдача, и снятие заканчиваются одинаково — сообщением от
+   * плагина и перечитанным списком, потому что величину он мог подрезать до
+   * своего потолка, и показать надо то, что действует на самом деле, а не то,
+   * что мы попросили.
+   */
+  async function send(action: () => Promise<{ output: string }>) {
+    setBusy(true);
+    setError('');
+    setResult('');
+    try {
+      setResult((await action()).output);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+}
+
+/** «×1.5» или «уровень 2» — смотря что за величина. */
+function describeMagnitude(bonus: MinecraftGuildBonusDto): string {
+  if (bonus.multiplier) return `×${formatMultiplier(bonus.magnitude)}`;
+  return `уровень ${Math.round(bonus.magnitude)}`;
+}
+
+/**
+ * Множитель без хвоста из нулей.
+ *
+ * Отдельно от денег: «×1.50» выглядит как сумма, а не как «в полтора раза», —
+ * у множителя нет копеек, и второй знак после запятой здесь только шумит.
+ */
+function formatMultiplier(value: number): string {
+  return String(Number(value.toFixed(2)));
+}
+
+/**
+ * Срок словами.
+ *
+ * Дата истечения сама по себе мало что говорит — «до 14.09» требует посмотреть
+ * на календарь. Поэтому рядом остаётся и сама дата, и сколько до неё осталось.
+ */
+function describeExpiry(expiresAt: string | null): string {
+  if (!expiresAt) return 'постоянный';
+  const left = new Date(expiresAt).getTime() - Date.now();
+  if (left <= 0) return 'истёк';
+
+  // Округление к ближайшему, а не вниз. Выданный на неделю бонус живёт
+  // 167 часов с копейками, и округление вниз показало бы «осталось 6 дн.»
+  // сразу после выдачи — человек решил бы, что его обсчитали.
+  const hours = left / 3600_000;
+  const human =
+    hours >= 48
+      ? `${Math.round(hours / 24)} дн.`
+      : hours >= 1
+        ? `${Math.round(hours)} ч.`
+        : `${Math.max(1, Math.round(left / 60_000))} мин.`;
+  return `осталось ${human} (до ${new Date(expiresAt).toLocaleString('ru-RU')})`;
 }

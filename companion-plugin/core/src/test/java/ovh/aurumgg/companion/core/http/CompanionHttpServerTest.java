@@ -356,6 +356,89 @@ class CompanionHttpServerTest {
         assertTrue(bridge.slotWrites.isEmpty());
     }
 
+    // ------------------------------------------------------- бонусы гильдий
+
+    private HttpResponse<String> delete(String path, String body) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(base + path))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("Content-Type", "application/json")
+                .method("DELETE", HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    @DisplayName("Бонусы гильдии отдаются со всем, что нужно панели")
+    void listsGuildBonuses() throws Exception {
+        bridge.guildsInstalled = true;
+        HttpResponse<String> response = get("/guilds/7/bonuses", TOKEN);
+        assertEquals(200, response.statusCode());
+        // Название вида приходит от плагина, а не собирается в панели: иначе
+        // новый вид бонуса пришлось бы добавлять в двух местах.
+        assertTrue(response.body().contains("\"title\":\"Опыт\""), response.body());
+        assertTrue(response.body().contains("\"multiplier\":true"), response.body());
+        // Постоянный бонус — ноль, а не отсутствующее поле.
+        assertTrue(response.body().contains("\"expiresAt\":0"), response.body());
+    }
+
+    @Test
+    @DisplayName("Выдача бонуса доезжает до плагина с сроком и величиной")
+    void grantsGuildBonus() throws Exception {
+        bridge.guildsInstalled = true;
+        HttpResponse<String> response = post("/guilds/7/bonuses", TOKEN,
+                "{\"type\":\"experience\",\"magnitude\":2,\"seconds\":3600,\"actor\":\"ГМ\"}");
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("grant 7 experience 2.0 3600"), bridge.bonusCalls);
+    }
+
+    @Test
+    @DisplayName("Без срока бонус выдаётся навсегда")
+    void grantsPermanentBonus() throws Exception {
+        bridge.guildsInstalled = true;
+        assertEquals(200, post("/guilds/7/bonuses", TOKEN,
+                "{\"type\":\"experience\",\"magnitude\":2,\"actor\":\"ГМ\"}").statusCode());
+        assertEquals(List.of("grant 7 experience 2.0 0"), bridge.bonusCalls);
+    }
+
+    @Test
+    @DisplayName("Неизвестный вид — отказ с объяснением, а не «плагина нет»")
+    void rejectsUnknownBonusType() throws Exception {
+        bridge.guildsInstalled = true;
+        // Разные причины требуют разных действий: «нет плагина» — идти ставить
+        // плагин, «нет такого вида» — исправить запрос.
+        HttpResponse<String> response = post("/guilds/7/bonuses", TOKEN,
+                "{\"type\":\"вечнаяжизнь\",\"magnitude\":9,\"actor\":\"ГМ\"}");
+        assertEquals(409, response.statusCode(), response.body());
+        assertTrue(response.body().contains("Неизвестный вид"), response.body());
+    }
+
+    @Test
+    @DisplayName("Без вида бонуса — 400")
+    void requiresBonusType() throws Exception {
+        bridge.guildsInstalled = true;
+        assertEquals(400, post("/guilds/7/bonuses", TOKEN, "{\"magnitude\":2}").statusCode());
+        assertTrue(bridge.bonusCalls.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Снятие бонуса — DELETE с видом в пути")
+    void revokesGuildBonus() throws Exception {
+        bridge.guildsInstalled = true;
+        assertEquals(200, delete("/guilds/7/bonuses/experience", "{\"actor\":\"ГМ\"}").statusCode());
+        assertEquals(List.of("revoke 7 experience"), bridge.bonusCalls);
+    }
+
+    @Test
+    @DisplayName("Без плагина гильдий бонусы отвечают 503, а не пустым списком")
+    void bonusesWithoutGuildsPlugin() throws Exception {
+        // Пустой список означал бы «бонусов нет», и человек бы их выдавал,
+        // не понимая, почему ничего не происходит.
+        bridge.guildsInstalled = false;
+        HttpResponse<String> response = get("/guilds/7/bonuses", TOKEN);
+        assertEquals(503, response.statusCode());
+        assertTrue(response.body().contains("guilds-unavailable"), response.body());
+    }
+
     @Test
     @DisplayName("В ответах об ошибке нет токена")
     void errorsDoNotLeakToken() throws Exception {

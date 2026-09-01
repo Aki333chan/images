@@ -9,6 +9,7 @@ import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
+import ovh.aurumgg.companion.core.model.GuildBonusInfo;
 import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
@@ -233,6 +234,24 @@ public final class PayloadWriter {
             items.add(Json.object(fields));
         }
         return Json.object(Map.of("results", Json.array(items)));
+    }
+
+    public static String guildBonuses(List<GuildBonusInfo> bonuses) {
+        List<String> items = new ArrayList<>(bonuses.size());
+        for (GuildBonusInfo bonus : bonuses) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("type", Json.string(bonus.type()));
+            fields.put("title", Json.string(bonus.title()));
+            fields.put("magnitude", Json.number(bonus.magnitude()));
+            fields.put("multiplier", bonus.multiplier() ? "true" : "false");
+            // 0 — постоянный. Отдельного флага нет: он и дата однажды
+            // разойдутся, и оба случая читаются как порча данных.
+            fields.put("expiresAt", Json.number(bonus.expiresAtEpochMs()));
+            fields.put("grantedBy", Json.string(bonus.grantedBy()));
+            fields.put("grantedAt", Json.number(bonus.grantedAtEpochMs()));
+            items.add(Json.object(fields));
+        }
+        return Json.object(Map.of("bonuses", Json.array(items)));
     }
 
     public static String error(String message, String code) {

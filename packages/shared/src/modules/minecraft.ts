@@ -474,3 +474,50 @@ export const MINECRAFT_GUILD_RANK_TITLES: Record<MinecraftGuildRank, string> = {
   officer: 'офицер',
   member: 'участник',
 };
+
+/**
+ * Вид бонуса гильдии.
+ *
+ * Список повторяет перечисление в плагине, и это осознанная цена: панель
+ * должна знать, что предложить в выпадающем списке, до того как сходит на
+ * игровой сервер. Названия и границы величин при этом приходят ОТ ПЛАГИНА —
+ * дублировать ещё и их значило бы, что новый вид надо добавлять в двух местах
+ * и оба раза не ошибиться.
+ */
+export type MinecraftBonusType =
+  | 'mining_speed'
+  | 'movement_speed'
+  | 'block_drops'
+  | 'mob_drops'
+  | 'experience';
+
+export const MINECRAFT_BONUS_TYPES: MinecraftBonusType[] = [
+  'mining_speed',
+  'movement_speed',
+  'block_drops',
+  'mob_drops',
+  'experience',
+];
+
+/** Подписи для выпадающего списка, пока плагин не прислал свои. */
+export const MINECRAFT_BONUS_TITLES: Record<MinecraftBonusType, string> = {
+  mining_speed: 'Скорость добычи',
+  movement_speed: 'Скорость передвижения',
+  block_drops: 'Добыча из блоков',
+  mob_drops: 'Добыча с мобов',
+  experience: 'Опыт',
+};
+
+export interface MinecraftGuildBonusDto {
+  type: string;
+  /** Название вида — приходит от плагина, а не собирается здесь. */
+  title: string;
+  /** Величина: множитель или уровень эффекта, смотря по multiplier. */
+  magnitude: number;
+  /** true — величина это множитель; false — уровень эффекта зелья. */
+  multiplier: boolean;
+  /** ISO-время истечения; null — бонус постоянный. */
+  expiresAt: string | null;
+  grantedBy: string;
+  grantedAt: string;
+}

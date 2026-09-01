@@ -24,16 +24,16 @@ author: Aurum
 # не может — мы не знаем, какой стоит на сервере, — значит, его onEnable
 # вполне может пройти позже нашего. Поэтому наличие провайдера спрашивается
 # при каждом обращении, а не один раз на старте (см. VaultBridge).
-softdepend: [LuckPerms, Vault, AurumAuth]
+softdepend: [LuckPerms, Vault, AurumAuth, WorldGuard]
 
 commands:
   guild:
     description: Гильдии — постоянные объединения игроков
-    usage: /guild help — игрокам, /guild admin — администрации
+    usage: /guild help — список команд с описанием
     aliases: [гильдия, gu]
   party:
     description: Пати — временная группа
-    usage: /party help
+    usage: /party help — список команд с описанием
     aliases: [пати, pt]
   p:
     description: Написать в чат пати

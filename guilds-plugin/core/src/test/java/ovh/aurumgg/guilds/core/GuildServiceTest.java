@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ovh.aurumgg.guilds.api.BankAccess;
+import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildActionResult;
 import ovh.aurumgg.guilds.api.GuildRank;
 import ovh.aurumgg.guilds.api.JoinPolicy;
@@ -411,5 +412,110 @@ class GuildServiceTest {
         service.invite(LEADER, MEMBER).join();
         service.join(MEMBER, null).join();
         service.setRank(LEADER, OFFICER, GuildRank.OFFICER).join();
+    }
+
+    // ------------------------------------------------------------- бонусы
+
+    private long guildWithLeader() {
+        service.create(LEADER, "Драконы", "DRG").join();
+        return service.guildOf(LEADER).orElseThrow().id();
+    }
+
+    @Test
+    @DisplayName("Временный бонус перестаёт действовать ровно в срок")
+    void бонусИстекаетВовремя() {
+        long guild = guildWithLeader();
+        assertTrue(service.grantBonus(
+                guild, BonusType.EXPERIENCE, 2.0, Duration.ofMinutes(30), "ГМ").join().ok());
+
+        assertEquals(2.0, service.multiplier(LEADER, BonusType.EXPERIENCE));
+
+        // Ровно в момент истечения бонус уже не действует. Уборщик при этом
+        // ещё не приходил: срок «до 20:00» обязан означать 20:00, а не
+        // «примерно до тех пор, пока не проснётся фоновая задача».
+        now.set(now.get().plus(Duration.ofMinutes(30)));
+        assertEquals(1.0, service.multiplier(LEADER, BonusType.EXPERIENCE));
+        assertTrue(service.bonuses(guild).isEmpty());
+    }
+
+    @Test
+    @DisplayName("Постоянный бонус не истекает")
+    void постоянныйБонус() {
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.MINING_SPEED, 2, null, "ГМ").join();
+
+        now.set(now.get().plus(Duration.ofDays(365)));
+        assertEquals(1, service.bonuses(guild).size());
+        assertTrue(service.bonuses(guild).get(0).permanent());
+    }
+
+    @Test
+    @DisplayName("Повторная выдача заменяет бонус, а не складывается с ним")
+    void бонусыНеСкладываются() {
+        // Иначе выгоднее купить пять слабых вместо одного сильного, и выбор
+        // превращается в гонку.
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 1.5, null, "ГМ").join();
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 2.0, null, "торговец").join();
+
+        assertEquals(1, service.bonuses(guild).size());
+        assertEquals(2.0, service.multiplier(LEADER, BonusType.BLOCK_DROPS));
+    }
+
+    @Test
+    @DisplayName("Величина зажимается в границы вида, а не отвергается")
+    void величинаЗажимается() {
+        // Источников выдачи три — команда, панель и чужой плагин-торговец.
+        // Требовать одинаковой проверки от каждого значит однажды получить
+        // «Спешку X» от того, кто её забыл.
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.MOVEMENT_SPEED, 99, null, "торговец").join();
+        assertEquals(BonusType.MOVEMENT_SPEED.max(),
+                service.multiplier(LEADER, BonusType.MOVEMENT_SPEED));
+
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 0.1, null, "торговец").join();
+        assertEquals(BonusType.BLOCK_DROPS.min(),
+                service.multiplier(LEADER, BonusType.BLOCK_DROPS));
+    }
+
+    @Test
+    @DisplayName("Бонус достаётся всей гильдии, а не тому, кому выдали")
+    void бонусНаВсюГильдию() {
+        long guild = guildWithLeader();
+        service.invite(LEADER, MEMBER).join();
+        service.join(MEMBER, "Драконы").join();
+
+        service.grantBonus(guild, BonusType.EXPERIENCE, 2.0, null, "ГМ").join();
+
+        assertEquals(2.0, service.multiplier(MEMBER, BonusType.EXPERIENCE));
+        assertEquals(1.0, service.multiplier(STRANGER, BonusType.EXPERIENCE),
+                "посторонний ничего не получает");
+    }
+
+    @Test
+    @DisplayName("Снятие несуществующего бонуса — отказ, а не молчание")
+    void снятиеНесуществующего() {
+        long guild = guildWithLeader();
+        assertFalse(service.revokeBonus(guild, BonusType.EXPERIENCE, "ГМ").join().ok());
+
+        service.grantBonus(guild, BonusType.EXPERIENCE, 2.0, null, "ГМ").join();
+        assertTrue(service.revokeBonus(guild, BonusType.EXPERIENCE, "ГМ").join().ok());
+        assertTrue(service.bonuses(guild).isEmpty());
+    }
+
+    @Test
+    @DisplayName("Уборщик чистит истёкшие и не трогает живые")
+    void уборкаИстёкших() {
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.EXPERIENCE, 2.0, Duration.ofMinutes(10), "ГМ").join();
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 2.0, null, "ГМ").join();
+
+        now.set(now.get().plus(Duration.ofMinutes(11)));
+        service.purgeExpiredBonuses();
+
+        assertEquals(1, service.bonuses(guild).size());
+        assertEquals(BonusType.BLOCK_DROPS, service.bonuses(guild).get(0).type());
+        assertFalse(repository.bonuses.getOrDefault(guild, Map.of())
+                .containsKey(BonusType.EXPERIENCE), "истёкший должен уйти и из базы");
     }
 }

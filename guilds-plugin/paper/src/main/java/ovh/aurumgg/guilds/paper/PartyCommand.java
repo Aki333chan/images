@@ -12,6 +12,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import ovh.aurumgg.guilds.api.GuildActionResult;
 import ovh.aurumgg.guilds.api.PartyView;
+import ovh.aurumgg.guilds.core.HelpBook;
 import ovh.aurumgg.guilds.core.PartyService;
 
 /**
@@ -34,7 +35,7 @@ import ovh.aurumgg.guilds.core.PartyService;
 final class PartyCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS =
-            List.of("create", "invite", "accept", "leave", "kick", "promote", "list");
+            List.of("create", "invite", "accept", "leave", "kick", "promote", "list", "help");
 
     private final PartyService parties;
 
@@ -64,7 +65,11 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
             case "kick", "выгнать" -> kick(player, args);
             case "promote", "лидер" -> promote(player, args);
             case "list", "список" -> list(player);
-            default -> usage(player);
+            case "help", "помощь", "?" -> usage(player);
+            default -> {
+                Msg.send(player, "Нет такой команды: " + args[0]);
+                usage(player);
+            }
         }
         return true;
     }
@@ -161,10 +166,25 @@ final class PartyCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    /**
+     * Справка: строка на команду.
+     *
+     * Команд у пати немного, и все влезают на одну страницу — листать нечего,
+     * но формат тот же, что и у гильдий: набирать одно, читать другое.
+     */
     private void usage(Player player) {
-        Msg.send(player, "/party create — создать, invite <ник> — позвать, accept — принять,");
-        Msg.send(player, "leave — выйти, kick <ник> и promote <ник> — для лидера, list — состав.");
-        Msg.send(player, "Чат пати: /p <сообщение>");
+        List<String> lines = HelpBook.titled("Пати", "/party help")
+                .add("/party create", "собрать пати, стать её лидером")
+                .add("/party invite <ник>", "позвать игрока; приглашение живёт недолго")
+                .add("/party accept [ник]", "принять приглашение")
+                .add("/party list", "кто сейчас в пати и сколько у кого здоровья")
+                .add("/party kick <ник>", "выгнать участника (лидер)")
+                .add("/party promote <ник>", "передать лидерство другому")
+                .add("/party leave", "выйти из пати; лидер уходит — пати достаётся следующему")
+                .add("/p <сообщение>", "написать в чат пати, видят только свои")
+                .build()
+                .page(1);
+        for (String line : lines) player.sendMessage(Msg.colored(line));
     }
 
     /** Всем в пати, кроме исключённого. */

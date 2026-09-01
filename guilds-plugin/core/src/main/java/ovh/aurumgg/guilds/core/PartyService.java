@@ -106,6 +106,19 @@ public final class PartyService {
         return party == null ? List.of() : List.copyOf(party.members.keySet());
     }
 
+    /**
+     * Оба в одном пати?
+     *
+     * Отдельным методом, а не сравнением списков снаружи: спрашивают об этом
+     * из обработчика урона, то есть на каждый удар на сервере. Две выборки из
+     * карты дешевле, чем собрать состав и поискать в нём.
+     */
+    public boolean sameParty(UUID first, UUID second) {
+        if (first.equals(second)) return false;
+        Long left = partyOf.get(first);
+        return left != null && left.equals(partyOf.get(second));
+    }
+
     public boolean isLeader(UUID player) {
         Party party = partyOf(player);
         return party != null && party.leader.equals(player);

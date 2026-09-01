@@ -47,6 +47,46 @@ public interface GuildHooks {
     void memberLeft(long guildId, UUID player);
 
     /**
+     * Несколько получателей одного и того же события.
+     *
+     * Понадобилось, когда о вступлении и выходе стало нужно знать не только
+     * LuckPerms (группа с суффиксом), но и WorldGuard (состав региона-дома).
+     * Оба узнают об этом одним вызовом, и логика гильдий по-прежнему не знает
+     * ни про того, ни про другого.
+     *
+     * Ошибка одного получателя не должна лишать остальных события: гильдия
+     * важнее и суффикса, и региона.
+     */
+    static GuildHooks composite(GuildHooks... targets) {
+        return new GuildHooks() {
+            @Override
+            public void guildCreated(long guildId, String tag) {
+                for (GuildHooks target : targets) target.guildCreated(guildId, tag);
+            }
+
+            @Override
+            public void guildDeleted(long guildId) {
+                for (GuildHooks target : targets) target.guildDeleted(guildId);
+            }
+
+            @Override
+            public void tagChanged(long guildId, String tag) {
+                for (GuildHooks target : targets) target.tagChanged(guildId, tag);
+            }
+
+            @Override
+            public void memberJoined(long guildId, UUID player) {
+                for (GuildHooks target : targets) target.memberJoined(guildId, player);
+            }
+
+            @Override
+            public void memberLeft(long guildId, UUID player) {
+                for (GuildHooks target : targets) target.memberLeft(guildId, player);
+            }
+        };
+    }
+
+    /**
      * Заглушка — когда LuckPerms на сервере нет.
      *
      * Гильдии при этом работают полностью: команды, состав, банк, HUD, чат.

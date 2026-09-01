@@ -460,4 +460,21 @@ public final class BukkitGameBridge implements GameBridge {
             String targetName, String actor) {
         return GuildsIntegration.removeMember(targetName, actor);
     }
+
+    @Override
+    public List<ovh.aurumgg.companion.core.model.GuildBonusInfo> guildBonuses(long guildId) {
+        return GuildsIntegration.bonuses(guildId);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildGrantBonus(
+            long guildId, String type, double magnitude, long seconds, String actor) {
+        return GuildsIntegration.grantBonus(guildId, type, magnitude, seconds, actor);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildRevokeBonus(
+            long guildId, String type, String actor) {
+        return GuildsIntegration.revokeBonus(guildId, type, actor);
+    }
 }

@@ -29,7 +29,7 @@ class HudAndNamesTest {
         // что core отдаёт коды как есть и ничего с ними не делает.
         HudModel model = new HudModel(
                 List.of(new HudModel.Member("Steve", 100.0, true, true)),
-                4, null, null, null, 0, 0, null);
+                4, null, null, null, 0, 0, null, List.of());
 
         List<String> lines = HudLines.build(model);
         assertTrue(lines.get(0).startsWith("&7Пати"), lines.get(0));
@@ -45,7 +45,7 @@ class HudAndNamesTest {
         // строки, и совпадение текста ничего не ломает.
         HudModel model = new HudModel(
                 List.of(new HudModel.Member("Steve", 100.0, true, true)),
-                4, "Драконы", "DRG", GuildRank.LEADER, 1, 1, null);
+                4, "Драконы", "DRG", GuildRank.LEADER, 1, 1, null, List.of());
 
         for (String line : HudLines.build(model)) {
             assertFalse(line.endsWith("&r"), "лишний хвост: " + line);
@@ -55,7 +55,7 @@ class HudAndNamesTest {
     @Test
     @DisplayName("Пустая модель не даёт ни одной строки")
     void пустойСайдбарНеПоказывается() {
-        HudModel empty = new HudModel(List.of(), 8, null, null, null, 0, 0, null);
+        HudModel empty = new HudModel(List.of(), 8, null, null, null, 0, 0, null, List.of());
         assertTrue(HudLines.build(empty).isEmpty());
     }
 
@@ -63,7 +63,7 @@ class HudAndNamesTest {
     @DisplayName("Блок гильдии показывает тег, ранг и сколько в сети")
     void блокГильдии() {
         HudModel model = new HudModel(
-                List.of(), 8, "Драконы", "DRG", GuildRank.OFFICER, 4, 12, null);
+                List.of(), 8, "Драконы", "DRG", GuildRank.OFFICER, 4, 12, null, List.of());
 
         List<String> lines = HudLines.build(model);
 
@@ -80,10 +80,107 @@ class HudAndNamesTest {
     @DisplayName("Баланс банка показывается, только когда банк есть")
     void банкВСайдбаре() {
         HudModel model = new HudModel(
-                List.of(), 8, "Драконы", "DRG", GuildRank.MEMBER, 1, 1, 1200.0);
+                List.of(), 8, "Драконы", "DRG", GuildRank.MEMBER, 1, 1, 1200.0, List.of());
 
         assertTrue(HudLines.build(model).stream().anyMatch(line -> line.contains("Банк: &61200")),
                 HudLines.build(model).toString());
+    }
+
+    // ------------------------------------------------------------ бонусы
+
+    private static HudModel withBonuses(List<HudModel.Bonus> bonuses) {
+        return new HudModel(List.of(), 8, "Драконы", "DRG", GuildRank.MEMBER, 1, 1, null, bonuses);
+    }
+
+    @Test
+    @DisplayName("Действующий бонус показан зелёным, с величиной и остатком")
+    void бонусВидноЗелёным() {
+        List<String> lines = HudLines.build(withBonuses(List.of(
+                new HudModel.Bonus("Блоки", 1.5, true, 6L * 86_400))));
+
+        String line = lines.stream().filter(l -> l.contains("Блоки")).findFirst().orElse("");
+        assertTrue(line.startsWith("&a"), "бонус должен быть зелёным: " + line);
+        assertTrue(line.contains("\u00D71.5") && !line.contains("\u00D71.50"),
+                "множителю не нужен второй знак: " + line);
+        assertTrue(line.contains("6д"), line);
+        assertTrue(lines.stream().anyMatch(l -> l.contains("Бонусы")), lines.toString());
+    }
+
+    @Test
+    @DisplayName("У постоянного бонуса таймера нет")
+    void постоянныйБезТаймера() {
+        List<String> lines = HudLines.build(withBonuses(List.of(
+                new HudModel.Bonus("Опыт", 2.0, true, null))));
+
+        String line = lines.stream().filter(l -> l.contains("Опыт")).findFirst().orElse("");
+        assertEquals("&aОпыт \u00D72", line,
+                "постоянному бонусу нечего отсчитывать, а целому множителю — дробную часть");
+    }
+
+    @Test
+    @DisplayName("Уровень эффекта — целым числом, а не множителем")
+    void уровеньЭффекта() {
+        List<String> lines = HudLines.build(withBonuses(List.of(
+                new HudModel.Bonus("Спешка", 2.0, false, 3600L))));
+
+        String line = lines.stream().filter(l -> l.contains("Спешка")).findFirst().orElse("");
+        assertTrue(line.contains("Спешка 2"), line);
+        assertFalse(line.contains("\u00D7"), "уровень — не множитель: " + line);
+    }
+
+    @Test
+    @DisplayName("Бонусов больше трёх — остальные сворачиваются в «и ещё N»")
+    void многоБонусовНеСъедаютСайдбар() {
+        List<HudModel.Bonus> five = List.of(
+                new HudModel.Bonus("Блоки", 1.5, true, 100L),
+                new HudModel.Bonus("Мобы", 1.5, true, 100L),
+                new HudModel.Bonus("Опыт", 1.5, true, 100L),
+                new HudModel.Bonus("Спешка", 2, false, 100L),
+                new HudModel.Bonus("Скорость", 1, false, 100L));
+
+        List<String> lines = HudLines.build(withBonuses(five));
+
+        assertTrue(lines.stream().anyMatch(l -> l.contains("и ещё 3")), lines.toString());
+        // Ровно столько строк, сколько обещано: заголовок, два бонуса, хвост.
+        assertEquals(4, lines.stream().filter(l -> l.contains("Бонусы") || l.startsWith("&a")
+                || l.contains("и ещё")).count(), lines.toString());
+    }
+
+    @Test
+    @DisplayName("Бонусы не выдавливают список пати за пределы сайдбара")
+    void пативсёещёпомещается() {
+        List<HudModel.Member> party = new ArrayList<>();
+        for (int i = 0; i < 12; i++) party.add(new HudModel.Member("Игрок" + i, 100, true, i == 0));
+
+        HudModel model = new HudModel(party, 20, "Драконы", "DRG", GuildRank.MEMBER, 1, 1, 500.0,
+                List.of(new HudModel.Bonus("Блоки", 1.5, true, 100L),
+                        new HudModel.Bonus("Опыт", 1.5, true, null)));
+
+        List<String> lines = HudLines.build(model);
+        assertTrue(lines.size() <= HudLines.MAX_LINES, "строк " + lines.size());
+        // Блок гильдии вместе с бонусами доехал целиком — урезали пати.
+        assertTrue(lines.stream().anyMatch(l -> l.contains("Опыт")), lines.toString());
+        assertTrue(lines.stream().anyMatch(l -> l.contains("и ещё")), lines.toString());
+    }
+
+    @Test
+    @DisplayName("Остаток времени округляется вверх и не показывает ноль живому бонусу")
+    void остатокВремени() {
+        // Неделя — это 167 часов с копейками; «6д» сразу после выдачи читалось
+        // бы как обман.
+        assertEquals("7д", HudLines.shortDurationText(7 * 86_400 - 1));
+        assertEquals("1д", HudLines.shortDurationText(86_400));
+        assertEquals("2ч", HudLines.shortDurationText(3600 + 1));
+        assertEquals("1ч", HudLines.shortDurationText(3600));
+        assertEquals("30м", HudLines.shortDurationText(1800));
+        assertEquals("<1м", HudLines.shortDurationText(5), "ноль выглядит как «уже кончился»");
+    }
+
+    @Test
+    @DisplayName("Без бонусов заголовка «Бонусы» нет")
+    void безБонусовНетЗаголовка() {
+        List<String> lines = HudLines.build(withBonuses(List.of()));
+        assertFalse(String.join("\n", lines).contains("Бонусы"), lines.toString());
     }
 
     @Test
@@ -93,14 +190,27 @@ class HudAndNamesTest {
                 new HudModel.Member("Анна", 100, true, true),
                 new HudModel.Member("Борис", 30, true, false),
                 new HudModel.Member("Вера", 0, false, false)),
-                8, null, null, null, 0, 0, null);
+                8, null, null, null, 0, 0, null, List.of());
 
         List<String> lines = HudLines.build(model);
 
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&a" + HealthGlyph.SYMBOL)));
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&c" + HealthGlyph.SYMBOL)));
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&8" + HealthGlyph.SYMBOL)));
+        // Число, а не цветной кружок: «зелёный» покрывал всё от 80 до 100
+        // процентов, и по нему не отличить целого человека от того, кому
+        // осталось два удара.
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&aHP: 100%")), lines.toString());
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&cHP: 30%")), lines.toString());
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("&8HP: ?")), lines.toString());
         assertTrue(lines.stream().anyMatch(line -> line.contains("★")), "лидер помечен");
+    }
+
+    @Test
+    @DisplayName("Живой игрок не показывается как 0% — иначе он выглядит трупом")
+    void единицаЗдоровьяНеОкругляетсяВНоль() {
+        // Округлённая до нуля единица здоровья читается как «уже поздно», и
+        // союзник, которого ещё можно спасти, выглядел бы тем, к кому не бегут.
+        assertTrue(HealthGlyph.forHealth(0.4).endsWith("HP: 1%"), HealthGlyph.forHealth(0.4));
+        // А вот настоящий ноль так и остаётся нулём.
+        assertTrue(HealthGlyph.forHealth(0).endsWith("HP: 0%"), HealthGlyph.forHealth(0));
     }
 
     @Test
@@ -110,7 +220,7 @@ class HudAndNamesTest {
         for (int i = 0; i < 40; i++) {
             many.add(new HudModel.Member("Игрок" + i, 100, true, i == 0));
         }
-        HudModel model = new HudModel(many, 50, "Драконы", "DRG", GuildRank.LEADER, 3, 9, 500.0);
+        HudModel model = new HudModel(many, 50, "Драконы", "DRG", GuildRank.LEADER, 3, 9, 500.0, List.of());
 
         List<String> lines = HudLines.build(model);
 

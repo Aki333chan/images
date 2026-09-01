@@ -4,7 +4,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.time.Duration;
 import ovh.aurumgg.guilds.api.AurumGuildsApi;
+import ovh.aurumgg.guilds.api.BonusType;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildActionResult;
 import ovh.aurumgg.guilds.api.GuildBankEntry;
 import ovh.aurumgg.guilds.api.GuildDetail;
@@ -73,6 +76,34 @@ final class BukkitGuildsApi implements AurumGuildsApi {
     @Override
     public CompletableFuture<GuildActionResult> adminRemove(String targetName, String actor) {
         return guilds.adminRemove(targetName, actor);
+    }
+
+    // ------------------------------------------------------------ бонусы
+    //
+    // Просто переадресация в сервис. Он же и следит за границами величин —
+    // источников выдачи три (команда, панель, чужой плагин-торговец), и
+    // проверка обязана быть одна на всех.
+
+    @Override
+    public List<GuildBonus> bonuses(long guildId) {
+        return guilds.bonuses(guildId);
+    }
+
+    @Override
+    public Optional<GuildBonus> bonusOf(UUID playerUuid, BonusType type) {
+        return guilds.bonusOf(playerUuid, type);
+    }
+
+    @Override
+    public CompletableFuture<GuildActionResult> grantBonus(
+            long guildId, BonusType type, double magnitude, Duration duration, String actor) {
+        return guilds.grantBonus(guildId, type, magnitude, duration, actor);
+    }
+
+    @Override
+    public CompletableFuture<GuildActionResult> revokeBonus(
+            long guildId, BonusType type, String actor) {
+        return guilds.revokeBonus(guildId, type, actor);
     }
 
     @Override

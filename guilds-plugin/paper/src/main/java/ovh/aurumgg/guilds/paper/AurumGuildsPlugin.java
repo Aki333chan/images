@@ -55,6 +55,8 @@ public final class AurumGuildsPlugin extends JavaPlugin {
     private SidebarKeeper sidebar;
     /** Мост к LuckPerms или null — нужен перезагрузке, чтобы обновить формат суффикса. */
     private LuckPermsBridge luckPermsBridge;
+    /** Мост к WorldGuard или null: без него дома гильдий просто недоступны. */
+    private WorldGuardBridge worldGuard;
     /** Задача HUD: перезагрузка её пересоздаёт, если поменялся период. */
     private BukkitTask hudTask;
     /** Настройки на момент последней загрузки — с ними сверяется перезагрузка. */
@@ -83,7 +85,19 @@ public final class AurumGuildsPlugin extends JavaPlugin {
             luckPermsBridge = new LuckPermsBridge(
                     config.luckPermsGroupPrefix(), config.suffixFormat(), getLogger());
         }
-        GuildHooks hooks = luckPerms ? luckPermsBridge : GuildHooks.noop();
+        // WorldGuard — четвёртая мягкая интеграция. Как и LuckPerms, решается
+        // один раз: он регистрирует свои регионы в собственном onEnable, а
+        // softdepend гарантирует, что тот пройдёт раньше нашего. Это не Vault:
+        // здесь провайдер не приходит от третьего плагина.
+        boolean worldGuardFound = WorldGuardBridge.installed();
+        if (worldGuardFound) worldGuard = new WorldGuardBridge(getLogger());
+
+        // Состав региона держится в согласии с составом гильдии тем же
+        // механизмом, что и группы LuckPerms: обоим нужно знать о вступлении и
+        // выходе, и оба узнают об этом одним и тем же вызовом.
+        GuildHooks hooks = GuildHooks.composite(
+                luckPerms ? luckPermsBridge : GuildHooks.noop(),
+                worldGuardFound ? new RegionSyncHooks(this, () -> this.guilds, worldGuard) : GuildHooks.noop());
 
         // А ВОТ С VAULT ТАК НЕЛЬЗЯ, И ЗДЕСЬ БЫЛА ОШИБКА.
         //
@@ -137,8 +151,14 @@ public final class AurumGuildsPlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(prompts, this);
         getServer().getPluginManager().registerEvents(menu, this);
-        getServer().getPluginManager().registerEvents(new FriendlyFireListener(guilds), this);
+        getServer().getPluginManager().registerEvents(
+                new FriendlyFireListener(guilds, parties, () -> this.config.partyFriendlyFire()), this);
         getServer().getPluginManager().registerEvents(new PlayerTracker(guilds, sidebar), this);
+        getServer().getPluginManager().registerEvents(new BonusDropListener(guilds), this);
+        // Эффекты-бонусы продлеваются задачей: выданный однажды эффект зелья
+        // кончился бы сам, а бесконечный остался бы после снятия бонуса.
+        getServer().getScheduler().runTaskTimer(this, new BonusEffectsTask(guilds),
+                BonusEffectsTask.PERIOD_TICKS, BonusEffectsTask.PERIOD_TICKS);
 
         if (!bindCommands(menu)) {
             getServer().getPluginManager().disablePlugin(this);
@@ -161,7 +181,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         getServer().getScheduler().runTaskTimer(this, this::housekeeping,
                 HOUSEKEEPING_TICKS, HOUSEKEEPING_TICKS);
 
-        report(luckPerms, auth);
+        report(luckPerms, auth, worldGuardFound);
     }
 
     @Override
@@ -187,7 +207,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
             return false;
         }
 
-        GuildCommand guildCommand = new GuildCommand(this, guilds, menu);
+        GuildCommand guildCommand = new GuildCommand(this, guilds, menu, worldGuard);
         guild.setExecutor(guildCommand);
         guild.setTabCompleter(guildCommand);
 
@@ -252,6 +272,24 @@ public final class AurumGuildsPlugin extends JavaPlugin {
                 this, new HudTask(guilds, parties, sidebar), period, period);
     }
 
+    /** Разрешён ли сейчас урон по своим внутри пати. */
+    boolean partyFriendlyFire() {
+        return config.partyFriendlyFire();
+    }
+
+    /**
+     * Переключить урон по своим в пати — и записать это в config.yml.
+     *
+     * Записать обязательно: настройка, которая слетает при перезапуске, хуже
+     * отсутствующей. Человек выключит её командой, забудет, а через неделю
+     * после рестарта получит жалобы на то, чего сам не менял.
+     */
+    void partyFriendlyFire(boolean allowed) {
+        getConfig().set("party.friendly-fire", allowed);
+        saveConfig();
+        this.config = GuildsConfig.fromMap(new HashMap<>(getConfig().getValues(true)));
+    }
+
     /**
      * Перечитать config.yml без перезапуска сервера.
      *
@@ -296,6 +334,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
 
     private void housekeeping() {
         guilds.purgeInvites();
+        guilds.purgeExpiredBonuses();
         int removed = parties.purgeIdle(
                 getServer().getOnlinePlayers().stream()
                         .map(Player::getUniqueId)
@@ -311,7 +350,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
      * включён» без подробностей означал бы, что администратор узнает об
      * отсутствии суффиксов от игроков, а не из лога.
      */
-    private void report(boolean luckPerms, boolean auth) {
+    private void report(boolean luckPerms, boolean auth, boolean worldGuardFound) {
         getLogger().info("Гильдии включены.");
         getLogger().info(luckPerms
                 ? "LuckPerms найден: тег гильдии показывается суффиксом к нику."
@@ -320,6 +359,9 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         getLogger().info(auth
                 ? "AurumAuth найден: удаление аккаунта убирает игрока из гильдии автоматически."
                 : "AurumAuth нет — убирать игроков придётся командой /guild admin remove.");
+        getLogger().info(worldGuardFound
+                ? "WorldGuard найден: лидер может отдать свой регион гильдии — /guild claim."
+                : "WorldGuard нет — домов гильдий не будет. Всё остальное в гильдиях работает.");
         if (Bukkit.getPluginManager().getPlugin("GladiatorArena") != null) {
             // Не поломка, а предупреждение о разделении слота — чтобы
             // «сайдбар пропал во время боя» не выглядело как ошибка.

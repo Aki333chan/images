@@ -21,6 +21,7 @@ import {
   type MinecraftConsoleDictionaryDto,
   type MinecraftEconomyDto,
   type MinecraftGiveResponse,
+  type MinecraftGuildBonusDto,
   type MinecraftGuildDto,
   type MinecraftGuildMembershipDto,
   type MinecraftPerformanceDto,
@@ -41,6 +42,7 @@ import {
   BanDto,
   CompanionConfigDto,
   GiveItemsDto,
+  GuildBonusGrantDto,
   GuildRemoveMemberDto,
   GuildTransferDto,
   InventoryClearDto,
@@ -376,6 +378,75 @@ export class MinecraftController {
    * AuditInterceptor), и в лог игрового сервера — там это видно тем, кто
    * разбирается уже на месте.
    */
+  /**
+   * Бонусы гильдии. Право просмотра гильдий, а не управления: видеть, что
+   * действует, полезно и модератору — вопрос «почему у них столько дропа»
+   * возникает именно у него.
+   */
+  @Get('guilds/:guildId/bonuses')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsView)
+  @ServerScoped('serverId')
+  async guildBonuses(
+    @Param('serverId') serverId: string,
+    @Param('guildId') guildId: string,
+  ): Promise<MinecraftGuildBonusDto[]> {
+    const bonuses = await this.companion.getGuildBonuses(serverId, Number(guildId));
+    if (bonuses === null) {
+      throw new NotFoundException('Плагин гильдий недоступен');
+    }
+    return bonuses;
+  }
+
+  /**
+   * Выдать бонус гильдии.
+   *
+   * Право guildsManage: бонус — это выданное преимущество одной группы игроков
+   * над другими, и раздавать его должен тот же, кто вправе распустить гильдию,
+   * а не всякий, кто видит список. В журнал попадает автоматически общим
+   * аудит-перехватчиком вместе с телом запроса — по нему потом и видно, кто
+   * что выдал.
+   */
+  @Post('guilds/:guildId/bonuses')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsManage)
+  @ServerScoped('serverId')
+  async grantGuildBonus(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('guildId') guildId: string,
+    @Body() dto: GuildBonusGrantDto,
+  ): Promise<MinecraftCommandResultDto> {
+    const result = await this.companion.guildBonusAction(
+      serverId,
+      `/guilds/${Number(guildId)}/bonuses`,
+      'POST',
+      {
+        type: dto.type,
+        magnitude: dto.magnitude,
+        seconds: dto.seconds ?? 0,
+        actor: await this.actorName(user.id),
+      },
+    );
+    return { output: result.message };
+  }
+
+  @Delete('guilds/:guildId/bonuses/:type')
+  @RequirePermission(MINECRAFT_PERMISSIONS.guildsManage)
+  @ServerScoped('serverId')
+  async revokeGuildBonus(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('guildId') guildId: string,
+    @Param('type') type: string,
+  ): Promise<MinecraftCommandResultDto> {
+    const result = await this.companion.guildBonusAction(
+      serverId,
+      `/guilds/${Number(guildId)}/bonuses/${encodeURIComponent(type)}`,
+      'DELETE',
+      { actor: await this.actorName(user.id) },
+    );
+    return { output: result.message };
+  }
+
   @Post('guilds/:guildId/disband')
   @RequirePermission(MINECRAFT_PERMISSIONS.guildsManage)
   @ServerScoped('serverId')

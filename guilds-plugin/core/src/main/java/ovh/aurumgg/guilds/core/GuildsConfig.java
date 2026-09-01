@@ -22,6 +22,7 @@ import java.util.Map;
  * @param maxNameLength          предел длины имени гильдии
  * @param maxTagLength           предел длины тега
  * @param maxGuildMembers        сколько человек помещается в гильдию
+ * @param partyFriendlyFire      разрешён ли урон по своим внутри пати (общесерверно)
  * @param maxPartyMembers        сколько человек помещается в пати
  * @param partyInviteTtl         сколько живёт приглашение в пати
  * @param guildInviteTtl         сколько живёт приглашение в гильдию
@@ -43,6 +44,7 @@ public record GuildsConfig(
         int maxTagLength,
         int maxGuildMembers,
         int maxPartyMembers,
+        boolean partyFriendlyFire,
         Duration partyInviteTtl,
         Duration guildInviteTtl,
         boolean hudEnabled,
@@ -75,6 +77,11 @@ public record GuildsConfig(
                 clamp(integer(raw, "guild.max-members", 50), 2, 500),
 
                 clamp(integer(raw, "party.max-members", 8), 2, 50),
+                // Свой огонь в пати выключен по умолчанию и намеренно. Пати
+                // собирают, чтобы идти вместе, и первое же случайное попадание
+                // по своему — это ссора на ровном месте. Кому нужен обратный
+                // порядок, включает его сам.
+                bool(raw, "party.friendly-fire", false),
                 // Приглашение живёт минуту-две: дольше — и человек уже забыл,
                 // куда его звали, а принятое через час приглашение выглядит
                 // как чужая ошибка.
@@ -127,6 +134,16 @@ public record GuildsConfig(
 
     public String membersTable() {
         return tablePrefix + "_members";
+    }
+
+    /** Таблица бонусов гильдий. */
+    public String bonusesTable() {
+        return tablePrefix + "_bonuses";
+    }
+
+    /** Таблица привязок регионов WorldGuard к гильдиям. */
+    public String regionsTable() {
+        return tablePrefix + "_regions";
     }
 
     public String bankLogTable() {

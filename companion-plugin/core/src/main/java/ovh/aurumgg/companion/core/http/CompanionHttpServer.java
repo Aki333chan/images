@@ -48,6 +48,9 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  *   POST /players/{uuid}/inventory/{slot}
  *   POST /players/{uuid}/inventory/give
  *   POST /players/{uuid}/inventory/clear
+ *   GET  /guilds/{id}/bonuses
+ *   POST /guilds/{id}/bonuses
+ *   DELETE /guilds/{id}/bonuses/{вид}
  *   GET  /players/{uuid}/permissions
  *   POST /players/{uuid}/permissions
  *   GET  /plugins
@@ -244,6 +247,55 @@ public final class CompanionHttpServer {
             }
             respondOutcome(exchange, bridge.guildTransfer(
                     parseGuildId(parts[1]), target, stringField(body, "actor")));
+            return;
+        }
+
+        // GET /guilds/{id}/bonuses — что сейчас действует
+        if (parts.length == 3
+                && parts[0].equals("guilds")
+                && parts[2].equals("bonuses")
+                && method.equals("GET")) {
+            if (guildsUnavailable(exchange)) return;
+            respond(exchange, 200,
+                    PayloadWriter.guildBonuses(bridge.guildBonuses(parseGuildId(parts[1]))));
+            return;
+        }
+
+        // POST /guilds/{id}/bonuses — выдать или продлить.
+        // Тело {"type":"experience","magnitude":2,"seconds":3600,"actor":"ГМ"};
+        // seconds = 0 или без поля — бонус навсегда.
+        if (parts.length == 3
+                && parts[0].equals("guilds")
+                && parts[2].equals("bonuses")
+                && method.equals("POST")) {
+            if (guildsUnavailable(exchange)) return;
+            Map<String, Object> body = JsonParser.parseObject(readBody(exchange));
+            String type = stringField(body, "type");
+            if (type.isBlank()) {
+                respond(exchange, 400, PayloadWriter.error("Не указан вид бонуса", "type-required"));
+                return;
+            }
+            respondOutcome(exchange, bridge.guildGrantBonus(
+                    parseGuildId(parts[1]),
+                    type,
+                    numberField(body, "magnitude", 1),
+                    (long) numberField(body, "seconds", 0),
+                    stringField(body, "actor")));
+            return;
+        }
+
+        // DELETE /guilds/{id}/bonuses/{вид} — снять досрочно.
+        //
+        // DELETE, а не POST: снятие идемпотентно и ничего не создаёт, и вид
+        // бонуса тут естественно ложится в путь. Автор при этом всё равно
+        // приходит телом — журнал ведёт панель, но плагин пишет и в свой лог.
+        if (parts.length == 4
+                && parts[0].equals("guilds")
+                && parts[2].equals("bonuses")
+                && method.equals("DELETE")) {
+            if (guildsUnavailable(exchange)) return;
+            respondOutcome(exchange, bridge.guildRevokeBonus(
+                    parseGuildId(parts[1]), decode(parts[3]), actorFrom(readBody(exchange))));
             return;
         }
 
@@ -603,6 +655,12 @@ public final class CompanionHttpServer {
     }
 
     /** Значение параметра строки запроса или null. */
+    /** Число из тела запроса или значение по умолчанию. */
+    private static double numberField(Map<String, Object> body, String field, double fallback) {
+        Object raw = body.get(field);
+        return raw instanceof Double value ? value : fallback;
+    }
+
     /**
      * Ответить 503, если плагина гильдий нет.
      *

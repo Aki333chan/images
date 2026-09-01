@@ -11,7 +11,11 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
+import java.time.Duration;
+import ovh.aurumgg.companion.core.model.GuildBonusInfo;
 import ovh.aurumgg.guilds.api.AurumGuildsApi;
+import ovh.aurumgg.guilds.api.BonusType;
+import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildDetail;
 import ovh.aurumgg.guilds.api.GuildMember;
 import ovh.aurumgg.guilds.api.GuildSummary;
@@ -166,6 +170,58 @@ final class GuildsIntegration {
                 summary.bankBalance(),
                 summary.createdAt().toEpochMilli(),
                 List.copyOf(members));
+    }
+
+    // ------------------------------------------------------------ бонусы
+
+    static List<GuildBonusInfo> bonuses(long guildId) {
+        // Синхронный метод API: бонусы живут в памяти плагина гильдий.
+        return provider()
+                .map(api -> api.bonuses(guildId).stream().map(GuildsIntegration::toInfo).toList())
+                .orElseGet(List::of);
+    }
+
+    static Optional<GuildActionOutcome> grantBonus(
+            long guildId, String type, double magnitude, long seconds, String actor) {
+        Optional<AurumGuildsApi> api = provider();
+        if (api.isEmpty()) return Optional.empty();
+
+        BonusType parsed = BonusType.parse(type);
+        // Отказ, а не пустота: пустота означала бы «плагина гильдий нет», и
+        // панель показала бы не ту причину. Опечатка в виде бонуса — это
+        // ошибка запроса, и говорить о ней надо прямо.
+        if (parsed == null) {
+            return Optional.of(new GuildActionOutcome(false, "Неизвестный вид бонуса: " + type));
+        }
+        Duration duration = seconds > 0 ? Duration.ofSeconds(seconds) : null;
+        return await(api.get().grantBonus(guildId, parsed, magnitude, duration, actor))
+                .map(GuildsIntegration::toOutcome);
+    }
+
+    static Optional<GuildActionOutcome> revokeBonus(long guildId, String type, String actor) {
+        Optional<AurumGuildsApi> api = provider();
+        if (api.isEmpty()) return Optional.empty();
+
+        BonusType parsed = BonusType.parse(type);
+        if (parsed == null) {
+            return Optional.of(new GuildActionOutcome(false, "Неизвестный вид бонуса: " + type));
+        }
+        return await(api.get().revokeBonus(guildId, parsed, actor)).map(GuildsIntegration::toOutcome);
+    }
+
+    private static GuildBonusInfo toInfo(GuildBonus bonus) {
+        return new GuildBonusInfo(
+                // Вид в нижнем регистре: панель показывает его как есть, а
+                // MINING_SPEED в интерфейсе выглядит криком.
+                bonus.type().name().toLowerCase(java.util.Locale.ROOT),
+                bonus.type().title(),
+                bonus.magnitude(),
+                bonus.type().kind() == BonusType.Kind.MULTIPLIER,
+                // Ноль вместо null: постоянный бонус в JSON проще отличать по
+                // нулю, чем по отсутствию поля.
+                bonus.expiresAt() == null ? 0L : bonus.expiresAt().toEpochMilli(),
+                bonus.grantedBy(),
+                bonus.grantedAt().toEpochMilli());
     }
 
     private static GuildActionOutcome toOutcome(ovh.aurumgg.guilds.api.GuildActionResult result) {
