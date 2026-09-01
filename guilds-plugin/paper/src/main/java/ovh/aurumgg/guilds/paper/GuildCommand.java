@@ -56,6 +56,12 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
     /** Кто уже нажал «распустить» и до какого момента это засчитывается. */
     private final Map<UUID, Instant> pendingDisband = new ConcurrentHashMap<>();
 
+    private static final String ADMIN_USAGE =
+            "/guild admin remove <ник> | transfer <гильдия> <ник> | disband <гильдия> | reload";
+
+    /** Псевдонимы перезагрузки — русский вариант наравне с английским. */
+    private static final List<String> ADMIN_RELOAD = List.of("reload", "перезагрузить", "рл");
+
     GuildCommand(Plugin plugin, GuildService guilds, GuildSettingsMenu menu) {
         this.plugin = plugin;
         this.guilds = guilds;
@@ -346,8 +352,18 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
             Msg.send(sender, "Недостаточно прав");
             return;
         }
+        // reload — единственная подкоманда без аргумента, поэтому проверяется
+        // до общего требования трёх слов.
+        if (args.length >= 2 && ADMIN_RELOAD.contains(args[1].toLowerCase(Locale.ROOT))) {
+            if (plugin instanceof AurumGuildsPlugin guildsPlugin) {
+                for (String line : guildsPlugin.reloadSettings()) Msg.send(sender, line);
+            } else {
+                Msg.send(sender, "Перезагрузка недоступна");
+            }
+            return;
+        }
         if (args.length < 3) {
-            Msg.send(sender, "/guild admin remove <ник> | transfer <гильдия> <ник> | disband <гильдия>");
+            Msg.send(sender, ADMIN_USAGE);
             return;
         }
 
@@ -391,7 +407,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
                         .thenAccept(r -> sync(() -> Msg.result(sender, r)));
             }
             default -> Msg.send(sender,
-                    "/guild admin remove <ник> | transfer <гильдия> <ник> | disband <гильдия>");
+                    ADMIN_USAGE);
         }
     }
 
@@ -403,7 +419,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         Msg.send(sender, "info, list [поиск], settings, tag <тег>, bank — остальное");
         Msg.send(sender, "Чат гильдии: /g <сообщение>");
         if (sender.hasPermission(PERMISSION_ADMIN)) {
-            Msg.send(sender, "/guild admin remove|transfer|disband — вмешательство администрации");
+            Msg.send(sender, "/guild admin remove|transfer|disband|reload — администрирование");
         }
     }
 
@@ -458,7 +474,9 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
                 return prefixed(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
             }
             if (sub.equals("bank")) return prefixed(List.of("deposit", "withdraw", "log"), args[1]);
-            if (sub.equals("admin")) return prefixed(List.of("remove", "transfer", "disband"), args[1]);
+            if (sub.equals("admin")) {
+                return prefixed(List.of("remove", "transfer", "disband", "reload"), args[1]);
+            }
             if (List.of("join", "info").contains(sub)) return prefixed(guildNames(), args[1]);
         }
         if (args.length == 3 && sub.equals("admin")) {

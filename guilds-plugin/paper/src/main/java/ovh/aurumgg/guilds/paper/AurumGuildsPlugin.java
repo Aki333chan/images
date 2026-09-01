@@ -2,7 +2,9 @@ package ovh.aurumgg.guilds.paper;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -10,6 +12,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 import ovh.aurumgg.guilds.api.AurumGuildsApi;
 import ovh.aurumgg.guilds.core.EconomyBridge;
 import ovh.aurumgg.guilds.core.GuildHooks;
@@ -50,12 +53,19 @@ public final class AurumGuildsPlugin extends JavaPlugin {
     private GuildService guilds;
     private PartyService parties;
     private SidebarKeeper sidebar;
+    /** Мост к LuckPerms или null — нужен перезагрузке, чтобы обновить формат суффикса. */
+    private LuckPermsBridge luckPermsBridge;
+    /** Задача HUD: перезагрузка её пересоздаёт, если поменялся период. */
+    private BukkitTask hudTask;
+    /** Настройки на момент последней загрузки — с ними сверяется перезагрузка. */
+    private GuildsConfig config;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         Map<String, Object> raw = new HashMap<>(getConfig().getValues(true));
         GuildsConfig config = GuildsConfig.fromMap(raw);
+        this.config = config;
 
         String requestedPrefix = String.valueOf(
                 raw.getOrDefault("database.table-prefix", GuildsConfig.DEFAULT_PREFIX));
@@ -64,13 +74,35 @@ public final class AurumGuildsPlugin extends JavaPlugin {
                     + "используется «" + config.tablePrefix() + "»");
         }
 
-        // --- необязательные соседи: решаем один раз, до касания их классов ---
+        // --- необязательные соседи ---
+        //
+        // LuckPerms решается один раз: он регистрирует свой API в собственном
+        // onEnable, а softdepend гарантирует, что тот пройдёт раньше нашего.
         boolean luckPerms = LuckPermsBridge.installed();
-        GuildHooks hooks = luckPerms
-                ? new LuckPermsBridge(config.luckPermsGroupPrefix(), config.suffixFormat(), getLogger())
-                : GuildHooks.noop();
-        boolean vault = config.bankEnabled() && VaultBridge.installed();
-        EconomyBridge economy = vault ? new VaultBridge() : EconomyBridge.unavailable();
+        if (luckPerms) {
+            luckPermsBridge = new LuckPermsBridge(
+                    config.luckPermsGroupPrefix(), config.suffixFormat(), getLogger());
+        }
+        GuildHooks hooks = luckPerms ? luckPermsBridge : GuildHooks.noop();
+
+        // А ВОТ С VAULT ТАК НЕЛЬЗЯ, И ЗДЕСЬ БЫЛА ОШИБКА.
+        //
+        // Vault сам денег не хранит — это шина. Провайдера экономики
+        // регистрирует ТРЕТИЙ плагин (EssentialsX, CMI, любой другой), и его в
+        // нашем softdepend нет и быть не может: мы не знаем, какой именно
+        // стоит на сервере. Значит, его onEnable вполне может пройти позже
+        // нашего, и на момент старта провайдера ещё нет.
+        //
+        // Прежний код спрашивал об этом ровно один раз и, не увидев
+        // провайдера, навсегда подставлял заглушку: банк оставался выключенным
+        // до перезапуска, хотя Vault на сервере есть и работает. Ровно на это
+        // и жаловались.
+        //
+        // VaultBridge и так спрашивает провайдера при каждом обращении —
+        // достаточно перестать решать за него заранее. Нет Vault вообще →
+        // available() честно вернёт false, и банк просто не работает; появился
+        // провайдер через минуту после старта → банк заработает сам.
+        EconomyBridge economy = config.bankEnabled() ? new VaultBridge() : EconomyBridge.unavailable();
 
         MariaDbGuildRepository repository;
         try {
@@ -125,15 +157,11 @@ public final class AurumGuildsPlugin extends JavaPlugin {
                 this,
                 ServicePriority.Normal);
 
-        if (config.hudEnabled()) {
-            long period = Math.max(1, config.hudRefresh().toMillis() / 50);
-            getServer().getScheduler().runTaskTimer(
-                    this, new HudTask(guilds, parties, sidebar), period, period);
-        }
+        restartHudTask();
         getServer().getScheduler().runTaskTimer(this, this::housekeeping,
                 HOUSEKEEPING_TICKS, HOUSEKEEPING_TICKS);
 
-        report(luckPerms, vault, auth);
+        report(luckPerms, auth);
     }
 
     @Override
@@ -174,6 +202,98 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         return true;
     }
 
+    /**
+     * Состояние банка человеческими словами.
+     *
+     * Три разных случая, и путать их нельзя: выключено хозяином сервера,
+     * включено но провайдера пока нет, включено и работает. Второй — не
+     * поломка: провайдер может появиться позже нашего старта, и банк
+     * подхватит его сам.
+     */
+    private List<String> bankStatus() {
+        if (!config.bankEnabled()) {
+            return List.of("Банк гильдии выключен в config.yml (bank.enabled: false).");
+        }
+        if (Bukkit.getPluginManager().getPlugin(VaultBridge.PLUGIN_NAME) == null) {
+            return List.of("Vault не установлен — банк гильдии недоступен. "
+                    + "Всё остальное в гильдиях работает.");
+        }
+        if (!guilds.bankAvailable()) {
+            return List.of(
+                    "Vault есть, но провайдера экономики за ним пока нет — банк не работает.",
+                    "Это может быть нормально: провайдера регистрирует плагин экономики "
+                            + "(EssentialsX, CMI и т. п.), и он мог ещё не запуститься. "
+                            + "Банк включится сам, как только провайдер появится — "
+                            + "перезапуск не нужен.");
+        }
+        return List.of("Vault и провайдер экономики на месте: банк гильдии работает.");
+    }
+
+    /**
+     * Перезапустить задачу HUD под текущий конфиг.
+     *
+     * Отдельным методом, потому что период задаётся при постановке задачи и
+     * иначе живёт до перезапуска сервера: правка hud.refresh в config.yml
+     * молча не действовала бы.
+     */
+    private void restartHudTask() {
+        if (hudTask != null) {
+            hudTask.cancel();
+            hudTask = null;
+        }
+        if (!config.hudEnabled()) {
+            // Выключили на ходу — снимаем сайдбар у всех, иначе он застынет на
+            // экране навсегда: обновлять его больше некому.
+            for (Player player : getServer().getOnlinePlayers()) sidebar.hide(player);
+            return;
+        }
+        long period = Math.max(1, config.hudRefresh().toMillis() / 50);
+        hudTask = getServer().getScheduler().runTaskTimer(
+                this, new HudTask(guilds, parties, sidebar), period, period);
+    }
+
+    /**
+     * Перечитать config.yml без перезапуска сервера.
+     *
+     * Применяется НЕ всё, и это честно сказано вызывающему. Настройки базы и
+     * размер пула потоков остаются прежними: пересоздавать подключение под
+     * идущими операциями на живом сервере — способ потерять транзакцию с
+     * чужими деньгами ради удобства, которое нужно раз в месяц.
+     *
+     * Сервисы при этом НЕ пересоздаются: в них лежат пати, кэш гильдий и
+     * приглашения. Перезагрузка, которая распускает все пати на сервере, —
+     * не перезагрузка, а скрытый рестарт.
+     *
+     * @return строки отчёта для того, кто позвал
+     */
+    List<String> reloadSettings() {
+        reloadConfig();
+        GuildsConfig fresh = GuildsConfig.fromMap(new HashMap<>(getConfig().getValues(true)));
+
+        List<String> report = new ArrayList<>();
+        // Про базу говорим отдельной строкой и только если её правда меняли:
+        // иначе предупреждение звучало бы при каждой перезагрузке и его
+        // перестали бы читать.
+        if (!fresh.jdbcUrl().equals(config.jdbcUrl())
+                || !fresh.tablePrefix().equals(config.tablePrefix())
+                || fresh.poolSize() != config.poolSize()) {
+            report.add("Настройки базы изменены — они применятся только после перезапуска сервера.");
+        }
+
+        this.config = fresh;
+        guilds.applyConfig(fresh);
+        parties.applyConfig(fresh.maxPartyMembers(), fresh.partyInviteTtl());
+        sidebar.title(fresh.hudTitle());
+        if (luckPermsBridge != null) {
+            luckPermsBridge.applyConfig(fresh.luckPermsGroupPrefix(), fresh.suffixFormat());
+        }
+        restartHudTask();
+
+        report.add("Настройки перечитаны.");
+        report.addAll(bankStatus());
+        return report;
+    }
+
     private void housekeeping() {
         guilds.purgeInvites();
         int removed = parties.purgeIdle(
@@ -191,14 +311,12 @@ public final class AurumGuildsPlugin extends JavaPlugin {
      * включён» без подробностей означал бы, что администратор узнает об
      * отсутствии суффиксов от игроков, а не из лога.
      */
-    private void report(boolean luckPerms, boolean vault, boolean auth) {
+    private void report(boolean luckPerms, boolean auth) {
         getLogger().info("Гильдии включены.");
         getLogger().info(luckPerms
                 ? "LuckPerms найден: тег гильдии показывается суффиксом к нику."
                 : "LuckPerms нет — суффиксы не работают. Всё остальное в гильдиях работает.");
-        getLogger().info(vault
-                ? "Vault найден: банк гильдии доступен."
-                : "Vault нет — банк гильдии недоступен. Всё остальное в гильдиях работает.");
+        for (String line : bankStatus()) getLogger().info(line);
         getLogger().info(auth
                 ? "AurumAuth найден: удаление аккаунта убирает игрока из гильдии автоматически."
                 : "AurumAuth нет — убирать игроков придётся командой /guild admin remove.");

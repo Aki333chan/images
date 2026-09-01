@@ -125,9 +125,14 @@ final class SidebarKeeper {
     /** Доска на каждого игрока: у всех разный состав пати и разные цифры. */
     private final Map<UUID, Scoreboard> boards = new ConcurrentHashMap<>();
 
-    private final String title;
+    /** Не final: /guild admin reload меняет заголовок. */
+    private volatile String title;
 
     SidebarKeeper(String title) {
+        this.title = title;
+    }
+
+    void title(String title) {
         this.title = title;
     }
 

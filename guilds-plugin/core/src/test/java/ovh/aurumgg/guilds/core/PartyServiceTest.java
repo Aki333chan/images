@@ -197,4 +197,27 @@ class PartyServiceTest {
         assertFalse(service.leave(GLEB).ok());
         assertFalse(service.promote(GLEB, ANNA).ok());
     }
+
+    @Test
+    @DisplayName("Перезагрузка меняет лимит, но не разгоняет собранные пати")
+    void перезагрузкаЛимита() {
+        // Уменьшить лимит в конфиге — обычное дело. Выкидывать из-за этого
+        // людей из уже собранных групп плагин не должен: человек ничего не
+        // нарушал, он просто был в пати, когда админ правил число.
+        assertTrue(service.create(ANNA).ok());
+        assertTrue(service.invite(ANNA, BORIS).ok());
+        assertTrue(service.accept(BORIS, null).ok());
+        assertTrue(service.invite(ANNA, VERA).ok());
+        assertTrue(service.accept(VERA, null).ok());
+        assertEquals(3, service.view(ANNA).orElseThrow().members().size());
+
+        service.applyConfig(2, Duration.ofSeconds(30));
+        assertEquals(2, service.maxMembers());
+        assertEquals(3, service.view(ANNA).orElseThrow().members().size(),
+                "уже собранное пати трогать нельзя");
+
+        // А вот звать новых сверх нового лимита уже нельзя, причём отказ
+        // приходит сразу на приглашение — человек не ждёт впустую.
+        assertFalse(service.invite(ANNA, GLEB).ok(), "новый лимит должен действовать на приглашения");
+    }
 }
