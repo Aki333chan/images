@@ -505,6 +505,9 @@ WorldGuard в `softdepend`, классы `com.sk89q.*` упоминаются в
 игроков, а не привилегия. Ограничить можно переключателем
 `guild.require-create-permission`, и тогда право придётся выдать явно.
 
+Настройка групп в LuckPerms — в [`deploy/LUCKPERMS.md`](../deploy/LUCKPERMS.md),
+там же про группы `guild_<id>`, которые плагин заводит себе сам.
+
 ## Помощь по командам
 
 `/guild help`, `/party help`, `/2fa help` и `/auth help` показывают **строку на

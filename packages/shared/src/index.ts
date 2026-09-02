@@ -9,6 +9,7 @@ export * from './ascii-art';
 export * from './marketplace';
 export * from './resources';
 export * from './alerts';
+export * from './console-noise';
 export * from './modules/minecraft';
 export * from './modules/minecraft-console';
 export * from './modules/minecraft-loaders';
