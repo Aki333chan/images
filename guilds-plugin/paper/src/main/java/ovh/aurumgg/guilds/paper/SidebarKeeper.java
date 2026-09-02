@@ -125,6 +125,24 @@ final class SidebarKeeper {
     /** Доска на каждого игрока: у всех разный состав пати и разные цифры. */
     private final Map<UUID, Scoreboard> boards = new ConcurrentHashMap<>();
 
+    /**
+     * Что этому игроку уже показано.
+     *
+     * <h2>Зачем помнить</h2>
+     *
+     * Задача HUD зовёт {@link #show} раз в секунду на КАЖДОГО игрока, а строки
+     * между двумя вызовами обычно те же самые: здоровье не меняется каждую
+     * секунду, состав пати тем более. Без этой памяти каждый вызов разбирал бы
+     * пятнадцать строк из «&amp;»-кодов в Component и слал пятнадцать пакетов
+     * обновления команд, плюс пакеты счёта и заголовка. На сотне игроков это
+     * тысячи разборов и тысячи пакетов в секунду — за неизменившуюся картинку.
+     *
+     * Теперь сравниваем со строками прошлого раза и трогаем только то, что
+     * действительно поменялось. Видимый результат тот же — меняется лишь
+     * количество работы.
+     */
+    private final Map<UUID, List<String>> shownLines = new ConcurrentHashMap<>();
+
     /** Не final: /guild admin reload меняет заголовок. */
     private volatile String title;
 
@@ -134,6 +152,9 @@ final class SidebarKeeper {
 
     void title(String title) {
         this.title = title;
+        // Заголовок сменился — показанное больше не совпадает с тем, что
+        // должно быть, и следующий проход обязан всё перерисовать.
+        shownLines.clear();
     }
 
     /**
@@ -147,43 +168,92 @@ final class SidebarKeeper {
             return true;
         }
 
+        UUID id = player.getUniqueId();
         Scoreboard board = boardFor(player);
         Scoreboard current = player.getScoreboard();
 
+        // Доску могли подменить снаружи — той же ареной. Тогда всё, что мы
+        // помним о показанном, относится к чужой доске, и верить этому нельзя.
+        boolean fresh = false;
         if (current != board) {
             Objective occupied = current.getObjective(DisplaySlot.SIDEBAR);
             if (occupied != null && !OBJECTIVE.equals(occupied.getName())) {
                 // Слот у кого-то другого. Не спорим: перезапись превратила бы
                 // оба сайдбара в мигание. Вернёмся, когда освободится — проверка
                 // идёт каждый цикл, так что ждать ничего не нужно.
+                shownLines.remove(id);
                 return false;
             }
             player.setScoreboard(board);
+            shownLines.remove(id);
+            fresh = true;
         }
 
         Objective objective = board.getObjective(OBJECTIVE);
         if (objective == null) {
             objective = board.registerNewObjective(OBJECTIVE, Criteria.DUMMY, COLORS.deserialize(title));
+            // Цель создана заново — прошлые строки живут только в нашей памяти,
+            // а у клиента их нет.
+            shownLines.remove(id);
+            fresh = true;
         }
-        objective.displayName(COLORS.deserialize(title));
-        // Счёт задаёт порядок строк, но показывать его не надо — это те самые
-        // красные цифры у правого края.
-        objective.numberFormat(NumberFormat.blank());
+
+        List<String> previous = shownLines.get(id);
+        int shown = Math.min(lines.size(), MAX_LINES);
+
+        // Ничего не изменилось — и делать нечего. Это обычный случай: строки
+        // между двумя тактами задачи совпадают почти всегда. Сравниваем на
+        // месте, не копируя: копия ради сравнения — это аллокация на каждого
+        // игрока каждую секунду ровно там, где мы работу и убираем.
+        if (!fresh && same(previous, lines, shown)) return true;
+
+        if (fresh || previous == null) {
+            objective.displayName(COLORS.deserialize(title));
+            // Счёт задаёт порядок строк, но показывать его не надо — это те
+            // самые красные цифры у правого края. Ставится один раз на цель, а
+            // не каждый такт: свойство не меняется само по себе.
+            objective.numberFormat(NumberFormat.blank());
+        }
         if (objective.getDisplaySlot() != DisplaySlot.SIDEBAR) {
             objective.setDisplaySlot(DisplaySlot.SIDEBAR);
         }
 
-        int shown = Math.min(lines.size(), MAX_LINES);
+        int before = previous == null ? 0 : previous.size();
         for (int i = 0; i < shown; i++) {
-            teamFor(board, i).prefix(COLORS.deserialize(lines.get(i)));
+            String line = lines.get(i);
+            // Разбор строки в Component — самая дорогая часть всего показа, и
+            // делать её ради текста, который уже на экране, незачем.
+            if (previous == null || i >= before || !line.equals(previous.get(i))) {
+                teamFor(board, i).prefix(COLORS.deserialize(line));
+            }
             // Больше — выше: считаем сверху вниз, чтобы порядок совпал с тем,
-            // в котором строки собрали.
-            objective.getScore(KEYS[i]).setScore(shown - i);
+            // в котором строки собрали. Счёт зависит от ОБЩЕГО числа строк,
+            // поэтому переставлять его приходится, когда список стал длиннее
+            // или короче, — даже у строк, чей текст не менялся.
+            if (previous == null || before != shown || i >= before) {
+                objective.getScore(KEYS[i]).setScore(shown - i);
+            }
         }
         // Хвост прошлого обновления. Без этого сайдбар не укорачивается:
-        // вышедший из пати остался бы в списке навсегда.
-        for (int i = shown; i < MAX_LINES; i++) {
+        // вышедший из пати остался бы в списке навсегда. Чистим только то, что
+        // раньше действительно показывалось.
+        // Сколько ключей могло остаться от прошлого раза. Когда о прошлом
+        // ничего не известно (доска новая или память сбросил reload), чистим
+        // весь запас: там могли остаться строки, о которых мы уже не помним.
+        int stale = previous == null || fresh ? MAX_LINES : before;
+        for (int i = shown; i < stale; i++) {
             board.resetScores(KEYS[i]);
+        }
+
+        shownLines.put(id, List.copyOf(lines.subList(0, shown)));
+        return true;
+    }
+
+    /** Совпадают ли показанные строки с первыми {@code count} новыми. */
+    private static boolean same(List<String> previous, List<String> lines, int count) {
+        if (previous == null || previous.size() != count) return false;
+        for (int i = 0; i < count; i++) {
+            if (!previous.get(i).equals(lines.get(i))) return false;
         }
         return true;
     }
@@ -205,6 +275,7 @@ final class SidebarKeeper {
 
     /** Убрать наш сайдбар, не трогая чужой. */
     void hide(Player player) {
+        shownLines.remove(player.getUniqueId());
         Scoreboard board = boards.get(player.getUniqueId());
         if (board == null) return;
         Objective objective = board.getObjective(OBJECTIVE);
@@ -219,6 +290,7 @@ final class SidebarKeeper {
     /** Забыть игрока — он вышел с сервера. */
     void forget(UUID player) {
         boards.remove(player);
+        shownLines.remove(player);
     }
 
     private Scoreboard boardFor(Player player) {

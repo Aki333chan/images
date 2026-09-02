@@ -2,6 +2,7 @@ package ovh.aurumgg.guilds.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -419,6 +420,91 @@ class GuildServiceTest {
     private long guildWithLeader() {
         service.create(LEADER, "Драконы", "DRG").join();
         return service.guildOf(LEADER).orElseThrow().id();
+    }
+
+    // --------------------------------------------- контракт для чужих плагинов
+
+    /*
+     * Ниже — то, на что опирается ХУК ДЛЯ NPC-ТОРГОВЦЕВ: чужой плагин зовёт
+     * ровно эти методы через AurumGuildsApi. Внутри сервиса список бонусов
+     * теперь отдаётся из кэша без копии — ради горячего пути дропа, — и именно
+     * поэтому свойства, на которые торговец полагается, проверяются здесь, а
+     * не подразумеваются.
+     */
+
+    @Test
+    @DisplayName("Хук: выданный список бонусов нельзя испортить снаружи")
+    void списокБонусовНеизменяем() {
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 1.5, null, "торговец").join();
+
+        var bonuses = service.bonuses(guild);
+        assertEquals(1, bonuses.size());
+        // Чужой плагин не должен уметь править состояние сервиса, случайно
+        // добавив что-то в полученный список.
+        assertThrows(UnsupportedOperationException.class, () -> bonuses.add(bonuses.get(0)));
+        assertThrows(UnsupportedOperationException.class, bonuses::clear);
+    }
+
+    @Test
+    @DisplayName("Хук: уже отданный список не меняется после новой выдачи")
+    void списокБонусовЭтоСнимок() {
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 1.5, null, "торговец").join();
+
+        var snapshot = service.bonuses(guild);
+        assertEquals(1, snapshot.size());
+
+        // Торговец мог сохранить список и показать его игроку позже. Выдача
+        // другого бонуса не должна менять уже отданное у него под руками.
+        service.grantBonus(guild, BonusType.EXPERIENCE, 2.0, null, "торговец").join();
+        assertEquals(1, snapshot.size(), "снимок изменился задним числом");
+        assertEquals(2, service.bonuses(guild).size(), "а новый запрос видит оба");
+
+        service.revokeBonus(guild, BonusType.BLOCK_DROPS, "торговец").join();
+        assertEquals(1, snapshot.size(), "снятие тоже не должно править снимок");
+    }
+
+    @Test
+    @DisplayName("Хук: bonusOf находит действующий и молчит про истёкший")
+    void bonusOfПоВидy() {
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.MOB_DROPS, 2.0, Duration.ofMinutes(30), "торговец").join();
+
+        assertTrue(service.bonusOf(LEADER, BonusType.MOB_DROPS).isPresent());
+        assertEquals(2.0, service.multiplier(LEADER, BonusType.MOB_DROPS));
+        // Другой вид — не тот же самый: перебор списка обязан различать виды,
+        // а не возвращать первый попавшийся бонус.
+        assertTrue(service.bonusOf(LEADER, BonusType.BLOCK_DROPS).isEmpty());
+        assertEquals(1.0, service.multiplier(LEADER, BonusType.BLOCK_DROPS));
+
+        now.set(now.get().plus(Duration.ofMinutes(31)));
+        assertTrue(service.bonusOf(LEADER, BonusType.MOB_DROPS).isEmpty(), "истёк");
+        assertEquals(1.0, service.multiplier(LEADER, BonusType.MOB_DROPS));
+        assertTrue(service.bonuses(guild).isEmpty(), "истёкший не попадает и в список");
+    }
+
+    @Test
+    @DisplayName("Хук: не состоящий в гильдии не получает чужих бонусов")
+    void бонусаБезГильдииНет() {
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.EXPERIENCE, 3.0, null, "торговец").join();
+
+        assertTrue(service.bonusOf(STRANGER, BonusType.EXPERIENCE).isEmpty());
+        assertEquals(1.0, service.multiplier(STRANGER, BonusType.EXPERIENCE));
+    }
+
+    @Test
+    @DisplayName("Хук: величина по-прежнему зажимается потолком вида")
+    void торговецНеОбойдётПотолок() {
+        // Потолки подняты, но зажатие никуда не делось: опечатка в одном нуле
+        // у торговца не должна превращаться в множитель, которого нет.
+        long guild = guildWithLeader();
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 5000, null, "торговец").join();
+        assertEquals(BonusType.BLOCK_DROPS.max(), service.multiplier(LEADER, BonusType.BLOCK_DROPS));
+
+        service.grantBonus(guild, BonusType.BLOCK_DROPS, 0.001, null, "торговец").join();
+        assertEquals(BonusType.BLOCK_DROPS.min(), service.multiplier(LEADER, BonusType.BLOCK_DROPS));
     }
 
     @Test

@@ -145,7 +145,13 @@ public final class GuildService implements AutoCloseable {
             guilds.put(guild.id(), guild);
             for (GuildMember member : guild.members()) memberOf.put(member.uuid(), guild.id());
         }
-        bonuses.putAll(repository.loadBonuses());
+        // Неизменяемыми списками, а не как пришло из хранилища. Значения этой
+        // карты раздаются наружу как есть (см. bonuses), и изменяемый список
+        // внутри означал бы, что любой вызывающий может втихую поправить
+        // состояние сервиса. Дальше карта пополняется только через put с
+        // List.copyOf — инвариант держится с этого места и до конца.
+        repository.loadBonuses().forEach((guildId, list) ->
+                bonuses.put(guildId, List.copyOf(list)));
         for (GuildRegion region : repository.loadRegions()) {
             regions.computeIfAbsent(region.guildId(), key -> new ArrayList<>()).add(region);
         }
@@ -758,20 +764,66 @@ public final class GuildService implements AutoCloseable {
     public List<GuildBonus> bonuses(long guildId) {
         List<GuildBonus> all = bonuses.get(guildId);
         if (all == null || all.isEmpty()) return List.of();
+
+        // Обычный случай — ничего не истекло, и тогда возвращается тот же
+        // список без единой аллокации: этот метод зовёт задача HUD, раз в
+        // секунду на каждого игрока в гильдии, и собирать там новый список под
+        // сборщик мусора незачем. Копия делается, только когда что-то и правда
+        // пора убрать.
         Instant now = clock.get();
-        return all.stream().filter(bonus -> !bonus.expired(now)).toList();
+        int expired = 0;
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).expired(now)) expired++;
+        }
+        // Список здесь неизменяемый — это гарантируется в load() и в обоих
+        // местах, где карта пополняется, — поэтому его можно отдать как есть.
+        if (expired == 0) return all;
+        if (expired == all.size()) return List.of();
+
+        List<GuildBonus> alive = new ArrayList<>(all.size() - expired);
+        for (int i = 0; i < all.size(); i++) {
+            GuildBonus bonus = all.get(i);
+            if (!bonus.expired(now)) alive.add(bonus);
+        }
+        return List.copyOf(alive);
     }
 
     /** Бонус игрока по его гильдии. Пусто — нет гильдии, нет бонуса или истёк. */
     public Optional<GuildBonus> bonusOf(UUID player, BonusType type) {
+        return Optional.ofNullable(activeBonus(player, type));
+    }
+
+    /**
+     * Действующий бонус или {@code null} — без Optional и без потока.
+     *
+     * ЭТО САМЫЙ ГОРЯЧИЙ ПУТЬ ПЛАГИНА: сюда приходят с каждого сломанного
+     * блока, каждого убитого моба и каждой капли опыта — то есть десятки раз в
+     * секунду на активном сервере. Поток с лямбдой-фильтром создавал здесь три
+     * объекта на вызов (сам поток, замыкание над {@code now} и Optional) ради
+     * перебора списка максимум из пяти элементов. Обычный цикл делает то же
+     * самое и не создаёт ничего.
+     *
+     * У игрока без гильдии выход происходит на первой же строке — за это и
+     * стоит проверка членства раньше всего остального.
+     */
+    private GuildBonus activeBonus(UUID player, BonusType type) {
         Long guildId = memberOf.get(player);
-        if (guildId == null) return Optional.empty();
-        Instant now = clock.get();
+        if (guildId == null) return null;
         List<GuildBonus> all = bonuses.get(guildId);
-        if (all == null) return Optional.empty();
-        return all.stream()
-                .filter(bonus -> bonus.type() == type && !bonus.expired(now))
-                .findFirst();
+        if (all == null || all.isEmpty()) return null;
+
+        for (int i = 0; i < all.size(); i++) {
+            GuildBonus bonus = all.get(i);
+            // Сравнение вида — первым: оно дешевле, чем взятие текущего
+            // времени, и отсеивает почти всё.
+            // Вид в списке встречается ровно один раз: в базе это первичный
+            // ключ (guild_id, type). Поэтому найденный и истёкший означает,
+            // что действующего бонуса этого вида нет, и искать дальше нечего.
+            if (bonus.type() == type) {
+                return bonus.expired(clock.get()) ? null : bonus;
+            }
+        }
+        return null;
     }
 
     /**
@@ -782,7 +834,8 @@ public final class GuildService implements AutoCloseable {
      * каждом слушателе.
      */
     public double multiplier(UUID player, BonusType type) {
-        return bonusOf(player, type).map(GuildBonus::magnitude).orElse(1.0);
+        GuildBonus bonus = activeBonus(player, type);
+        return bonus == null ? 1.0 : bonus.magnitude();
     }
 
     /**

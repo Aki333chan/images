@@ -11,6 +11,7 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildBonus;
+import ovh.aurumgg.guilds.api.GuildMember;
 import ovh.aurumgg.guilds.api.GuildMembership;
 import ovh.aurumgg.guilds.api.PartyView;
 import ovh.aurumgg.guilds.core.GuildService;
@@ -44,8 +45,13 @@ final class HudTask implements Runnable {
 
     @Override
     public void run() {
+        // Ответ на «работает ли банк» один на весь сервер и на весь проход, а
+        // стоит он обращения к реестру служб Bukkit под общей блокировкой.
+        // Спрашивать его на каждого игрока значило бы сотню таких обращений в
+        // секунду ради одного и того же ответа.
+        boolean bankAvailable = guilds.bankAvailable();
         for (Player player : Bukkit.getOnlinePlayers()) {
-            HudModel model = modelFor(player);
+            HudModel model = modelFor(player, bankAvailable);
             if (model.isEmpty()) {
                 // Ни пати, ни гильдии — показывать нечего, и пустая рамка на
                 // экране раздражала бы всех, кто ими не пользуется.
@@ -56,7 +62,7 @@ final class HudTask implements Runnable {
         }
     }
 
-    private HudModel modelFor(Player player) {
+    private HudModel modelFor(Player player, boolean bankAvailable) {
         List<HudModel.Member> members = new ArrayList<>();
         Optional<PartyView> party = parties.view(player.getUniqueId());
         party.ifPresent(view -> {
@@ -79,14 +85,20 @@ final class HudTask implements Runnable {
         StoredGuild guild = guilds.byId(membership.get().guildId()).orElse(null);
         int total = guild == null ? 0 : guild.members().size();
         int online = 0;
-        for (UUID uuid : guilds.memberUuids(membership.get().guildId())) {
-            Player member = Bukkit.getPlayer(uuid);
-            if (member != null && member.isOnline()) online++;
+        if (guild != null) {
+            // По самому составу, а не по memberUuids(): тот собирает новый
+            // список на каждый вызов, то есть на каждого игрока каждую
+            // секунду, — а состав уже здесь, в руках.
+            List<GuildMember> roster = guild.members();
+            for (int i = 0; i < roster.size(); i++) {
+                Player member = Bukkit.getPlayer(roster.get(i).uuid());
+                if (member != null && member.isOnline()) online++;
+            }
         }
 
         // Баланс показываем, только если банк вообще работает: строка
         // «Банк: 0» на сервере без Vault выглядит как пропавшие деньги.
-        Double bank = guilds.bankAvailable() && guild != null ? guild.bank() : null;
+        Double bank = bankAvailable && guild != null ? guild.bank() : null;
 
         return new HudModel(members, parties.maxMembers(), membership.get().guildName(),
                 membership.get().guildTag(), membership.get().rank(), online, total, bank,
@@ -104,9 +116,14 @@ final class HudTask implements Runnable {
      * при чтении, не дожидаясь уборки по расписанию.
      */
     private List<HudModel.Bonus> bonusesOf(long guildId) {
+        List<GuildBonus> active = guilds.bonuses(guildId);
+        // Бонусов нет почти у всех: выходим раньше, чем берём время и заводим
+        // список.
+        if (active.isEmpty()) return List.of();
+
         Instant now = Instant.now();
-        List<HudModel.Bonus> result = new ArrayList<>();
-        for (GuildBonus bonus : guilds.bonuses(guildId)) {
+        List<HudModel.Bonus> result = new ArrayList<>(active.size());
+        for (GuildBonus bonus : active) {
             Long left = bonus.expiresAt() == null
                     ? null
                     : Math.max(0, Duration.between(now, bonus.expiresAt()).toSeconds());
