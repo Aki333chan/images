@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  backgroundCommandsFor,
   completeFromDictionary,
+  isPanelCommandEcho,
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
 } from '@aurum/shared';
@@ -62,6 +64,14 @@ const RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
  * прокручиваться сам. Чуть больше высоты строки: если отлистнуть вверх хотя
  * бы на строку, значит читают старое, и утаскивать вниз уже нельзя.
  */
+/**
+ * Где помнится выбор «прятать служебные строки».
+ *
+ * Один ключ на всю панель, а не на сервер: это привычка человека, и заново
+ * щёлкать переключатель на каждом сервере он не станет.
+ */
+const NOISE_KEY = 'aurum.console.hide-noise';
+
 const STICK_TO_BOTTOM_PX = 24;
 
 /**
@@ -94,6 +104,51 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
   const logRef = useRef<HTMLDivElement | null>(null);
   /** Человек не отлистывал вверх — можно продолжать прокручивать за ним. */
   const stickRef = useRef(true);
+
+  /**
+   * Прятать ли служебные строки от собственного опроса панели.
+   *
+   * Выбор запоминается в браузере и общий для всех серверов: это привычка
+   * человека, а не свойство сервера. По умолчанию включено — без фильтра
+   * журнал заливает одной и той же строкой каждые несколько секунд, и следить
+   * за происходящим действительно тяжело.
+   *
+   * try/catch вокруг чтения: в приватном окне и при запрещённых куках доступ
+   * к localStorage бросает исключение, а падать из-за настройки удобства
+   * нельзя.
+   */
+  const [hideNoise, setHideNoise] = useState(() => {
+    try {
+      return localStorage.getItem(NOISE_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOISE_KEY, hideNoise ? 'on' : 'off');
+    } catch {
+      // Не сохранилось — переживём: фильтр продолжит работать до перезагрузки.
+    }
+  }, [hideNoise]);
+
+  /**
+   * Что показать и сколько спрятано.
+   *
+   * Считается разом, чтобы не проходить список дважды: строк в консоли до
+   * нескольких тысяч, а пересчёт идёт на каждую новую.
+   */
+  const background = useMemo(() => backgroundCommandsFor(moduleId), [moduleId]);
+
+  const { visible, hidden } = useMemo(() => {
+    if (!hideNoise || background.length === 0) return { visible: lines, hidden: 0 };
+    const kept: LogLine[] = [];
+    for (const line of lines) {
+      if (!isPanelCommandEcho(line.text, background)) kept.push(line);
+    }
+    return { visible: kept, hidden: lines.length - kept.length };
+  }, [lines, hideNoise, background]);
 
   // ---------- Автодополнение ----------
   //
@@ -307,7 +362,9 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
     const el = logRef.current;
     if (!el || !stickRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [lines]);
+    // По видимым строкам, а не по всем: со включённым фильтром скрытая строка
+    // ничего не добавляет к высоте, и прокручивать на неё незачем.
+  }, [visible]);
 
   /**
    * Словарь базового уровня. Кэшируется: он почти неизменен, меняется в нём
@@ -459,6 +516,30 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
             />
           </span>
           <span className="text-muted">Консоль Pterodactyl · WebSocket</span>
+          {/* Переключатель рядом с источником строк, а не в настройках: он про
+              то, что человек видит прямо сейчас, и искать его в другом месте
+              никто не станет. */}
+          {/* На модуле без фоновых опросов прятать нечего — и переключателя,
+              который ничего не делает, быть не должно. */}
+          {background.length > 0 && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={hideNoise}
+            onClick={() => setHideNoise((on) => !on)}
+            title={
+              hideNoise
+                ? 'Показать строки о том, как панель опрашивает список игроков'
+                : 'Скрыть строки о том, как панель опрашивает список игроков'
+            }
+            className={cn(
+              'ml-auto rounded px-1.5 py-0.5 transition-colors',
+              hideNoise ? 'text-muted hover:text-neutral-200' : 'text-primary',
+            )}
+          >
+            {hideNoise ? `Служебные скрыты${hidden > 0 ? ` (${hidden})` : ''}` : 'Служебные видны'}
+          </button>
+          )}
           <span className={cn('ml-auto font-mono uppercase tracking-wide', CONNECTION_TONE[state])}>
             {CONNECTION_LABEL[state]}
           </span>
@@ -475,12 +556,16 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
           }}
           className="h-[45vh] overflow-y-auto rounded-t-none border-t-0 bg-background/80 font-mono text-xs leading-5 text-neutral-200 sm:h-[420px]"
         >
-          {lines.length === 0 && (
+          {visible.length === 0 && (
             <p className="text-muted">
-              {state === 'connecting' ? 'Подключение к консоли…' : 'Вывода пока нет'}
+              {state === 'connecting'
+                ? 'Подключение к консоли…'
+                : hidden > 0
+                  ? `Пока только служебные строки — скрыто ${hidden}`
+                  : 'Вывода пока нет'}
             </p>
           )}
-          {lines.map((line) => (
+          {visible.map((line) => (
             <ConsoleLine key={line.id} text={line.text} />
           ))}
         </Card>

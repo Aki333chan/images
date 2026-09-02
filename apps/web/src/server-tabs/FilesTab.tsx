@@ -3,6 +3,16 @@ import type { PteroDirectoryDto, PteroFileContentDto, PteroFileDto } from '@auru
 import { MAX_TRANSFER_BYTES, formatTransferLimit, isEditableFile } from '@aurum/shared';
 import { api, apiDownload, apiRaw } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import {
+  canGoBack,
+  canGoForward,
+  currentPath,
+  goBack,
+  goForward,
+  initialHistory,
+  visit,
+  type DirHistory,
+} from '../lib/dir-history';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../components/ui';
 import { Modal } from '../components/Modal';
 import {
@@ -54,6 +64,16 @@ export function FilesTab({ serverId }: ServerTabProps) {
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<PteroFileDto | null>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
+  /**
+   * Что заливается прямо сейчас.
+   *
+   * null — не заливается ничего. Имя и счётчик, а не просто крутилка: при
+   * нескольких файлах без них непонятно, застряло оно или идёт дальше.
+   */
+  const [uploading, setUploading] = useState<{ name: string; done: number; total: number } | null>(
+    null,
+  );
+  const [history, setHistory] = useState<DirHistory>(() => initialHistory('/'));
 
   const load = useCallback(
     (target: string) => {
@@ -69,9 +89,68 @@ export function FilesTab({ serverId }: ServerTabProps) {
     [serverId],
   );
 
+  /**
+   * Перейти в папку — с записью в историю.
+   *
+   * Отдельно от {@link load}: тот же вызов используется и для простого
+   * перечитывания текущей папки после загрузки или удаления, а это не
+   * переход, и в истории ему делать нечего.
+   */
+  const navigate = useCallback(
+    (target: string) => {
+      setHistory((h) => visit(h, target));
+      return load(target);
+    },
+    [load],
+  );
+
+  /** Шаг по своей истории. null от goBack/goForward значит «идти некуда». */
+  const step = useCallback(
+    (move: (h: DirHistory) => DirHistory | null) => {
+      setHistory((h) => {
+        const next = move(h);
+        if (!next) return h;
+        void load(currentPath(next));
+        return next;
+      });
+    },
+    [load],
+  );
+
   useEffect(() => {
     void load('/');
   }, [load]);
+
+  /**
+   * Кнопки «назад» и «вперёд» на мыши ходят по папкам, а не уводят со страницы.
+   *
+   * Браузер по умолчанию понимает mouse4 и mouse5 как навигацию, и в файловом
+   * менеджере это выкидывало на список серверов — хотя человек хотел всего
+   * лишь подняться на папку выше.
+   *
+   * Отменять приходится в трёх событиях: браузеры расходятся в том, какое из
+   * них запускает переход, и отмены одного mousedown в части из них
+   * недостаточно. Слушатели живут ровно столько, сколько открыта вкладка
+   * файлов; на остальных вкладках кнопки работают как обычно.
+   */
+  useEffect(() => {
+    const swallow = (event: MouseEvent) => {
+      if (event.button === 3 || event.button === 4) event.preventDefault();
+    };
+    const act = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      event.preventDefault();
+      step(event.button === 3 ? goBack : goForward);
+    };
+    window.addEventListener('mousedown', swallow);
+    window.addEventListener('auxclick', swallow);
+    window.addEventListener('mouseup', act);
+    return () => {
+      window.removeEventListener('mousedown', swallow);
+      window.removeEventListener('auxclick', swallow);
+      window.removeEventListener('mouseup', act);
+    };
+  }, [step]);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -88,7 +167,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
 
   async function open(file: PteroFileDto) {
     if (!file.isFile) {
-      void load(join(path, file.name));
+      void navigate(join(path, file.name));
       return;
     }
     if (!isEditableFile(file)) {
@@ -162,10 +241,15 @@ export function FilesTab({ serverId }: ServerTabProps) {
       return;
     }
 
+    const queue = Array.from(files);
     setBusy(true);
     setError('');
     try {
-      for (const file of Array.from(files)) {
+      for (let i = 0; i < queue.length; i++) {
+        const file = queue[i]!;
+        // Имя обновляется ПЕРЕД отправкой: иначе, пока файл едет, на экране
+        // висело бы имя предыдущего.
+        setUploading({ name: file.name, done: i, total: queue.length });
         await apiRaw(
           `${base(serverId)}/upload?path=${encodeURIComponent(path)}&name=${encodeURIComponent(file.name)}`,
           file,
@@ -175,6 +259,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setUploading(null);
       setBusy(false);
       if (uploadInput.current) uploadInput.current.value = '';
     }
@@ -188,14 +273,38 @@ export function FilesTab({ serverId }: ServerTabProps) {
     <div className="space-y-4">
       <Card className="space-y-3">
         {/* Хлебные крошки считает бэкенд: так обе стороны одинаково понимают,
-            что такое путь, и не расходятся на первом необычном имени. */}
+            что такое путь, и не расходятся на первом необычном имени.
+
+            Стрелки слева — то же, что кнопки мыши. Они здесь не ради тех, у
+            кого мышь с двумя кнопками, а ради того, чтобы возможность вообще
+            была видна: про перехват mouse4 и mouse5 иначе никто не узнает. */}
         <div className="flex flex-wrap items-center gap-1 text-sm">
+          <button
+            type="button"
+            onClick={() => step(goBack)}
+            disabled={!canGoBack(history)}
+            title="Назад (или кнопка «назад» на мыши)"
+            aria-label="Назад"
+            className="rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-surface hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            onClick={() => step(goForward)}
+            disabled={!canGoForward(history)}
+            title="Вперёд (или кнопка «вперёд» на мыши)"
+            aria-label="Вперёд"
+            className="mr-1 rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-surface hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            →
+          </button>
           {dir?.breadcrumbs.map((crumb, i) => (
             <span key={crumb.path} className="flex items-center gap-1">
               {i > 0 && <span className="text-muted">/</span>}
               <button
                 type="button"
-                onClick={() => void load(crumb.path)}
+                onClick={() => void navigate(crumb.path)}
                 className="rounded-sm px-1 py-0.5 text-primary-200 transition-colors hover:bg-surface"
               >
                 {crumb.name}
@@ -203,6 +312,19 @@ export function FilesTab({ serverId }: ServerTabProps) {
             </span>
           ))}
         </div>
+
+        {/* Пока файл едет, человеку нужно понимать, что работа идёт и сколько
+            её осталось. Раньше кнопки просто гасли, и на большом файле это
+            выглядело как зависшая панель. */}
+        {uploading && (
+          <div className="flex items-center gap-2 rounded border border-border bg-surface/60 px-3 py-2 text-xs">
+            <Spinner />
+            <span className="min-w-0 flex-1 truncate">
+              Загружаю «{uploading.name}»
+              {uploading.total > 1 && ` — ${uploading.done + 1} из ${uploading.total}`}
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => void load(path)} disabled={busy}>
@@ -219,7 +341,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
                 onClick={() => uploadInput.current?.click()}
                 disabled={busy}
               >
-                <IconUpload size={14} /> Загрузить
+                <IconUpload size={14} /> {uploading ? 'Загружаю…' : 'Загрузить'}
               </Button>
               <input
                 ref={uploadInput}
