@@ -34,13 +34,23 @@ final class PlayerNames implements NameResolver {
      * объект — он просто вычисляет UUID из ника, — поэтому «нашли» и «такого
      * игрока не существует» по нему не различить. Сначала смотрим в сеть,
      * потом в кэш и только затем соглашаемся на вычисленный UUID.
+     *
+     * <h2>Почему не перебор getOfflinePlayers()</h2>
+     *
+     * Раньше кэш просматривался перебором ВСЕХ, кто когда-либо заходил.
+     * Метод зовут обработчики команд — {@code /guild kick}, {@code /party
+     * promote} и прочие, — то есть главный поток сервера; на сервере с
+     * многолетней историей это тысячи объектов на каждое нажатие Enter.
+     *
+     * {@code getOfflinePlayerIfCached} отвечает на тот же вопрос поиском по
+     * имени в usercache и, в отличие от {@code getOfflinePlayer(String)}, не
+     * ходит за ником в сеть: он либо есть в кэше, либо возвращается null.
      */
     static UUID uuidOf(String name) {
         var online = Bukkit.getPlayerExact(name);
         if (online != null) return online.getUniqueId();
-        for (OfflinePlayer known : Bukkit.getOfflinePlayers()) {
-            if (name.equalsIgnoreCase(known.getName())) return known.getUniqueId();
-        }
+        OfflinePlayer cached = Bukkit.getOfflinePlayerIfCached(name);
+        if (cached != null) return cached.getUniqueId();
         return Bukkit.getOfflinePlayer(name).getUniqueId();
     }
 }
