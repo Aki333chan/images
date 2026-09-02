@@ -3,6 +3,31 @@ import type { AuditLogDto } from '@aurum/shared';
 import { api } from '../lib/api';
 import { Button, Card, Input, Spinner } from '../components/ui';
 
+/**
+ * Метаданные записи одной строкой — и не длиннее, чем можно прочесть.
+ *
+ * Предел не про красоту, а про то, чтобы страница открылась. До исправления
+ * интерцептора в metadata записи о загрузке файла попадало содержимое файла
+ * целиком — сотни мегабайт JSON, — и попытка отрисовать такую строку вешала
+ * браузер. Старые записи чистятся скриптом (deploy/scripts/clean-audit-blobs.sh),
+ * но журнал должен открываться и до того, как до него дошли руки.
+ */
+const MAX_METADATA_CHARS = 500;
+
+function metadataText(metadata: unknown): string {
+  if (metadata == null) return '';
+  let text: string;
+  try {
+    text = JSON.stringify(metadata);
+  } catch {
+    // Циклическая ссылка или что-то ещё неожиданное: журнал всё равно должен
+    // показаться, пусть и без этой ячейки.
+    return '[не удалось показать]';
+  }
+  if (text.length <= MAX_METADATA_CHARS) return text;
+  return `${text.slice(0, MAX_METADATA_CHARS)}… [ещё ${text.length - MAX_METADATA_CHARS} символов]`;
+}
+
 export function AuditPage() {
   const [items, setItems] = useState<AuditLogDto[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -93,7 +118,7 @@ export function AuditPage() {
                     {row.targetId ? ` / ${row.targetId.slice(0, 8)}` : ''}
                   </td>
                   <td className="max-w-md truncate py-2 font-mono text-[10px] text-muted">
-                    {row.metadata ? JSON.stringify(row.metadata) : ''}
+                    {metadataText(row.metadata)}
                   </td>
                 </tr>
               ))}
@@ -121,7 +146,7 @@ export function AuditPage() {
                 // break-all и перенос: метаданные — это JSON одной строкой,
                 // и без переноса он растянул бы страницу по горизонтали.
                 <p className="mt-1 whitespace-pre-wrap break-all font-mono text-[10px] text-muted">
-                  {JSON.stringify(row.metadata)}
+                  {metadataText(row.metadata)}
                 </p>
               )}
             </li>
