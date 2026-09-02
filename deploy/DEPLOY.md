@@ -629,6 +629,94 @@ sudo -u aurum git checkout claude/pterodactyl-admin-panel-core-984zye
 `git clone` в **заранее созданный пустой** каталог работает штатно — ругается
 он только на непустой.
 
+### Доступ к приватному репозиторию: пароль не подойдёт
+
+Репозиторий приватный, и на `git clone`/`git pull` GitHub спросит логин и
+пароль. **Пароль от аккаунта он не примет** — вход по нему убрали в августе
+2021 года. Выглядит это так:
+
+```
+Password for 'https://Aki333chan@github.com':
+error: RPC failed; HTTP 401 curl 22 The requested URL returned error: 401
+fatal: expected flush after ref listing
+```
+
+Годятся два способа. Оба настраиваются один раз и потом работают молча.
+
+#### Способ 1 (рекомендуемый): ключ развёртывания
+
+Пара ключей, привязанная к ОДНОМУ репозиторию и только на чтение. Не истекает,
+не даёт доступа ни к чему другому, и если сервер скомпрометируют — потеряна
+будет возможность читать один репозиторий, а не весь аккаунт.
+
+У пользователя `aurum` для этого должен быть домашний каталог:
+
+```bash
+# Если каталога нет — создать. Если есть, команда просто ничего не изменит.
+sudo mkdir -p /home/aurum/.ssh
+sudo chown -R aurum:aurum /home/aurum
+sudo chmod 700 /home/aurum/.ssh
+```
+
+Создать ключ (без пароля — иначе его будет некому вводить при автоматическом
+обновлении):
+
+```bash
+sudo -u aurum ssh-keygen -t ed25519 -C "aurum-panel deploy" \
+  -f /home/aurum/.ssh/id_ed25519 -N ""
+sudo -u aurum cat /home/aurum/.ssh/id_ed25519.pub
+```
+
+Показанную строку добавить в GitHub: репозиторий → **Settings** → **Deploy
+keys** → **Add deploy key**. Галочку «Allow write access» **не** ставить: с
+сервера мы только читаем.
+
+Переключить репозиторий на SSH и проверить:
+
+```bash
+cd /opt/aurum-panel
+sudo -u aurum git remote set-url origin git@github.com:Aki333chan/images.git
+sudo -u aurum ssh -o StrictHostKeyChecking=accept-new -T git@github.com
+sudo -u aurum git pull
+```
+
+Ответ `Hi Aki333chan/images! You've successfully authenticated, but GitHub does
+not provide shell access.` — это успех, а не ошибка.
+
+#### Способ 2 (быстрее): токен доступа
+
+GitHub → **Settings** → **Developer settings** → **Personal access tokens** →
+**Fine-grained tokens**. Доступ: только репозиторий `images`, право
+**Contents: Read-only**. Срок — на ваше усмотрение; когда он выйдет, `git pull`
+снова начнёт спрашивать пароль.
+
+**Токен НЕ вставляйте в адрес репозитория.** `git remote set-url
+https://токен@github.com/...` кладёт его открытым текстом в `.git/config`, и
+дальше он виден в `git remote -v`, в выводе ошибок и в любом бэкапе каталога.
+
+Правильно — в файл, который читает только `aurum`:
+
+```bash
+sudo mkdir -p /home/aurum && sudo chown aurum:aurum /home/aurum
+# Токен вводится вслепую и не попадёт ни в историю команд, ни в список процессов.
+read -rsp 'Токен GitHub: ' T; echo
+printf 'https://Aki333chan:%s@github.com\n' "$T" | sudo -u aurum tee /home/aurum/.git-credentials > /dev/null
+unset T
+sudo chmod 600 /home/aurum/.git-credentials
+sudo -u aurum git config --global credential.helper store
+```
+
+Проверка:
+
+```bash
+cd /opt/aurum-panel && sudo -u aurum git pull
+```
+
+> **`sudo -u aurum` и домашний каталог.** И ключ, и файл с токеном git ищет в
+> домашнем каталоге пользователя. Если у `aurum` его нет, git молча не найдёт
+> ни того, ни другого и снова спросит пароль. Проверить:
+> `getent passwd aurum` — шестое поле и есть домашний каталог.
+
 ### Если не получилось
 
 - **`destination path '/opt/aurum-panel' already exists and is not an empty
