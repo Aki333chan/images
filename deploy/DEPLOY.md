@@ -629,6 +629,148 @@ sudo -u aurum git checkout claude/pterodactyl-admin-panel-core-984zye
 `git clone` в **заранее созданный пустой** каталог работает штатно — ругается
 он только на непустой.
 
+### Доступ к приватному репозиторию: пароль не подойдёт
+
+Репозиторий приватный, и на `git clone`/`git pull` GitHub спросит логин и
+пароль. **Пароль от аккаунта он не примет** — вход по нему убрали в августе
+2021 года. Выглядит это так:
+
+```
+Password for 'https://Aki333chan@github.com':
+error: RPC failed; HTTP 401 curl 22 The requested URL returned error: 401
+fatal: expected flush after ref listing
+```
+
+Годятся два способа. Оба настраиваются один раз и потом работают молча.
+
+#### Где хранить ключ или токен: не в домашнем каталоге
+
+Сначала важное, иначе оба способа не заработают.
+
+Пользователь `aurum` заводится системным и **его домашний каталог — это сам
+`/opt/aurum-panel`**:
+
+```bash
+getent passwd aurum
+# aurum:x:998:998::/opt/aurum-panel:/usr/sbin/nologin
+#                  ^^^^^^^^^^^^^^^^ вот он
+```
+
+Из этого следует две вещи. Во-первых, ключ, положенный в `/home/aurum/.ssh`,
+ssh просто не увидит — он смотрит в `$HOME/.ssh`, то есть в
+`/opt/aurum-panel/.ssh`. Симптом ровно такой:
+
+```
+git@github.com: Permission denied (publickey).
+```
+
+Во-вторых, класть секреты в `/opt/aurum-panel/.ssh` тоже нельзя: это рабочая
+копия репозитория. Ключ засветится в `git status` как неотслеживаемый файл, а
+`git clean -fdx` при следующей уборке его удалит.
+
+Поэтому храним рядом с остальными секретами панели — в `/etc/aurum-panel`,
+где уже лежит `api.env`, — и указываем git путь явно. Так настройка не зависит
+от того, что считает домашним каталогом `sudo`.
+
+```bash
+sudo mkdir -p /etc/aurum-panel/ssh
+sudo chown aurum:aurum /etc/aurum-panel/ssh
+sudo chmod 700 /etc/aurum-panel/ssh
+```
+
+#### Способ 1 (рекомендуемый): ключ развёртывания
+
+Пара ключей, привязанная к ОДНОМУ репозиторию и только на чтение. Не истекает,
+не даёт доступа ни к чему другому, и если сервер скомпрометируют — потеряна
+будет возможность читать один репозиторий, а не весь аккаунт.
+
+```bash
+sudo -u aurum ssh-keygen -t ed25519 -C "aurum-panel deploy" \
+  -f /etc/aurum-panel/ssh/id_ed25519 -N ""
+sudo -u aurum cat /etc/aurum-panel/ssh/id_ed25519.pub
+```
+
+Пароль на ключ не ставим (`-N ""`): вводить его при автоматическом обновлении
+будет некому.
+
+Показанную строку добавить в GitHub: репозиторий → **Settings** → **Deploy
+keys** → **Add deploy key**. Галочку «Allow write access» **не** ставить: с
+сервера мы только читаем.
+
+Переключить репозиторий на SSH и — главное — указать путь к ключу прямо в
+настройках репозитория:
+
+```bash
+cd /opt/aurum-panel
+sudo -u aurum git remote set-url origin git@github.com:Aki333chan/images.git
+sudo -u aurum git config core.sshCommand \
+  "ssh -i /etc/aurum-panel/ssh/id_ed25519 -o IdentitiesOnly=yes \
+   -o UserKnownHostsFile=/etc/aurum-panel/ssh/known_hosts \
+   -o StrictHostKeyChecking=accept-new"
+sudo -u aurum git pull
+```
+
+`core.sshCommand` лежит в `.git/config` самого репозитория, а не в домашнем
+каталоге, — поэтому работает независимо от `HOME`. `IdentitiesOnly=yes`
+заставляет ssh предлагать именно этот ключ, а не перебирать все найденные.
+
+Проверить связь отдельно от git:
+
+```bash
+sudo -u aurum ssh -i /etc/aurum-panel/ssh/id_ed25519 \
+  -o UserKnownHostsFile=/etc/aurum-panel/ssh/known_hosts \
+  -o StrictHostKeyChecking=accept-new -T git@github.com
+```
+
+Ответ `Hi Aki333chan/images! You've successfully authenticated, but GitHub does
+not provide shell access.` — это успех, а не ошибка.
+
+#### Способ 2 (быстрее): токен доступа
+
+GitHub → **Settings** → **Developer settings** → **Personal access tokens** →
+**Fine-grained tokens**. Доступ: только репозиторий `images`, право
+**Contents: Read-only**. Срок — на ваше усмотрение; когда он выйдет, `git pull`
+снова начнёт спрашивать пароль.
+
+**Токен НЕ вставляйте в адрес репозитория.** `git remote set-url
+https://токен@github.com/...` кладёт его открытым текстом в `.git/config`, и
+дальше он виден в `git remote -v`, в выводе ошибок и в любом бэкапе каталога.
+
+Правильно — в отдельный файл с явным путём, по той же причине, что и ключ:
+
+```bash
+# Токен вводится вслепую и не попадёт ни в историю команд, ни в список процессов.
+read -rsp 'Токен GitHub: ' T; echo
+printf 'https://Aki333chan:%s@github.com\n' "$T" \
+  | sudo -u aurum tee /etc/aurum-panel/ssh/git-credentials > /dev/null
+unset T
+sudo chmod 600 /etc/aurum-panel/ssh/git-credentials
+
+cd /opt/aurum-panel
+sudo -u aurum git config credential.helper \
+  "store --file=/etc/aurum-panel/ssh/git-credentials"
+sudo -u aurum git pull
+```
+
+#### Если всё равно `Permission denied (publickey)`
+
+Три причины, и различаются они одной командой:
+
+```bash
+sudo -u aurum ssh -i /etc/aurum-panel/ssh/id_ed25519 -vT git@github.com 2>&1 \
+  | grep -Ei "identity file|offering|authenticated|denied"
+```
+
+- **`no such identity: … id_ed25519`** → ключа нет по этому пути. Создайте
+  заново командой выше.
+- **`Offering public key` есть, но следом `Permission denied`** → ключ на месте,
+  но GitHub его не знает. Значит, публичная часть не добавлена в **Deploy
+  keys** нужного репозитория (частая ошибка — добавить в другой репозиторий
+  или в личные SSH keys аккаунта, где он тоже сработает, но только если
+  аккаунт имеет доступ).
+- **Ни одной строки `Offering`** → ssh не дошёл до ключа. Проверьте права:
+  каталог `700`, приватный ключ `600`, владелец `aurum`.
+
 ### Если не получилось
 
 - **`destination path '/opt/aurum-panel' already exists and is not an empty
