@@ -2,8 +2,10 @@ package ovh.aurumgg.auth.core;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
+import ovh.aurumgg.auth.api.IpRecord;
 
 /**
  * Хранилище аккаунтов.
@@ -88,6 +90,18 @@ public interface AuthRepository extends AutoCloseable {
 
     /** Убрать записи старше срока хранения. */
     int purgeLoginHistory(Instant before) throws Exception;
+
+    /**
+     * Адреса, с которых заходил игрок, — новые сверху.
+     *
+     * Записываются внутри {@link #touchLogin}, отдельного метода для записи
+     * нет намеренно: тогда её пришлось бы не забыть в пяти местах, откуда
+     * touchLogin зовут.
+     */
+    List<IpRecord> ipHistory(UUID uuid) throws Exception;
+
+    /** Ники всех зарегистрированных, в нижнем регистре. Одним запросом. */
+    Set<String> allUsernames() throws Exception;
 
     // ------------------------------------------------------- двухфакторка
 

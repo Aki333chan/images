@@ -13,7 +13,10 @@ import ovh.aurumgg.companion.core.model.GuildBonusInfo;
 import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
+import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
+import ovh.aurumgg.companion.core.model.KnownPlayer;
+import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
@@ -23,6 +26,49 @@ import ovh.aurumgg.companion.core.model.PluginToggle;
 public final class PayloadWriter {
 
     private PayloadWriter() {}
+
+    /**
+     * Исторический список игроков — страницей.
+     *
+     * {@code alias} и {@code registered} могут быть null: первое значит
+     * «ника нет или нет EssentialsX», второе — «плагина авторизации нет».
+     * Отдаём именно null, а не пустую строку и не false: панель должна
+     * отличать «неизвестно» от «нет», иначе она пометит всех
+     * незарегистрированными на сервере без плагина авторизации.
+     */
+    public static String knownPlayers(KnownPlayersPage page) {
+        List<String> items = new ArrayList<>(page.players().size());
+        for (KnownPlayer p : page.players()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("uuid", Json.string(p.uuid().toString()));
+            fields.put("name", Json.string(p.name()));
+            fields.put("alias", p.alias() == null ? "null" : Json.string(p.alias()));
+            fields.put("op", p.op() ? "true" : "false");
+            fields.put("online", p.online() ? "true" : "false");
+            fields.put("registered",
+                    p.registered() == null ? "null" : (p.registered() ? "true" : "false"));
+            fields.put("lastSeen", Json.number(p.lastSeen()));
+            items.add(Json.object(fields));
+        }
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("players", Json.array(items));
+        body.put("total", Json.number(page.total()));
+        body.put("authAvailable", page.authAvailable() ? "true" : "false");
+        return Json.object(body);
+    }
+
+    /** Адреса игрока. Пусто — либо плагина авторизации нет, либо не записано. */
+    public static String ipHistory(List<IpRecordInfo> records) {
+        List<String> items = new ArrayList<>(records.size());
+        for (IpRecordInfo record : records) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("ip", Json.string(record.ip()));
+            fields.put("firstSeen", Json.number(record.firstSeen()));
+            fields.put("lastSeen", Json.number(record.lastSeen()));
+            items.add(Json.object(fields));
+        }
+        return Json.object(Map.of("addresses", Json.array(items)));
+    }
 
     public static String players(List<PlayerInfo> players) {
         List<String> items = new ArrayList<>(players.size());

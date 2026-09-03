@@ -19,6 +19,9 @@ import type {
   MinecraftInventoryClearDto,
   MinecraftInventoryItemDto,
   MinecraftInventoryResponse,
+  MinecraftKnownPlayerDto,
+  MinecraftKnownPlayersResponse,
+  MinecraftPlayerIpsResponse,
   MinecraftPermissionChangeDto,
   MinecraftPermissionsDto,
   MinecraftPlayerDto,
@@ -40,6 +43,28 @@ interface RawPlayer {
   y?: number;
   z?: number;
   ping?: number;
+}
+
+interface RawKnownPlayer {
+  uuid?: string;
+  name?: string;
+  alias?: string | null;
+  op?: boolean;
+  online?: boolean;
+  registered?: boolean | null;
+  lastSeen?: number;
+}
+
+interface RawKnownPlayers {
+  players?: RawKnownPlayer[];
+  total?: number;
+  authAvailable?: boolean;
+}
+
+interface RawIpRecord {
+  ip?: string;
+  firstSeen?: number;
+  lastSeen?: number;
 }
 
 interface RawItem {
@@ -316,6 +341,99 @@ export class CompanionService {
       }));
   }
 
+  /**
+   * Все, кто когда-либо заходил на сервер.
+   *
+   * Постранично и с фильтром по нику — намеренно. Список растёт вместе с
+   * возрастом сервера, а игровой сервер читает ник каждой записи отдельным
+   * обращением к диску; «отдай всех сразу» на живом сервере с тысячами
+   * игроков означает заметную паузу в игре.
+   */
+  async getKnownPlayers(
+    serverId: string,
+    options: { query?: string; offset?: number; limit?: number } = {},
+  ): Promise<MinecraftKnownPlayersResponse> {
+    const empty = { players: [], total: 0, authAvailable: false };
+    if (!(await this.isConfigured(serverId))) {
+      return {
+        ...empty,
+        available: false,
+        code: 'no-companion',
+        reason: 'Список всех игроков даёт companion-плагин — без него виден только онлайн',
+        docsUrl: COMPANION_DOCS_URL,
+      };
+    }
+
+    const params = new URLSearchParams();
+    if (options.query) params.set('query', options.query);
+    if (options.offset) params.set('offset', String(options.offset));
+    if (options.limit) params.set('limit', String(options.limit));
+    const suffix = params.toString() ? `?${params}` : '';
+
+    const data = await this.call<RawKnownPlayers>(serverId, `/players/known${suffix}`);
+    if (!data) {
+      return {
+        ...empty,
+        available: false,
+        code: 'plugin-unreachable',
+        reason: 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+        docsUrl: COMPANION_DOCS_URL,
+      };
+    }
+
+    return {
+      available: true,
+      players: (data.players ?? [])
+        .filter((p): p is RawKnownPlayer & { uuid: string; name: string } =>
+          typeof p.uuid === 'string' && typeof p.name === 'string',
+        )
+        .map(toKnownPlayer),
+      total: numberOr(data.total, 0),
+      authAvailable: data.authAvailable === true,
+    };
+  }
+
+  /**
+   * Известные адреса игрока.
+   *
+   * Историю ведёт плагин авторизации, companion лишь спрашивает у него.
+   * Пустой список без плагина — не ошибка: ванильный сервер адреса не
+   * хранит вовсе, и панель должна сказать об этом словами, а не молчать.
+   */
+  async getIpHistory(serverId: string, uuid: string): Promise<MinecraftPlayerIpsResponse> {
+    if (!(await this.isConfigured(serverId))) {
+      return {
+        available: false,
+        addresses: [],
+        code: 'no-companion',
+        reason: 'Известные адреса приходят через companion-плагин',
+        docsUrl: COMPANION_DOCS_URL,
+      };
+    }
+
+    const data = await this.call<{ addresses?: RawIpRecord[] }>(serverId, `/players/${uuid}/ips`);
+    if (!data) {
+      return {
+        available: false,
+        addresses: [],
+        code: 'plugin-unreachable',
+        reason: 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+        docsUrl: COMPANION_DOCS_URL,
+      };
+    }
+
+    return {
+      available: true,
+      addresses: (data.addresses ?? [])
+        .filter((r): r is RawIpRecord & { ip: string } => typeof r.ip === 'string')
+        .map((r) => ({
+          ip: r.ip,
+          firstSeen: new Date(numberOr(r.firstSeen, 0)).toISOString(),
+          lastSeen: new Date(numberOr(r.lastSeen, 0)).toISOString(),
+        })),
+    };
+  }
+
   async getInventory(serverId: string, player: string): Promise<MinecraftInventoryResponse> {
     if (!(await this.isConfigured(serverId))) {
       return {
@@ -389,10 +507,11 @@ export class CompanionService {
     player: string,
     items: MinecraftGiveItemDto[],
   ): Promise<MinecraftGiveResponse> {
-    const uuid = await this.requireOnline(serverId, player);
+    const uuid = await this.resolveTarget(serverId, player);
+    // Ник параметром: он нужен InvSee++, если игрока нет в сети.
     const result = await this.callRaw<{ results?: RawGiveResult[] }>(
       serverId,
-      `/players/${uuid}/inventory/give`,
+      `/players/${uuid}/inventory/give?name=${encodeURIComponent(player)}`,
       { method: 'POST', body: { items } },
     );
     if (!result.ok) throw this.inventoryEditFailure(result, player);
@@ -418,23 +537,25 @@ export class CompanionService {
     player: string,
     selection: MinecraftInventoryClearDto,
   ): Promise<void> {
-    const uuid = await this.requireOnline(serverId, player);
-    const result = await this.callRaw<unknown>(serverId, `/players/${uuid}/inventory/clear`, {
-      method: 'POST',
-      body: selection,
-    });
+    const uuid = await this.resolveTarget(serverId, player);
+    const result = await this.callRaw<unknown>(
+      serverId,
+      `/players/${uuid}/inventory/clear?name=${encodeURIComponent(player)}`,
+      { method: 'POST', body: selection },
+    );
     if (!result.ok) throw this.inventoryEditFailure(result, player);
   }
 
   /**
-   * UUID игрока, который сейчас в сети.
+   * UUID игрока, инвентарь которого собираются менять.
    *
-   * Правка инвентаря — только для онлайн-игроков, и это не упрощение:
-   * InvSee++ даёт лишь ПОСМОТРЕТЬ сохранённые данные, а писать в них мимо
-   * живого игрока значит рисковать тем, что сервер перезапишет их обратно
-   * при следующем входе.
+   * Быть в сети больше не требуется: сохранённый инвентарь правится через
+   * InvSee++ — он же и записывает изменения обратно в файл игрока, так что
+   * следующий вход их не затирает, а подхватывает. Игровой сервер сам
+   * скажет, если InvSee++ не стоит или такого игрока он не помнит, —
+   * ответ приедет сюда кодом offline-requires-invsee/offline-no-data.
    */
-  private async requireOnline(serverId: string, player: string): Promise<string> {
+  private async resolveTarget(serverId: string, player: string): Promise<string> {
     if (!(await this.isConfigured(serverId))) {
       throw new ServiceUnavailableException(
         'Для правки инвентаря нужен companion-плагин на игровом сервере',
@@ -442,9 +563,7 @@ export class CompanionService {
     }
     const uuid = await this.resolveUuid(serverId, player);
     if (!uuid) {
-      throw new NotFoundException(
-        `Игрок ${player} сейчас не в сети — менять инвентарь можно только у онлайн-игроков`,
-      );
+      throw new NotFoundException(`Игрок ${player} серверу неизвестен — он ни разу не заходил`);
     }
     return uuid;
   }
@@ -454,6 +573,20 @@ export class CompanionService {
     result: { status: number | null; code: string | null; error: string | null },
     player: string,
   ): Error {
+    if (result.code === 'offline-requires-invsee') {
+      return new NotFoundException(
+        `Игрок ${player} не в сети. Чтобы менять инвентари офлайн-игроков, ` +
+          'установите на сервер плагин InvSee++',
+      );
+    }
+    if (result.code === 'offline-no-data') {
+      return new NotFoundException(
+        `Игрок ${player} не в сети, и InvSee++ не нашёл сохранённых данных о нём`,
+      );
+    }
+    if (result.code === 'unknown-item') {
+      return new NotFoundException('Игровой сервер не знает такого предмета');
+    }
     if (result.code === 'player-offline') {
       return new NotFoundException(`Игрок ${player} вышел из сети — изменения не применены`);
     }
@@ -688,17 +821,26 @@ export class CompanionService {
   }
 
   /**
-   * Ник -> UUID по текущему списку онлайн. Регистр ника не важен.
+   * Ник -> UUID. Регистр ника не важен.
    *
-   * Ограничение: для игрока, которого нет в сети, UUID отсюда не получить.
-   * Инвентари офлайн через InvSee++ поэтому работают только для тех, чей
-   * UUID панель уже знает — например, из открытой карточки игрока.
+   * Сначала по списку онлайн — это один дешёвый запрос и попадание в
+   * большинстве случаев. Если не нашлось, спрашиваем исторический список с
+   * фильтром по этому же нику: так находится и тот, кого сейчас нет в сети.
+   *
+   * Второй запрос делается ТОЛЬКО при промахе по первому: исторический
+   * список дороже, и платить за него на каждом обращении незачем.
    */
   async resolveUuid(serverId: string, player: string): Promise<string | null> {
+    const needle = player.toLowerCase();
+
     const players = await this.getPlayers(serverId);
-    if (!players) return null;
-    const match = players.find((p) => p.name.toLowerCase() === player.toLowerCase());
-    return match?.uuid ?? null;
+    const online = players?.find((p) => p.name.toLowerCase() === needle);
+    if (online?.uuid) return online.uuid;
+
+    const known = await this.getKnownPlayers(serverId, { query: player, limit: 25 });
+    // Совпадение только точное: query — это подстрока, и «Ste» не должен
+    // молча превратиться в «Steve».
+    return known.players.find((p) => p.name.toLowerCase() === needle)?.uuid ?? null;
   }
 }
 
@@ -722,6 +864,30 @@ function toBonus(raw: RawGuildBonus): MinecraftGuildBonusDto {
     expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
     grantedBy: raw.grantedBy ?? '—',
     grantedAt: new Date(numberOr(raw.grantedAt, Date.now())).toISOString(),
+  };
+}
+
+/**
+ * Запись исторического списка.
+ *
+ * Пустой алиас приравнивается к его отсутствию: ник из пробелов игроку
+ * ничего не говорит, а рисовать рядом с именем пустые скобки — хуже, чем
+ * не рисовать ничего.
+ */
+function toKnownPlayer(raw: RawKnownPlayer & { uuid: string; name: string }): MinecraftKnownPlayerDto {
+  const alias = typeof raw.alias === 'string' && raw.alias.trim() ? raw.alias : null;
+  return {
+    uuid: raw.uuid,
+    name: raw.name,
+    // Алиас, совпадающий с настоящим именем, не показываем: он ничего не
+    // добавляет, а «Steve (Steve)» выглядит поломкой.
+    alias: alias && alias !== raw.name ? alias : null,
+    op: raw.op === true,
+    online: raw.online === true,
+    // Именно строгая проверка на boolean: null значит «плагина авторизации
+    // нет», и превращать его в false нельзя — это разные утверждения.
+    registered: typeof raw.registered === 'boolean' ? raw.registered : null,
+    lastSeen: raw.lastSeen ? new Date(raw.lastSeen).toISOString() : null,
   };
 }
 

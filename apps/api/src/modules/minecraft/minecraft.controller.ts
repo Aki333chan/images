@@ -28,7 +28,9 @@ import {
   type MinecraftPermissionsDto,
   type MinecraftPluginsDto,
   type MinecraftInventoryStatusDto,
+  type MinecraftKnownPlayersResponse,
   type MinecraftPasswordResetDto,
+  type MinecraftPlayerIpsResponse,
 } from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../../auth/decorators';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -77,6 +79,46 @@ export class MinecraftController {
   @ServerScoped('serverId')
   players(@Param('serverId') serverId: string) {
     return this.minecraft.getPlayers(serverId);
+  }
+
+  /**
+   * Все, кто когда-либо заходил на сервер.
+   *
+   * Постранично и с поиском по нику: список растёт вместе с возрастом
+   * сервера, а игровой сервер читает его с диска. Право то же, что и на
+   * список онлайна, — это те же игроки, просто ещё и вчерашние.
+   */
+  @Get('players/known')
+  @RequirePermission(MINECRAFT_PERMISSIONS.playersView)
+  @ServerScoped('serverId')
+  knownPlayers(
+    @Param('serverId') serverId: string,
+    @Query('query') query?: string,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+  ): Promise<MinecraftKnownPlayersResponse> {
+    return this.companion.getKnownPlayers(serverId, {
+      query: query?.trim() || undefined,
+      offset: positiveInt(offset),
+      limit: positiveInt(limit),
+    });
+  }
+
+  /**
+   * Известные адреса игрока.
+   *
+   * Отдельное право, а не playersView: адрес — личные данные, и модератору
+   * они для работы не нужны. По UUID, а не по нику: ник у офлайн-режима
+   * меняется вместе с аккаунтом, а UUID — нет.
+   */
+  @Get('players/:uuid/ips')
+  @RequirePermission(MINECRAFT_PERMISSIONS.playerIps)
+  @ServerScoped('serverId')
+  playerIps(
+    @Param('serverId') serverId: string,
+    @Param('uuid') uuid: string,
+  ): Promise<MinecraftPlayerIpsResponse> {
+    return this.companion.getIpHistory(serverId, uuid);
   }
 
   @Post('players/:name/kick')
@@ -648,4 +690,14 @@ export class MinecraftController {
     await this.config.setCompanion(serverId, dto.baseUrl ?? null, dto.token ?? null);
     return { ok: true, configured: await this.companion.isConfigured(serverId) };
   }
+}
+
+/**
+ * Число из строки запроса. Мусор и отрицательные — как будто параметра нет:
+ * пагинация не то место, где стоит отвечать 400 на опечатку в адресной строке.
+ */
+function positiveInt(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : undefined;
 }

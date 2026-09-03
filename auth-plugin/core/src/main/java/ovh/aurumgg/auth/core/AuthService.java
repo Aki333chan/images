@@ -2,6 +2,7 @@ package ovh.aurumgg.auth.core;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -16,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import ovh.aurumgg.auth.api.IpRecord;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.api.PremiumVerdict;
 import ovh.aurumgg.auth.api.ResetToken;
@@ -700,6 +702,37 @@ public final class AuthService implements AutoCloseable {
     }
 
     /** Зарегистрирован ли ник. Блокирующий вызов — только из своего пула. */
+    /**
+     * Адреса игрока — для панели.
+     *
+     * Сам плагин ими не пользуется: ни блокировок по адресу, ни ограничений.
+     * При ошибке чтения возвращается пустой список, а не исключение — блок в
+     * панели просто не покажется, и это лучше, чем красная ошибка на всей
+     * карточке игрока из-за необязательных данных.
+     */
+    public CompletableFuture<List<IpRecord>> ipHistory(UUID uuid) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return repository.ipHistory(uuid);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Не удалось прочитать историю адресов", e);
+                return List.<IpRecord>of();
+            }
+        }, worker);
+    }
+
+    /** Ники всех зарегистрированных, в нижнем регистре. Одним запросом. */
+    public CompletableFuture<Set<String>> registeredUsernames() {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return repository.allUsernames();
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Не удалось прочитать список ников", e);
+                return Set.<String>of();
+            }
+        }, worker);
+    }
+
     public CompletableFuture<Boolean> isRegistered(String username) {
         return CompletableFuture.supplyAsync(() -> {
             try {

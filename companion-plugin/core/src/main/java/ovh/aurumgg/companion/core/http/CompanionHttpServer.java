@@ -153,6 +153,27 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // GET /players/known?query=&offset=&limit= — все, кто когда-либо заходил.
+        //
+        // Отдельным маршрутом от /players, а не флагом на нём: это другой по
+        // смыслу и по цене запрос. /players спрашивают раз в несколько секунд
+        // ради счётчика онлайна, а сюда ходят по открытию вкладки.
+        if (parts.length == 2 && parts[0].equals("players") && parts[1].equals("known")
+                && method.equals("GET")) {
+            respond(exchange, 200, PayloadWriter.knownPlayers(bridge.knownPlayers(
+                    queryParam(exchange, "query"),
+                    parseOffset(queryParam(exchange, "offset")),
+                    parseKnownLimit(queryParam(exchange, "limit")))));
+            return;
+        }
+
+        // GET /players/{uuid}/ips — адреса игрока для панели.
+        if (parts.length == 3 && parts[0].equals("players") && parts[2].equals("ips")
+                && method.equals("GET")) {
+            respond(exchange, 200, PayloadWriter.ipHistory(bridge.ipHistory(parseUuid(parts[1]))));
+            return;
+        }
+
         // POST /webtoken/{code} — панель обменивает код игрока на его личность.
         //
         // POST, а не GET, потому что запрос ИЗМЕНЯЕТ состояние: код
@@ -389,16 +410,7 @@ public final class CompanionHttpServer {
                 return;
             }
 
-            boolean invseeInstalled = hasPlugin(INVSEE_PLUGIN);
-            if (invseeInstalled) {
-                respond(exchange, 404, PayloadWriter.error(
-                        "Игрок не в сети, и InvSee++ не нашёл сохранённых данных о нём",
-                        "offline-no-data"));
-            } else {
-                respond(exchange, 404, PayloadWriter.error(
-                        "Игрок не в сети. Для офлайн-инвентарей нужен плагин InvSee++",
-                        "offline-requires-invsee"));
-            }
+            respondNoOfflineInventory(exchange);
             return;
         }
 
@@ -511,7 +523,11 @@ public final class CompanionHttpServer {
             List<ItemSpec> wanted = parseGiveList(readBody(exchange));
             Optional<List<GiveResult>> results = bridge.giveItems(uuid, wanted);
             if (results.isEmpty()) {
-                respond(exchange, 404, PayloadWriter.error("Игрок не в сети", "player-offline"));
+                // Не в сети — тот же путь, что и у чтения: InvSee++.
+                results = bridge.giveOfflineItems(uuid, queryParam(exchange, "name"), wanted);
+            }
+            if (results.isEmpty()) {
+                respondNoOfflineInventory(exchange);
                 return;
             }
             respond(exchange, 200, PayloadWriter.giveResults(results.get()));
@@ -526,8 +542,9 @@ public final class CompanionHttpServer {
                 && method.equals("POST")) {
             UUID uuid = parseUuid(parts[1]);
             InventorySelection selection = parseSelection(readBody(exchange));
-            if (!bridge.clearInventory(uuid, selection)) {
-                respond(exchange, 404, PayloadWriter.error("Игрок не в сети", "player-offline"));
+            if (!bridge.clearInventory(uuid, selection)
+                    && !bridge.clearOfflineInventory(uuid, queryParam(exchange, "name"), selection)) {
+                respondNoOfflineInventory(exchange);
                 return;
             }
             respond(exchange, 200, PayloadWriter.ok());
@@ -542,9 +559,20 @@ public final class CompanionHttpServer {
             UUID uuid = parseUuid(parts[1]);
             int slot = parseSlot(parts[3]);
             ItemSpec spec = parseItemSpec(readBody(exchange));
-            boolean applied = bridge.setInventorySlot(uuid, slot, spec);
-            if (!applied) {
-                respond(exchange, 404, PayloadWriter.error("Игрок не в сети или неизвестный предмет"));
+            if (bridge.setInventorySlot(uuid, slot, spec)) {
+                respond(exchange, 200, PayloadWriter.ok());
+                return;
+            }
+
+            // Отказ значит одно из двух: игрока нет в сети или предмет
+            // неизвестен. Различаем их, а не сваливаем в одну строку: от
+            // первого спасает InvSee++, от второго — исправленное название.
+            if (bridge.inventory(uuid).isPresent()) {
+                respond(exchange, 404, PayloadWriter.error("Неизвестный предмет", "unknown-item"));
+                return;
+            }
+            if (!bridge.setOfflineInventorySlot(uuid, queryParam(exchange, "name"), slot, spec)) {
+                respondNoOfflineInventory(exchange);
                 return;
             }
             respond(exchange, 200, PayloadWriter.ok());
@@ -552,6 +580,29 @@ public final class CompanionHttpServer {
         }
 
         respond(exchange, 404, PayloadWriter.error("Неизвестный маршрут"));
+    }
+
+    /**
+     * Отказ по инвентарю игрока, которого нет в сети.
+     *
+     * Одна формулировка на чтение и на все три правки: человек, увидевший
+     * «нужен InvSee++» при просмотре, должен увидеть ровно то же, когда
+     * попробует что-то изменить, — иначе выглядит как разные поломки.
+     *
+     * Различаем два случая, потому что действия разные: плагина нет —
+     * поставить плагин; плагин есть, а данных нет — такого игрока сервер не
+     * помнит, и ставить нечего.
+     */
+    private void respondNoOfflineInventory(HttpExchange exchange) throws IOException {
+        if (hasPlugin(INVSEE_PLUGIN)) {
+            respond(exchange, 404, PayloadWriter.error(
+                    "Игрок не в сети, и InvSee++ не нашёл сохранённых данных о нём",
+                    "offline-no-data"));
+        } else {
+            respond(exchange, 404, PayloadWriter.error(
+                    "Игрок не в сети. Для офлайн-инвентарей нужен плагин InvSee++",
+                    "offline-requires-invsee"));
+        }
     }
 
     /** Тело {"enabled":true}. Отсутствие поля — ошибка, а не «по умолчанию». */
@@ -702,6 +753,32 @@ public final class CompanionHttpServer {
             return Long.parseLong(raw);
         } catch (NumberFormatException e) {
             return -1;
+        }
+    }
+
+    /**
+     * Сколько записей исторического списка отдать за раз.
+     *
+     * Верхняя граница жёсткая и намеренно невелика: ник каждого игрока
+     * читается из его файла отдельным обращением к диску, и запрос с
+     * limit=100000 превратился бы в сто тысяч чтений в главном потоке.
+     */
+    private static int parseKnownLimit(String raw) {
+        if (raw == null || raw.isBlank()) return 50;
+        try {
+            return Math.max(1, Math.min(200, Integer.parseInt(raw.trim())));
+        } catch (NumberFormatException e) {
+            return 50;
+        }
+    }
+
+    /** Отрицательного смещения не бывает — считаем его нулём, а не ошибкой. */
+    private static int parseOffset(String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            return Math.max(0, Integer.parseInt(raw.trim()));
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 

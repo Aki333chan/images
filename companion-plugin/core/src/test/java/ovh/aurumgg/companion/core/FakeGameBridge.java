@@ -2,6 +2,7 @@ package ovh.aurumgg.companion.core;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,8 +14,11 @@ import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.InventorySelection;
+import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
+import ovh.aurumgg.companion.core.model.KnownPlayer;
+import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
@@ -42,6 +46,36 @@ public final class FakeGameBridge implements GameBridge {
 
     /** Существующие группы: по ним проверяется отказ на несуществующую. */
     public final List<String> knownGroups = new ArrayList<>(List.of("default", "vip"));
+
+    /** Исторический список: что вернёт knownPlayers. Порядок как задали. */
+    public final List<KnownPlayer> known = new ArrayList<>();
+
+    /** Есть ли плагин авторизации — от этого зависит деление списка. */
+    public boolean authAvailable = true;
+
+    /** Адреса по игрокам. */
+    public final Map<UUID, List<IpRecordInfo>> ips = new HashMap<>();
+
+    @Override
+    public KnownPlayersPage knownPlayers(String query, int offset, int limit) {
+        String needle = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
+        List<KnownPlayer> matched = new ArrayList<>();
+        for (KnownPlayer player : known) {
+            if (needle.isEmpty()
+                    || player.name().toLowerCase(java.util.Locale.ROOT).contains(needle)) {
+                matched.add(player);
+            }
+        }
+        int from = Math.max(0, Math.min(offset, matched.size()));
+        int to = Math.max(from, Math.min(from + Math.max(1, limit), matched.size()));
+        return new KnownPlayersPage(List.copyOf(matched.subList(from, to)), matched.size(),
+                authAvailable);
+    }
+
+    @Override
+    public List<IpRecordInfo> ipHistory(UUID playerUuid) {
+        return ips.getOrDefault(playerUuid, List.of());
+    }
 
     @Override
     public List<PlayerInfo> onlinePlayers() {
@@ -187,10 +221,59 @@ public final class FakeGameBridge implements GameBridge {
 
     @Override
     public Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName) {
-        if (!has("InvSeePlusPlus")) return Optional.empty();
-        if (!playerUuid.equals(STEVE)) return Optional.empty();
+        if (!offlineReachable(playerUuid, playerName)) return Optional.empty();
         ItemInfo stored = new ItemInfo(0, "minecraft:bread", 5, null, Map.of(), List.of());
         return Optional.of(new InventoryInfo(List.of(stored), List.of(), null));
+    }
+
+    /** Что панель просила изменить в сохранённом инвентаре. */
+    public final List<String> offlineWrites = new ArrayList<>();
+
+    /**
+     * Доступен ли сохранённый инвентарь.
+     *
+     * Ник обязателен так же, как и настоящему InvSee++: без него плагин не
+     * знает, чей файл открывать.
+     */
+    private boolean offlineReachable(UUID playerUuid, String playerName) {
+        if (!has("InvSeePlusPlus")) return false;
+        if (playerName == null || playerName.isBlank()) return false;
+        return playerUuid.equals(STEVE);
+    }
+
+    @Override
+    public boolean setOfflineInventorySlot(UUID playerUuid, String playerName, int slot, ItemSpec spec) {
+        if (!offlineReachable(playerUuid, playerName)) return false;
+        if (spec.isClear()) {
+            offlineWrites.add("clear:" + slot);
+            return true;
+        }
+        if (!spec.id().startsWith("minecraft:")) return false;
+        offlineWrites.add("set:" + slot + ":" + spec.id() + "x" + spec.count());
+        return true;
+    }
+
+    @Override
+    public Optional<List<GiveResult>> giveOfflineItems(
+            UUID playerUuid, String playerName, List<ItemSpec> items) {
+        if (!offlineReachable(playerUuid, playerName)) return Optional.empty();
+        List<GiveResult> results = new ArrayList<>(items.size());
+        for (ItemSpec spec : items) {
+            offlineWrites.add("give:" + spec.id() + "x" + spec.count());
+            results.add(
+                    spec.id().startsWith("minecraft:")
+                            ? GiveResult.ok(spec.id(), spec.count())
+                            : GiveResult.failed(spec.id(), spec.count(), "Неизвестный предмет"));
+        }
+        return Optional.of(results);
+    }
+
+    @Override
+    public boolean clearOfflineInventory(
+            UUID playerUuid, String playerName, InventorySelection selection) {
+        if (!offlineReachable(playerUuid, playerName)) return false;
+        offlineWrites.add(selection.all() ? "clear-all" : "clear-slots=" + selection.slots());
+        return true;
     }
 
     // ---------- Экономика ----------

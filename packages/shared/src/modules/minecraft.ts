@@ -25,6 +25,75 @@ export interface MinecraftPlayersResponse {
   source: 'rcon' | 'companion';
 }
 
+/**
+ * Игрок из истории сервера: все, кто когда-либо заходил.
+ *
+ * Основа — ванильный список Bukkit, поэтому сама запись есть всегда. А вот
+ * три поля зависят от соседних плагинов, и null в них значит «неизвестно»,
+ * а не «нет»:
+ *
+ * - `alias` — ник из EssentialsX. Нет плагина или ник не задан — null;
+ * - `registered` — есть ли аккаунт в плагине авторизации. Без плагина
+ *   делить список не на что, и панель показывает его одним куском;
+ * - `lastSeen` — сервер не всегда помнит дату последнего входа.
+ *
+ * `op` — оператор ли игрок. Это ванильные данные (`isOp()`), они есть
+ * на любом сервере и ни от каких плагинов не зависят.
+ */
+export interface MinecraftKnownPlayerDto {
+  uuid: string;
+  /** Настоящее игровое имя. */
+  name: string;
+  /** Ник из EssentialsX; null — нет плагина либо ник не задан. */
+  alias: string | null;
+  op: boolean;
+  online: boolean;
+  /** null — плагина авторизации нет. */
+  registered: boolean | null;
+  /** ISO-время последнего входа; null — сервер не помнит. */
+  lastSeen: string | null;
+}
+
+export interface MinecraftKnownPlayersResponse {
+  available: boolean;
+  /** Почему список недоступен: нет companion-плагина либо он не ответил. */
+  code?: 'no-companion' | 'plugin-unreachable';
+  reason?: string;
+  docsUrl?: string;
+  players: MinecraftKnownPlayerDto[];
+  /** Сколько записей нашлось всего — постранично отдаётся часть. */
+  total: number;
+  /**
+   * Стоит ли на сервере плагин авторизации.
+   *
+   * false — панель НЕ делит список на зарегистрированных и нет: делить не
+   * по чему, и выдуманное деление врало бы. Это ожидаемое состояние, а не
+   * поломка.
+   */
+  authAvailable: boolean;
+}
+
+/** Один известный адрес игрока. */
+export interface MinecraftPlayerIpDto {
+  ip: string;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+/**
+ * Известные адреса игрока.
+ *
+ * Историю ведёт плагин авторизации; без него смотреть нечего, и это
+ * ожидаемо — ванильный сервер адреса не хранит.
+ */
+export interface MinecraftPlayerIpsResponse {
+  available: boolean;
+  code?: 'no-companion' | 'requires-auth' | 'plugin-unreachable';
+  reason?: string;
+  docsUrl?: string;
+  addresses: MinecraftPlayerIpDto[];
+}
+
 export interface MinecraftBanDto {
   id: string;
   serverId: string;
@@ -295,6 +364,15 @@ export type KnownPluginId = (typeof KNOWN_PLUGINS)[number]['id'];
 
 export const MINECRAFT_PERMISSIONS = {
   playersView: 'minecraft.players.view',
+  /**
+   * Известные IP-адреса игрока.
+   *
+   * Отдельным правом и намеренно весомее просмотра списка игроков: адрес
+   * — это личные данные, по нему видно и провайдера, и город, и то, что
+   * два ника принадлежат одному человеку. Модерации для её работы этого
+   * не нужно.
+   */
+  playerIps: 'minecraft.players.ips',
   kick: 'minecraft.kick',
   ban: 'minecraft.ban',
   pardon: 'minecraft.ban.pardon',

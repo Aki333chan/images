@@ -33,8 +33,23 @@ import ovh.aurumgg.companion.core.model.InventoryInfo;
  *       api.mainSpectatorInventory(uuid, name, api.mainInventoryCreationOptions());
  *   if (f.get().isSuccess()) Inventory inv = (Inventory) f.get().getInventory();
  *
+ * Запись идёт тем же путём в обратную сторону: спектаторский инвентарь —
+ * обычный Bukkit-инвентарь, в него пишут штатным setItem/addItem, а затем
+ * просят InvSee++ сохранить его на диск:
+ *   api.saveInventory(inventory);
+ *
  * Любая осечка (другая версия, изменившаяся сигнатура) трактуется как
  * «данных нет»: панель покажет понятное сообщение, сервер не пострадает.
+ *
+ * <h2>Потоки</h2>
+ *
+ * {@link #fetch} блокируется на CompletableFuture InvSee++, а тот
+ * завершается в основном потоке сервера. Значит звать fetch из основного
+ * потока НЕЛЬЗЯ — это гарантированный взаимоблок. Зато сама правка
+ * инвентаря и {@link #save} должны идти в основном потоке: инвентарь может
+ * быть открыт у кого-то в /invsee, и Bukkit-инвентари не потокобезопасны.
+ * Разводит это по потокам вызывающий (BukkitGameBridge): fetch — на потоке
+ * HTTP, правку и save — через callSync.
  */
 final class InvSeeIntegration {
 
@@ -56,6 +71,20 @@ final class InvSeeIntegration {
      * @return пусто, если InvSee++ нет, ник неизвестен либо данных о игроке нет
      */
     static Optional<InventoryInfo> read(UUID playerUuid, String playerName) {
+        return fetch(playerUuid, playerName).map(InvSeeIntegration::toInventoryInfo);
+    }
+
+    /**
+     * Достаёт спектаторский инвентарь игрока, которого нет в сети.
+     *
+     * НЕ ЗВАТЬ ИЗ ОСНОВНОГО ПОТОКА: внутри ожидание future, которое InvSee++
+     * завершает как раз в основном потоке.
+     *
+     * @param playerName ник нужен самому InvSee++ для создания инвентаря;
+     *                   если панель его не передала, читать нечего
+     * @return пусто, если InvSee++ нет, ник неизвестен либо данных о игроке нет
+     */
+    static Optional<Inventory> fetch(UUID playerUuid, String playerName) {
         if (playerName == null || playerName.isBlank()) return Optional.empty();
 
         Plugin plugin = Bukkit.getPluginManager().getPlugin(PLUGIN_NAME);
@@ -80,13 +109,60 @@ final class InvSeeIntegration {
             Object inventory = response.getClass().getMethod("getInventory").invoke(response);
             if (!(inventory instanceof Inventory bukkitInventory)) return Optional.empty();
 
-            return Optional.of(toInventoryInfo(bukkitInventory));
+            return Optional.of(bukkitInventory);
         } catch (Exception | NoClassDefFoundError e) {
             // Версия InvSee++ несовместима либо чтение не удалось — для
             // вызывающего это неотличимо от «плагина нет», и это правильно:
             // выше по стеку решение одно и то же.
             return Optional.empty();
         }
+    }
+
+    /**
+     * Просит InvSee++ записать изменённый инвентарь в файл игрока.
+     *
+     * Звать в основном потоке и тем же объектом, который отдал {@link #fetch}:
+     * InvSee++ узнаёт игрока по самому инвентарю, а не по переданному UUID.
+     *
+     * Возвращаемый плагином CompletableFuture мы НЕ ждём. Ждать его в
+     * основном потоке нельзя — он в этом же потоке и завершается, — а
+     * подтверждение записи на диск панели ничего не даёт: к следующему
+     * запросу инвентаря InvSee++ отдаст уже изменённое содержимое, потому
+     * что держит его у себя в памяти. {@code true} здесь значит «правка
+     * принята», а не «файл на диске переписан».
+     *
+     * @return false, если InvSee++ пропал или отказался принимать инвентарь
+     */
+    static boolean save(Inventory inventory) {
+        Plugin plugin = Bukkit.getPluginManager().getPlugin(PLUGIN_NAME);
+        if (plugin == null || !plugin.isEnabled()) return false;
+
+        try {
+            Object api = plugin.getClass().getMethod("getApi").invoke(plugin);
+            Method saver = findSaveMethod(api.getClass(), inventory.getClass());
+            if (saver == null) return false;
+            saver.invoke(api, inventory);
+            return true;
+        } catch (Exception | NoClassDefFoundError e) {
+            return false;
+        }
+    }
+
+    /**
+     * Ищем saveInventory(MainSpectatorInventory).
+     *
+     * По имени и типу аргумента: у InvseeAPI есть ещё saveEnderChest с такой
+     * же арностью, и промахнуться именем значит записать содержимое не туда.
+     */
+    private static Method findSaveMethod(Class<?> apiClass, Class<?> inventoryClass) {
+        for (Method method : apiClass.getMethods()) {
+            if (!method.getName().equals("saveInventory")) continue;
+            Class<?>[] params = method.getParameterTypes();
+            if (params.length != 1) continue;
+            if (!params[0].isAssignableFrom(inventoryClass)) continue;
+            return method;
+        }
+        return null;
     }
 
     /**

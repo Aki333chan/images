@@ -1,8 +1,11 @@
 package ovh.aurumgg.auth.paper;
 
+import java.util.Set;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import ovh.aurumgg.auth.api.IpRecord;
 import ovh.aurumgg.auth.api.AurumAuthApi;
 import ovh.aurumgg.auth.api.AuthStatus;
 import ovh.aurumgg.auth.api.PremiumVerdict;
@@ -48,6 +51,16 @@ final class BukkitAuthApi implements AurumAuthApi {
         // асинхронный. Блокирующая версия превратила бы безобидный вопрос
         // «занят ли ник» в поход в MariaDB с главного потока.
         return service.isRegistered(username);
+    }
+
+    @Override
+    public CompletableFuture<List<IpRecord>> ipHistory(UUID playerUuid) {
+        return service.ipHistory(playerUuid);
+    }
+
+    @Override
+    public CompletableFuture<Set<String>> registeredUsernames() {
+        return service.registeredUsernames();
     }
 
     @Override

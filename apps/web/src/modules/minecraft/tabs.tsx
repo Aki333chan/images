@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MinecraftBanDto,
+  MinecraftKnownPlayerDto,
+  MinecraftPlayerDto,
   MinecraftPlayersResponse,
   MinecraftPluginsDto,
   MinecraftQuickCommandDto,
@@ -14,6 +16,9 @@ import { Modal, PromptModal, PunishModal } from './PlayerModal';
 import { PlayerDetail } from './PlayerDetail';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 import { ActivityHeatmap } from '../../components/ActivityHeatmap';
+import { KnownPlayersPanel } from './KnownPlayersPanel';
+import { PlayerName } from './PlayerName';
+import { knownByName } from './player-name';
 
 /**
  * Базовый путь API берётся из moduleId, а не зашит строкой.
@@ -89,6 +94,21 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
    * серыми с подсказкой. null — выяснить не удалось.
    */
   const [plugins, setPlugins] = useState<MinecraftPluginsDto | null>(null);
+  /**
+   * Записи исторического списка по нику.
+   *
+   * Из них берутся звёздочка оператора и ник EssentialsX для таблицы
+   * онлайна: сам список онлайна их не знает — он приходит по RCON, где
+   * кроме ников ничего нет. Игроки в сети стоят в начале исторического
+   * списка, поэтому первой его страницы для этого хватает.
+   */
+  const [known, setKnown] = useState<Map<string, MinecraftKnownPlayerDto>>(new Map());
+  /**
+   * Игрок из истории, чью карточку открыли.
+   *
+   * Отдельно от `selected`: тот ищется в списке онлайна, а этого там нет.
+   */
+  const [selectedKnown, setSelectedKnown] = useState<MinecraftKnownPlayerDto | null>(null);
 
   useEffect(() => {
     if (!hasBukkitPlugins(moduleId)) return setPlugins(null);
@@ -130,7 +150,29 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
 
   // Именно поиск по имени, а не сохранённый объект: список перезапрашивается
   // каждые 15 секунд, и статистика в карточке должна обновляться вместе с ним.
-  const selectedPlayer = selected ? (data.players.find((p) => p.name === selected) ?? null) : null;
+  const onlineSelected = selected ? (data.players.find((p) => p.name === selected) ?? null) : null;
+  // Игрок из истории приходит без здоровья и координат — их у него и нет.
+  // Карточка это уже умеет: те же прочерки, что и у списка по чистому RCON.
+  const selectedPlayer: MinecraftPlayerDto | null =
+    onlineSelected ??
+    (selectedKnown
+      ? {
+          name: selectedKnown.name,
+          uuid: selectedKnown.uuid,
+          ping: null,
+          health: null,
+          maxHealth: null,
+          world: null,
+          position: null,
+        }
+      : null);
+  const selectedKnownRecord =
+    selectedKnown ?? (selectedPlayer ? (known.get(selectedPlayer.name.toLowerCase()) ?? null) : null);
+
+  const closeCard = () => {
+    setSelected(null);
+    setSelectedKnown(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -177,7 +219,11 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
                     <td className="py-2">
                       <div className="flex items-center gap-2">
                         <PlayerAvatar uuid={p.uuid} name={p.name} />
-                        <span className="font-medium">{p.name}</span>
+                        <PlayerName
+                          name={p.name}
+                          alias={known.get(p.name.toLowerCase())?.alias ?? null}
+                          op={known.get(p.name.toLowerCase())?.op ?? false}
+                        />
                       </div>
                     </td>
                     <td className="py-2 text-muted">
@@ -214,7 +260,12 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
                     <PlayerAvatar uuid={p.uuid} name={p.name} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate font-medium">{p.name}</span>
+                        <PlayerName
+                          name={p.name}
+                          alias={known.get(p.name.toLowerCase())?.alias ?? null}
+                          op={known.get(p.name.toLowerCase())?.op ?? false}
+                          className="min-w-0 truncate"
+                        />
                         <span className="shrink-0 text-xs text-muted">
                           {p.ping !== null ? `${p.ping} мс` : ''}
                         </span>
@@ -265,11 +316,12 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
         )}
 
         {selectedPlayer && (
-          <Modal title={`Игрок ${selectedPlayer.name}`} onClose={() => setSelected(null)}>
+          <Modal title={`Игрок ${selectedPlayer.name}`} onClose={closeCard}>
             <PlayerDetail
               serverId={serverId}
               moduleId={moduleId}
               player={selectedPlayer}
+              known={selectedKnownRecord}
               plugins={plugins}
               onChanged={() => void load()}
               onPunish={(kind) => setPunish({ player: selectedPlayer.name, kind })}
@@ -277,6 +329,21 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
           </Modal>
         )}
       </Card>
+
+      {/* Все, кто когда-либо заходил. Отдельным блоком под онлайном, а не
+          вместо него: онлайн обновляется каждые 15 секунд и нужен сразу, а
+          история читается с диска игрового сервера и листается по запросу. */}
+      {hasBukkitPlugins(moduleId) && (
+        <KnownPlayersPanel
+          serverId={serverId}
+          moduleId={moduleId}
+          onOpen={(p) => {
+            setSelected(null);
+            setSelectedKnown(p);
+          }}
+          onLoaded={(players) => setKnown(knownByName(players))}
+        />
+      )}
 
       <ActivityHeatmap serverId={serverId} />
     </div>

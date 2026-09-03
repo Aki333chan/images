@@ -27,8 +27,16 @@ export const minecraftManifest: GameModuleManifest = {
   permissions: [
     {
       key: MINECRAFT_PERMISSIONS.playersView,
-      description: 'Просмотр списка игроков онлайн',
+      description: 'Просмотр списка игроков: онлайн и всех, кто когда-либо заходил',
       defaultRoles: ['ADMIN', 'MODERATOR'],
+    },
+    {
+      // Без MODERATOR намеренно. Адрес — личные данные: по нему видно
+      // провайдера, город и то, что два ника принадлежат одному человеку.
+      // Модерации для кика, бана и разбора жалоб этого не нужно.
+      key: MINECRAFT_PERMISSIONS.playerIps,
+      description: 'Известные IP-адреса игрока (нужен плагин авторизации)',
+      defaultRoles: ['ADMIN'],
     },
     {
       key: MINECRAFT_PERMISSIONS.kick,

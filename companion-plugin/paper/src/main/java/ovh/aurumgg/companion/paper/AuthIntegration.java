@@ -1,12 +1,18 @@
 package ovh.aurumgg.companion.paper;
 
+import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import ovh.aurumgg.auth.api.AurumAuthApi;
+import ovh.aurumgg.auth.api.IpRecord;
 import ovh.aurumgg.auth.api.ResetToken;
+import ovh.aurumgg.companion.core.model.IpRecordInfo;
 
 /**
  * Система авторизации — через её собственный API, а не через её базу.
@@ -76,5 +82,58 @@ final class AuthIntegration {
         return provider()
                 .map(api -> api.issueResetToken(username))
                 .orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()));
+    }
+
+    /** Сколько ждать ответа базы. Столько же, сколько у сброса пароля. */
+    private static final long TIMEOUT_SECONDS = 5;
+
+    /**
+     * Адреса, с которых заходил игрок.
+     *
+     * Пустой список означает и «плагина авторизации нет», и «адресов не
+     * записано» — для панели это одно и то же: показывать нечего.
+     */
+    static List<IpRecordInfo> ipHistory(UUID playerUuid) {
+        return provider()
+                .map(api -> {
+                    try {
+                        List<IpRecordInfo> result = new ArrayList<>();
+                        for (IpRecord record :
+                                api.ipHistory(playerUuid).get(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                            result.add(new IpRecordInfo(
+                                    record.ip(),
+                                    record.firstSeen().toEpochMilli(),
+                                    record.lastSeen().toEpochMilli()));
+                        }
+                        return result;
+                    } catch (Exception e) {
+                        // База не ответила. Адреса — необязательная часть
+                        // карточки игрока, и рушить из-за них всю карточку
+                        // нельзя: блок просто не появится.
+                        return List.<IpRecordInfo>of();
+                    }
+                })
+                .orElseGet(List::of);
+    }
+
+    /**
+     * Ники всех зарегистрированных, в нижнем регистре.
+     *
+     * {@code null} здесь значит РОВНО «плагина авторизации нет», а пустое
+     * множество — «плагин есть, но никто ещё не зарегистрирован». Разница
+     * важна: в первом случае панель показывает исторический список целиком,
+     * без деления, во втором честно говорит, что незарегистрированы все.
+     */
+    static Set<String> registeredUsernames() {
+        AurumAuthApi api = provider().orElse(null);
+        if (api == null) return null;
+        try {
+            return api.registeredUsernames().get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            // Плагин есть, но не ответил. Считаем, что делить не на что, —
+            // список покажется целиком, и это лучше, чем пометить всех
+            // незарегистрированными.
+            return null;
+        }
     }
 }
