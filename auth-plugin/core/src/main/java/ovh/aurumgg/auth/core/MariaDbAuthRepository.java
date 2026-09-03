@@ -9,9 +9,13 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import ovh.aurumgg.auth.api.IpRecord;
 
 /**
  * Хранилище на MariaDB с пулом соединений.
@@ -36,6 +40,9 @@ public final class MariaDbAuthRepository implements AuthRepository {
     /** Таблица истории входов — там же. */
     private final String historyTable;
 
+    /** Адреса, с которых заходили. Пишется здесь, читается только панелью. */
+    private final String ipTable;
+
     public MariaDbAuthRepository(AuthConfig config) {
         HikariConfig hikari = new HikariConfig();
         hikari.setJdbcUrl(config.jdbcUrl());
@@ -55,6 +62,7 @@ public final class MariaDbAuthRepository implements AuthRepository {
         this.table = config.tableName();
         this.resetTable = config.tableName() + "_resets";
         this.historyTable = config.tableName() + "_logins";
+        this.ipTable = config.tableName() + "_ips";
     }
 
     /**
@@ -123,11 +131,30 @@ public final class MariaDbAuthRepository implements AuthRepository {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
                 """.formatted(historyTable);
 
+        // Адреса игрока. Одна строка на пару (uuid, ip) — не журнал заходов,
+        // а «когда впервые и когда в последний раз». Журнал входов уже есть
+        // отдельно и отвечает на другой вопрос; тысячи строк про один и тот же
+        // домашний адрес не сказали бы ничего сверх этих двух дат.
+        //
+        // Составной первичный ключ вместо суррогатного id: он же и есть
+        // естественный ключ, и он же нужен для ON DUPLICATE KEY UPDATE.
+        String ipDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  uuid       CHAR(36)    NOT NULL,
+                  ip         VARCHAR(45) NOT NULL,
+                  first_seen TIMESTAMP   NOT NULL,
+                  last_seen  TIMESTAMP   NOT NULL,
+                  PRIMARY KEY (uuid, ip),
+                  KEY idx_last_seen (uuid, last_seen)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(ipTable);
+
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate(ddl);
             statement.executeUpdate(resetDdl);
             statement.executeUpdate(historyDdl);
+            statement.executeUpdate(ipDdl);
 
             // ДОБАВЛЕНИЕ КОЛОНОК В УЖЕ СУЩЕСТВУЮЩУЮ ТАБЛИЦУ. CREATE TABLE IF
             // NOT EXISTS выше ничего не сделает там, где таблица заведена
@@ -374,6 +401,17 @@ public final class MariaDbAuthRepository implements AuthRepository {
         }
     }
 
+    /**
+     * Отметить удачный вход.
+     *
+     * Здесь же дописывается история адресов — намеренно, а не отдельным
+     * вызовом у каждого, кто зовёт этот метод. Зовут его из пяти мест
+     * {@link AuthService} (обычный вход, вход по сессии, после смены пароля,
+     * после двухфакторки, байпас), и требовать от каждого не забыть второй
+     * вызов значит однажды получить дыру в истории ровно на одном из путей.
+     *
+     * Адреса может не быть — тогда записывать нечего.
+     */
     @Override
     public void touchLogin(UUID uuid, Instant at, String ip) throws Exception {
         try (Connection connection = dataSource.getConnection();
@@ -384,6 +422,70 @@ public final class MariaDbAuthRepository implements AuthRepository {
             statement.setString(3, uuid.toString());
             statement.executeUpdate();
         }
+        if (ip != null && !ip.isBlank()) rememberIp(uuid, ip, at);
+    }
+
+    /**
+     * Запомнить адрес: новый — завести, знакомый — подвинуть last_seen.
+     *
+     * Одним запросом через ON DUPLICATE KEY UPDATE, а не «сначала посмотреть,
+     * потом вставить или обновить»: между двумя запросами успевает вклиниться
+     * второй вход того же игрока, и вставка упала бы на первичном ключе.
+     *
+     * first_seen при повторном появлении НЕ трогается — в этом весь смысл
+     * поля: оно отвечает, когда адрес увидели впервые.
+     */
+    private void rememberIp(UUID uuid, String ip, Instant at) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO " + ipTable + " (uuid, ip, first_seen, last_seen)"
+                                + " VALUES (?, ?, ?, ?)"
+                                + " ON DUPLICATE KEY UPDATE last_seen = VALUES(last_seen)")) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, ip);
+            statement.setTimestamp(3, Timestamp.from(at));
+            statement.setTimestamp(4, Timestamp.from(at));
+            statement.executeUpdate();
+        }
+    }
+
+    @Override
+    public List<IpRecord> ipHistory(UUID uuid) throws Exception {
+        List<IpRecord> result = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT ip, first_seen, last_seen FROM " + ipTable
+                                + " WHERE uuid = ? ORDER BY last_seen DESC")) {
+            statement.setString(1, uuid.toString());
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new IpRecord(
+                            rs.getString("ip"),
+                            rs.getTimestamp("first_seen").toInstant(),
+                            rs.getTimestamp("last_seen").toInstant()));
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Ники всех зарегистрированных, в нижнем регистре.
+     *
+     * Один запрос вместо проверки каждого ника по отдельности: панель делит
+     * исторический список из сотен имён, и сотня обращений к базе на открытие
+     * вкладки — не то, за что стоит платить.
+     */
+    @Override
+    public Set<String> allUsernames() throws Exception {
+        Set<String> result = new HashSet<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT username FROM " + table);
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) result.add(rs.getString("username").toLowerCase(Locale.ROOT));
+        }
+        return result;
     }
 
     @Override

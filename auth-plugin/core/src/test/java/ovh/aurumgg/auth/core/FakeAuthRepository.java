@@ -1,6 +1,11 @@
 package ovh.aurumgg.auth.core;
 
 import java.time.Instant;
+import ovh.aurumgg.auth.api.IpRecord;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -54,6 +59,40 @@ final class FakeAuthRepository implements AuthRepository {
         byUuid.put(uuid, new AuthAccount(existing.uuid(), existing.username(), existing.passwordHash(),
                 existing.email(), existing.registeredAt(), at, ip,
                 existing.totpSecret(), existing.totpEnabled(), existing.totpLastCounter()));
+
+        // Как и в настоящей реализации: историю адресов пишет сам touchLogin,
+        // а не тот, кто его зовёт.
+        if (ip == null || ip.isBlank()) return;
+        List<IpRecord> seen = new ArrayList<>(ips.getOrDefault(uuid, List.of()));
+        for (int i = 0; i < seen.size(); i++) {
+            if (seen.get(i).ip().equals(ip)) {
+                seen.set(i, new IpRecord(ip, seen.get(i).firstSeen(), at));
+                ips.put(uuid, seen);
+                return;
+            }
+        }
+        seen.add(new IpRecord(ip, at, at));
+        ips.put(uuid, seen);
+    }
+
+    /** Адреса по игрокам — то же, что таблица <префикс>_ips в MariaDB. */
+    private final Map<UUID, List<IpRecord>> ips = new HashMap<>();
+
+    @Override
+    public List<IpRecord> ipHistory(UUID uuid) {
+        List<IpRecord> seen = new ArrayList<>(ips.getOrDefault(uuid, List.of()));
+        // Новые сверху — как и в настоящем запросе с ORDER BY last_seen DESC.
+        seen.sort(Comparator.comparing(IpRecord::lastSeen).reversed());
+        return seen;
+    }
+
+    @Override
+    public Set<String> allUsernames() {
+        Set<String> names = new HashSet<>();
+        for (AuthAccount account : byUuid.values()) {
+            names.add(account.username().toLowerCase(Locale.ROOT));
+        }
+        return names;
     }
 
     @Override

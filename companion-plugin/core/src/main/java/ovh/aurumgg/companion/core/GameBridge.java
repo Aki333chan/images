@@ -13,10 +13,12 @@ import ovh.aurumgg.companion.core.model.GuildInfo;
 import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.InventorySelection;
+import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
+import ovh.aurumgg.companion.core.model.KnownPlayersPage;
+import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
-import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
@@ -31,6 +33,26 @@ import ovh.aurumgg.companion.core.model.PluginToggle;
 public interface GameBridge {
 
     List<PlayerInfo> onlinePlayers();
+
+    /**
+     * Все, кто когда-либо заходил, — страницей.
+     *
+     * Страницей, а не целиком: сервер помнит тысячи имён, а на экран попадает
+     * полсотни. Подробнее — в {@link KnownPlayersPage}.
+     *
+     * @param query  подстрока имени или ника; пусто — без фильтра
+     * @param offset сколько записей пропустить
+     * @param limit  сколько вернуть
+     */
+    KnownPlayersPage knownPlayers(String query, int offset, int limit);
+
+    /**
+     * Адреса, с которых заходил игрок.
+     *
+     * Пусто означает и «плагина авторизации нет», и «адресов не записано» —
+     * отличать эти случаи здесь незачем: в обоих панели нечего показать.
+     */
+    List<IpRecordInfo> ipHistory(UUID playerUuid);
 
     /** Пусто, если игрок не в сети. */
     Optional<InventoryInfo> inventory(UUID playerUuid);
@@ -130,6 +152,38 @@ public interface GameBridge {
      * @return пусто, если InvSee++ не установлен либо данных по игроку нет
      */
     Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName);
+
+    /**
+     * Записывает один слот в инвентарь игрока, которого нет в сети.
+     *
+     * Ник обязателен: InvSee++ адресует сохранённый инвентарь по нему, а не
+     * только по UUID.
+     *
+     * Слоты те же, что и у живого инвентаря, — 0-35. Броню и вторую руку
+     * офлайн-режим не показывает, а значит и не правит: редактировать то,
+     * чего человек не видит на экране, нельзя.
+     *
+     * @return false, если InvSee++ нет, данных о игроке нет либо предмет неизвестен
+     */
+    boolean setOfflineInventorySlot(UUID playerUuid, String playerName, int slot, ItemSpec spec);
+
+    /**
+     * Выдаёт предметы игроку, которого нет в сети.
+     *
+     * @return пусто, если InvSee++ нет или данных о игроке нет; иначе — отчёт
+     *         по каждой строке, как и у выдачи игроку в сети
+     */
+    Optional<List<GiveResult>> giveOfflineItems(UUID playerUuid, String playerName, List<ItemSpec> items);
+
+    /**
+     * Очищает инвентарь игрока, которого нет в сети.
+     *
+     * Броня и вторая рука в выборке игнорируются по той же причине, что и в
+     * {@link #setOfflineInventorySlot}: офлайн-режим их не показывает.
+     *
+     * @return false, если InvSee++ нет либо данных о игроке нет
+     */
+    boolean clearOfflineInventory(UUID playerUuid, String playerName, InventorySelection selection);
 
     // ---------- Экономика (Vault) ----------
     //

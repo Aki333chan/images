@@ -6,6 +6,7 @@ import type {
   MinecraftGuildMembershipDto,
   MinecraftInventoryClearDto,
   MinecraftInventoryResponse,
+  MinecraftKnownPlayerDto,
   MinecraftPasswordResetDto,
   MinecraftPlayerDto,
   MinecraftPluginsDto,
@@ -19,6 +20,8 @@ import { InventoryGrid } from './InventoryGrid';
 import { parseGiveList } from './give-list';
 import { PermissionsPanel } from './PermissionsPanel';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
+import { PlayerIpsPanel } from './PlayerIpsPanel';
+import { PlayerName } from './PlayerName';
 
 /** Тот же принцип, что и во вкладках: префикс берётся из модуля сервера. */
 const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
@@ -88,6 +91,7 @@ export function PlayerDetail({
   serverId,
   moduleId,
   player,
+  known,
   plugins,
   onChanged,
   onPunish,
@@ -96,6 +100,15 @@ export function PlayerDetail({
   /** Модуль сервера: от него зависят и адрес API, и набор вкладок карточки. */
   moduleId: string;
   player: MinecraftPlayerDto;
+  /**
+   * Запись из исторического списка, если она есть.
+   *
+   * Отсюда берутся звёздочка оператора и ник EssentialsX. Сам список
+   * онлайна их не знает: он приходит по RCON, где ничего кроме ников нет.
+   * null — записи не нашлось (например, companion-плагина нет вовсе), и
+   * карточка просто показывает имя без украшений.
+   */
+  known?: MinecraftKnownPlayerDto | null;
   /** Уже загруженный список плагинов сервера; null — выяснить не удалось. */
   plugins: MinecraftPluginsDto | null;
   /** Дёргается после действия, меняющего состояние игрока. */
@@ -124,7 +137,7 @@ export function PlayerDetail({
 
   return (
     <div className="space-y-4">
-      <PlayerStats player={player} />
+      <PlayerStats player={player} known={known ?? null} />
 
       {/* Тот же компонент, что и у вкладок сервера: и вид, и едущая подложка
           общие. Отдельная реализация здесь означала бы, что одинаковое на вид
@@ -160,6 +173,13 @@ export function PlayerDetail({
               «Гильдии», куда эта строка и отсылает. */}
           {bukkit && hasPermission('minecraft.guilds.view') && player.uuid && (
             <PlayerGuild serverId={serverId} moduleId={moduleId} uuid={player.uuid} />
+          )}
+
+          {/* Известные IP — только тем, у кого есть отдельное право. У
+              модератора его по умолчанию нет: адрес — личные данные, и для
+              кика, бана и разбора жалоб он не нужен. */}
+          {bukkit && hasPermission('minecraft.players.ips') && player.uuid && (
+            <PlayerIpsPanel serverId={serverId} moduleId={moduleId} uuid={player.uuid} />
           )}
 
           {/* Валюта — отдельным блоком, а не четвёртой вкладкой: на телефоне
@@ -211,7 +231,13 @@ export function PlayerDetail({
 }
 
 /** Статистика: то, что уже отдаёт companion-плагин. */
-function PlayerStats({ player }: { player: MinecraftPlayerDto }) {
+function PlayerStats({
+  player,
+  known,
+}: {
+  player: MinecraftPlayerDto;
+  known: MinecraftKnownPlayerDto | null;
+}) {
   const cells: [string, string][] = [
     ['Здоровье', player.health !== null ? `${(player.health / 2).toFixed(1)} ♥` : '—'],
     ['Пинг', player.ping !== null ? `${player.ping} мс` : '—'],
@@ -225,6 +251,10 @@ function PlayerStats({ player }: { player: MinecraftPlayerDto }) {
   ];
   return (
     <Card className="flex flex-wrap gap-x-6 gap-y-2">
+      <div className="min-w-0 basis-full">
+        <div className="text-[11px] uppercase tracking-wide text-muted">Имя</div>
+        <PlayerName name={player.name} alias={known?.alias ?? null} op={known?.op ?? false} />
+      </div>
       {cells.map(([label, value]) => (
         <div key={label}>
           <div className="text-[11px] uppercase tracking-wide text-muted">{label}</div>

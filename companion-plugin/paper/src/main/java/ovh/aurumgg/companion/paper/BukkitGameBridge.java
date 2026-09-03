@@ -1,18 +1,23 @@
 package ovh.aurumgg.companion.paper;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -24,10 +29,13 @@ import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.InventorySelection;
+import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
-import ovh.aurumgg.companion.core.model.PermissionChange;
+import ovh.aurumgg.companion.core.model.KnownPlayer;
+import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PasswordReset;
+import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
@@ -62,6 +70,16 @@ public final class BukkitGameBridge implements GameBridge {
         this.plugin = plugin;
     }
 
+    /**
+     * Сколько слотов офлайн-инвентаря видит и правит панель.
+     *
+     * Столько же, сколько показывает {@code InvSeeIntegration.toInventoryInfo}:
+     * основной инвентарь вместе с хотбаром. Дальше у спектаторского инвентаря
+     * идут броня, курсор и верстак — панель их для офлайн-режима не рисует,
+     * поэтому и не пишет туда.
+     */
+    private static final int OFFLINE_SLOTS = 36;
+
     private <T> T callSync(Callable<T> callable, T fallback) {
         return callSync(callable, fallback, SYNC_TIMEOUT_SECONDS);
     }
@@ -84,6 +102,120 @@ public final class BukkitGameBridge implements GameBridge {
             plugin.getLogger().warning("Основной поток не ответил вовремя: " + e);
             return fallback;
         }
+    }
+
+    /**
+     * Базовый список всех, кого помнит сервер, — с коротким кэшем.
+     *
+     * <h2>Зачем кэш</h2>
+     *
+     * {@code Bukkit.getOfflinePlayers()} обходит весь usercache: на сервере с
+     * многолетней историей это тысячи объектов, и собирается список в ГЛАВНОМ
+     * потоке, потому что {@code isOp()} читать откуда-то ещё нельзя. Один
+     * такой обход стоит недорого, но вкладка панели открывается, листается и
+     * фильтруется — и без кэша каждое движение стоило бы полного обхода.
+     *
+     * Полминуты — достаточно, чтобы листание и поиск шли по одному снимку, и
+     * достаточно мало, чтобы зашедший игрок появился в списке почти сразу.
+     */
+    private static final long KNOWN_CACHE_MS = 30_000;
+
+    private volatile List<KnownPlayer> knownCache = List.of();
+    private volatile long knownCacheAt;
+
+    @Override
+    public KnownPlayersPage knownPlayers(String query, int offset, int limit) {
+        List<KnownPlayer> all = cachedKnown();
+
+        String needle = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        List<KnownPlayer> matched = new ArrayList<>();
+        for (KnownPlayer player : all) {
+            if (needle.isEmpty() || player.name().toLowerCase(Locale.ROOT).contains(needle)) {
+                matched.add(player);
+            }
+        }
+
+        int from = Math.max(0, Math.min(offset, matched.size()));
+        int to = Math.max(from, Math.min(from + Math.max(1, limit), matched.size()));
+
+        // Ник и признак регистрации — ТОЛЬКО для видимой страницы. Ник читается
+        // из файла игрока, то есть отдельным обращением к диску на каждого;
+        // делать это для тысячи записей ради полусотни на экране незачем.
+        boolean essentials = EssentialsIntegration.isAvailable();
+        Set<String> registered = AuthIntegration.registeredUsernames();
+        boolean authAvailable = registered != null;
+
+        List<KnownPlayer> page = new ArrayList<>(to - from);
+        for (KnownPlayer base : matched.subList(from, to)) {
+            String alias = essentials ? EssentialsIntegration.nicknameOf(base.uuid()) : null;
+            Boolean isRegistered = authAvailable
+                    ? registered.contains(base.name().toLowerCase(Locale.ROOT))
+                    : null;
+            page.add(new KnownPlayer(base.uuid(), base.name(), alias, base.op(), base.online(),
+                    isRegistered, base.lastSeen()));
+        }
+        return new KnownPlayersPage(List.copyOf(page), matched.size(), authAvailable);
+    }
+
+    /** Снимок из usercache, не старше {@link #KNOWN_CACHE_MS}. */
+    private List<KnownPlayer> cachedKnown() {
+        long now = System.currentTimeMillis();
+        List<KnownPlayer> cached = knownCache;
+        if (!cached.isEmpty() && now - knownCacheAt < KNOWN_CACHE_MS) return cached;
+
+        List<KnownPlayer> fresh = callSync(
+                () -> {
+                    List<KnownPlayer> result = new ArrayList<>();
+                    for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
+                        String name = player.getName();
+                        // Без имени запись бесполезна: показывать нечего, и
+                        // искать по ней тоже.
+                        if (name == null || name.isBlank()) continue;
+                        result.add(new KnownPlayer(
+                                player.getUniqueId(),
+                                name,
+                                // Ник и регистрация добираются позже, для
+                                // страницы: здесь они стоили бы обхода диска
+                                // по всему списку.
+                                null,
+                                player.isOp(),
+                                player.isOnline(),
+                                null,
+                                player.getLastSeen()));
+                    }
+                    // Сначала те, кто в сети, потом свежие: администратор
+                    // чаще ищет того, кто на сервере прямо сейчас, а следом —
+                    // того, кто заходил на днях, а не три года назад.
+                    //
+                    // Онлайн первыми — ещё и потому, что панель берёт из
+                    // первой страницы этого списка звёздочку оператора и ник
+                    // EssentialsX для таблицы онлайна. Хвост списка она не
+                    // грузит, и без этого правила у игрока в сети не было бы
+                    // звёздочки просто потому, что он давно не выходил.
+                    result.sort(Comparator.comparing(KnownPlayer::online)
+                            .thenComparing(KnownPlayer::lastSeen)
+                            .reversed());
+                    return result;
+                },
+                List.of(),
+                KNOWN_TIMEOUT_SECONDS);
+
+        if (!fresh.isEmpty()) {
+            knownCache = List.copyOf(fresh);
+            knownCacheAt = now;
+        }
+        return fresh;
+    }
+
+    /**
+     * Обход usercache идёт в главном потоке и на большом сервере не мгновенен,
+     * поэтому запас по времени больше обычного.
+     */
+    private static final long KNOWN_TIMEOUT_SECONDS = 15;
+
+    @Override
+    public List<IpRecordInfo> ipHistory(UUID playerUuid) {
+        return AuthIntegration.ipHistory(playerUuid);
     }
 
     @Override
@@ -166,7 +298,7 @@ public final class BukkitGameBridge implements GameBridge {
 
                     List<GiveResult> results = new ArrayList<>(items.size());
                     for (ItemSpec spec : items) {
-                        results.add(giveOne(player, spec));
+                        results.add(giveOne(player.getInventory(), spec));
                     }
                     return Optional.of(results);
                 },
@@ -182,7 +314,7 @@ public final class BukkitGameBridge implements GameBridge {
      * решит его разложить. Здесь же видно, сколько кусков ушло и сколько
      * вернулось.
      */
-    private static GiveResult giveOne(Player player, ItemSpec spec) {
+    private static GiveResult giveOne(Inventory inventory, ItemSpec spec) {
         Material material = Material.matchMaterial(spec.id());
         if (material == null || material == Material.AIR || !material.isItem()) {
             return GiveResult.failed(spec.id(), spec.count(), "Неизвестный предмет");
@@ -195,7 +327,7 @@ public final class BukkitGameBridge implements GameBridge {
         }
 
         Map<Integer, ItemStack> leftovers =
-                player.getInventory().addItem(stacks.toArray(new ItemStack[0]));
+                inventory.addItem(stacks.toArray(new ItemStack[0]));
         int notPlaced = 0;
         for (ItemStack leftover : leftovers.values()) notPlaced += leftover.getAmount();
 
@@ -323,6 +455,94 @@ public final class BukkitGameBridge implements GameBridge {
     public Optional<InventoryInfo> offlineInventory(UUID playerUuid, String playerName) {
         if (!InvSeeIntegration.isAvailable()) return Optional.empty();
         return InvSeeIntegration.read(playerUuid, playerName);
+    }
+
+    /**
+     * Общий каркас правки офлайн-инвентаря: достать, изменить, сохранить.
+     *
+     * Достаём на этом потоке (HTTP), а правим и сохраняем через callSync.
+     * Разделение обязательное, а не стилистическое: InvSee++ завершает свой
+     * future в основном потоке, и ожидание его оттуда же — взаимоблок;
+     * править же Bukkit-инвентарь с постороннего потока нельзя, потому что
+     * он может быть прямо сейчас открыт у кого-то в /invsee.
+     *
+     * @param change что сделать с инвентарём; возвращает результат для панели
+     * @param failure что вернуть, если инвентаря нет или сохранить не вышло
+     */
+    private <T> T editOffline(
+            UUID playerUuid, String playerName, java.util.function.Function<Inventory, T> change, T failure) {
+        if (!InvSeeIntegration.isAvailable()) return failure;
+
+        Optional<Inventory> fetched = InvSeeIntegration.fetch(playerUuid, playerName);
+        if (fetched.isEmpty()) return failure;
+        Inventory inventory = fetched.get();
+
+        return callSync(
+                () -> {
+                    T result = change.apply(inventory);
+                    // Сохраняем в любом случае: даже отказ по одной строке
+                    // выдачи мог оставить в инвентаре то, что поместилось.
+                    return InvSeeIntegration.save(inventory) ? result : failure;
+                },
+                failure);
+    }
+
+    @Override
+    public boolean setOfflineInventorySlot(UUID playerUuid, String playerName, int slot, ItemSpec spec) {
+        return editOffline(
+                playerUuid,
+                playerName,
+                inventory -> {
+                    if (slot < 0 || slot >= Math.min(inventory.getSize(), OFFLINE_SLOTS)) return false;
+                    if (spec.isClear()) {
+                        inventory.setItem(slot, null);
+                        return true;
+                    }
+                    Material material = Material.matchMaterial(spec.id());
+                    if (material == null || material == Material.AIR || !material.isItem()) return false;
+                    inventory.setItem(slot, new ItemStack(material, spec.count()));
+                    return true;
+                },
+                false);
+    }
+
+    @Override
+    public Optional<List<GiveResult>> giveOfflineItems(
+            UUID playerUuid, String playerName, List<ItemSpec> items) {
+        return editOffline(
+                playerUuid,
+                playerName,
+                inventory -> {
+                    List<GiveResult> results = new ArrayList<>(items.size());
+                    for (ItemSpec spec : items) results.add(giveOne(inventory, spec));
+                    return Optional.of(results);
+                },
+                Optional.empty());
+    }
+
+    @Override
+    public boolean clearOfflineInventory(
+            UUID playerUuid, String playerName, InventorySelection selection) {
+        return editOffline(
+                playerUuid,
+                playerName,
+                inventory -> {
+                    int limit = Math.min(inventory.getSize(), OFFLINE_SLOTS);
+                    if (selection.all()) {
+                        // Ровно те же 36 слотов, что панель показала. У
+                        // спектаторского инвентаря InvSee++ дальше идут броня,
+                        // курсор и верстак — их офлайн-режим не показывает, и
+                        // стирать их «заодно» было бы сюрпризом.
+                        for (int slot = 0; slot < limit; slot++) inventory.setItem(slot, null);
+                        return true;
+                    }
+                    for (int slot : selection.slots()) {
+                        if (slot >= 0 && slot < limit) inventory.setItem(slot, null);
+                    }
+                    // selection.armor() и offhand() здесь намеренно не трогаем.
+                    return true;
+                },
+                false);
     }
 
     @Override

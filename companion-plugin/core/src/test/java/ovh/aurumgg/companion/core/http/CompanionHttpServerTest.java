@@ -3,6 +3,7 @@ package ovh.aurumgg.companion.core.http;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
@@ -309,7 +310,9 @@ class CompanionHttpServerTest {
         HttpResponse<String> response =
                 post(givePath(), TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\"}]}");
         assertEquals(404, response.statusCode());
-        assertTrue(response.body().contains("player-offline"), response.body());
+        // Без InvSee++ подсказка та же, что и при попытке ПОСМОТРЕТЬ инвентарь:
+        // причина одна, и две разные формулировки читались бы как две поломки.
+        assertTrue(response.body().contains("offline-requires-invsee"), response.body());
     }
 
     @Test
@@ -617,10 +620,23 @@ class CompanionHttpServerTest {
         bridge.steveOnline = false;
         bridge.install("InvSeePlusPlus");
 
-        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/inventory", TOKEN);
+        HttpResponse<String> response =
+                get("/players/" + FakeGameBridge.STEVE + "/inventory?name=Steve", TOKEN);
 
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("minecraft:bread"));
+    }
+
+    @Test
+    @DisplayName("без ?name InvSee++ не знает, чей файл открывать")
+    void offlineInventoryNeedsName() throws Exception {
+        bridge.steveOnline = false;
+        bridge.install("InvSeePlusPlus");
+
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/inventory", TOKEN);
+
+        assertEquals(404, response.statusCode());
+        assertEquals("offline-no-data", JsonParser.parseObject(response.body()).get("code"));
     }
 
     @Test
@@ -1016,5 +1032,272 @@ class CompanionHttpServerTest {
         withGuild();
         assertEquals(401, get("/guilds", null).statusCode());
         assertEquals(401, post("/guilds/7/disband", null, "{}").statusCode());
+    }
+
+    // ---------------------------------------------- исторический список игроков
+
+    private static final java.util.UUID ALEX =
+            java.util.UUID.fromString("11111111-2222-3333-4444-555555555555");
+
+    /** Заполняет подставной кэш сервера тремя записями. */
+    private void withKnownPlayers() {
+        bridge.known.add(new ovh.aurumgg.companion.core.model.KnownPlayer(
+                FakeGameBridge.STEVE, "Steve", "Стив", true, true, true, 1_700_000_000_000L));
+        bridge.known.add(new ovh.aurumgg.companion.core.model.KnownPlayer(
+                ALEX, "Alex", null, false, false, false, 1_600_000_000_000L));
+        bridge.known.add(new ovh.aurumgg.companion.core.model.KnownPlayer(
+                java.util.UUID.nameUUIDFromBytes("Herobrine".getBytes()),
+                "Herobrine", null, false, false, true, 0L));
+    }
+
+    @Test
+    @DisplayName("GET /players/known отдаёт ник, алиас, флаг OP и признак регистрации")
+    void listsKnownPlayers() throws Exception {
+        withKnownPlayers();
+
+        HttpResponse<String> response = get("/players/known", TOKEN);
+        assertEquals(200, response.statusCode());
+
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(3.0, body.get("total"));
+        assertEquals(Boolean.TRUE, body.get("authAvailable"));
+
+        List<?> players = (List<?>) body.get("players");
+        assertEquals(3, players.size());
+
+        Map<?, ?> steve = (Map<?, ?>) players.get(0);
+        assertEquals(FakeGameBridge.STEVE.toString(), steve.get("uuid"));
+        assertEquals("Steve", steve.get("name"));
+        assertEquals("Стив", steve.get("alias"));
+        assertEquals(Boolean.TRUE, steve.get("op"));
+        assertEquals(Boolean.TRUE, steve.get("online"));
+        assertEquals(Boolean.TRUE, steve.get("registered"));
+        assertEquals(1_700_000_000_000.0, steve.get("lastSeen"));
+    }
+
+    @Test
+    @DisplayName("Игрок без ника EssentialsX отдаётся с alias = null, а не пустой строкой")
+    void knownPlayerWithoutAlias() throws Exception {
+        withKnownPlayers();
+
+        Map<String, Object> body = JsonParser.parseObject(get("/players/known", TOKEN).body());
+        Map<?, ?> alex = (Map<?, ?>) ((List<?>) body.get("players")).get(1);
+
+        assertEquals("Alex", alex.get("name"));
+        // Именно null: «ника нет» и «ник — пустая строка» панель показывает по-разному.
+        assertTrue(alex.containsKey("alias"));
+        assertNull(alex.get("alias"));
+    }
+
+    @Test
+    @DisplayName("Без плагина авторизации список не делится: authAvailable=false, registered=null")
+    void knownPlayersWithoutAuthPlugin() throws Exception {
+        bridge.authAvailable = false;
+        bridge.known.add(new ovh.aurumgg.companion.core.model.KnownPlayer(
+                ALEX, "Alex", null, false, false, null, 1_600_000_000_000L));
+
+        Map<String, Object> body = JsonParser.parseObject(get("/players/known", TOKEN).body());
+        assertEquals(Boolean.FALSE, body.get("authAvailable"));
+
+        Map<?, ?> alex = (Map<?, ?>) ((List<?>) body.get("players")).get(0);
+        assertTrue(alex.containsKey("registered"));
+        assertNull(alex.get("registered"));
+    }
+
+    @Test
+    @DisplayName("query фильтрует по нику, total считает найденных, а не всех")
+    void filtersKnownPlayersByQuery() throws Exception {
+        withKnownPlayers();
+
+        Map<String, Object> body = JsonParser.parseObject(get("/players/known?query=ste", TOKEN).body());
+        assertEquals(1.0, body.get("total"));
+        List<?> players = (List<?>) body.get("players");
+        assertEquals(1, players.size());
+        assertEquals("Steve", ((Map<?, ?>) players.get(0)).get("name"));
+    }
+
+    @Test
+    @DisplayName("offset и limit листают список, total остаётся общим")
+    void pagesThroughKnownPlayers() throws Exception {
+        withKnownPlayers();
+
+        Map<String, Object> body =
+                JsonParser.parseObject(get("/players/known?offset=1&limit=1", TOKEN).body());
+        assertEquals(3.0, body.get("total"));
+
+        List<?> players = (List<?>) body.get("players");
+        assertEquals(1, players.size());
+        assertEquals("Alex", ((Map<?, ?>) players.get(0)).get("name"));
+    }
+
+    @Test
+    @DisplayName("Мусор в offset/limit не ломает запрос, а откатывается к значениям по умолчанию")
+    void ignoresBrokenPaging() throws Exception {
+        withKnownPlayers();
+
+        HttpResponse<String> response = get("/players/known?offset=abc&limit=-99", TOKEN);
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(3.0, body.get("total"));
+        // limit=-99 подтягивается к минимуму в одну запись, а не отдаёт пустоту.
+        assertEquals(1, ((List<?>) body.get("players")).size());
+    }
+
+    @Test
+    @DisplayName("Исторический список закрыт токеном")
+    void knownPlayersNeedToken() throws Exception {
+        assertEquals(401, get("/players/known", null).statusCode());
+    }
+
+    // ------------------------------------------------------------ известные IP
+
+    @Test
+    @DisplayName("GET /players/{uuid}/ips отдаёт адреса с первым и последним заходом")
+    void listsIpHistory() throws Exception {
+        bridge.ips.put(
+                FakeGameBridge.STEVE,
+                List.of(
+                        new ovh.aurumgg.companion.core.model.IpRecordInfo(
+                                "203.0.113.7", 1_600_000_000_000L, 1_700_000_000_000L),
+                        new ovh.aurumgg.companion.core.model.IpRecordInfo(
+                                "198.51.100.4", 1_500_000_000_000L, 1_500_000_100_000L)));
+
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/ips", TOKEN);
+        assertEquals(200, response.statusCode());
+
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        List<?> addresses = (List<?>) body.get("addresses");
+        assertEquals(2, addresses.size());
+
+        Map<?, ?> first = (Map<?, ?>) addresses.get(0);
+        assertEquals("203.0.113.7", first.get("ip"));
+        assertEquals(1_600_000_000_000.0, first.get("firstSeen"));
+        assertEquals(1_700_000_000_000.0, first.get("lastSeen"));
+    }
+
+    @Test
+    @DisplayName("Без плагина авторизации адресов просто нет — это не ошибка")
+    void ipHistoryWithoutAuthPluginIsEmpty() throws Exception {
+        HttpResponse<String> response = get("/players/" + FakeGameBridge.STEVE + "/ips", TOKEN);
+        assertEquals(200, response.statusCode());
+
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertTrue(((List<?>) body.get("addresses")).isEmpty(), response.body());
+    }
+
+    @Test
+    @DisplayName("Кривой UUID в запросе адресов — 400, а не 500")
+    void ipHistoryRejectsBadUuid() throws Exception {
+        assertEquals(400, get("/players/not-a-uuid/ips", TOKEN).statusCode());
+    }
+
+    @Test
+    @DisplayName("Адреса закрыты токеном: это чувствительные данные")
+    void ipHistoryNeedsToken() throws Exception {
+        assertEquals(401, get("/players/" + FakeGameBridge.STEVE + "/ips", null).statusCode());
+    }
+
+    // ------------------------------------- правка инвентаря офлайн-игрока
+
+    /** Стив не в сети, InvSee++ стоит — рабочая обстановка офлайн-правок. */
+    private void withOfflineInvsee() {
+        bridge.steveOnline = false;
+        bridge.install("InvSeePlusPlus");
+    }
+
+    @Test
+    @DisplayName("Слот офлайн-игрока пишется через InvSee++")
+    void writesOfflineSlot() throws Exception {
+        withOfflineInvsee();
+
+        HttpResponse<String> response = post(
+                "/players/" + FakeGameBridge.STEVE + "/inventory/4?name=Steve",
+                TOKEN,
+                "{\"id\":\"minecraft:stone\",\"count\":10}");
+
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("set:4:minecraft:stonex10"), bridge.offlineWrites);
+        // Живой инвентарь при этом не трогали: игрока в сети нет.
+        assertTrue(bridge.slotWrites.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Выдача офлайн-игроку с InvSee++ отчитывается построчно")
+    void givesToOfflinePlayer() throws Exception {
+        withOfflineInvsee();
+
+        HttpResponse<String> response = post(
+                givePath() + "?name=Steve",
+                TOKEN,
+                "{\"items\":[{\"id\":\"minecraft:bread\",\"count\":3}]}");
+
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("give:minecraft:breadx3"), bridge.offlineWrites);
+        assertTrue(response.body().contains("minecraft:bread"), response.body());
+    }
+
+    @Test
+    @DisplayName("Очистка инвентаря офлайн-игрока с InvSee++")
+    void clearsOfflineInventory() throws Exception {
+        withOfflineInvsee();
+
+        HttpResponse<String> response =
+                post(clearPath() + "?name=Steve", TOKEN, "{\"all\":true}");
+
+        assertEquals(200, response.statusCode());
+        assertEquals(List.of("clear-all"), bridge.offlineWrites);
+    }
+
+    @Test
+    @DisplayName("Без InvSee++ правка офлайн-инвентаря отказывает с той же подсказкой, что и просмотр")
+    void offlineEditWithoutInvsee() throws Exception {
+        bridge.steveOnline = false;
+
+        for (HttpResponse<String> response : List.of(
+                post("/players/" + FakeGameBridge.STEVE + "/inventory/4?name=Steve", TOKEN,
+                        "{\"id\":\"minecraft:stone\"}"),
+                post(givePath() + "?name=Steve", TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\"}]}"),
+                post(clearPath() + "?name=Steve", TOKEN, "{\"all\":true}"))) {
+            assertEquals(404, response.statusCode(), response.body());
+            assertEquals("offline-requires-invsee",
+                    JsonParser.parseObject(response.body()).get("code"), response.body());
+        }
+        assertTrue(bridge.offlineWrites.isEmpty());
+    }
+
+    @Test
+    @DisplayName("InvSee++ есть, а игрока сервер не помнит — другой код отказа")
+    void offlineEditWithoutData() throws Exception {
+        withOfflineInvsee();
+        String unknown = "00000000-0000-4000-8000-000000000000";
+
+        HttpResponse<String> response = post(
+                "/players/" + unknown + "/inventory/4?name=Nobody",
+                TOKEN,
+                "{\"id\":\"minecraft:stone\"}");
+
+        assertEquals(404, response.statusCode());
+        assertEquals("offline-no-data", JsonParser.parseObject(response.body()).get("code"));
+    }
+
+    @Test
+    @DisplayName("Игрок в сети: неизвестный предмет — это про предмет, а не про InvSee++")
+    void unknownItemForOnlinePlayerIsNotAboutInvsee() throws Exception {
+        HttpResponse<String> response = post(
+                "/players/" + FakeGameBridge.STEVE + "/inventory/1",
+                TOKEN,
+                "{\"id\":\"made_up_item\",\"count\":1}");
+
+        assertEquals(404, response.statusCode());
+        assertEquals("unknown-item", JsonParser.parseObject(response.body()).get("code"));
+        assertTrue(bridge.offlineWrites.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Правка офлайн-инвентаря закрыта токеном")
+    void offlineEditNeedsToken() throws Exception {
+        withOfflineInvsee();
+        assertEquals(401, post(clearPath() + "?name=Steve", null, "{\"all\":true}").statusCode());
+        assertTrue(bridge.offlineWrites.isEmpty());
     }
 }
