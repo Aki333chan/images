@@ -12,3 +12,6 @@ coverage/
 .DS_Store
 apps/api/prisma/*.db
 dump.rdb
+
+# Сборка Maven-плагинов из other-plugins
+target/
