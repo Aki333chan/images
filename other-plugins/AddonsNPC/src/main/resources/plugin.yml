@@ -1,0 +1,28 @@
+name: AddonsNPC
+version: '1.5.3'
+main: dev.addons.npc.AddonsNpcPlugin
+api-version: '26.2'
+description: Configurable NPCs with shops, buyers and AurumGuilds bonus traders.
+authors: [addons]
+softdepend: [Vault, WorldGuard, AurumGuilds]
+commands:
+  npc:
+    description: Manage AddonsNPC NPCs, shops, buyers and guild traders
+    usage: /npc help
+    aliases: [addnpc, anpc]
+permissions:
+  addonsnpc.admin:
+    description: Full access to NPC, shop and buyer management
+    default: op
+  addonsnpc.use:
+    description: Allows interaction with NPCs
+    default: true
+  addonsnpc.shop:
+    description: Allows purchases from NPC shops
+    default: true
+  addonsnpc.buyer:
+    description: Allows sales to NPC buyers
+    default: true
+  addonsnpc.guildtrader:
+    description: Allows purchases from AurumGuilds bonus traders
+    default: true

@@ -1,0 +1,24 @@
+# Configurable NPC buyers. Link one with: /npc action add <npc> buyer <buyer-id>
+schema-version: 2
+# buyers:
+#   farmer:
+#     title: "&8Скупщик урожая"
+#     size: 27
+#     bonus: # whole assortment; expires-at: 0 means permanent until disabled
+#       percent: 10.0
+#       expires-at: 0
+#     offers:
+#       11:
+#         item: WHEAT
+#         match: MATERIAL # MATERIAL accepts any wheat; EXACT also checks name, lore, enchants and custom data
+#         display-name: "&eПшеница"
+#         lore: []
+#         unit-price: 1.5
+#         bulk-amount: 64
+#         bulk-price: 110.0
+#         permission: ""
+#         commands: []
+#         bonus: # optional slot bonus; active slot bonus overrides the buyer-wide one
+#           percent: 20.0
+#           expires-at: 0
+buyers: {}

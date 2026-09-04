@@ -1,0 +1,62 @@
+LANGUAGE: ru
+
+# true: списывать и выдавать деньги через Vault.
+# Если Vault или поставщик экономики недоступен, игра блокируется и НЕ переходит на золото.
+use_vault: true
+
+# Используется только для отображения цены и выигрыша в режиме Vault.
+vault_symbol: "$"
+
+# Размер надписи над воронкой. Рекомендуемый диапазон: 0.25–2.0.
+hologram_scale: 0.7
+
+# Валюты предметами. Игнорируются при use_vault: true.
+SUB_CURRENCY: GOLD_NUGGET
+CURRENCY: GOLD_INGOT
+
+# Служебные данные.
+banned_players: []
+machines: {}
+
+messages:
+  ru:
+    no_permission: "§cНет прав!"
+    help: |-
+      §e=== Казино ===
+      §b/slots [shelf|hop|button] <ID>
+      §b/slots bet <ID> <ставка>
+      §b/slots remove <ID>
+      §b/slots ban <ник>
+      §b/slots status
+      §b/slots debug removehologram [радиус]
+      §b/slots reload
+    reload: "§aКонфиг перезагружен! Режим оплаты: %mode%."
+    status: "§eРежим: §f%mode%§e, провайдер: §f%provider%"
+    unbanned: "§aИгрок %player% разбанен."
+    banned: "§cИгрок %player% забанен в казино."
+    removed: "§aМашина %id% удалена."
+    bet_set: "§aСтавка %id% = %bet%"
+    invalid_bet: "§cСтавка должна быть положительным числом%item_hint%."
+    look_block: "§cСмотрите на блок!"
+    shelf_linked: "§aПолка привязана к %id%"
+    button_linked: "§aКнопка привязана к %id%"
+    hop_linked: "§aВоронка привязана к %id%"
+    banned_play: "§cВам запрещено играть!"
+    spinning: "§eМашина уже крутится!"
+    no_bet: "§cНет ставки! Закиньте требуемую валюту."
+    bet_accepted: "§aСтавка принята!"
+    not_enough: "§cНедостаточно средств. Нужно %req% шт."
+    not_enough_vault: "§cНедостаточно средств на балансе!"
+    vault_unavailable: "§cРежим Vault включён, но поставщик экономики недоступен. Сообщите администратору."
+    vault_hopper: "§eВ режиме Vault нажмите кнопку автомата — деньги будут списаны с баланса."
+    vault_withdraw_failed: "§cНе удалось списать ставку через Vault. Деньги не были приняты."
+    vault_deposit_failed: "§cНе удалось зачислить выигрыш через Vault. Сообщите администратору."
+    exchange: "§cСтавка требует размена или не кратна 10!"
+    wrong_currency: "§cНеверная валюта!"
+    win: "§aВы выиграли %win%! (x%multi%)"
+    lose: "§cНе повезло!"
+    machine_protected: "§cЭтот блок принадлежит автомату!"
+    debug_hologram_removed: "§aБлижайшая голограмма AurumSlots удалена. Расстояние: %distance% блоков."
+    debug_hologram_not_found: "§eГолограммы AurumSlots в радиусе %radius% блоков не найдены."
+    debug_invalid_radius: "§cРадиус должен быть числом от 1 до 64."
+    debug_player_only: "§cЭту debug-команду может выполнить только игрок."

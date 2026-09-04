@@ -1,0 +1,19 @@
+# Guild-wide bonuses sold through the AurumGuilds Java service.
+# Link a menu to an NPC with: /npc action add <npc> guildtrader <trader-id>
+schema-version: 1
+# guild-traders:
+#   boosts:
+#     title: "&8Усиления гильдии"
+#     size: 27
+#     required-rank: OFFICER # MEMBER, OFFICER or LEADER
+#     offers:
+#       10:
+#         type: MINING_SPEED
+#         magnitude: 2.0
+#         duration-seconds: 604800 # 0 = permanent
+#         price: 25000.0
+#         icon: DIAMOND_PICKAXE
+#         display-name: "&6Шахтёрский порыв"
+#         lore: []
+#         permission: ""
+guild-traders: {}

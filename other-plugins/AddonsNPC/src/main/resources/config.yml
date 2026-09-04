@@ -1,0 +1,45 @@
+# General plugin behaviour. NPCs, shops and buyers are stored in separate YAML files.
+settings:
+  interaction-distance: 5.0
+  default-cooldown-seconds: 1.0
+  default-visibility-range: 48.0
+  default-name-visibility-range: 24.0
+  default-look-mode: HEAD
+  cancel-left-click-damage: true
+  protect-npcs: true
+  look-task-period-ticks: 10
+  # Lets world managers finish startup; worlds loaded later are synchronized by an event listener too.
+  startup-spawn-delay-ticks: 20
+  name-height-offset: 0.35
+  ignore-worldguard-spawn-flags: true
+  debug: false
+
+messages:
+  prefix: "&8[&6NPC&8] &r"
+  no-permission: "&cYou do not have permission."
+  player-only: "&cThis command can only be used by a player."
+  npc-not-found: "&cNPC '&f{id}&c' was not found."
+  cooldown: "&7Please wait &e{seconds}s &7before using this NPC again."
+  vault-unavailable: "&cEconomy is unavailable. Install Vault and an economy provider."
+  insufficient-funds: "&cYou need &e{price}&c. Your balance: &e{balance}&c."
+  inventory-full: "&cYou do not have enough inventory space."
+  out-of-stock: "&cThis item is out of stock."
+  purchase-success: "&aPurchased &f{item} x{amount} &afor &e{price}&a."
+  purchase-failed: "&cThe purchase could not be completed."
+  buyer-not-enough-items: "&cYou do not have enough matching items. Available: &e{amount}&c."
+  buyer-bulk-disabled: "&cWholesale purchasing is disabled for this offer."
+  buyer-sale-success: "&aSold &f{item} x{amount} &afor &e{price}&a."
+  buyer-sale-failed: "&cThe sale could not be completed. Your items were returned."
+  shop-price-changed: "&eThe price or discount changed. The offer was refreshed; click again to confirm."
+  buyer-bonus-changed: "&eThe payout bonus changed. The offer was refreshed; click again to confirm."
+  offer-replace-confirm: "&eSlot &f{slot} &eis already occupied. Repeat the same command within &f{seconds}s &eto replace it."
+  guild-trader-not-found: "&cGuild trader '&f{trader}&c' was not found."
+  guilds-unavailable: "&cAurumGuilds is unavailable; guild bonuses cannot be purchased."
+  guild-required: "&cYou must be a member of a guild to buy this bonus."
+  guild-rank-required: "&cOnly a guild &f{rank}&c or higher can buy this bonus."
+  guild-membership-changed: "&eYour guild changed while the menu was open. Open it again."
+  guild-bonus-changed: "&eThe active guild bonus changed. The offer was refreshed; click again to confirm."
+  guild-purchase-pending: "&eYour previous guild bonus purchase is still being processed."
+  guild-purchase-success: "&a{result}."
+  guild-purchase-failed: "&cThe bonus was not granted. Your payment was returned. Reason: &f{reason}"
+  guild-purchase-refund-failed: "&4The bonus was not granted and the automatic refund failed. Contact an administrator immediately."
