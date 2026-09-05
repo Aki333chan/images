@@ -19,8 +19,6 @@ import { IconUserPlus } from '../components/icons';
  * (permissions.updated) — без релогина.
  */
 export function AccessControlPage() {
-  // Экран целиком ещё не переведён, но подпись роли приезжает ключом из
-  // общего контракта — показать её сырой значило бы вывести «role.owner».
   const t = useT();
   const { hasPermission } = useAuth();
   const [users, setUsers] = useState<UserAdminDto[] | null>(null);
@@ -72,7 +70,7 @@ export function AccessControlPage() {
    */
   async function resetPassword(user: UserAdminDto) {
     const who = user.nickname ?? user.email;
-    if (!confirm(`Сбросить пароль ${who}? Все его текущие входы завершатся.`)) return;
+    if (!confirm(t('acc.confirmReset', { who }))) return;
     setBusyUserId(user.id);
     setNotice('');
     setError('');
@@ -83,8 +81,8 @@ export function AccessControlPage() {
       );
       setNotice(
         result.emailSent
-          ? `Временный пароль отправлен на ${user.email}.`
-          : `Пароль сброшен, но письмо не ушло: ${result.emailError ?? 'проверьте настройки почты'}.`,
+          ? t('acc.resetSent', { email: user.email })
+          : t('acc.resetNoMail', { error: result.emailError ?? t('acc.checkSmtp') }),
       );
     } catch (e) {
       setError((e as Error).message);
@@ -107,12 +105,9 @@ export function AccessControlPage() {
   if (!canManage) {
     return (
       <div>
-        <h1 className="mb-4 text-xl font-bold">Управление доступом</h1>
+        <h1 className="mb-4 text-xl font-bold">{t('acc.title')}</h1>
         <CreateUserForm canManage={false} onCreated={() => undefined} />
-        <p className="mt-3 text-xs text-muted">
-          Вы можете заводить учётные записи с ролью Модератор. Список сотрудников и выдача доступов
-          к серверам — за ГМ.
-        </p>
+        <p className="mt-3 text-xs text-muted">{t('acc.adminHint')}</p>
       </div>
     );
   }
@@ -121,7 +116,7 @@ export function AccessControlPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold">Управление доступом</h1>
+      <h1 className="mb-4 text-xl font-bold">{t('acc.title')}</h1>
       <CreateUserForm canManage onCreated={(user) => setUsers((prev) => [...(prev ?? []), user])} />
       {notice && <p className="mb-3 text-xs text-emerald-400">{notice}</p>}
       {error && (
@@ -139,12 +134,12 @@ export function AccessControlPage() {
                       (человек ещё не входил), показываем email: иначе строку
                       было бы не отличить от соседней. */}
                   {user.nickname ?? (
-                    <span className="text-muted">{user.email} · ник ещё не выбран</span>
+                    <span className="text-muted">{t('acc.noNickYet', { email: user.email })}</span>
                   )}{' '}
-                  {!user.isActive && <Badge variant="destructive">деактивирован</Badge>}{' '}
+                  {!user.isActive && <Badge variant="destructive">{t('acc.deactivated')}</Badge>}{' '}
                   {user.totpEnabled && <Badge variant="success">2FA</Badge>}{' '}
                   {user.nicknameChangeAllowed && (
-                    <Badge variant="outline">смена ника открыта</Badge>
+                    <Badge variant="outline">{t('acc.nickOpen')}</Badge>
                   )}
                 </div>
                 {user.nickname && <div className="text-xs text-muted">{user.email}</div>}
@@ -156,24 +151,24 @@ export function AccessControlPage() {
                   options={ROLES.map((r) => ({ value: r, label: t(ROLE_KEYS[r]) }))}
                 />
                 <Button size="sm" variant="outline" onClick={() => void toggleActive(user)}>
-                  {user.isActive ? 'Деактивировать' : 'Активировать'}
+                  {t(user.isActive ? 'acc.deactivate' : 'acc.activate')}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={busyUserId === user.id}
-                  title="Отправить новый временный пароль письмом"
+                  title={t('acc.resetHint')}
                   onClick={() => void resetPassword(user)}
                 >
-                  Сбросить пароль
+                  {t('acc.reset')}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  title="Разовое разрешение сменить себе ник"
+                  title={t('acc.nickHint')}
                   onClick={() => void toggleNicknameChange(user)}
                 >
-                  {user.nicknameChangeAllowed ? 'Закрыть смену ника' : 'Разрешить смену ника'}
+                  {t(user.nicknameChangeAllowed ? 'acc.nickClose' : 'acc.nickAllow')}
                 </Button>
               </div>
             </div>
@@ -181,8 +176,10 @@ export function AccessControlPage() {
             {user.role !== 'OWNER' && (
               <div className="mt-3 border-t border-border pt-3">
                 <p className="mb-2 text-xs text-muted">
-                  Доступные сервера (
-                  {user.serverIds.length === 0 ? 'нет доступа' : user.serverIds.length}):
+                  {t('acc.servers', {
+                    count:
+                      user.serverIds.length === 0 ? t('acc.noServers') : user.serverIds.length,
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {servers.map((s) => {
@@ -204,7 +201,7 @@ export function AccessControlPage() {
                     );
                   })}
                   {servers.length === 0 && (
-                    <span className="text-xs text-muted">Сервера ещё не синхронизированы</span>
+                    <span className="text-xs text-muted">{t('acc.notSynced')}</span>
                   )}
                 </div>
               </div>
@@ -258,16 +255,11 @@ function CreateUserForm({
       });
 
       if (!result.activated) {
-        setNotice(
-          'Заявка отправлена ГМ. Аккаунт заработает и письмо с паролем уйдёт после подтверждения.',
-        );
+        setNotice(t('acc.pending'));
       } else if (result.emailSent) {
-        setNotice(`Аккаунт создан, письмо с временным паролем отправлено на ${email.trim()}.`);
+        setNotice(t('acc.created', { email: email.trim() }));
       } else {
-        setNotice(
-          `Аккаунт создан, но письмо не ушло: ${result.emailError ?? 'проверьте настройки почты'}. ` +
-            'Настройте почту в разделе «Настройки» и выдайте пароль повторно.',
-        );
+        setNotice(t('acc.createdNoMail', { error: result.emailError ?? t('acc.checkSmtp') }));
       }
 
       if (result.activated) onCreated(result.user);
@@ -284,7 +276,7 @@ function CreateUserForm({
       <div className="mb-4 space-y-2">
         <Button onClick={() => setOpen(true)}>
           <IconUserPlus size={14} />
-          Добавить пользователя
+          {t('acc.add')}
         </Button>
         {notice && <p className="text-xs text-emerald-400">{notice}</p>}
       </div>
@@ -295,10 +287,10 @@ function CreateUserForm({
 
   return (
     <Card className="mb-4 space-y-3">
-      <h2 className="font-semibold">Новый пользователь</h2>
+      <h2 className="font-semibold">{t('acc.newUser')}</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label>Email (логин)</Label>
+          <Label>{t('acc.email')}</Label>
           <Input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -307,7 +299,7 @@ function CreateUserForm({
           />
         </div>
         <div>
-          <Label>Роль</Label>
+          <Label>{t('acc.role')}</Label>
           {canManage ? (
             <Select
               value={role}
@@ -320,7 +312,7 @@ function CreateUserForm({
           ) : (
             <div className="pt-1 text-sm">
               {t(ROLE_KEYS.MODERATOR)}
-              <span className="ml-2 text-xs text-muted">роли выше выдаёт ГМ</span>
+              <span className="ml-2 text-xs text-muted">{t('acc.higherRoles')}</span>
             </div>
           )}
         </div>
@@ -329,17 +321,15 @@ function CreateUserForm({
       {error && <ErrorText>{error}</ErrorText>}
 
       <p className="text-xs text-muted">
-        Ни имени, ни пароля придумывать не нужно: панель сгенерирует временный пароль и отправит его
-        письмом, а ник человек выберет себе сам при первом входе — под ним его и будут знать
-        коллеги. Доступ к серверам выдаётся ниже, после создания: по умолчанию его нет ни к одному.
+        {t('acc.createHint')}
       </p>
 
       <div className="flex gap-2">
         <Button onClick={() => void submit()} disabled={!canSubmit}>
-          {busy ? 'Создаём…' : 'Создать'}
+          {busy ? t('acc.creating') : t('acc.create')}
         </Button>
         <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
-          Отмена
+          {t('common.cancel')}
         </Button>
       </div>
     </Card>

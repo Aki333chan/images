@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { SessionDto } from '@aurum/shared';
 import { api } from '../lib/api';
+import { useI18n } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../components/ui';
 
 export function SecurityPage() {
+  const { t, formatDateTime } = useI18n();
   const { me, refreshMe } = useAuth();
   const [sessions, setSessions] = useState<SessionDto[] | null>(null);
   const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
@@ -50,15 +52,15 @@ export function SecurityPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <h1 className="text-xl font-bold">Безопасность</h1>
+      <h1 className="text-xl font-bold">{t('nav.security')}</h1>
 
       <Card>
-        <h2 className="mb-3 font-semibold">Двухфакторная аутентификация (TOTP)</h2>
+        <h2 className="mb-3 font-semibold">{t('sec.totp')}</h2>
         {me?.user.totpEnabled ? (
           <div className="space-y-3">
-            <Badge variant="success">2FA включена</Badge>
+            <Badge variant="success">{t('sec.on')}</Badge>
             <div>
-              <Label>Пароль для отключения</Label>
+              <Label>{t('sec.passwordToDisable')}</Label>
               <div className="flex gap-2">
                 <Input
                   type="password"
@@ -66,7 +68,7 @@ export function SecurityPage() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
                 <Button variant="destructive" onClick={() => void disable()} disabled={!password}>
-                  Отключить
+                  {t('sec.disable')}
                 </Button>
               </div>
             </div>
@@ -74,30 +76,30 @@ export function SecurityPage() {
         ) : setup ? (
           <div className="space-y-3">
             <p className="text-sm text-muted">
-              Добавьте секрет в приложение-аутентификатор (Google Authenticator, Aegis…):
+              {t('sec.addSecret')}
             </p>
             <code className="block break-all rounded bg-black/40 p-2 text-xs">{setup.secret}</code>
             <p className="break-all text-xs text-muted">{setup.otpauthUrl}</p>
             <div>
-              <Label>Код подтверждения</Label>
+              <Label>{t('sec.code')}</Label>
               <div className="flex gap-2">
                 <Input value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} />
                 <Button onClick={() => void enable()} disabled={code.length !== 6}>
-                  Включить
+                  {t('sec.enable')}
                 </Button>
               </div>
             </div>
           </div>
         ) : (
           <Button variant="outline" onClick={() => void startSetup()}>
-            Настроить 2FA
+            {t('sec.setup')}
           </Button>
         )}
         <ErrorText>{error}</ErrorText>
       </Card>
 
       <Card>
-        <h2 className="mb-3 font-semibold">Активные сессии</h2>
+        <h2 className="mb-3 font-semibold">{t('sec.sessions')}</h2>
         {!sessions ? (
           <Spinner />
         ) : (
@@ -109,16 +111,16 @@ export function SecurityPage() {
               >
                 <div>
                   <div className="text-sm">
-                    {s.userAgent?.slice(0, 60) ?? 'Неизвестное устройство'}{' '}
-                    {s.current && <Badge>текущая</Badge>}
+                    {s.userAgent?.slice(0, 60) ?? t('sec.unknownDevice')}{' '}
+                    {s.current && <Badge>{t('sec.current')}</Badge>}
                   </div>
                   <div className="text-xs text-muted">
-                    {s.ip ?? ''} · активность {new Date(s.lastUsedAt).toLocaleString('ru-RU')}
+                    {s.ip ?? ''} · {t('sec.lastSeen', { date: formatDateTime(s.lastUsedAt) })}
                   </div>
                 </div>
                 {!s.current && (
                   <Button size="sm" variant="destructive" onClick={() => void revoke(s.id)}>
-                    Отозвать
+                    {t('sec.revoke')}
                   </Button>
                 )}
               </div>
