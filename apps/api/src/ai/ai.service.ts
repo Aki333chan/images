@@ -164,7 +164,28 @@ export class AiService {
           // независимо от того, что ей написали в контексте, — в том числе
           // если её пытались переубедить текстом из игры.
           if (tool.kind === 'destructive') {
-            const action = await this.propose(userId, call.function.name, args, sawUntrusted);
+            // Ник и сервер приводим к точным ДО карточки: человек должен
+            // видеть в подтверждении настоящее имя игрока, а не «Ste»,
+            // которое он набрал. Не нашлось или нашлось несколько — это
+            // исключение, и модель переспросит вместо того, чтобы гадать.
+            let exact: Record<string, unknown>;
+            try {
+              exact = await this.tools.normalizeArgs(userId, call.function.name, args);
+            } catch (e) {
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: `Не удалось: ${(e as Error).message}`,
+              });
+              continue;
+            }
+            const action = await this.propose(
+              userId,
+              call.function.name,
+              exact,
+              sawUntrusted,
+              locale,
+            );
             emit({ type: 'action', action });
             messages.push({
               role: 'tool',
@@ -183,7 +204,7 @@ export class AiService {
             emit({
               type: 'tool',
               name: call.function.name,
-              summary: this.tools.summarize(call.function.name, args),
+              summary: this.tools.summarize(call.function.name, args, locale),
             });
             messages.push({ role: 'tool', tool_call_id: call.id, content: output.content });
           } catch (e) {
@@ -237,6 +258,7 @@ export class AiService {
     tool: string,
     args: Record<string, unknown>,
     fromUntrustedInput: boolean,
+    locale: Locale,
   ): Promise<AiPendingActionDto> {
     const created = await this.prisma.aiPendingAction.create({
       data: { userId, tool, args: args as object, fromUntrustedInput },
@@ -244,7 +266,7 @@ export class AiService {
     return {
       id: created.id,
       tool,
-      summary: this.tools.summarize(tool, args),
+      summary: this.tools.summarize(tool, args, locale),
       args,
       fromUntrustedInput,
       status: 'pending',
@@ -261,6 +283,7 @@ export class AiService {
     userId: string,
     actionId: string,
     approve: boolean,
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<AiPendingActionDto> {
     const action = await this.prisma.aiPendingAction.findUnique({ where: { id: actionId } });
     if (!action) throw new BadRequestException('ai.err.actionNotFound');
@@ -276,7 +299,7 @@ export class AiService {
     const base = {
       id: action.id,
       tool: action.tool,
-      summary: this.tools.summarize(action.tool, args),
+      summary: this.tools.summarize(action.tool, args, locale),
       args,
       fromUntrustedInput: action.fromUntrustedInput,
     };

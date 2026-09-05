@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import {
   ASCII_ART_LIMITS,
   LOCALE_LABELS,
@@ -12,6 +12,8 @@ import {
 } from '@aurum/shared';
 import { AuditService } from '../audit/audit.service';
 import { PermissionsService, type EffectivePermissions } from '../rbac/permissions.service';
+import { resolvePlayerName, resolveServerId } from './ai-resolve';
+import { panelGuideFor } from './panel-guide.config';
 import { I18nService } from '../i18n/i18n.service';
 import { ServersService } from '../servers/servers.service';
 import { MessagesService } from '../messages/messages.service';
@@ -59,6 +61,9 @@ export interface AiToolResult {
   untrusted: boolean;
 }
 
+/** Переводчик, который получает summary: ключ и подстановки к нему. */
+type Tr = (key: string, values?: Record<string, string | number>) => string;
+
 interface ToolDefinition {
   name: string;
   description: string;
@@ -74,8 +79,14 @@ interface ToolDefinition {
    */
   redactArgs?: boolean;
   parameters: Record<string, unknown>;
-  /** Краткое описание для карточки подтверждения и журнала. */
-  summary: (args: Record<string, unknown>) => string;
+  /**
+   * Краткое описание для карточки подтверждения и журнала.
+   *
+   * Переводчик аргументом: карточку читает собеседник — на своём языке, а в
+   * журнал та же строка пишется по-русски, чтобы записи не зависели от того,
+   * у кого какой язык был включён в момент действия.
+   */
+  summary: (args: Record<string, unknown>, t: Tr) => string;
   run: (
     ctx: AiToolContext,
     args: Record<string, unknown>,
@@ -128,6 +139,49 @@ function untrusted(kind: string, payload: string): string {
   ].join('\n');
 }
 
+/** Предметы из аргументов модели: только то, что похоже на предмет. */
+function parseItems(raw: unknown): { id: string; count: number }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const id = (entry as { id?: unknown }).id;
+    const count = (entry as { count?: unknown }).count;
+    if (typeof id !== 'string' || !id.trim()) return [];
+    const amount = typeof count === 'number' && count > 0 ? Math.floor(count) : 1;
+    return [{ id: id.trim(), count: amount }];
+  });
+}
+
+/** «2×diamond, 64×oak_log» — для карточки подтверждения. */
+function describeItems(raw: unknown): string {
+  const items = parseItems(raw);
+  return items.length === 0 ? '—' : items.map((i) => `${i.count}×${i.id}`).join(', ');
+}
+
+/**
+ * Раздел промпта «где что в панели».
+ *
+ * Половина обращений — «где посмотреть», а не «сделай». Без этой справки
+ * модель отвечает по усреднённой панели из обучающих данных и сочиняет
+ * пункты меню, которых нет; человек потом ищет несуществующее.
+ *
+ * Фильтруется по правам собеседника: рассказывать модератору про экран,
+ * который он не откроет, — то же самое сочинительство, только правдоподобнее.
+ * Прав нет ни на что — раздела просто не будет.
+ */
+function guideSection(permissions: EffectivePermissions): string[] {
+  const guide = panelGuideFor((p) => permissions.permissions.has(p));
+  if (guide.length === 0) return [];
+  return [
+    '',
+    'ГДЕ ЧТО В ПАНЕЛИ. Это собеседник делает руками сам — здесь есть и то, чего',
+    'ты не умеешь. Спрашивают «где посмотреть», «как сделать», «почему не',
+    'нахожу» — отвечай отсюда, коротко и путём через интерфейс. Пункта нет в',
+    'этом списке — значит, ты не знаешь, где это, и придумывать экран нельзя.',
+    ...guide,
+  ];
+}
+
 const TOOLS: ToolDefinition[] = [
   // ------------------------------------------------------- безопасные
   {
@@ -136,7 +190,7 @@ const TOOLS: ToolDefinition[] = [
     kind: 'safe',
     permission: 'servers.view',
     parameters: { type: 'object', properties: {} },
-    summary: () => 'Посмотреть список серверов',
+    summary: (_a, t) => t('ai.sum.listServers'),
     run: async (ctx, _args, deps) => {
       const servers = await deps.servers.listForUser(ctx.permissions);
       return {
@@ -163,7 +217,7 @@ const TOOLS: ToolDefinition[] = [
       properties: { serverId: { type: 'string', description: 'id сервера из list_servers' } },
       required: ['serverId'],
     },
-    summary: (a) => `Посмотреть игроков онлайн на сервере ${str(a, 'serverId')}`,
+    summary: (a, t) => t('ai.sum.listPlayers', { server: str(a, 'serverId') }),
     run: async (_ctx, args, deps) => {
       const data = await deps.minecraft.getPlayers(str(args, 'serverId'));
       // Ники придумывают игроки — это недоверенный ввод.
@@ -186,7 +240,7 @@ const TOOLS: ToolDefinition[] = [
       properties: { serverId: { type: 'string' } },
       required: ['serverId'],
     },
-    summary: (a) => `Посмотреть производительность сервера ${str(a, 'serverId')}`,
+    summary: (a, t) => t('ai.sum.performance', { server: str(a, 'serverId') }),
     run: async (_ctx, args, deps) => ({
       content: JSON.stringify(await deps.minecraft.getPerformance(str(args, 'serverId'))),
       untrusted: false,
@@ -198,7 +252,7 @@ const TOOLS: ToolDefinition[] = [
     kind: 'safe',
     permission: 'tickets.view',
     parameters: { type: 'object', properties: {} },
-    summary: () => 'Посмотреть открытые тикеты',
+    summary: (_a, t) => t('ai.sum.listTickets'),
     run: async (ctx, _args, deps) => {
       const tickets = await deps.tickets.list(ctx.permissions, 'OPEN');
       return {
@@ -230,7 +284,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId'],
     },
-    summary: (a) => `Посмотреть баны на сервере ${str(a, 'serverId')}`,
+    summary: (a, t) => t('ai.sum.listBans', { server: str(a, 'serverId') }),
     run: async (_ctx, args, deps) => {
       const bans = await deps.minecraft.listBans(
         str(args, 'serverId'),
@@ -258,7 +312,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'player'],
     },
-    summary: (a) => `Посмотреть права игрока ${str(a, 'player')}`,
+    summary: (a, t) => t('ai.sum.permissions', { player: str(a, 'player') }),
     run: async (_ctx, args, deps) => {
       const serverId = str(args, 'serverId');
       const uuid = await deps.minecraft.requirePlayerUuid(serverId, str(args, 'player'));
@@ -281,7 +335,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'player'],
     },
-    summary: (a) => `Посмотреть баланс игрока ${str(a, 'player')}`,
+    summary: (a, t) => t('ai.sum.balance', { player: str(a, 'player') }),
     run: async (_ctx, args, deps) => {
       const serverId = str(args, 'serverId');
       const uuid = await deps.minecraft.requirePlayerUuid(serverId, str(args, 'player'));
@@ -303,7 +357,7 @@ const TOOLS: ToolDefinition[] = [
       properties: { serverId: { type: 'string' } },
       required: ['serverId'],
     },
-    summary: (a) => `Посмотреть экономику сервера ${str(a, 'serverId')}`,
+    summary: (a, t) => t('ai.sum.economy', { server: str(a, 'serverId') }),
     run: async (_ctx, args, deps) => {
       const data = await deps.minecraft.getEconomy(str(args, 'serverId'));
       // В доске богатства — ники игроков.
@@ -324,7 +378,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'player'],
     },
-    summary: (a) => `Посмотреть инвентарь игрока ${str(a, 'player')}`,
+    summary: (a, t) => t('ai.sum.inventory', { player: str(a, 'player') }),
     run: async (_ctx, args, deps) => {
       const data = await deps.minecraft.getInventory(str(args, 'serverId'), str(args, 'player'));
       // Названия предметов игрок может переименовать в наковальне.
@@ -343,7 +397,7 @@ const TOOLS: ToolDefinition[] = [
       properties: { serverId: { type: 'string' } },
       required: ['serverId'],
     },
-    summary: (a) => `Посмотреть быстрые действия сервера ${str(a, 'serverId')}`,
+    summary: (a, t) => t('ai.sum.quickList', { server: str(a, 'serverId') }),
     run: async (_ctx, args, deps) => {
       const serverId = str(args, 'serverId');
       // Действия чужих плагинов показываем, только если те стоят на сервере, —
@@ -376,7 +430,7 @@ const TOOLS: ToolDefinition[] = [
     kind: 'safe',
     permission: null,
     parameters: { type: 'object', properties: {} },
-    summary: () => 'Посмотреть список коллег',
+    summary: (_a, t) => t('ai.sum.listStaff'),
     run: async (ctx, _args, deps) => {
       const contacts = await deps.messages.contacts(ctx.userId);
       return {
@@ -397,7 +451,7 @@ const TOOLS: ToolDefinition[] = [
       type: 'object',
       properties: { query: { type: 'string', description: 'тема: кот, крипер, праздник…' } },
     },
-    summary: (a) => `Найти ASCII-арт: ${str(a, 'query') || 'весь каталог'}`,
+    summary: (a, t) => t('ai.sum.findArt', { query: str(a, 'query') || t('ai.sum.wholeCatalog') }),
     run: async (_ctx, args) => {
       const found = findAsciiArt(str(args, 'query'));
       if (found.length === 0) {
@@ -431,7 +485,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'player', 'reason'],
     },
-    summary: (a) => `Кикнуть ${str(a, 'player')} — «${str(a, 'reason')}»`,
+    summary: (a, t) => t('ai.sum.kick', { player: str(a, 'player'), reason: str(a, 'reason') }),
     run: async (_ctx, args, deps) => ({
       content: await deps.minecraft.kick(
         str(args, 'serverId'),
@@ -455,7 +509,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'player', 'reason'],
     },
-    summary: (a) => `Забанить ${str(a, 'player')} — «${str(a, 'reason')}»`,
+    summary: (a, t) => t('ai.sum.ban', { player: str(a, 'player'), reason: str(a, 'reason') }),
     run: async (ctx, args, deps) => {
       const ban = await deps.minecraft.ban(
         str(args, 'serverId'),
@@ -481,7 +535,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'command'],
     },
-    summary: (a) => `Выполнить в консоли: ${str(a, 'command')}`,
+    summary: (a, t) => t('ai.sum.console', { command: str(a, 'command') }),
     run: async (_ctx, args, deps) => ({
       content: (await deps.minecraft.runCommand(str(args, 'serverId'), str(args, 'command'))) || 'Выполнено',
       untrusted: true,
@@ -502,7 +556,8 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['ticketId', 'text'],
     },
-    summary: (a) => `Ответить в тикете ${shortId(str(a, 'ticketId'))}: «${str(a, 'text')}»`,
+    summary: (a, t) =>
+      t('ai.sum.respondTicket', { id: shortId(str(a, 'ticketId')), text: str(a, 'text') }),
     run: async (ctx, args, deps) => {
       const id = await deps.tickets.resolveId(ctx.permissions, str(args, 'ticketId'));
       await deps.tickets.respond(id, ctx.userId, str(args, 'text'));
@@ -523,7 +578,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['ticketId'],
     },
-    summary: (a) => `Закрыть тикет ${shortId(str(a, 'ticketId'))}`,
+    summary: (a, t) => t('ai.sum.closeTicket', { id: shortId(str(a, 'ticketId')) }),
     run: async (ctx, args, deps) => {
       const id = await deps.tickets.resolveId(ctx.permissions, str(args, 'ticketId'));
       await deps.tickets.close(id);
@@ -549,11 +604,17 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'player', 'kind', 'key'],
     },
-    summary: (a) => {
-      const what = str(a, 'kind') === 'group' ? 'группу' : 'право';
-      const verb = a.remove === true ? 'Снять' : 'Выдать';
-      return `${verb} ${what} «${str(a, 'key')}» игроку ${str(a, 'player')}`;
-    },
+    summary: (a, t) =>
+      t(
+        a.remove === true
+          ? str(a, 'kind') === 'group'
+            ? 'ai.sum.removeGroup'
+            : 'ai.sum.removePermission'
+          : str(a, 'kind') === 'group'
+            ? 'ai.sum.grantGroup'
+            : 'ai.sum.grantPermission',
+        { key: str(a, 'key'), player: str(a, 'player') },
+      ),
     run: async (_ctx, args, deps) => {
       const serverId = str(args, 'serverId');
       const uuid = await deps.minecraft.requirePlayerUuid(serverId, str(args, 'player'));
@@ -590,10 +651,17 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'player', 'direction', 'amount'],
     },
-    summary: (a) => {
-      const verb = str(a, 'direction') === 'withdraw' ? 'Списать' : 'Начислить';
+    summary: (a, t) => {
       const reason = str(a, 'reason');
-      return `${verb} ${num(a, 'amount')} игроку ${str(a, 'player')}${reason ? ` — «${reason}»` : ''}`;
+      const withdraw = str(a, 'direction') === 'withdraw';
+      const key = reason
+        ? withdraw
+          ? 'ai.sum.withdrawWhy'
+          : 'ai.sum.depositWhy'
+        : withdraw
+          ? 'ai.sum.withdraw'
+          : 'ai.sum.deposit';
+      return t(key, { amount: num(a, 'amount'), player: str(a, 'player'), reason });
     },
     run: async (ctx, args, deps) => {
       const serverId = str(args, 'serverId');
@@ -637,7 +705,7 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['nickname', 'art'],
     },
-    summary: (a) => `Отправить ASCII-арт для ${str(a, 'nickname')}`,
+    summary: (a, t) => t('ai.sum.sendArt', { nickname: str(a, 'nickname') }),
     run: async (ctx, args, deps) => {
       const checked = validateAsciiArt(str(args, 'art'));
       if (!checked.ok) return { content: `Арт не подошёл: ${checked.reason}`, untrusted: false };
@@ -668,11 +736,14 @@ const TOOLS: ToolDefinition[] = [
       },
       required: ['serverId', 'commandId'],
     },
-    summary: (a) => {
+    summary: (a, t) => {
       const values = Object.values((a.args ?? {}) as Record<string, unknown>)
         .filter((v): v is string => typeof v === 'string')
         .join(', ');
-      return `Быстрое действие «${str(a, 'commandId')}»${values ? `: ${values}` : ''}`;
+      return t(values ? 'ai.sum.quickRunWith' : 'ai.sum.quickRun', {
+        command: str(a, 'commandId'),
+        values,
+      });
     },
     run: async (_ctx, args, deps) => {
       const raw = (args.args ?? {}) as Record<string, unknown>;
@@ -689,6 +760,200 @@ const TOOLS: ToolDefinition[] = [
       return { content: output || 'Выполнено', untrusted: true };
     },
   },
+  {
+    name: 'list_known_players',
+    description:
+      'Все, кто когда-либо заходил на сервер Minecraft, — включая тех, кого сейчас нет в сети. ' +
+      'Ищет по части ника. Нужен companion-плагин. Вызывай, когда собеседник назвал игрока, ' +
+      'которого нет среди онлайна, или когда нужно уточнить, кого именно он имеет в виду.',
+    kind: 'safe',
+    permission: MINECRAFT_PERMISSIONS.playersView,
+    parameters: {
+      type: 'object',
+      properties: {
+        serverId: { type: 'string' },
+        query: { type: 'string', description: 'часть ника; пусто — первые из списка' },
+      },
+      required: ['serverId'],
+    },
+    summary: (a, t) => t('ai.sum.knownPlayers', { query: str(a, 'query') || t('ai.sum.everyone') }),
+    run: async (_ctx, args, deps) => {
+      const data = await deps.companion.getKnownPlayers(str(args, 'serverId'), {
+        query: str(args, 'query') || undefined,
+        limit: 25,
+      });
+      return {
+        content: untrusted(
+          'ники игроков',
+          JSON.stringify({
+            available: data.available !== false,
+            total: data.total,
+            players: data.players.map((p) => ({
+              name: p.name,
+              online: p.online,
+              lastSeen: p.lastSeen,
+            })),
+          }),
+        ),
+        untrusted: true,
+      };
+    },
+  },
+  {
+    name: 'list_guilds',
+    description:
+      'Гильдии сервера Minecraft: название, тег, лидер, число участников, общак. ' +
+      'Ищет по части названия или тега. Нужен плагин AurumGuilds.',
+    kind: 'safe',
+    permission: MINECRAFT_PERMISSIONS.guildsView,
+    parameters: {
+      type: 'object',
+      properties: {
+        serverId: { type: 'string' },
+        query: { type: 'string', description: 'часть названия или тега' },
+      },
+      required: ['serverId'],
+    },
+    summary: (a, t) => t('ai.sum.guilds', { query: str(a, 'query') || t('ai.sum.everyone') }),
+    run: async (_ctx, args, deps) => {
+      const guilds = await deps.companion.getGuilds(
+        str(args, 'serverId'),
+        str(args, 'query') || null,
+      );
+      if (guilds === null) {
+        return { content: 'Плагин гильдий на этом сервере недоступен.', untrusted: false };
+      }
+      // Названия гильдий придумывают игроки — это их текст.
+      return {
+        content: untrusted(
+          'названия гильдий',
+          JSON.stringify(
+            guilds.map((g) => ({
+              id: g.id,
+              name: g.name,
+              tag: g.tag,
+              leader: g.leaderName,
+              members: g.memberCount,
+              bank: g.bankBalance,
+            })),
+          ),
+        ),
+        untrusted: true,
+      };
+    },
+  },
+  {
+    name: 'list_plugins',
+    description:
+      'Какие из поддерживаемых панелью плагинов стоят на сервере Minecraft. ' +
+      'Полезно, когда что-то «не работает»: половина возможностей зависит от плагина.',
+    kind: 'safe',
+    permission: MINECRAFT_PERMISSIONS.playersView,
+    parameters: {
+      type: 'object',
+      properties: { serverId: { type: 'string' } },
+      required: ['serverId'],
+    },
+    summary: (a, t) => t('ai.sum.plugins', { server: str(a, 'serverId') }),
+    run: async (_ctx, args, deps) => {
+      const data = await deps.minecraft.getPlugins(str(args, 'serverId'));
+      return {
+        content: JSON.stringify({
+          available: data.available,
+          known: data.known.map((p) => ({
+            name: p.displayName,
+            installed: p.installed,
+            version: p.version,
+          })),
+        }),
+        untrusted: false,
+      };
+    },
+  },
+  {
+    name: 'give_items',
+    description:
+      'Выдать игроку предметы в инвентарь. Работает и для игрока вне сети, если стоит InvSee++. ' +
+      'Идентификаторы предметов — как в игре (diamond, oak_log), проверяет их сам игровой сервер.',
+    kind: 'destructive',
+    permission: MINECRAFT_PERMISSIONS.inventoryEdit,
+    parameters: {
+      type: 'object',
+      properties: {
+        serverId: { type: 'string' },
+        player: { type: 'string', description: 'ник; можно часть' },
+        items: {
+          type: 'array',
+          description: 'что выдать',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'идентификатор предмета, напр. diamond' },
+              count: { type: 'number', description: 'сколько штук' },
+            },
+            required: ['id', 'count'],
+          },
+        },
+      },
+      required: ['serverId', 'player', 'items'],
+    },
+    summary: (a, t) =>
+      t('ai.sum.give', { player: str(a, 'player'), items: describeItems(a.items) }),
+    run: async (_ctx, args, deps) => {
+      const items = parseItems(args.items);
+      if (items.length === 0) throw new BadRequestException('Не указано, что выдавать');
+      const result = await deps.companion.giveItems(str(args, 'serverId'), str(args, 'player'), items);
+      return { content: JSON.stringify(result.results), untrusted: false };
+    },
+  },
+  {
+    name: 'clear_inventory',
+    description:
+      'Очистить инвентарь игрока целиком. Работает и для игрока вне сети, если стоит InvSee++. ' +
+      'Необратимо: вернуть стёртое панель не умеет.',
+    kind: 'destructive',
+    permission: MINECRAFT_PERMISSIONS.inventoryEdit,
+    parameters: {
+      type: 'object',
+      properties: {
+        serverId: { type: 'string' },
+        player: { type: 'string', description: 'ник; можно часть' },
+      },
+      required: ['serverId', 'player'],
+    },
+    summary: (a, t) => t('ai.sum.clearInventory', { player: str(a, 'player') }),
+    run: async (_ctx, args, deps) => {
+      await deps.companion.clearInventory(str(args, 'serverId'), str(args, 'player'), { all: true });
+      return { content: 'Инвентарь очищен', untrusted: false };
+    },
+  },
+  {
+    name: 'reset_player_password',
+    description:
+      'Выдать игроку одноразовый токен для смены пароля от игрового аккаунта (плагин AurumAuth). ' +
+      'Токен живёт 20 минут. Сам пароль панель не знает и не показывает.',
+    kind: 'destructive',
+    permission: MINECRAFT_PERMISSIONS.passwordReset,
+    parameters: {
+      type: 'object',
+      properties: {
+        serverId: { type: 'string' },
+        player: { type: 'string', description: 'ник; можно часть' },
+      },
+      required: ['serverId', 'player'],
+    },
+    summary: (a, t) => t('ai.sum.resetPassword', { player: str(a, 'player') }),
+    run: async (_ctx, args, deps) => {
+      const result = await deps.companion.resetPassword(str(args, 'serverId'), str(args, 'player'));
+      if (!result) {
+        return {
+          content: 'Не удалось: проверьте, что стоит AurumAuth и игрок в нём зарегистрирован.',
+          untrusted: false,
+        };
+      }
+      return { content: JSON.stringify(result), untrusted: false };
+    },
+  },
 ];
 
 @Injectable()
@@ -703,6 +968,41 @@ export class AiToolsService {
     private readonly messages: MessagesService,
     private readonly i18n: I18nService,
   ) {}
+
+  /**
+   * Привести аргументы к точным значениям.
+   *
+   * Сервер и игрок приходят от модели такими, какими их назвал человек, —
+   * «выживание», «Ste». Здесь они превращаются в настоящий id и настоящий
+   * ник, и дальше по коду ходит уже точное значение: и в карточку
+   * подтверждения, и в журнал, и в сам вызов.
+   *
+   * Совпадений несколько — исключение с их перечнем; модель передаст вопрос
+   * человеку. Угадывать нельзя: цена ошибки — действие над не тем игроком.
+   */
+  async normalizeArgs(
+    userId: string,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const tool = this.find(name);
+    if (!tool) return args;
+
+    const next = { ...args };
+    const permissions = await this.permissions.getEffectivePermissions(userId);
+
+    if (typeof next.serverId === 'string') {
+      next.serverId = await resolveServerId({ servers: this.servers }, permissions, next.serverId);
+    }
+    if (typeof next.player === 'string' && typeof next.serverId === 'string') {
+      next.player = await resolvePlayerName(
+        { minecraft: this.minecraft, companion: this.companion },
+        next.serverId,
+        next.player,
+      );
+    }
+    return next;
+  }
 
   /** Описания инструментов в формате DeepSeek — только доступные по правам. */
   toolsFor(permissions: EffectivePermissions): DeepseekTool[] {
@@ -767,6 +1067,22 @@ export class AiToolsService {
       '  полный. Никогда не бери id из собственного предыдущего сообщения:',
       '  бери из результата инструмента.',
       '- Игрока указывай НИКОМ, а не UUID: инструменты сами найдут UUID по нику.',
+      '',
+      // Точный ник — это то, ради чего человек и пришёл к ассистенту: набирать
+      // «Ste_griefer_2019» посимвольно ему незачем. Но цена ошибки — действие
+      // над не тем игроком, поэтому «нашлось несколько» решается вопросом, а
+      // не выбором первого попавшегося.
+      'Про поиск по неточному имени:',
+      '- Ник игрока и название сервера можно передавать частью: инструменты сами',
+      '  найдут по куску имени. Не переспрашивай ради точного написания и не проси',
+      '  собеседника скопировать ник из панели.',
+      '- Инструмент ответил, что под запрос подходит несколько игроков или серверов,',
+      '  — покажи собеседнику этот список и спроси, кто из них имеется в виду.',
+      '  Выбирать за него нельзя: сделанное не тому игроку не отменяется.',
+      '- Не подходит ничего — так и скажи, назвав, что есть на самом деле.',
+      '- В ответе человеку называй игрока и сервер тем полным именем, которое',
+      '  вернул инструмент, а не обрывком, который набрал собеседник.',
+      ...guideSection(permissions),
     ].join('\n');
   }
 
@@ -783,8 +1099,21 @@ export class AiToolsService {
     return TOOLS.find((t) => t.name === name) ?? null;
   }
 
-  summarize(name: string, args: Record<string, unknown>): string {
-    return this.find(name)?.summary(args) ?? name;
+  /**
+   * Строка действия для карточки и журнала.
+   *
+   * Язык приходит снаружи: карточку видит собеседник, а журнал читают потом
+   * и совсем другие люди — там строка всегда русская, чтобы записи о двух
+   * одинаковых действиях не расходились из-за настроек того, кто их сделал.
+   */
+  summarize(
+    name: string,
+    args: Record<string, unknown>,
+    locale: Locale = DEFAULT_LOCALE,
+  ): string {
+    const tool = this.find(name);
+    if (!tool) return name;
+    return tool.summary(args, (key, values) => this.i18n.t(locale, key, values));
   }
 
   /**
@@ -833,11 +1162,15 @@ export class AiToolsService {
             // ни адресата. Аудит читают администраторы, а чужие сообщения им
             // видеть не положено — через ассистента это правило тоже действует.
             { redacted: 'личная переписка', ok, ...(error ? { error } : {}) }
-          : { args, summary: tool.summary(args), ok, ...(error ? { error } : {}) },
+          : { args, summary: this.summarize(name, args), ok, ...(error ? { error } : {}) },
       });
 
     try {
-      const result = await tool.run({ userId, permissions }, args, {
+      // Ещё раз, а не «уже сделано в чате»: сюда приходят и подтверждённые
+      // карточки, аргументы которых лежали в базе. Точное значение
+      // разрешается само в себя, так что повтор ничего не стоит.
+      const resolved = await this.normalizeArgs(userId, name, args);
+      const result = await tool.run({ userId, permissions }, resolved, {
         servers: this.servers,
         tickets: this.tickets,
         minecraft: this.minecraft,

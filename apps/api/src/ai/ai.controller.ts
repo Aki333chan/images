@@ -123,8 +123,16 @@ export class AiController {
     @CurrentUser() user: AuthUser,
     @Param('actionId') actionId: string,
     @Body() dto: ResolveDto,
+    @Req() req: Request,
   ) {
-    return this.ai.resolve(user.id, actionId, dto.approve);
+    // Карточку читает тот, кто нажал кнопку: подпись действия собирается на
+    // его языке, а не на языке того, при ком её когда-то предложили.
+    return this.ai.resolve(
+      user.id,
+      actionId,
+      dto.approve,
+      this.i18n.localeOf(req.headers['accept-language']),
+    );
   }
 
   @Get('usage')

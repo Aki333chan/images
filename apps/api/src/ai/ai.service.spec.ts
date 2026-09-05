@@ -70,6 +70,11 @@ function setup(options: {
       kind: name.startsWith('list_') ? 'safe' : 'destructive',
     }),
     summarize: (name: string) => `сводка ${name}`,
+    // Приведение ника и сервера к точным значениям: в чате оно идёт перед
+    // карточкой, чтобы человек подтверждал настоящее имя, а не набранный
+    // кусок. Здесь достаточно тождества.
+    normalizeArgs: (_u: string, _n: string, args: Record<string, unknown>) =>
+      Promise.resolve(args),
     execute: (_u: string, name: string) => {
       executed.push(name);
       options.onExecute?.(name);
