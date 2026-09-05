@@ -77,5 +77,22 @@
   "mc.val.magnitudeNumber": "Wartość to liczba",
   "mc.val.magnitudePositive": "Wartość musi być większa od zera",
   "common.done": "Gotowe",
-  "mc.g.bonusFallback": "Bonus"
+  "mc.g.bonusFallback": "Bonus",
+  "market.err.sourceSilent": "źródło nie odpowiedziało",
+  "market.err.notOnModrinth": "Nie znaleziono projektu na Modrinth",
+  "market.err.notOnHangar": "Nie znaleziono pluginu na Hangarze",
+  "market.err.notOnSpigot": "Nie znaleziono zasobu na SpigotMC",
+  "market.err.spigetBadVersions": "SpiGet zwrócił coś innego niż listę wersji",
+  "market.err.noFile": "Ta wersja nie ma pliku do pobrania",
+  "market.err.versionNotOnHangar": "Nie znaleziono wersji na Hangarze",
+  "market.err.noVersionGiven": "Nie podano wersji zasobu",
+  "market.err.premium": "To płatny zasób SpigotMC — pobrać go może tylko kupujący na stronie źródła",
+  "market.err.badFileType": "Plik zasobu ma typ {type}, a nie .jar — panel go nie zainstaluje",
+  "market.err.externalNoUrl": "Zasób leży poza SpigotMC, ale nie podano linku do pliku — zainstaluj go ręcznie",
+  "market.err.iconRefused": "Ikona spod tego adresu nie jest wydawana",
+  "market.err.iconMissing": "Źródło nie zwróciło ikony",
+  "market.err.iconNotImage": "Pod tym adresem nie ma obrazka",
+  "market.err.iconTooBig": "Ikona jest za duża",
+  "market.err.badSpigetId": "Błędny identyfikator zasobu SpigotMC",
+  "market.err.unsafeUrl": "Plik leży pod adresem, pod który panel nie pójdzie: dozwolone są tylko zewnętrzne linki https"
 }

@@ -77,5 +77,22 @@
   "mc.val.magnitudeNumber": "Величина — число",
   "mc.val.magnitudePositive": "Величина должна быть больше нуля",
   "common.done": "Готово",
-  "mc.g.bonusFallback": "Бонус"
+  "mc.g.bonusFallback": "Бонус",
+  "market.err.sourceSilent": "источник не ответил",
+  "market.err.notOnModrinth": "Проект не найден на Modrinth",
+  "market.err.notOnHangar": "Плагин не найден на Hangar",
+  "market.err.notOnSpigot": "Ресурс не найден на SpigotMC",
+  "market.err.spigetBadVersions": "SpiGet вернул не список версий",
+  "market.err.noFile": "У этой версии нет файла для скачивания",
+  "market.err.versionNotOnHangar": "Версия не найдена на Hangar",
+  "market.err.noVersionGiven": "Не указана версия ресурса",
+  "market.err.premium": "Это платный ресурс SpigotMC — скачать его может только покупатель на сайте источника",
+  "market.err.badFileType": "Файл ресурса имеет тип {type}, а не .jar — установить его панель не может",
+  "market.err.externalNoUrl": "Ресурс размещён вне SpigotMC, но ссылка на файл не указана — установите его вручную",
+  "market.err.iconRefused": "Иконка с этого адреса не отдаётся",
+  "market.err.iconMissing": "Источник не отдал иконку",
+  "market.err.iconNotImage": "По этому адресу не картинка",
+  "market.err.iconTooBig": "Иконка слишком большая",
+  "market.err.badSpigetId": "Неверный идентификатор ресурса SpigotMC",
+  "market.err.unsafeUrl": "Файл размещён по адресу, по которому панель не пойдёт: разрешены только внешние https-ссылки"
 }

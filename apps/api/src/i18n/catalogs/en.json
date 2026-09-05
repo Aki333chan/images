@@ -77,5 +77,22 @@
   "mc.val.magnitudeNumber": "The value must be a number",
   "mc.val.magnitudePositive": "The value must be greater than zero",
   "common.done": "Done",
-  "mc.g.bonusFallback": "Bonus"
+  "mc.g.bonusFallback": "Bonus",
+  "market.err.sourceSilent": "the source did not answer",
+  "market.err.notOnModrinth": "The project was not found on Modrinth",
+  "market.err.notOnHangar": "The plugin was not found on Hangar",
+  "market.err.notOnSpigot": "The resource was not found on SpigotMC",
+  "market.err.spigetBadVersions": "SpiGet returned something other than a version list",
+  "market.err.noFile": "This version has no file to download",
+  "market.err.versionNotOnHangar": "The version was not found on Hangar",
+  "market.err.noVersionGiven": "No resource version was given",
+  "market.err.premium": "This is a paid SpigotMC resource — only a buyer can download it, on the source’s own site",
+  "market.err.badFileType": "The resource file is of type {type}, not .jar — the panel cannot install it",
+  "market.err.externalNoUrl": "The resource is hosted outside SpigotMC, but no file link is given — install it by hand",
+  "market.err.iconRefused": "The icon is not served from that address",
+  "market.err.iconMissing": "The source returned no icon",
+  "market.err.iconNotImage": "There is no image at that address",
+  "market.err.iconTooBig": "The icon is too large",
+  "market.err.badSpigetId": "Invalid SpigotMC resource id",
+  "market.err.unsafeUrl": "The file sits at an address the panel will not follow: only external https links are allowed"
 }

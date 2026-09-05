@@ -83,7 +83,7 @@ describe('ключи модуля Minecraft', () => {
     for (const file of walk(moduleDir)) {
       if (!file.endsWith('.ts') || file.endsWith('.spec.ts')) continue;
       const source = readFileSync(file, 'utf8');
-      for (const m of source.matchAll(/'(mc\.[a-z][\w.]*)'/gi)) used.add(m[1] as string);
+      for (const m of source.matchAll(/'((?:mc|market)\.[a-z][\w.]*)'/gi)) used.add(m[1] as string);
     }
     // Ключи в исходниках вообще есть: пустое множество означало бы, что
     // регулярка перестала совпадать, а тест — проходить впустую.

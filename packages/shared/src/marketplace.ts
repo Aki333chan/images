@@ -75,11 +75,18 @@ export function loadersFor(type: MarketProjectType): readonly string[] {
 export const MARKET_SORTS = ['relevance', 'downloads', 'updated', 'name'] as const;
 export type MarketSort = (typeof MARKET_SORTS)[number];
 
-export const MARKET_SORT_LABELS: Record<MarketSort, string> = {
-  relevance: 'По совпадению',
-  downloads: 'По загрузкам',
-  updated: 'По дате обновления',
-  name: 'По алфавиту',
+/**
+ * Ключи подписей сортировки, а не сами подписи.
+ *
+ * Список общий для панели и писем, а язык у каждого читателя свой; готовая
+ * фраза здесь означала бы русский «По загрузкам» в польском выпадающем
+ * списке.
+ */
+export const MARKET_SORT_KEYS: Record<MarketSort, string> = {
+  relevance: 'market.sort.relevance',
+  downloads: 'market.sort.downloads',
+  updated: 'market.sort.updated',
+  name: 'market.sort.name',
 };
 
 /**

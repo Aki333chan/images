@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   EMPTY_FILTERS,
+  LOCALE_TAGS,
+  formatBytes,
   MARKET_SORTS,
-  MARKET_SORT_LABELS,
+  MARKET_SORT_KEYS,
   MARKET_SOURCES,
   defaultProjectTypeFor,
   loadersFor,
   sourcesFor,
+  type Locale,
   type MarketFilters,
   type MarketHitDto,
   type MarketMatch,
@@ -22,7 +25,7 @@ import {
   type ServerTargetDto,
 } from '@aurum/shared';
 import { api } from '../lib/api';
-import { useApiText } from '../i18n';
+import { useApiText, useI18n, useT } from '../i18n';
 import { Badge, Button, ErrorText, Input, Select, Spinner, Tabs } from '../components/ui';
 import { PluginIcon } from './PluginIcon';
 import { Modal } from '../components/Modal';
@@ -46,6 +49,7 @@ const BASE = '/api/modules/minecraft/market';
  * Свалить их в одну выдачу значило бы предлагать заведомо неработающее.
  */
 export function MarketPage() {
+  const { t, locale, formatDate } = useI18n();
   const [params] = useSearchParams();
   // Сервер, со страницы которого пришли: он решает, какая вкладка откроется
   // и какой сервер подставится в мастере установки.
@@ -127,7 +131,7 @@ export function MarketPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">Маркет</h1>
+        <h1 className="text-xl font-bold">{t('market.title')}</h1>
         <span className="text-xs text-muted">
           {activeSources.map((id) => sourceLabel(id)).join(' · ')}
         </span>
@@ -138,8 +142,8 @@ export function MarketPage() {
         active={type}
         onChange={(id) => switchType(id as MarketProjectType)}
         tabs={[
-          { id: 'plugin', label: 'Плагины' },
-          { id: 'mod', label: 'Моды' },
+          { id: 'plugin', label: t('market.plugins') },
+          { id: 'mod', label: t('market.mods') },
         ]}
       />
 
@@ -150,15 +154,15 @@ export function MarketPage() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={
             type === 'mod'
-              ? 'Название мода: create, jei, sodium…'
-              : 'Название плагина: luckperms, essentials, vault…'
+              ? t('market.searchMod')
+              : t('market.searchPlugin')
           }
         />
         <Select
           className="sm:w-56"
           value={sort}
           onChange={(v) => setSort(v as MarketSort)}
-          options={MARKET_SORTS.map((s) => ({ value: s, label: MARKET_SORT_LABELS[s] }))}
+          options={MARKET_SORTS.map((s) => ({ value: s, label: t(MARKET_SORT_KEYS[s]) }))}
         />
       </div>
 
@@ -170,17 +174,14 @@ export function MarketPage() {
       />
 
       {type === 'mod' && (
-        <p className="text-xs text-muted">
-          Моды раздаёт только Modrinth: у Hangar в списке платформ есть лишь Paper, Waterfall и
-          Velocity, а SpigotMC — площадка плагинов Bukkit. Показывать рядом два заведомо пустых
-          источника незачем.
-        </p>
+        <p className="text-xs text-muted">{t('market.modsOnlyModrinth')}</p>
       )}
 
       {failed.length > 0 && (
         <p className="text-xs text-amber-400">
-          Не ответил: {failed.map((s) => sourceLabel(s.source)).join(', ')}. Показано то, что
-          нашлось у остальных.
+          {t('market.sourcesFailed', {
+            sources: failed.map((s) => sourceLabel(s.source)).join(', '),
+          })}
         </p>
       )}
 
@@ -188,9 +189,7 @@ export function MarketPage() {
       {loading && <Spinner />}
 
       {!loading && data && data.hits.length === 0 && (
-        <p className="text-sm text-muted">
-          Ничего не нашлось. Попробуйте другое слово или снимите часть галочек.
-        </p>
+        <p className="text-sm text-muted">{t('market.nothingFound')}</p>
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -207,18 +206,18 @@ export function MarketPage() {
                   <span className="truncate font-medium">{hit.title}</span>
                   <Badge variant="outline">{sourceLabel(hit.source)}</Badge>
                   {hit.premium && (
-                    <span title="Платный ресурс SpigotMC — панель его не скачает">
-                      <Badge variant="outline">платный</Badge>
+                    <span title={t('market.premiumHint')}>
+                      <Badge variant="outline">{t('market.premium')}</Badge>
                     </span>
                   )}
                 </div>
                 <p className="mt-0.5 line-clamp-2 text-xs text-muted">{hit.description}</p>
                 <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted">
                   {hit.author && <span>{hit.author}</span>}
-                  <span>{formatDownloads(hit.downloads)} загрузок</span>
+                  <span>{t('market.downloads', { value: formatDownloads(hit.downloads, locale) })}</span>
                   {hit.loaders.length > 0 && <span>{hit.loaders.join(', ')}</span>}
                   {hit.updatedAt && (
-                    <span>обновлён {new Date(hit.updatedAt).toLocaleDateString('ru-RU')}</span>
+                    <span>{t('market.updated', { date: formatDate(hit.updatedAt) })}</span>
                   )}
                 </div>
               </div>
@@ -260,6 +259,7 @@ function FilterBar({
   onChange: (next: MarketFilters) => void;
   gameVersions: string[];
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [allVersions, setAllVersions] = useState(false);
 
@@ -289,11 +289,12 @@ function FilterBar({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
         >
-          Фильтры{active > 0 ? ` · ${active}` : ''} {open ? '▲' : '▼'}
+          {t('market.filters')}
+          {active > 0 ? ` · ${active}` : ''} {open ? '▲' : '▼'}
         </button>
         {active > 0 && (
           <Button size="sm" variant="ghost" onClick={() => onChange(EMPTY_FILTERS)}>
-            Сбросить
+            {t('market.reset')}
           </Button>
         )}
       </div>
@@ -301,7 +302,7 @@ function FilterBar({
       {open && (
         <div className="space-y-3 border-t border-border px-3 py-3">
           {gameVersions.length > 0 && (
-            <FilterGroup title="Версия Minecraft">
+            <FilterGroup title={t('market.gameVersion')}>
               {shownVersions.map((v) => (
                 <CheckChip
                   key={v}
@@ -316,13 +317,13 @@ function FilterBar({
                   className="text-[11px] text-primary underline"
                   onClick={() => setAllVersions(true)}
                 >
-                  ещё {gameVersions.length - shownVersions.length}
+                  {t('market.moreVersions', { count: gameVersions.length - shownVersions.length })}
                 </button>
               )}
             </FilterGroup>
           )}
 
-          <FilterGroup title={type === 'mod' ? 'Загрузчик' : 'Ядро'}>
+          <FilterGroup title={t(type === 'mod' ? 'market.loader' : 'market.core')}>
             {loaders.map((l) => (
               <CheckChip
                 key={l}
@@ -335,7 +336,7 @@ function FilterBar({
 
           {/* Одному источнику галочка не нужна: выбирать не из чего. */}
           {sources.length > 1 && (
-            <FilterGroup title="Источник">
+            <FilterGroup title={t('market.source')}>
               {sources.map((s) => (
                 <CheckChip
                   key={s}
@@ -348,10 +349,7 @@ function FilterBar({
           )}
 
           {type === 'plugin' && (
-            <p className="text-[11px] text-muted">
-              У SpigotMC ядро плагина не хранится вовсе, поэтому галочка ядра его результаты не
-              отсеивает — иначе один щелчок прятал бы целый источник.
-            </p>
+            <p className="text-[11px] text-muted">{t('market.spigetNoLoader')}</p>
           )}
         </div>
       )}
@@ -401,6 +399,7 @@ function PluginModal({
   preferredServerId: string | null;
   onClose: () => void;
 }) {
+  const { t, locale, formatDate } = useI18n();
   const [plugin, setPlugin] = useState<MarketPluginDto | null>(null);
   const [versions, setVersions] = useState<MarketVersionsResponseDto | null>(null);
   const [error, setError] = useState('');
@@ -442,16 +441,18 @@ function PluginModal({
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
                 <Badge variant="outline">{sourceLabel(plugin.source)}</Badge>
                 <Badge variant="outline">
-                  {plugin.projectType === 'mod' ? 'мод' : 'плагин'}
+                  {t(plugin.projectType === 'mod' ? 'market.mod' : 'market.plugin')}
                 </Badge>
-                <span>{formatDownloads(plugin.downloads)} загрузок</span>
+                <span>
+                  {t('market.downloads', { value: formatDownloads(plugin.downloads, locale) })}
+                </span>
                 <a
                   className="text-primary underline"
                   href={plugin.pageUrl}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  страница на источнике
+                  {t('market.sourcePage')}
                 </a>
               </div>
             </div>
@@ -459,16 +460,13 @@ function PluginModal({
 
           {premium && (
             <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
-              Это платный ресурс SpigotMC. Файл отдаётся только покупателю на самом сайте, поэтому
-              панель его не скачает — установка отсюда недоступна. Купленный .jar можно загрузить
-              вручную через файловый менеджер сервера.
+              {t('market.premiumFull')}
             </p>
           )}
 
           {plugin.externalFile && !premium && (
             <p className="text-xs text-muted">
-              Файл размещён не у источника, а на стороннем сайте. Контрольной суммы у такого файла
-              нет — панель проверит только то, что приехал настоящий архив.
+              {t('market.externalFile')}
             </p>
           )}
 
@@ -476,12 +474,12 @@ function PluginModal({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <div className="text-[11px] uppercase tracking-wide text-muted">
-                {plugin.projectType === 'mod' ? 'Заявленные загрузчики' : 'Заявленные ядра'}
+                {t(plugin.projectType === 'mod' ? 'market.declaredLoaders' : 'market.declaredCores')}
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 {plugin.loaders.length === 0 ? (
                   <span className="text-xs text-muted">
-                    {plugin.source === 'spiget' ? 'SpigotMC их не хранит' : 'не указаны'}
+                    {t(plugin.source === 'spiget' ? 'market.spigetNoStore' : 'market.notDeclared')}
                   </span>
                 ) : (
                   plugin.loaders.map((l) => (
@@ -494,11 +492,11 @@ function PluginModal({
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-wide text-muted">
-                Заявленные версии Minecraft
+                {t('market.declaredVersions')}
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 {plugin.gameVersions.length === 0 ? (
-                  <span className="text-xs text-muted">не указаны</span>
+                  <span className="text-xs text-muted">{t('market.notDeclared')}</span>
                 ) : (
                   plugin.gameVersions.map((v) => (
                     <Badge key={v} variant="outline">
@@ -512,10 +510,10 @@ function PluginModal({
 
           <div>
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-sm font-semibold">Все версии</h3>
+              <h3 className="text-sm font-semibold">{t('market.allVersions')}</h3>
               {versions?.comparedTo && (
                 <span className="text-[11px] text-muted">
-                  бейджи сверены с «{versions.comparedTo.name}»
+                  {t('market.comparedTo', { name: versions.comparedTo.name })}
                   {versions.comparedTo.gameVersion ? ` (${versions.comparedTo.gameVersion}` : ''}
                   {versions.comparedTo.loader
                     ? `, ${versions.comparedTo.loader})`
@@ -527,9 +525,7 @@ function PluginModal({
             </div>
 
             <p className="mb-2 text-xs text-muted">
-              Показаны все опубликованные версии. Бейдж «не заявлено» — это только отметка о
-              метаданных релиза: плагины часто работают на ядрах новее заявленных. Установить
-              можно любую версию из списка.
+              {t('market.versionsHint')}
             </p>
 
             {!versions ? (
@@ -546,19 +542,19 @@ function PluginModal({
                           <MatchBadge compatibility={v.compatibility} />
                         </div>
                         <div className="mt-0.5 text-[11px] text-muted">
-                          {new Date(v.publishedAt).toLocaleDateString('ru-RU')}
+                          {formatDate(v.publishedAt)}
                           {v.loaders.length > 0 && ` · ${v.loaders.join(', ')}`}
                           {v.gameVersions.length > 0 && ` · ${v.gameVersions.join(', ')}`}
                         </div>
                       </div>
                       <Button size="sm" disabled={premium} onClick={() => setInstalling(v)}>
-                        Установить
+                        {t('market.install')}
                       </Button>
                     </div>
                     {v.changelog && (
                       <details className="mt-1">
                         <summary className="cursor-pointer text-[11px] text-muted">
-                          Что изменилось
+                          {t('market.changelog')}
                         </summary>
                         <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] text-muted">
                           {v.changelog}
@@ -609,6 +605,7 @@ function InstallWizard({
   // Экран маркета ещё не переведён целиком, но сообщение об установке
   // приходит от API ключом — показать его сырым значило бы вывести человеку
   // «mc.err.installedPluginRunning» вместо фразы.
+  const { t, formatDate } = useI18n();
   const apiText = useApiText();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [serverId, setServerId] = useState<string>(
@@ -623,7 +620,7 @@ function InstallWizard({
   const target = targets.find((t) => t.serverId === serverId) ?? null;
   const running = target?.status === 'running' || target?.status === 'starting';
   const folder = plugin.projectType === 'mod' ? 'mods/' : 'plugins/';
-  const what = plugin.projectType === 'mod' ? 'Мод' : 'Плагин';
+  const isMod = plugin.projectType === 'mod';
 
   async function install() {
     setBusy(true);
@@ -650,10 +647,10 @@ function InstallWizard({
   }
 
   return (
-    <Modal title={`Установка ${plugin.title}`} onClose={onClose}>
+    <Modal title={t('market.installTitle', { name: plugin.title })} onClose={onClose}>
       <div className="space-y-4">
         <ol className="flex flex-wrap gap-2 text-[11px]">
-          {['1. Версия', '2. Сервер', '3. Подтверждение'].map((label, i) => (
+          {[t('market.step1'), t('market.step2'), t('market.step3')].map((label, i) => (
             <li
               key={label}
               className={`rounded px-2 py-1 ${
@@ -674,52 +671,53 @@ function InstallWizard({
                 <MatchBadge compatibility={version.compatibility} />
               </div>
               <div className="mt-1 text-[11px] text-muted">
-                Опубликована {new Date(version.publishedAt).toLocaleDateString('ru-RU')}
+                {t('market.published', { date: formatDate(version.publishedAt) })}
                 {version.fileName && ` · ${version.fileName}`}
-                {version.fileSizeBytes ? ` · ${formatSize(version.fileSizeBytes)}` : ''}
+                {version.fileSizeBytes ? ` · ${formatBytes(version.fileSizeBytes, t)}` : ''}
               </div>
               <div className="mt-1 text-[11px] text-muted">
-                Ядра: {version.loaders.join(', ') || 'не указаны'} · Версии:{' '}
-                {version.gameVersions.join(', ') || 'не указаны'}
+                {t('market.coresAndVersions', {
+                  loaders: version.loaders.join(', ') || t('market.notDeclared'),
+                  versions: version.gameVersions.join(', ') || t('market.notDeclared'),
+                })}
               </div>
             </div>
             <p className="text-xs text-muted">
-              Выбрана эта версия. Вернуться к списку можно, закрыв окно, — блокировок по
-              совместимости нет, ставится любая.
+              {t('market.versionChosen')}
             </p>
             <div className="flex justify-end">
-              <Button onClick={() => setStep(2)}>Дальше</Button>
+              <Button onClick={() => setStep(2)}>{t('market.next')}</Button>
             </div>
           </div>
         )}
 
         {step === 2 && (
           <div className="space-y-3">
-            <p className="text-sm">На какой сервер ставим?</p>
+            <p className="text-sm">{t('market.whichServer')}</p>
             {targets.length === 0 ? (
               <p className="text-sm text-muted">
-                Нет серверов с модулем Minecraft — ставить некуда.
+                {t('market.noTargets')}
               </p>
             ) : (
               <ul className="space-y-2">
-                {targets.map((t) => (
-                  <li key={t.serverId}>
+                {targets.map((option) => (
+                  <li key={option.serverId}>
                     <button
                       className={`w-full rounded border p-3 text-left ${
-                        serverId === t.serverId
+                        serverId === option.serverId
                           ? 'border-primary bg-primary/10'
                           : 'border-border hover:bg-white/5'
                       }`}
-                      onClick={() => setServerId(t.serverId)}
+                      onClick={() => setServerId(option.serverId)}
                     >
                       <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                        {t.name}
-                        {t.status && <Badge variant="outline">{t.status}</Badge>}
+                        {option.name}
+                        {option.status && <Badge variant="outline">{option.status}</Badge>}
                       </div>
                       <div className="text-[11px] text-muted">
-                        {t.gameVersion || t.loader
-                          ? `${t.loader ?? 'ядро неизвестно'} ${t.gameVersion ?? ''}`
-                          : 'версия сервера не определена — бейджи совместимости будут пустыми'}
+                        {option.gameVersion || option.loader
+                          ? `${option.loader ?? t('market.unknownCore')} ${option.gameVersion ?? ''}`
+                          : t('market.unknownServerVersion')}
                       </div>
                     </button>
                   </li>
@@ -728,10 +726,10 @@ function InstallWizard({
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
               <Button variant="ghost" onClick={() => setStep(1)}>
-                Назад
+                {t('market.back')}
               </Button>
               <Button disabled={!serverId} onClick={() => setStep(3)}>
-                Дальше
+                {t('market.next')}
               </Button>
             </div>
           </div>
@@ -745,30 +743,29 @@ function InstallWizard({
                   {apiText(result.message, result.messageValues)}
                 </p>
                 <p className="text-[11px] text-muted">
-                  {result.fileName} · {formatSize(result.sizeBytes)}
+                  {result.fileName} · {formatBytes(result.sizeBytes, t)}
                 </p>
                 <div className="flex justify-end">
-                  <Button onClick={onClose}>Готово</Button>
+                  <Button onClick={onClose}>{t('market.done')}</Button>
                 </div>
               </>
             ) : (
               <>
                 <dl className="space-y-1 text-sm">
                   <Row
-                    label={plugin.projectType === 'mod' ? 'Мод' : 'Плагин'}
+                    label={t(isMod ? 'market.rowMod' : 'market.rowPlugin')}
                     value={`${plugin.title} (${sourceLabel(plugin.source)})`}
                   />
-                  <Row label="Версия" value={version.name} />
-                  <Row label="Сервер" value={target?.name ?? '—'} />
-                  <Row label="Куда" value={folder} />
+                  <Row label={t('market.rowVersion')} value={version.name} />
+                  <Row label={t('market.rowServer')} value={target?.name ?? '—'} />
+                  <Row label={t('market.rowTarget')} value={folder} />
                 </dl>
 
                 {/* Мод в plugins/ не загрузится, а плагин в mods/ у Forge ещё
                     и роняет запуск. Куда именно кладём — не мелочь. */}
                 {plugin.projectType === 'mod' && (
                   <p className="text-xs text-muted">
-                    Моды читают только Forge, NeoForge и Fabric. Если выбранный сервер работает на
-                    ядре семейства Bukkit, файл ляжет в mods/, но игрой прочитан не будет.
+                    {t('market.modLoadersOnly')}
                   </p>
                 )}
 
@@ -776,19 +773,17 @@ function InstallWizard({
                     выключенного файл просто подхватится при старте. */}
                 {running ? (
                   <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
-                    Сервер сейчас запущен. Файл будет загружен в папку, но заработает только после
-                    перезапуска сервера.
+                    {t('market.serverRunning')}
                   </p>
                 ) : (
                   <p className="text-xs text-muted">
-                    Сервер сейчас выключен — {what.toLowerCase()} подхватится при следующем запуске.
+                    {t(isMod ? 'market.serverStoppedMod' : 'market.serverStoppedPlugin')}
                   </p>
                 )}
 
                 {version.compatibility?.gameVersion === 'not-declared' && (
                   <p className="text-xs text-muted">
-                    Автор не заявил эту версию Minecraft для выбранного релиза. Это не значит, что
-                    он не заработает — метаданные часто отстают. Установка не блокируется.
+                    {t('market.versionNotDeclared')}
                   </p>
                 )}
 
@@ -796,10 +791,10 @@ function InstallWizard({
 
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
                   <Button variant="ghost" disabled={busy} onClick={() => setStep(2)}>
-                    Назад
+                    {t('market.back')}
                   </Button>
                   <Button disabled={busy} onClick={() => void install()}>
-                    {busy ? 'Ставим…' : 'Установить'}
+                    {busy ? t('market.installing') : t('market.install')}
                   </Button>
                 </div>
               </>
@@ -829,16 +824,17 @@ function MatchBadge({
 }: {
   compatibility?: { gameVersion: MarketMatch; loader: MarketMatch };
 }) {
+  const t = useT();
   if (!compatibility) return null;
   const { gameVersion, loader } = compatibility;
   if (gameVersion === 'unknown' && loader === 'unknown') return null;
 
   if (gameVersion === 'match' && loader !== 'not-declared') {
-    return <Badge variant="success">совпадает с сервером</Badge>;
+    return <Badge variant="success">{t('market.match')}</Badge>;
   }
   return (
-    <span title="Автор не заявил эту версию. Поставить всё равно можно.">
-      <Badge variant="outline">не заявлено для этой версии</Badge>
+    <span title={t('market.notDeclaredHint')}>
+      <Badge variant="outline">{t('market.notDeclaredBadge')}</Badge>
     </span>
   );
 }
@@ -847,13 +843,16 @@ function sourceLabel(id: MarketSourceId): string {
   return MARKET_SOURCES.find((s) => s.id === id)?.label ?? id;
 }
 
-function formatDownloads(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} млн`;
-  if (value >= 1000) return `${Math.round(value / 1000)} тыс.`;
-  return String(value);
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
-  return `${Math.round(bytes / 1024)} КБ`;
+/**
+ * Короткая запись числа загрузок.
+ *
+ * Своих «млн» и «тыс.» здесь больше нет: сокращения у каждого языка свои
+ * (en — «1.2M», pl — «1,2 mln»), и вместе с ними меняется разделитель дробной
+ * части. Всё это Intl знает про каждую локаль, а мы — нет.
+ */
+function formatDownloads(value: number, locale: Locale): string {
+  return new Intl.NumberFormat(LOCALE_TAGS[locale], {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
 }
