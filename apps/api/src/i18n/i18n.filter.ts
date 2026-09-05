@@ -69,8 +69,21 @@ export class I18nExceptionFilter implements ExceptionFilter {
     // Подстановки к ключу: `throw new BadRequestException({ message: key,
     // i18nValues: { name } })`. Наружу они не идут — это сырьё для перевода,
     // а не часть контракта ошибки.
-    const { i18nValues, ...rest } = record;
-    const values = isValues(i18nValues) ? i18nValues : undefined;
+    //
+    // i18nKeys — то же самое, но значения в нём сами ключи словаря и
+    // переводятся перед подстановкой. Отдельным полем, а не догадкой по
+    // содержимому: подставляют сюда и ники, и имена файлов, и решать за
+    // вызывающего, что из этого «похоже на ключ», — способ однажды
+    // перевести чей-нибудь ник.
+    const { i18nValues, i18nKeys, ...rest } = record;
+    const values = {
+      ...(isValues(i18nValues) ? i18nValues : {}),
+      ...(isValues(i18nKeys)
+        ? Object.fromEntries(
+            Object.entries(i18nKeys).map(([name, key]) => [name, this.i18n.t(locale, String(key))]),
+          )
+        : {}),
+    };
     response.status(status).json({
       ...rest,
       statusCode: status,

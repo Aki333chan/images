@@ -231,10 +231,10 @@ export class VanillaRconService {
     const installed = new Set((installedPlugins ?? []).map((name) => name.toLowerCase()));
     return MINECRAFT_QUICK_COMMANDS.filter(
       (c) => c.plugin === null || installed.has(c.plugin.toLowerCase()),
-    ).map(({ id, label, description, permission, args, plugin, destructive }) => ({
+    ).map(({ id, labelKey, descriptionKey, permission, args, plugin, destructive }) => ({
       id,
-      label,
-      description,
+      labelKey,
+      descriptionKey,
       // Пометку «здесь ожидается ник» выводим из того же набора имён, по
       // которому аргумент проходит валидацию ника, — так подсказка не может
       // разойтись с проверкой.
@@ -268,7 +268,14 @@ export class VanillaRconService {
       for (const arg of definition.args) {
         const rawValue = args[arg.name];
         if (!rawValue) {
-          if (arg.required) throw new BadRequestException(`Не заполнено поле «${arg.label}»`);
+          if (arg.required) {
+            // Имя поля тоже ключ: фразу собирает фильтр ошибок, и подставить
+            // в неё надо переведённую подпись, а не «mc.qc.arg.message».
+            throw new BadRequestException({
+              message: 'mc.err.fieldRequired',
+              i18nKeys: { field: arg.labelKey },
+            });
+          }
           continue;
         }
         let value = NICKNAME_ARG_NAMES.has(arg.name)

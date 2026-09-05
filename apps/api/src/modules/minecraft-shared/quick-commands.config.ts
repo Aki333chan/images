@@ -26,8 +26,9 @@ import {
  */
 export interface QuickCommandDefinition {
   id: string;
-  label: string;
-  description: string;
+  /** Ключи словаря панели: подпись кнопки собирает браузер, а не сервер. */
+  labelKey: string;
+  descriptionKey: string;
   /**
    * Одна команда или несколько, выполняемых по порядку.
    *
@@ -47,7 +48,7 @@ export interface QuickCommandDefinition {
 
 const PLAYER_ARG: MinecraftQuickCommandArg = {
   name: 'player',
-  label: 'Ник игрока',
+  labelKey: 'mc.qc.arg.player',
   required: true,
   placeholder: 'Steve',
 };
@@ -60,15 +61,15 @@ const PLAYER_ARG: MinecraftQuickCommandArg = {
  * а опечатка в «adventure» даёт «Unknown game mode» вместо действия.
  */
 const GAMEMODE_OPTIONS = [
-  { value: 'survival', label: 'Выживание' },
-  { value: 'creative', label: 'Творческий' },
-  { value: 'adventure', label: 'Приключение' },
-  { value: 'spectator', label: 'Наблюдатель' },
+  { value: 'survival', labelKey: 'mc.qc.mode.survival' },
+  { value: 'creative', labelKey: 'mc.qc.mode.creative' },
+  { value: 'adventure', labelKey: 'mc.qc.mode.adventure' },
+  { value: 'spectator', labelKey: 'mc.qc.mode.spectator' },
 ];
 
 const MODE_ARG: MinecraftQuickCommandArg = {
   name: 'mode',
-  label: 'Режим',
+  labelKey: 'mc.qc.arg.mode',
   required: true,
   options: GAMEMODE_OPTIONS,
 };
@@ -77,8 +78,8 @@ const MODE_ARG: MinecraftQuickCommandArg = {
 const VANILLA: QuickCommandDefinition[] = [
   {
     id: 'save-all',
-    label: 'Сохранить мир',
-    description: 'Принудительно сохраняет мир на диск (save-all)',
+    labelKey: 'mc.qc.saveAll',
+    descriptionKey: 'mc.qc.saveAll.d',
     template: 'save-all',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [],
@@ -87,8 +88,8 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'day',
-    label: 'Сделать день',
-    description: 'Устанавливает время в день',
+    labelKey: 'mc.qc.day',
+    descriptionKey: 'mc.qc.day.d',
     template: 'time set day',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [],
@@ -97,8 +98,8 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'weather-clear',
-    label: 'Ясная погода',
-    description: 'Разгоняет дождь и грозу',
+    labelKey: 'mc.qc.weather',
+    descriptionKey: 'mc.qc.weather.d',
     template: 'weather clear',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [],
@@ -107,16 +108,16 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'broadcast',
-    label: 'Сообщение в чат',
-    description: 'Отправляет сообщение всем игрокам в чат',
+    labelKey: 'mc.qc.broadcast',
+    descriptionKey: 'mc.qc.broadcast.d',
     template: 'say {message}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [
       {
         name: 'message',
-        label: 'Текст объявления',
+        labelKey: 'mc.qc.arg.message',
         required: true,
-        placeholder: 'Рестарт через 5 минут',
+        placeholderKey: 'mc.qc.arg.message.p',
       },
     ],
     plugin: null,
@@ -125,8 +126,8 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'title-announce',
-    label: 'Объявление',
-    description: 'Крупная надпись по центру экрана у всех игроков',
+    labelKey: 'mc.qc.title',
+    descriptionKey: 'mc.qc.title.d',
     // Текстовый компонент, а не голая строка: только так задаются цвет и
     // начертание. Значения подставляются с JSON-экранированием — иначе
     // кавычка в тексте разорвала бы литерал.
@@ -144,16 +145,16 @@ const VANILLA: QuickCommandDefinition[] = [
     args: [
       {
         name: 'message',
-        label: 'Текст объявления',
+        labelKey: 'mc.qc.arg.message',
         required: true,
-        placeholder: 'Рестарт через 5 минут',
+        placeholderKey: 'mc.qc.arg.message.p',
         escape: 'json',
       },
       {
         name: 'subtitle',
-        label: 'Подзаголовок (необязательно)',
+        labelKey: 'mc.qc.arg.subtitle',
         required: false,
-        placeholder: 'Сохраните постройки',
+        placeholderKey: 'mc.qc.arg.subtitle.p',
         escape: 'json',
       },
     ],
@@ -162,8 +163,8 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'vanilla-gamemode',
-    label: 'Сменить режим игры',
-    description: 'Ванильная команда gamemode — работает без плагинов',
+    labelKey: 'mc.qc.gamemode',
+    descriptionKey: 'mc.qc.gamemode.d',
     template: 'gamemode {mode} {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [MODE_ARG, PLAYER_ARG],
@@ -172,8 +173,8 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'vanilla-kill',
-    label: 'Убить игрока',
-    description: 'Ванильная команда kill',
+    labelKey: 'mc.qc.kill',
+    descriptionKey: 'mc.qc.kill.d',
     template: 'kill {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [PLAYER_ARG],
@@ -182,13 +183,13 @@ const VANILLA: QuickCommandDefinition[] = [
   },
   {
     id: 'vanilla-tp',
-    label: 'Телепорт к игроку',
-    description: 'Ванильная команда tp — работает без плагинов',
+    labelKey: 'mc.qc.tp',
+    descriptionKey: 'mc.qc.tp.d',
     template: 'tp {player} {target}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [
-      { name: 'player', label: 'Кого телепортировать', required: true, placeholder: 'Steve' },
-      { name: 'target', label: 'К кому', required: true, placeholder: 'Alex' },
+      { name: 'player', labelKey: 'mc.qc.arg.who', required: true, placeholder: 'Steve' },
+      { name: 'target', labelKey: 'mc.qc.arg.toWhom', required: true, placeholder: 'Alex' },
     ],
     plugin: null,
     destructive: true,
@@ -210,8 +211,8 @@ const VANILLA: QuickCommandDefinition[] = [
 const ESSENTIALS_X: QuickCommandDefinition[] = [
   {
     id: 'ess-heal',
-    label: 'Вылечить',
-    description: 'EssentialsX: восстанавливает здоровье и сытость (heal)',
+    labelKey: 'mc.qc.heal',
+    descriptionKey: 'mc.qc.heal.d',
     template: 'heal {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [PLAYER_ARG],
@@ -220,8 +221,8 @@ const ESSENTIALS_X: QuickCommandDefinition[] = [
   },
   {
     id: 'ess-god',
-    label: 'Бессмертие',
-    description: 'EssentialsX: переключает режим неуязвимости (god)',
+    labelKey: 'mc.qc.god',
+    descriptionKey: 'mc.qc.god.d',
     template: 'god {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [PLAYER_ARG],
@@ -231,8 +232,8 @@ const ESSENTIALS_X: QuickCommandDefinition[] = [
   },
   {
     id: 'ess-fly',
-    label: 'Полёт',
-    description: 'EssentialsX: переключает возможность летать (fly)',
+    labelKey: 'mc.qc.fly',
+    descriptionKey: 'mc.qc.fly.d',
     template: 'fly {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [PLAYER_ARG],
@@ -241,12 +242,12 @@ const ESSENTIALS_X: QuickCommandDefinition[] = [
   },
   {
     id: 'ess-kit',
-    label: 'Выдать кит',
-    description: 'EssentialsX: выдаёт игроку набор предметов (kit)',
+    labelKey: 'mc.qc.kit',
+    descriptionKey: 'mc.qc.kit.d',
     template: 'kit {kit} {player}',
     permission: MINECRAFT_PERMISSIONS.quickCommands,
     args: [
-      { name: 'kit', label: 'Название кита', required: true, placeholder: 'starter' },
+      { name: 'kit', labelKey: 'mc.qc.arg.kit', required: true, placeholder: 'starter' },
       PLAYER_ARG,
     ],
     plugin: 'Essentials',

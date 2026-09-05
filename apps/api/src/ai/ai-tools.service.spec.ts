@@ -10,6 +10,7 @@ import type { TicketsService } from '../tickets/tickets.service';
 import type { MinecraftService } from '../modules/minecraft/minecraft.service';
 import type { CompanionService } from '../modules/minecraft/companion.service';
 import type { MessagesService } from '../messages/messages.service';
+import { I18nService } from '../i18n/i18n.service';
 
 /**
  * Инструменты ассистента.
@@ -137,6 +138,9 @@ function setup(options: {
       },
       ...options.messages,
     } as unknown as MessagesService,
+    // Настоящий: подписи быстрых команд лежат ключами, и модели они уезжают
+    // уже текстом — подменять переводчик заглушкой значит проверять не то.
+    new I18nService(),
   );
 
   return { service, effective, audited, calls };

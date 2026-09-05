@@ -116,9 +116,11 @@ export interface MinecraftWhitelistResponse {
 
 export interface MinecraftQuickCommandArg {
   name: string;
-  label: string;
+  labelKey: string;
   required: boolean;
+  /** Пример значения. Ключ — когда пример на языке, «Steve» — когда это ник. */
   placeholder?: string;
+  placeholderKey?: string;
   /**
    * Как готовить значение перед подстановкой в шаблон.
    *
@@ -132,7 +134,7 @@ export interface MinecraftQuickCommandArg {
    * Ровно то, что нужно режиму игры: вариантов четыре, и вводить их руками
    * значит регулярно опечатываться в «adventure».
    */
-  options?: { value: string; label: string }[];
+  options?: { value: string; labelKey: string }[];
   /**
    * Что подсказывать при вводе. 'online-players' — ники тех, кто сейчас
    * в сети.
@@ -148,8 +150,14 @@ export interface MinecraftQuickCommandArg {
 
 export interface MinecraftQuickCommandDto {
   id: string;
-  label: string;
-  description: string;
+  /**
+   * Ключи словаря панели, а не готовые подписи.
+   *
+   * Набор команд один на всех, а язык у каждого свой; собрать фразу на
+   * сервере значило бы выбрать язык за того, кто нажимает кнопку.
+   */
+  labelKey: string;
+  descriptionKey: string;
   /** Право, необходимое для запуска (кроме него всегда нужен доступ к серверу). */
   permission: string;
   args: MinecraftQuickCommandArg[];

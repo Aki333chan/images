@@ -617,7 +617,7 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
         method: 'POST',
         body: JSON.stringify({ args: values }),
       });
-      setResult(res.output || t('mc.quick.done', { label: command.label }));
+      setResult(res.output || t('mc.quick.done', { label: t(command.labelKey) }));
       setActive(null);
       setArgs({});
     } catch (e) {
@@ -652,7 +652,7 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
               key={c.id}
               size="sm"
               variant="outline"
-              title={c.description}
+              title={t(c.descriptionKey)}
               disabled={busy}
               onClick={() => {
                 // Действие с аргументами и так открывает форму — там
@@ -663,11 +663,16 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
                   setActive(c);
                   return;
                 }
-                if (c.destructive && !confirm(t('mc.quick.confirm', { description: c.description }))) return;
+                if (
+                  c.destructive &&
+                  !confirm(t('mc.quick.confirm', { description: t(c.descriptionKey) }))
+                ) {
+                  return;
+                }
                 void run(c, {});
               }}
             >
-              {c.label}
+              {t(c.labelKey)}
             </Button>
           ))}
         </div>
@@ -683,19 +688,22 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
       {active && (
         // Та же модалка, что и у карточки игрока: на мобильном — на весь
         // экран, на десктопе — окно по центру.
-        <Modal title={active.label} onClose={() => setActive(null)}>
+        <Modal title={t(active.labelKey)} onClose={() => setActive(null)}>
           <div className="space-y-3">
-            <p className="text-xs text-muted">{active.description}</p>
+            <p className="text-xs text-muted">{t(active.descriptionKey)}</p>
             {active.args.map((arg, index) => (
               <div key={arg.name}>
-                <Label>{arg.label}</Label>
+                <Label>{t(arg.labelKey)}</Label>
                 {arg.options ? (
                   // Закрытый список значений — режим игры и подобное.
                   <Select
                     className="w-full"
                     value={args[arg.name] ?? arg.options[0]?.value ?? ''}
                     onChange={(v) => setArgs((prev) => ({ ...prev, [arg.name]: v }))}
-                    options={arg.options}
+                    options={arg.options.map((o) => ({
+                      value: o.value,
+                      label: t(o.labelKey),
+                    }))}
                   />
                 ) : arg.suggest === 'online-players' ? (
                   // Ник: подсказываем тех, кто в сети, но ввод не ограничиваем.

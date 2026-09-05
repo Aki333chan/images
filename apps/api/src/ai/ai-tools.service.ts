@@ -8,9 +8,11 @@ import {
   type AiToolInfoDto,
   type AiToolKind,
   type Locale,
+  DEFAULT_LOCALE,
 } from '@aurum/shared';
 import { AuditService } from '../audit/audit.service';
 import { PermissionsService, type EffectivePermissions } from '../rbac/permissions.service';
+import { I18nService } from '../i18n/i18n.service';
 import { ServersService } from '../servers/servers.service';
 import { MessagesService } from '../messages/messages.service';
 import { TicketsService } from '../tickets/tickets.service';
@@ -87,6 +89,8 @@ interface ToolDeps {
   messages: MessagesService;
   minecraft: MinecraftService;
   companion: CompanionService;
+  /** Подписи быстрых команд лежат ключами — модели нужен текст. */
+  i18n: I18nService;
 }
 
 const str = (args: Record<string, unknown>, key: string): string =>
@@ -345,14 +349,17 @@ const TOOLS: ToolDefinition[] = [
       // Действия чужих плагинов показываем, только если те стоят на сервере, —
       // ровно так же, как это делает панель.
       const installed = await deps.minecraft.installedPluginNames(serverId);
+      // Модели нужен текст, а не ключ словаря: «mc.qc.heal» ей ничего не
+      // говорит. Русский здесь не проблема — отвечает она на языке
+      // собеседника, и перевести подпись для ответа ей по силам.
       const commands = deps.minecraft.listQuickCommands(installed).map((c) => ({
         id: c.id,
-        label: c.label,
-        description: c.description,
+        label: deps.i18n.t(DEFAULT_LOCALE, c.labelKey),
+        description: deps.i18n.t(DEFAULT_LOCALE, c.descriptionKey),
         destructive: c.destructive,
         args: c.args.map((arg) => ({
           name: arg.name,
-          label: arg.label,
+          label: deps.i18n.t(DEFAULT_LOCALE, arg.labelKey),
           required: arg.required,
           options: arg.options?.map((o) => o.value),
         })),
@@ -694,6 +701,7 @@ export class AiToolsService {
     private readonly minecraft: MinecraftService,
     private readonly companion: CompanionService,
     private readonly messages: MessagesService,
+    private readonly i18n: I18nService,
   ) {}
 
   /** Описания инструментов в формате DeepSeek — только доступные по правам. */
@@ -835,6 +843,7 @@ export class AiToolsService {
         minecraft: this.minecraft,
         companion: this.companion,
         messages: this.messages,
+        i18n: this.i18n,
       });
       if (tool.kind === 'destructive') await logAttempt(true);
       return result;
