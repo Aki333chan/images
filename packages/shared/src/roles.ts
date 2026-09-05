@@ -7,9 +7,15 @@
 export const ROLES = ['OWNER', 'ADMIN', 'MODERATOR'] as const;
 export type Role = (typeof ROLES)[number];
 
-/** Подписи ролей в интерфейсе. */
-export const ROLE_LABELS: Record<Role, string> = {
-  OWNER: 'ГМ',
-  ADMIN: 'Админ',
-  MODERATOR: 'Модератор',
+/**
+ * Ключи подписей ролей, а не сами подписи.
+ *
+ * Роль видно на каждом экране, где есть люди: в шапке, в списке доступов, в
+ * заявках на подтверждение. Готовое слово здесь означало бы русское «ГМ» в
+ * английской шапке — при том, что всё вокруг уже переведено.
+ */
+export const ROLE_KEYS: Record<Role, string> = {
+  OWNER: 'role.owner',
+  ADMIN: 'role.admin',
+  MODERATOR: 'role.moderator',
 };

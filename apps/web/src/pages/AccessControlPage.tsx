@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ROLE_LABELS,
+  ROLE_KEYS,
   ROLES,
   type CreateUserResultDto,
   type Role,
@@ -8,6 +8,7 @@ import {
   type UserAdminDto,
 } from '@aurum/shared';
 import { api } from '../lib/api';
+import { useT } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 import { IconUserPlus } from '../components/icons';
@@ -18,6 +19,9 @@ import { IconUserPlus } from '../components/icons';
  * (permissions.updated) — без релогина.
  */
 export function AccessControlPage() {
+  // Экран целиком ещё не переведён, но подпись роли приезжает ключом из
+  // общего контракта — показать её сырой значило бы вывести «role.owner».
+  const t = useT();
   const { hasPermission } = useAuth();
   const [users, setUsers] = useState<UserAdminDto[] | null>(null);
   const [servers, setServers] = useState<ServerDto[] | null>(null);
@@ -149,7 +153,7 @@ export function AccessControlPage() {
                 <Select
                   value={user.role}
                   onChange={(v) => void setRole(user, v as Role)}
-                  options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+                  options={ROLES.map((r) => ({ value: r, label: t(ROLE_KEYS[r]) }))}
                 />
                 <Button size="sm" variant="outline" onClick={() => void toggleActive(user)}>
                   {user.isActive ? 'Деактивировать' : 'Активировать'}
@@ -231,6 +235,7 @@ function CreateUserForm({
   canManage: boolean;
   onCreated: (user: UserAdminDto) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('MODERATOR');
@@ -309,12 +314,12 @@ function CreateUserForm({
               onChange={(v) => setRole(v as Role)}
               options={ROLES.filter((r) => r !== 'OWNER').map((r) => ({
                 value: r,
-                label: ROLE_LABELS[r],
+                label: t(ROLE_KEYS[r]),
               }))}
             />
           ) : (
             <div className="pt-1 text-sm">
-              {ROLE_LABELS.MODERATOR}
+              {t(ROLE_KEYS.MODERATOR)}
               <span className="ml-2 text-xs text-muted">роли выше выдаёт ГМ</span>
             </div>
           )}

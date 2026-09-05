@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { ROLE_LABELS } from '@aurum/shared';
+import { ROLE_KEYS } from '@aurum/shared';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/cn';
 import { Badge, Button } from './ui';
@@ -121,7 +121,7 @@ export function Layout() {
           <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-muted">
             <span className="truncate">{me.user.nickname ?? me.user.email}</span>
             <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[9.5px]">
-              {ROLE_LABELS[me.user.role]}
+              {t(ROLE_KEYS[me.user.role])}
             </Badge>
           </div>
         </div>

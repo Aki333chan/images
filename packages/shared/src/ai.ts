@@ -96,8 +96,9 @@ export interface AiUsageDto {
  * вписать руками, не дожидаясь правки кода.
  */
 export const DEEPSEEK_MODELS = [
-  { value: 'deepseek-v4-flash', label: 'V4 Flash — быстрее и дешевле' },
-  { value: 'deepseek-v4-pro', label: 'V4 Pro — умнее, дороже' },
+  // Имя модели не переводится, а пояснение к нему — да, потому и разнесены.
+  { value: 'deepseek-v4-flash', name: 'V4 Flash', noteKey: 'ai.model.flash' },
+  { value: 'deepseek-v4-pro', name: 'V4 Pro', noteKey: 'ai.model.pro' },
 ] as const;
 
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';

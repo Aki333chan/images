@@ -67,27 +67,44 @@ describe.each(SETS)('словари ($name)', ({ dir }) => {
 /**
  * Ключи, которые бэкенд рассылает наружу, кому-то из словарей известны.
  *
- * Ошибки и причины недоступности модуль отдаёт ключами: текст ошибки
- * собирает фильтр по словарю API, текст причины — браузер по словарю панели.
- * Опечатка в имени ключа не падает ни там, ни там — она просто доезжает до
- * человека служебной строкой вида «mc.err.playerUnknwon». Поэтому проверяем
- * не работу перевода, а само существование ключа.
+ * Ошибки и причины недоступности бэкенд отдаёт ключами: текст ошибки
+ * собирает фильтр по словарю API, текст причины (поле reason в DTO) — браузер
+ * по словарю панели. Опечатка в имени ключа не падает ни там, ни там — она
+ * просто доезжает до человека служебной строкой вида «mc.err.playerUnknwon».
+ * Поэтому проверяем не работу перевода, а само существование ключа.
+ *
+ * Список префиксов явный: он же и опись того, какие пространства имён у нас
+ * есть. Ловить «любую строку с точкой» нельзя — под это подошли бы и версии
+ * игры, и mime-типы, и пути.
  */
-describe('ключи модуля Minecraft', () => {
-  const moduleDir = join(__dirname, '../modules/minecraft');
+const KEY_PREFIXES = [
+  'mc',
+  'market',
+  'set',
+  'role',
+  'errors',
+  // С точкой после err: «ai.chat» и «users.manage» — это права, а
+  // «ai.model» и «users.requireGmApprovalForAdminCreatedAccounts» — поля
+  // настроек. Ни то, ни другое в словарь не входит и входить не должно.
+  'auth\\.err',
+  'users\\.err',
+  'ai\\.err',
+];
+
+describe('ключи, которые отдаёт бэкенд', () => {
   const api = load(join(__dirname, 'catalogs'), 'ru');
   const web = load(join(__dirname, '../../../web/src/i18n/catalogs'), 'ru');
+  const pattern = new RegExp(`'((?:${KEY_PREFIXES.join('|')})\\.[a-z][\\w.]*)'`, 'gi');
 
   it('каждый ключ из исходников есть в словаре API или панели', () => {
     const used = new Set<string>();
-    for (const file of walk(moduleDir)) {
+    for (const file of walk(join(__dirname, '..'))) {
       if (!file.endsWith('.ts') || file.endsWith('.spec.ts')) continue;
-      const source = readFileSync(file, 'utf8');
-      for (const m of source.matchAll(/'((?:mc|market)\.[a-z][\w.]*)'/gi)) used.add(m[1] as string);
+      for (const m of readFileSync(file, 'utf8').matchAll(pattern)) used.add(m[1] as string);
     }
     // Ключи в исходниках вообще есть: пустое множество означало бы, что
     // регулярка перестала совпадать, а тест — проходить впустую.
-    expect(used.size).toBeGreaterThan(20);
+    expect(used.size).toBeGreaterThan(50);
     expect([...used].filter((key) => !(key in api) && !(key in web)).sort()).toEqual([]);
   });
 });

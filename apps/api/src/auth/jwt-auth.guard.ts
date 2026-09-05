@@ -31,7 +31,7 @@ export class JwtAuthGuard implements CanActivate {
     const req = context.switchToHttp().getRequest();
     const header: string | undefined = req.headers['authorization'];
     const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
-    if (!token) throw new UnauthorizedException('Нет access-токена');
+    if (!token) throw new UnauthorizedException('auth.err.noAccessToken');
 
     let payload: AccessTokenPayload;
     try {
@@ -39,9 +39,9 @@ export class JwtAuthGuard implements CanActivate {
         secret: env.JWT_ACCESS_SECRET,
       });
     } catch {
-      throw new UnauthorizedException('Недействительный access-токен');
+      throw new UnauthorizedException('auth.err.badAccessToken');
     }
-    if (payload.purpose !== 'access') throw new UnauthorizedException('Неверный тип токена');
+    if (payload.purpose !== 'access') throw new UnauthorizedException('auth.err.badTokenType');
 
     req.user = { id: payload.sub, sessionId: payload.sid } satisfies AuthUser;
     return true;

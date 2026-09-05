@@ -115,7 +115,7 @@ describe('OnboardingService', () => {
         withTempPassword(ctx, () =>
           ctx.service.complete('u1', 's1', { currentPassword: TEMP, newPassword: 'new-password-1' }),
         ),
-      ).rejects.toThrow(/Придумайте ник/);
+      ).rejects.toThrow('users.err.nicknameRequired');
     });
 
     it('с ником сохраняет пароль и ник разом', async () => {
@@ -145,7 +145,7 @@ describe('OnboardingService', () => {
             nickname: 'занятый',
           }),
         ),
-      ).rejects.toThrow(/уже занят/);
+      ).rejects.toThrow('users.err.nicknameTaken');
     });
   });
 
@@ -187,7 +187,7 @@ describe('OnboardingService', () => {
             newPassword: 'new-password-1',
           }),
         ),
-      ).rejects.toThrow(/Текущий пароль указан неверно/);
+      ).rejects.toThrow('users.err.currentPasswordWrong');
       expect(ctx.updates).toEqual([]);
     });
 
@@ -198,12 +198,12 @@ describe('OnboardingService', () => {
         withTempPassword(ctx, () =>
           ctx.service.changePassword('u1', 's1', { currentPassword: TEMP, newPassword: TEMP }),
         ),
-      ).rejects.toThrow(/должен отличаться/);
+      ).rejects.toThrow('users.err.passwordSameAsOld');
       await expect(
         withTempPassword(ctx, () =>
           ctx.service.changePassword('u1', 's1', { currentPassword: TEMP, newPassword: 'корот' }),
         ),
-      ).rejects.toThrow(/10 символов/);
+      ).rejects.toThrow('users.err.passwordTooShort');
     });
 
     it('обрывает остальные сессии, но не текущую', async () => {
@@ -226,7 +226,7 @@ describe('OnboardingService', () => {
 
       await expect(
         ctx.service.changeNickname('u1', { nickname: 'Петя', standingPermission: false }),
-      ).rejects.toThrow(/разрешает ГМ/);
+      ).rejects.toThrow('users.err.nicknameLocked');
       expect(ctx.updates).toEqual([]);
     });
 
@@ -255,7 +255,7 @@ describe('OnboardingService', () => {
 
       await expect(
         ctx.service.changeNickname('u1', { nickname: 'Занятый', standingPermission: true }),
-      ).rejects.toThrow(/уже занят/);
+      ).rejects.toThrow('users.err.nicknameTaken');
     });
   });
 });

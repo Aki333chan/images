@@ -67,13 +67,13 @@ export class AccountProvisioningService {
   ): Promise<CreateUserResultDto> {
     const email = input.email.toLowerCase().trim();
     if (await this.prisma.user.findUnique({ where: { email } })) {
-      throw new ConflictException('Пользователь с таким email уже существует');
+      throw new ConflictException('users.err.emailTaken');
     }
 
     // Кто не имеет users.manage, заводит только модераторов. Проверка здесь,
     // а не только в контроллере: сервис — последняя линия перед записью в БД.
     if (!canManageUsers && input.role !== 'MODERATOR') {
-      throw new BadRequestException('Вы можете создавать только учётные записи с ролью Модератор');
+      throw new BadRequestException('users.err.onlyModerators');
     }
 
     const appSettings = await this.settings.getAppSettings();
@@ -148,9 +148,9 @@ export class AccountProvisioningService {
   /** Подтверждение заявки: аккаунт активируется, уходит письмо с паролем. */
   async approve(userId: string): Promise<CreateUserResultDto> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('Заявка не найдена');
+    if (!user) throw new NotFoundException('users.err.requestNotFound');
     if (user.status !== 'pending_approval') {
-      throw new BadRequestException('Эта заявка уже обработана');
+      throw new BadRequestException('users.err.requestDecided');
     }
 
     await this.prisma.user.update({
@@ -179,9 +179,9 @@ export class AccountProvisioningService {
    */
   async reject(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('Заявка не найдена');
+    if (!user) throw new NotFoundException('users.err.requestNotFound');
     if (user.status !== 'pending_approval') {
-      throw new BadRequestException('Эта заявка уже обработана');
+      throw new BadRequestException('users.err.requestDecided');
     }
     await this.prisma.user.update({
       where: { id: userId },

@@ -65,6 +65,11 @@ describe('перевод ошибок на краю', () => {
 
     expect(sent.status).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(JSON.stringify(sent.body)).not.toContain('hunter2');
+    // И вместо секрета человек видит фразу, а не служебное имя ключа: без
+    // этой проверки отсутствие errors.internal в словаре прошло бы незаметно.
+    const message = String((sent.body as { message?: unknown }).message);
+    expect(message).not.toBe('errors.internal');
+    expect(message.length).toBeGreaterThan(20);
   });
 
   it('язык берётся из Accept-Language, мусор в заголовке не ломает ответ', () => {

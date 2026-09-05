@@ -6,6 +6,7 @@ import type { AiSettingsService } from './ai-settings.service';
 import type { AiToolsService } from './ai-tools.service';
 import type { DeepseekClient, DeepseekResult } from './deepseek.client';
 import type { PermissionsService } from '../rbac/permissions.service';
+import { I18nService } from '../i18n/i18n.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -107,6 +108,9 @@ function setup(options: {
       getEffectivePermissions: () =>
         Promise.resolve({ permissions: new Set<string>(), allowedServerIds: null }),
     } as unknown as PermissionsService,
+    // Настоящий: тексты лимитов и отказов ассистента собираются им, и
+    // подменять его заглушкой значило бы проверять не то, что показывается.
+    new I18nService(),
   );
 
   return { service, executed, proposed };

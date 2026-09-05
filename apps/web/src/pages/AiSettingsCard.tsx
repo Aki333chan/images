@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DEEPSEEK_MODELS, type AiSettingsDto, type AiToolInfoDto } from '@aurum/shared';
 import { api } from '../lib/api';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner, Textarea } from '../components/ui';
+import { useT } from '../i18n';
 
 /**
  * Настройки AI-ассистента на экране «Настройки» (виден только ГМ).
@@ -11,6 +12,7 @@ import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner, Textarea
  * ассистента, не трогая код.
  */
 export function AiSettingsCard() {
+  const t = useT();
   const [settings, setSettings] = useState<AiSettingsDto | null>(null);
   const [tools, setTools] = useState<AiToolInfoDto[]>([]);
   const [apiKey, setApiKey] = useState('');
@@ -40,7 +42,7 @@ export function AiSettingsCard() {
       });
       setSettings(next);
       setApiKey('');
-      setSaved('Сохранено.');
+      setSaved(t('set.ai.saved'));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -48,19 +50,21 @@ export function AiSettingsCard() {
     }
   }
 
-  const destructive = tools.filter((t) => t.kind === 'destructive');
-  const safe = tools.filter((t) => t.kind === 'safe');
+  const destructive = tools.filter((tool) => tool.kind === 'destructive');
+  const safe = tools.filter((tool) => tool.kind === 'safe');
 
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">AI-ассистент (DeepSeek)</h2>
+        <h2 className="font-semibold">{t('set.ai.title')}</h2>
         <Badge variant={settings.enabled && settings.hasApiKey ? 'success' : 'outline'}>
-          {settings.enabled && settings.hasApiKey
-            ? 'работает'
-            : settings.enabled
-              ? 'нет ключа'
-              : 'выключен'}
+          {t(
+            settings.enabled && settings.hasApiKey
+              ? 'set.ai.working'
+              : settings.enabled
+                ? 'set.ai.noKey'
+                : 'set.ai.disabled',
+          )}
         </Badge>
       </div>
 
@@ -73,40 +77,45 @@ export function AiSettingsCard() {
           onChange={(e) => void save({ enabled: e.target.checked })}
         />
         <span className="text-sm">
-          Включить ассистента
-          <span className="mt-1 block text-xs text-muted">
-            Кнопка появится в углу панели у сотрудников с правом «ai.chat» (по умолчанию — у
-            Админов и Модераторов). Обращения к DeepSeek платные.
-          </span>
+          {t('set.ai.enable')}
+          <span className="mt-1 block text-xs text-muted">{t('set.ai.enableHint')}</span>
         </span>
       </label>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label>Модель</Label>
+          <Label>{t('set.ai.model')}</Label>
           <Select
             className="w-full"
             value={settings.model}
             onChange={(v) => void save({ model: v })}
             options={[
-              ...DEEPSEEK_MODELS.map((m) => ({ value: m.value, label: m.label })),
+              ...DEEPSEEK_MODELS.map((m) => ({
+                value: m.value,
+                label: `${m.name} — ${t(m.noteKey)}`,
+              })),
               // Имя, которого нет в списке (новая модель), тоже показываем —
               // иначе выпадающий список молча подменил бы настройку.
               ...(DEEPSEEK_MODELS.some((m) => m.value === settings.model)
                 ? []
-                : [{ value: settings.model, label: `${settings.model} (задана вручную)` }]),
+                : [
+                    {
+                      value: settings.model,
+                      label: t('set.ai.modelManual', { model: settings.model }),
+                    },
+                  ]),
             ]}
           />
         </div>
         <div>
-          <Label>Ключ API</Label>
+          <Label>{t('set.ai.key')}</Label>
           <div className="flex gap-2">
             <Input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               autoComplete="new-password"
-              placeholder={settings.hasApiKey ? 'задан — введите для замены' : 'sk-…'}
+              placeholder={settings.hasApiKey ? t('set.ai.keySet') : 'sk-…'}
             />
             {settings.hasApiKey && (
               <Button
@@ -115,7 +124,7 @@ export function AiSettingsCard() {
                 disabled={busy}
                 onClick={() => void save({ clearApiKey: true })}
               >
-                Удалить
+                {t('set.ai.keyDelete')}
               </Button>
             )}
           </div>
@@ -126,12 +135,12 @@ export function AiSettingsCard() {
               disabled={busy}
               onClick={() => void save({ apiKey })}
             >
-              Сохранить ключ
+              {t('set.ai.keySave')}
             </Button>
           )}
         </div>
         <div>
-          <Label>Лимит обращений в час на человека</Label>
+          <Label>{t('set.ai.rateLimit')}</Label>
           <Input
             type="number"
             defaultValue={settings.requestsPerHour}
@@ -142,7 +151,7 @@ export function AiSettingsCard() {
           />
         </div>
         <div>
-          <Label>Лимит токенов в сутки на человека</Label>
+          <Label>{t('set.ai.tokenLimit')}</Label>
           <Input
             type="number"
             defaultValue={settings.tokensPerDay}
@@ -155,7 +164,7 @@ export function AiSettingsCard() {
       </div>
 
       <div>
-        <Label>Системный промпт</Label>
+        <Label>{t('set.ai.prompt')}</Label>
         <Textarea
           // text-base на мобильном обязателен: поле мельче 16 px заставляет
           // iOS зумить страницу при фокусе (см. раздел про телефон в README).
@@ -167,14 +176,10 @@ export function AiSettingsCard() {
           }}
         />
         <p className="mt-1 text-xs text-muted">
-          Сохраняется при потере фокуса. Инструкция про недоверенные данные из игры здесь не
-          лишняя, но и не единственная защита: разрушительные действия в любом случае требуют
-          вашего подтверждения — это устроено в коде, а не в промпте.
+          {t('set.ai.promptHint')}
         </p>
         <p className="mt-1 text-xs text-muted">
-          Перечислять здесь доступные действия не нужно: панель добавляет к промпту отдельное
-          сообщение с их точным списком — своим для каждого сотрудника, по его правам. Оттуда же
-          берутся правила про идентификаторы. Стереть это правкой промпта нельзя.
+          {t('set.ai.promptHint2')}
         </p>
       </div>
 
@@ -184,18 +189,16 @@ export function AiSettingsCard() {
       {tools.length > 0 && (
         <div className="space-y-2 border-t border-border pt-3 text-xs text-muted">
           <p>
-            <span className="font-semibold text-neutral-100">Выполняются сразу</span> (только
-            читают): {safe.map((t) => t.name).join(', ')}.
+            <span className="font-semibold text-neutral-100">{t('set.ai.safe')}</span>{' '}
+            {t('set.ai.safeList', { tools: safe.map((tool) => tool.name).join(', ') })}
           </p>
           <p>
-            <span className="font-semibold text-amber-400">Требуют подтверждения</span> (меняют
-            состояние): {destructive.map((t) => t.name).join(', ')}.
+            <span className="font-semibold text-amber-400">{t('set.ai.destructive')}</span>{' '}
+            {t('set.ai.destructiveList', {
+              tools: destructive.map((tool) => tool.name).join(', '),
+            })}
           </p>
-          <p>
-            Ассистент работает с правами того, кто с ним говорит: инструмент, на который у
-            сотрудника нет права, ему не предлагается и не выполнится. Каждое выполненное
-            действие попадает в журнал аудита с пометкой «ИИ» и указанием, от чьего имени.
-          </p>
+          <p>{t('set.ai.rights')}</p>
         </div>
       )}
     </Card>

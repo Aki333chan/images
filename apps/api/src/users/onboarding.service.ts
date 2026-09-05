@@ -54,11 +54,14 @@ export class OnboardingService {
     const nickname = raw.trim().replace(/\s+/g, ' ');
     if (!isValidStaffNickname(nickname)) {
       throw new BadRequestException(
-        'Ник: от 2 до 31 символа, буквы и цифры, можно пробел, дефис и подчёркивание',
+        'users.err.nicknameFormat',
       );
     }
     if (!(await this.isNicknameAvailable(nickname, userId))) {
-      throw new ConflictException(`Ник «${nickname}» уже занят — выберите другой`);
+      throw new ConflictException({
+        message: 'users.err.nicknameTaken',
+        i18nValues: { nickname },
+      });
     }
     return nickname;
   }
@@ -66,7 +69,10 @@ export class OnboardingService {
   /** Гонка за один ник: уникальный индекс в БД — последняя защита. */
   private static rethrowNicknameConflict(e: unknown, nickname: string): never {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      throw new ConflictException(`Ник «${nickname}» уже занят — выберите другой`);
+      throw new ConflictException({
+        message: 'users.err.nicknameTaken',
+        i18nValues: { nickname },
+      });
     }
     throw e;
   }
@@ -88,19 +94,19 @@ export class OnboardingService {
     // Текущий пароль подтверждаем даже здесь: сессия могла остаться открытой
     // на чужом устройстве, а здесь задаётся постоянный пароль.
     if (!(await argon2.verify(user.passwordHash, input.currentPassword))) {
-      throw new BadRequestException('Текущий пароль указан неверно');
+      throw new BadRequestException('users.err.currentPasswordWrong');
     }
     if (input.newPassword.length < 10) {
-      throw new BadRequestException('Новый пароль должен быть не короче 10 символов');
+      throw new BadRequestException('users.err.passwordTooShort');
     }
     if (input.newPassword === input.currentPassword) {
-      throw new BadRequestException('Новый пароль должен отличаться от временного');
+      throw new BadRequestException('users.err.passwordSameAsTemp');
     }
 
     let nickname = user.nickname;
     if (!nickname) {
       if (!input.nickname?.trim()) {
-        throw new BadRequestException('Придумайте ник — под ним вас увидят коллеги');
+        throw new BadRequestException('users.err.nicknameRequired');
       }
       nickname = await this.validateNickname(input.nickname, userId);
     }
@@ -143,13 +149,13 @@ export class OnboardingService {
   ): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!(await argon2.verify(user.passwordHash, input.currentPassword))) {
-      throw new BadRequestException('Текущий пароль указан неверно');
+      throw new BadRequestException('users.err.currentPasswordWrong');
     }
     if (input.newPassword.length < 10) {
-      throw new BadRequestException('Новый пароль должен быть не короче 10 символов');
+      throw new BadRequestException('users.err.passwordTooShort');
     }
     if (input.newPassword === input.currentPassword) {
-      throw new BadRequestException('Новый пароль должен отличаться от прежнего');
+      throw new BadRequestException('users.err.passwordSameAsOld');
     }
 
     await this.prisma.user.update({
@@ -184,7 +190,7 @@ export class OnboardingService {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!input.standingPermission && !user.nicknameChangeAllowed) {
       throw new ForbiddenException(
-        'Смену ника разрешает ГМ. Попросите его открыть смену — разрешение действует на один раз.',
+        'users.err.nicknameLocked',
       );
     }
 

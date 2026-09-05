@@ -108,7 +108,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ accessToken: string }> {
     const token: string | undefined = req.cookies?.[REFRESH_COOKIE];
-    if (!token) throw new UnauthorizedException('Нет refresh-токена');
+    if (!token) throw new UnauthorizedException('auth.err.noRefreshToken');
     const rotated = await this.tokens.rotate(token);
     this.setRefreshCookie(res, rotated.refreshToken);
     return { accessToken: rotated.accessToken };
@@ -232,7 +232,7 @@ export class AuthController {
     // Отзывать можно только собственные сессии.
     const session = await this.prisma.session.findUnique({ where: { id } });
     if (!session || session.userId !== user.id) {
-      throw new UnauthorizedException('Сессия не найдена');
+      throw new UnauthorizedException('auth.err.sessionNotFound');
     }
     await this.tokens.revoke(id);
     return { ok: true };
