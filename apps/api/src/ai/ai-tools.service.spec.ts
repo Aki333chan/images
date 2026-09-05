@@ -387,7 +387,7 @@ describe('закрытие тикета', () => {
 describe('контракт возможностей в промпте', () => {
   it('перечисляет ровно доступные инструменты', () => {
     const { service, effective } = setup({ permissions: ['tickets.view', 'tickets.respond'] });
-    const prompt = service.contractPrompt(effective);
+    const prompt = service.contractPrompt(effective, 'ru');
 
     expect(prompt).toContain('list_tickets');
     expect(prompt).toContain('respond_ticket');
@@ -398,7 +398,7 @@ describe('контракт возможностей в промпте', () => {
 
   it('прямо запрещает обещать недоступное и сокращать id', () => {
     const { service, effective } = setup({ permissions: ['tickets.view'] });
-    const prompt = service.contractPrompt(effective);
+    const prompt = service.contractPrompt(effective, 'ru');
 
     expect(prompt).toContain('Не предлагай и не обещай того, чего нет в списке');
     expect(prompt).toContain('без многоточий и сокращений');
@@ -407,7 +407,7 @@ describe('контракт возможностей в промпте', () => {
 
   it('разрушительные помечены как требующие подтверждения', () => {
     const { service, effective } = setup({ permissions: [MINECRAFT_PERMISSIONS.ban] });
-    const prompt = service.contractPrompt(effective);
+    const prompt = service.contractPrompt(effective, 'ru');
 
     expect(prompt).toContain('ban_player (требует подтверждения человеком)');
   });
@@ -634,5 +634,36 @@ describe('ASCII-арт', () => {
     const result = await service.execute('user-1', 'list_staff', {});
 
     expect(JSON.parse(result.content)).toEqual(['Коллега']);
+  });
+});
+
+describe('язык ответа ассистента', () => {
+  it('правило про язык лежит в технических правилах, а не в настраиваемом промпте', () => {
+    // Настраиваемый промпт правит ГМ, и его правка не должна отменять
+    // правило: ответ на языке собеседника — условие того, что человека
+    // вообще поймут, а не настройка оформления.
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+    const prompt = service.contractPrompt(effective, 'pl');
+
+    expect(prompt).toContain('ЯЗЫК ОТВЕТА');
+    expect(prompt).toContain('ПОСЛЕДНЕГО сообщения');
+    expect(prompt).toContain('Polski');
+  });
+
+  it('запасной язык — тот, что передали, а не всегда русский', () => {
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+
+    expect(service.contractPrompt(effective, 'en')).toContain('English');
+    expect(service.contractPrompt(effective, 'ru')).toContain('Русский');
+  });
+
+  it('перечисляет, что переводить нельзя', () => {
+    // Ники, названия серверов, команды и вывод консоли ассистент обязан
+    // приводить как есть: переведённый ник — это другой ник.
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+    const prompt = service.contractPrompt(effective, 'en');
+
+    expect(prompt).toContain('ники');
+    expect(prompt).toContain('вывод');
   });
 });

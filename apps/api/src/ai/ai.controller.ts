@@ -19,6 +19,7 @@ import { AuditRedactBody } from '../audit/audit.decorators';
 import { RequirePermission } from '../rbac/rbac.decorators';
 import { AiSettingsService } from './ai-settings.service';
 import { AiToolsService } from './ai-tools.service';
+import { I18nService } from '../i18n/i18n.service';
 import { AiService } from './ai.service';
 
 class ChatMessageDto {
@@ -65,6 +66,7 @@ export class AiController {
     private readonly ai: AiService,
     private readonly settings: AiSettingsService,
     private readonly tools: AiToolsService,
+    private readonly i18n: I18nService,
   ) {}
 
   /**
@@ -102,7 +104,11 @@ export class AiController {
     };
 
     try {
-      await this.ai.chat(user.id, dto.messages, emit);
+      // Язык панели у собеседника — запасной вариант. Основной ответ на
+      // вопрос «на каком языке отвечать» даёт само сообщение, и его читает
+      // модель; сюда доезжает только то, чем крыть, если сообщение — это
+      // ник или одна команда.
+      await this.ai.chat(user.id, dto.messages, emit, this.i18n.localeOf(req.headers['accept-language']));
     } catch (e) {
       emit({ type: 'error', message: (e as Error).message });
     } finally {

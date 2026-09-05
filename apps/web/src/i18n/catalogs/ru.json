@@ -1,13 +1,11 @@
 {
   "app.name": "Aurum Panel",
-
   "login.email": "Email",
   "login.password": "Пароль",
   "login.code": "Код из приложения-аутентификатора",
   "login.submit": "Войти",
   "login.confirm": "Подтвердить",
   "login.back": "Назад",
-
   "onboarding.title.first": "Первый вход",
   "onboarding.title.password": "Задайте новый пароль",
   "onboarding.intro.first": "Вы вошли по временному паролю. Задайте постоянный пароль и выберите ник — под ним вас увидят коллеги во внутренней переписке.",
@@ -26,7 +24,6 @@
   "onboarding.nickname.hint": "Буквы и цифры, можно пробел, дефис и подчёркивание. Это ник сотрудника панели, к нику в игре он отношения не имеет. Сменить его потом можно только с разрешения ГМ.",
   "onboarding.saving": "Сохраняем…",
   "onboarding.done": "Готово",
-
   "nav.servers": "Серверы",
   "nav.tickets": "Тикеты",
   "nav.messages": "Сообщения",
@@ -38,17 +35,28 @@
   "nav.logout": "Выйти",
   "nav.openMenu": "Открыть меню",
   "nav.closeMenu": "Закрыть меню",
-
   "language.title": "Язык панели",
   "language.description": "Влияет только на то, что видите вы: подписи, подсказки и тексты ошибок. Настройки серверов, имена игроков и содержимое файлов не переводятся.",
   "language.system": "Как в системе",
   "language.systemHint": "Панель следует за языком браузера и меняется вместе с ним.",
   "language.saved": "Язык сохранён",
   "language.saveFailed": "Не удалось сохранить язык",
-
   "common.retry": "Повторить",
   "common.save": "Сохранить",
   "common.saving": "Сохраняем…",
   "common.cancel": "Отмена",
-  "common.close": "Закрыть"
+  "common.close": "Закрыть",
+  "servers.title": "Серверы",
+  "servers.sync": "Синхронизировать с Pterodactyl",
+  "servers.syncing": "Синхронизация…",
+  "servers.search": "Поиск по имени или адресу",
+  "servers.reorderHint": "Перетащите карточки, чтобы задать порядок. Он сохраняется только для вас — у коллег список останется прежним.",
+  "servers.empty": "Нет доступных серверов. Запустите синхронизацию или попросите ГМ выдать доступ.",
+  "servers.notFound": "Ничего не нашлось. Попробуйте другое слово.",
+  "servers.cpu": "ЦПУ",
+  "servers.memory": "Память",
+  "servers.players": "Игроки",
+  "servers.offline": "выключен",
+  "servers.module.none": "не назначен",
+  "servers.moduleLabel": "Модуль:"
 }

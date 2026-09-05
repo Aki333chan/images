@@ -1,4 +1,7 @@
+import { useCallback } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import type { Locale } from '@aurum/shared';
+import { api } from './lib/api';
 import { AuthProvider, useAuth } from './lib/auth';
 import { I18nProvider } from './i18n';
 import { Layout } from './components/Layout';
@@ -117,6 +120,24 @@ export default function App() {
  * на нужном языке ещё до того, как станет известно, кто вошёл.
  */
 function Localized({ children }: { children: JSX.Element }) {
-  const { me } = useAuth();
-  return <I18nProvider userLocale={me?.user.locale}>{children}</I18nProvider>;
+  const { me, refreshMe } = useAuth();
+
+  // Стабильная ссылка: она в зависимостях эффекта провайдера, и
+  // пересоздание на каждый рендер зациклило бы сохранение.
+  const adopt = useCallback(
+    (locale: Locale) => {
+      void api('/api/auth/locale', { method: 'POST', body: JSON.stringify({ locale }) })
+        .then(() => refreshMe())
+        // Не вышло — язык на экране всё равно тот, что выбрали; молчим, а не
+        // пугаем ошибкой то, чего человек не запрашивал.
+        .catch(() => undefined);
+    },
+    [refreshMe],
+  );
+
+  return (
+    <I18nProvider userLocale={me?.user.locale} onAdopt={me ? adopt : undefined}>
+      {children}
+    </I18nProvider>
+  );
 }

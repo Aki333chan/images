@@ -1,13 +1,11 @@
 {
   "app.name": "Aurum Panel",
-
   "login.email": "Email",
   "login.password": "Hasło",
   "login.code": "Kod z aplikacji uwierzytelniającej",
   "login.submit": "Zaloguj się",
   "login.confirm": "Potwierdź",
   "login.back": "Wstecz",
-
   "onboarding.title.first": "Pierwsze logowanie",
   "onboarding.title.password": "Ustaw nowe hasło",
   "onboarding.intro.first": "Zalogowano cię hasłem tymczasowym. Ustaw hasło na stałe i wybierz pseudonim — pod nim zobaczą cię współpracownicy w wiadomościach wewnętrznych.",
@@ -26,7 +24,6 @@
   "onboarding.nickname.hint": "Litery i cyfry; dozwolone są spacja, myślnik i podkreślenie. To pseudonim pracownika w panelu i nie ma nic wspólnego z nickiem w grze. Późniejsza zmiana wymaga zgody właściciela.",
   "onboarding.saving": "Zapisujemy…",
   "onboarding.done": "Gotowe",
-
   "nav.servers": "Serwery",
   "nav.tickets": "Zgłoszenia",
   "nav.messages": "Wiadomości",
@@ -38,17 +35,28 @@
   "nav.logout": "Wyloguj się",
   "nav.openMenu": "Otwórz menu",
   "nav.closeMenu": "Zamknij menu",
-
   "language.title": "Język panelu",
   "language.description": "Wpływa tylko na to, co widzisz: etykiety, podpowiedzi i treść komunikatów o błędach. Ustawienia serwerów, nazwy graczy i zawartość plików nie są tłumaczone.",
   "language.system": "Jak w systemie",
   "language.systemHint": "Panel podąża za językiem przeglądarki i zmienia się razem z nim.",
   "language.saved": "Język zapisany",
   "language.saveFailed": "Nie udało się zapisać języka",
-
   "common.retry": "Ponów",
   "common.save": "Zapisz",
   "common.saving": "Zapisujemy…",
   "common.cancel": "Anuluj",
-  "common.close": "Zamknij"
+  "common.close": "Zamknij",
+  "servers.title": "Serwery",
+  "servers.sync": "Synchronizuj z Pterodactyl",
+  "servers.syncing": "Synchronizacja…",
+  "servers.search": "Szukaj po nazwie lub adresie",
+  "servers.reorderHint": "Przeciągnij karty, aby ustawić kolejność. Zapisuje się tylko dla ciebie — współpracownicy zachowują swoją listę.",
+  "servers.empty": "Brak dostępnych serwerów. Uruchom synchronizację lub poproś właściciela o dostęp.",
+  "servers.notFound": "Nic nie znaleziono. Spróbuj innego słowa.",
+  "servers.cpu": "CPU",
+  "servers.memory": "Pamięć",
+  "servers.players": "Gracze",
+  "servers.offline": "wyłączony",
+  "servers.module.none": "nieprzypisany",
+  "servers.moduleLabel": "Moduł:"
 }

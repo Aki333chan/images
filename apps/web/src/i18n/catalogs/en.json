@@ -1,13 +1,11 @@
 {
   "app.name": "Aurum Panel",
-
   "login.email": "Email",
   "login.password": "Password",
   "login.code": "Code from your authenticator app",
   "login.submit": "Sign in",
   "login.confirm": "Confirm",
   "login.back": "Back",
-
   "onboarding.title.first": "First sign-in",
   "onboarding.title.password": "Set a new password",
   "onboarding.intro.first": "You signed in with a temporary password. Set a permanent one and pick a nickname — that is how your colleagues will see you in internal messages.",
@@ -26,7 +24,6 @@
   "onboarding.nickname.hint": "Letters and digits; spaces, hyphens and underscores are allowed. This is your staff nickname in the panel and has nothing to do with your in-game name. Changing it later requires the owner's permission.",
   "onboarding.saving": "Saving…",
   "onboarding.done": "Done",
-
   "nav.servers": "Servers",
   "nav.tickets": "Tickets",
   "nav.messages": "Messages",
@@ -38,17 +35,28 @@
   "nav.logout": "Sign out",
   "nav.openMenu": "Open menu",
   "nav.closeMenu": "Close menu",
-
   "language.title": "Panel language",
   "language.description": "Affects only what you see: labels, hints and error messages. Server settings, player names and file contents are not translated.",
   "language.system": "Follow the system",
   "language.systemHint": "The panel follows your browser language and changes along with it.",
   "language.saved": "Language saved",
   "language.saveFailed": "Could not save the language",
-
   "common.retry": "Retry",
   "common.save": "Save",
   "common.saving": "Saving…",
   "common.cancel": "Cancel",
-  "common.close": "Close"
+  "common.close": "Close",
+  "servers.title": "Servers",
+  "servers.sync": "Sync with Pterodactyl",
+  "servers.syncing": "Syncing…",
+  "servers.search": "Search by name or address",
+  "servers.reorderHint": "Drag the cards to set the order. It is saved for you only — your colleagues keep their own list.",
+  "servers.empty": "No servers available. Run a sync, or ask the owner to grant you access.",
+  "servers.notFound": "Nothing found. Try a different word.",
+  "servers.cpu": "CPU",
+  "servers.memory": "Memory",
+  "servers.players": "Players",
+  "servers.offline": "offline",
+  "servers.module.none": "not assigned",
+  "servers.moduleLabel": "Module:"
 }

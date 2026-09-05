@@ -14,6 +14,7 @@ import {
   type ServerSort,
 } from '@aurum/shared';
 import { api } from '../lib/api';
+import { useT } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { filterServers, isOnline, reorder, sortServers, type ServerRow } from '../lib/server-list';
 import { Badge, Button, Card, Input, Select, Spinner } from '../components/ui';
@@ -23,6 +24,7 @@ import { IconSync } from '../components/icons';
 const METRICS_POLL_MS = 20_000;
 
 export function ServersPage() {
+  const t = useT();
   const { me, modules, hasPermission } = useAuth();
   const [servers, setServers] = useState<ServerDto[] | null>(null);
   const [metrics, setMetrics] = useState<ServerMetricsDto[]>([]);
@@ -111,11 +113,11 @@ export function ServersPage() {
           заголовком в 375 px не влезает; без переноса кнопка вылезала за
           край экрана. */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">Серверы</h1>
+        <h1 className="text-xl font-bold">{t('servers.title')}</h1>
         {hasPermission('servers.manage') && (
           <Button size="sm" variant="outline" onClick={() => void sync()} disabled={syncing}>
             <IconSync size={14} className={syncing ? 'animate-spin' : undefined} />
-            {syncing ? 'Синхронизация…' : 'Синхронизировать с Pterodactyl'}
+            {t(syncing ? 'servers.syncing' : 'servers.sync')}
           </Button>
         )}
       </div>
@@ -126,7 +128,7 @@ export function ServersPage() {
             className="flex-1"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск по имени или адресу"
+            placeholder={t('servers.search')}
           />
           <Select
             className="sm:w-56"
@@ -139,17 +141,16 @@ export function ServersPage() {
 
       {manual && servers.length > 1 && (
         <p className="mb-3 text-xs text-muted">
-          Перетащите карточки, чтобы задать порядок. Он сохраняется только для вас — у коллег
-          список останется прежним.
+          {t('servers.reorderHint')}
         </p>
       )}
 
       {servers.length === 0 ? (
         <p className="text-muted">
-          Нет доступных серверов. Запустите синхронизацию или попросите ГМ выдать доступ.
+          {t('servers.empty')}
         </p>
       ) : visible.length === 0 ? (
-        <p className="text-sm text-muted">Ничего не нашлось. Попробуйте другое слово.</p>
+        <p className="text-sm text-muted">{t('servers.notFound')}</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visible.map((row) => (
@@ -182,6 +183,7 @@ function ServerCard({
   draggable: boolean;
   onDrop: (fromId: string, toId: string) => void;
 }) {
+  const t = useT();
   const { server, metrics } = row;
   const [over, setOver] = useState(false);
   // Перетаскивание карточки не должно открывать сервер: клик и перетаскивание
@@ -225,7 +227,7 @@ function ServerCard({
       {metrics && cpu && (
         <div className="mt-3 grid grid-cols-3 gap-2">
           <CardMetric
-            label="ЦПУ"
+            label={t('servers.cpu')}
             value={
               !online
                 ? '—'
@@ -233,11 +235,11 @@ function ServerCard({
                   ? `${cpu.absolutePercent.toFixed(0)}%`
                   : `${Math.round(cpu.percentOfLimit ?? 0)}%`
             }
-            hint={online ? formatCpu(cpu) : 'выключен'}
+            hint={online ? formatCpu(cpu) : t('servers.offline')}
             tone={online ? resourceTone(cpu.percentOfLimit) : 'unknown'}
           />
           <CardMetric
-            label="Память"
+            label={t('servers.memory')}
             value={
               online && metrics.memoryBytes !== null
                 ? formatBytesUsage(metrics.memoryBytes, metrics.memoryLimitBytes)
@@ -245,7 +247,7 @@ function ServerCard({
             }
           />
           <CardMetric
-            label="Игроки"
+            label={t('servers.players')}
             value={
               metrics.playersOnline === null
                 ? '—'
@@ -258,7 +260,7 @@ function ServerCard({
       )}
 
       <div className="mt-3 text-xs text-muted">
-        Модуль: {moduleName ?? <span className="italic">не назначен</span>}
+        {t('servers.moduleLabel')} {moduleName ?? <span className="italic">{t('servers.module.none')}</span>}
       </div>
     </Card>
   );

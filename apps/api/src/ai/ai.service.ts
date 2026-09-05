@@ -1,9 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { DEFAULT_LOCALE } from '@aurum/shared';
 import type {
   AiChatMessage,
   AiPendingActionDto,
   AiStreamEvent,
   AiUsageDto,
+  Locale,
 } from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
@@ -75,6 +77,8 @@ export class AiService {
     userId: string,
     history: AiChatMessage[],
     emit: (event: AiStreamEvent) => void,
+    /** Язык панели у собеседника — запасной вариант, если язык сообщения не определить. */
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<void> {
     const config = await this.settings.getRuntime();
     if (!config) {
@@ -110,7 +114,7 @@ export class AiService {
       // Второе системное сообщение — контракт с панелью: что модель реально
       // умеет и как обращаться с идентификаторами. Отдельно от настраиваемого
       // промпта, чтобы правка текста в интерфейсе его не отменяла.
-      { role: 'system', content: this.tools.contractPrompt(permissions) },
+      { role: 'system', content: this.tools.contractPrompt(permissions, locale) },
       ...history
         .slice(-MAX_HISTORY_MESSAGES)
         .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_LENGTH) })),
