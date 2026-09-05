@@ -195,14 +195,14 @@ describe('TicketsService.resolveId', () => {
   it('слишком короткое начало отвергается, а не угадывается', async () => {
     const { service, prisma } = setup();
 
-    await expect(service.resolveId(owner, '58d5')).rejects.toThrow(/целиком/);
+    await expect(service.resolveId(owner, '58d5')).rejects.toThrow('tickets.err.tooShort');
     expect(prisma.ticket.findMany).not.toHaveBeenCalled();
   });
 
   it('неоднозначное начало — ошибка со списком, а не «первый попавшийся»', async () => {
     const { service } = setup({ matches: [{ id: `${FULL}` }, { id: '58d581d9-0000-0000-0000-000000000000' }] });
 
-    await expect(service.resolveId(owner, '58d581d9')).rejects.toThrow(/нескольким тикетам/);
+    await expect(service.resolveId(owner, '58d581d9')).rejects.toThrow('tickets.err.ambiguous');
   });
 
   it('поиск ограничен серверами, к которым есть доступ', async () => {

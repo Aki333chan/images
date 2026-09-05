@@ -141,7 +141,7 @@ export class TicketsService {
     // и если она подставит своё сокращение целиком, это всё равно должно
     // сработать, а не превратиться в «тикет не найден».
     const raw = (idOrPrefix ?? '').trim().replace(/(?:…|\.{3})$/, '').trim();
-    if (!raw) throw new NotFoundException('Не указан тикет');
+    if (!raw) throw new NotFoundException('tickets.err.noId');
 
     const scope: Prisma.TicketWhereInput =
       eff.allowedServerIds === null ? {} : { serverId: { in: [...eff.allowedServerIds] } };
@@ -150,9 +150,10 @@ export class TicketsService {
     if (exact) return exact.id;
 
     if (raw.length < MIN_TICKET_PREFIX) {
-      throw new NotFoundException(
-        `Тикет ${raw} не найден. Укажите id целиком (первых ${MIN_TICKET_PREFIX} символов тоже достаточно).`,
-      );
+      throw new NotFoundException({
+        message: 'tickets.err.tooShort',
+        i18nValues: { id: raw, min: MIN_TICKET_PREFIX },
+      });
     }
 
     const matches = await this.prisma.ticket.findMany({
@@ -162,13 +163,12 @@ export class TicketsService {
     });
     if (matches.length === 1) return matches[0]!.id;
     if (matches.length === 0) {
-      throw new NotFoundException(`Тикет ${raw} не найден`);
+      throw new NotFoundException({ message: 'tickets.err.notFoundId', i18nValues: { id: raw } });
     }
-    throw new NotFoundException(
-      `Начало «${raw}» подходит сразу нескольким тикетам (${matches
-        .map((m) => m.id)
-        .join(', ')}) — укажите id целиком`,
-    );
+    throw new NotFoundException({
+      message: 'tickets.err.ambiguous',
+      i18nValues: { prefix: raw, ids: matches.map((m) => m.id).join(', ') },
+    });
   }
 
   async getById(id: string): Promise<TicketDto & { raw: Ticket }> {
@@ -176,7 +176,7 @@ export class TicketsService {
       where: { id },
       include: { server: { select: { name: true } } },
     });
-    if (!ticket) throw new NotFoundException('Тикет не найден');
+    if (!ticket) throw new NotFoundException('tickets.err.notFound');
     return { ...this.toDto(ticket), raw: ticket };
   }
 

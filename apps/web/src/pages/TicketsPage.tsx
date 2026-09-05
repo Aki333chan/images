@@ -4,8 +4,10 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, Spinner, Textarea } from '../components/ui';
 import { cn } from '../lib/cn';
+import { useI18n } from '../i18n';
 
 export function TicketsPage() {
+  const { t, formatDateTime } = useI18n();
   const { me, hasPermission, ticketsVersion } = useAuth();
   const [tickets, setTickets] = useState<TicketDto[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -48,27 +50,33 @@ export function TicketsPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold">Тикеты</h1>
+      <h1 className="mb-4 text-xl font-bold">{t('nav.tickets')}</h1>
       {/* Ниже lg показывается что-то одно: список тикетов либо открытый
           тикет с кнопкой «назад». Иначе до переписки пришлось бы каждый раз
           прокручивать весь список. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
         <div className={`space-y-2 ${selected ? 'hidden lg:block' : ''}`}>
-          {tickets.length === 0 && <p className="text-muted">Открытых тикетов нет 🎉</p>}
-          {tickets.map((t) => (
-            <button key={t.id} className="w-full text-left" onClick={() => setSelectedId(t.id)}>
+          {tickets.length === 0 && <p className="text-muted">{t('tickets.empty')}</p>}
+          {tickets.map((ticket) => (
+            <button
+              key={ticket.id}
+              className="w-full text-left"
+              onClick={() => setSelectedId(ticket.id)}
+            >
               <Card
                 className={cn(
                   'py-3 transition-colors hover:border-primary/50',
-                  selectedId === t.id && 'border-primary/70',
+                  selectedId === ticket.id && 'border-primary/70',
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">{t.playerNameCached}</span>
-                  <Badge variant="outline">{t.serverName ?? t.serverId.slice(0, 8)}</Badge>
+                  <span className="font-medium">{ticket.playerNameCached}</span>
+                  <Badge variant="outline">
+                    {ticket.serverName ?? ticket.serverId.slice(0, 8)}
+                  </Badge>
                 </div>
                 <p className="mt-1 truncate text-xs text-muted">
-                  {t.messages[t.messages.length - 1]?.text}
+                  {ticket.messages[ticket.messages.length - 1]?.text}
                 </p>
               </Card>
             </button>
@@ -81,7 +89,7 @@ export function TicketsPage() {
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
-                aria-label="К списку тикетов"
+                aria-label={t('tickets.back')}
                 className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted hover:bg-white/5 lg:hidden"
               >
                 ←
@@ -96,7 +104,7 @@ export function TicketsPage() {
               </div>
               {hasPermission('tickets.close') && (
                 <Button size="sm" variant="destructive" onClick={() => void close()}>
-                  Закрыть
+                  {t('tickets.close')}
                 </Button>
               )}
             </div>
@@ -113,8 +121,8 @@ export function TicketsPage() {
                 >
                   <p>{m.text}</p>
                   <p className="mt-1 text-[10px] text-muted">
-                    {m.from === 'player' ? selected.playerNameCached : 'Ответ панели'} ·{' '}
-                    {new Date(m.created_at).toLocaleString('ru-RU')}
+                    {m.from === 'player' ? selected.playerNameCached : t('tickets.panelReply')} ·{' '}
+                    {formatDateTime(m.created_at)}
                   </p>
                 </div>
               ))}
@@ -126,20 +134,20 @@ export function TicketsPage() {
                 <Textarea
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
-                  placeholder="Ответ игроку…"
+                  placeholder={t('tickets.replyPlaceholder')}
                 />
                 <Button
                   className="w-full sm:w-auto"
                   onClick={() => void respond()}
                   disabled={busy || !reply.trim()}
                 >
-                  Отправить
+                  {t('tickets.send')}
                 </Button>
               </div>
             )}
           </Card>
         ) : (
-          <p className="text-muted">Выберите тикет слева.</p>
+          <p className="text-muted">{t('tickets.pick')}</p>
         )}
       </div>
     </div>
