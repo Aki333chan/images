@@ -8,7 +8,7 @@ import {
   type UserAdminDto,
 } from '@aurum/shared';
 import { api } from '../lib/api';
-import { useT } from '../i18n';
+import { useApiText, useT } from '../i18n';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 import { IconUserPlus } from '../components/icons';
@@ -20,6 +20,7 @@ import { IconUserPlus } from '../components/icons';
  */
 export function AccessControlPage() {
   const t = useT();
+  const apiText = useApiText();
   const { hasPermission } = useAuth();
   const [users, setUsers] = useState<UserAdminDto[] | null>(null);
   const [servers, setServers] = useState<ServerDto[] | null>(null);
@@ -82,7 +83,9 @@ export function AccessControlPage() {
       setNotice(
         result.emailSent
           ? t('acc.resetSent', { email: user.email })
-          : t('acc.resetNoMail', { error: result.emailError ?? t('acc.checkSmtp') }),
+          : t('acc.resetNoMail', {
+              error: apiText(result.emailError) || t('acc.checkSmtp'),
+            }),
       );
     } catch (e) {
       setError((e as Error).message);
@@ -233,6 +236,7 @@ function CreateUserForm({
   onCreated: (user: UserAdminDto) => void;
 }) {
   const t = useT();
+  const apiText = useApiText();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('MODERATOR');
@@ -259,7 +263,9 @@ function CreateUserForm({
       } else if (result.emailSent) {
         setNotice(t('acc.created', { email: email.trim() }));
       } else {
-        setNotice(t('acc.createdNoMail', { error: result.emailError ?? t('acc.checkSmtp') }));
+        setNotice(
+          t('acc.createdNoMail', { error: apiText(result.emailError) || t('acc.checkSmtp') }),
+        );
       }
 
       if (result.activated) onCreated(result.user);

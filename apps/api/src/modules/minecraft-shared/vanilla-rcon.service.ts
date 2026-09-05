@@ -54,7 +54,7 @@ export class VanillaRconService {
 
   assertNickname(name: string): string {
     if (!isValidNickname(name)) {
-      throw new BadRequestException('Некорректный ник Minecraft (3–16 символов A-Z, 0-9, _)');
+      throw new BadRequestException('mc.err.badNickname');
     }
     return name;
   }
@@ -164,7 +164,7 @@ export class VanillaRconService {
   ): Promise<MinecraftBanDto> {
     this.assertNickname(name);
     if (expiresAt && expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('Срок бана должен быть в будущем');
+      throw new BadRequestException('mc.err.banPast');
     }
     const safeReason = sanitizeCommandArgument(reason) || 'Бан модератором';
 
@@ -179,8 +179,8 @@ export class VanillaRconService {
 
   async pardon(serverId: string, banId: string, actorId: string): Promise<MinecraftBanDto> {
     const ban = await this.prisma.minecraftBan.findUnique({ where: { id: banId } });
-    if (!ban || ban.serverId !== serverId) throw new NotFoundException('Бан не найден');
-    if (ban.pardonedAt) throw new BadRequestException('Бан уже снят');
+    if (!ban || ban.serverId !== serverId) throw new NotFoundException('mc.err.banNotFound');
+    if (ban.pardonedAt) throw new BadRequestException('mc.err.banLifted');
 
     const updated = await this.prisma.minecraftBan.update({
       where: { id: banId },
@@ -257,7 +257,7 @@ export class VanillaRconService {
     args: Record<string, string>,
   ): { commands: string[]; permission: string } {
     const definition = MINECRAFT_QUICK_COMMANDS.find((c) => c.id === id);
-    if (!definition) throw new NotFoundException('Быстрая команда не найдена');
+    if (!definition) throw new NotFoundException('mc.err.quickNotFound');
 
     const templates = Array.isArray(definition.template)
       ? definition.template
@@ -295,7 +295,7 @@ export class VanillaRconService {
     // видимая игроку пустая надпись, а не отсутствие подзаголовка.
     const commands = filled.filter((command) => !/\{[a-zA-Z0-9_]+\}/.test(command));
     if (commands.length === 0) {
-      throw new BadRequestException('Нечего выполнять: не заполнено ни одно поле');
+      throw new BadRequestException('mc.err.quickEmpty');
     }
     return { commands, permission: definition.permission };
   }

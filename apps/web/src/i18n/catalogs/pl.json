@@ -1104,5 +1104,11 @@
   "servers.sort.name": "Po nazwie",
   "servers.sort.game": "Po grze",
   "servers.sort.manual": "Własna kolejność",
-  "size.mib": "MiB"
+  "size.mib": "MiB",
+  "set.smtp.err.notConfigured": "SMTP nie jest skonfigurowany",
+  "set.smtp.err.notConfiguredSend": "SMTP nie jest skonfigurowany — wiadomość nie została wysłana",
+  "set.smtp.err.auth": "SMTP odrzucił login lub hasło",
+  "set.smtp.err.connect": "Nie udało się połączyć z serwerem SMTP — sprawdź host, port i TLS",
+  "set.smtp.err.timeout": "Serwer SMTP nie odpowiedział na czas",
+  "set.smtp.err.unknown": "Nieznany błąd SMTP"
 }

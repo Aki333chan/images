@@ -146,7 +146,7 @@ export class ClientApiService {
     const key = await this.secrets.get(SECRET_KEYS.CLIENT_KEY);
     if (!key) {
       throw new ServiceUnavailableException(
-        'Client API key Pterodactyl не настроен (PTERO_CLIENT_API_KEY)',
+        'ptero.err.noClientKey',
       );
     }
     return key;

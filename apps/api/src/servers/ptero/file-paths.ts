@@ -26,12 +26,12 @@ const MAX_PATH_LENGTH = 1024;
 export function normalizePath(raw: string | undefined | null): string {
   const input = (raw ?? '').trim();
   if (input.length > MAX_PATH_LENGTH) {
-    throw new BadRequestException('Слишком длинный путь');
+    throw new BadRequestException('files.err.pathTooLong');
   }
   // Нулевой байт обрывает строку в системных вызовах: «файл.txt\0.jpg»
   // прошёл бы проверку расширения и открыл бы совсем другой файл.
   if (input.includes('\0')) {
-    throw new BadRequestException('Недопустимый символ в пути');
+    throw new BadRequestException('files.err.pathChar');
   }
 
   const parts: string[] = [];
@@ -41,7 +41,7 @@ export function normalizePath(raw: string | undefined | null): string {
       // Не «поднимаемся на уровень выше», а отказываем. Подъём молча
       // превратил бы «/../../etc/passwd» в «/etc/passwd» — путь валидный
       // с виду, но означающий совсем не то, что просил пользователь.
-      throw new BadRequestException('Переход вверх по дереву в пути запрещён');
+      throw new BadRequestException('files.err.pathEscape');
     }
     parts.push(segment);
   }
@@ -51,11 +51,11 @@ export function normalizePath(raw: string | undefined | null): string {
 /** Имя файла или папки: без слэшей и без «..». */
 export function normalizeName(raw: string | undefined | null): string {
   const name = (raw ?? '').trim();
-  if (name === '') throw new BadRequestException('Пустое имя');
-  if (name.length > 255) throw new BadRequestException('Слишком длинное имя');
-  if (name === '.' || name === '..') throw new BadRequestException('Недопустимое имя');
+  if (name === '') throw new BadRequestException('files.err.nameEmpty');
+  if (name.length > 255) throw new BadRequestException('files.err.nameTooLong');
+  if (name === '.' || name === '..') throw new BadRequestException('files.err.nameBad');
   if (name.includes('/') || name.includes('\0')) {
-    throw new BadRequestException('Имя не может содержать «/»');
+    throw new BadRequestException('files.err.nameSlash');
   }
   return name;
 }

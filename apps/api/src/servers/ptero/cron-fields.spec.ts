@@ -1,6 +1,8 @@
 process.env.NODE_ENV = 'test';
 
 import { BadRequestException } from '@nestjs/common';
+import type { Locale } from '@aurum/shared';
+import { I18nService } from '../../i18n/i18n.service';
 import { validateCron, validateCronField } from './cron-fields';
 import { SCHEDULE_PRESETS } from '@aurum/shared';
 
@@ -46,8 +48,28 @@ describe('validateCronField', () => {
   });
 
   it('в тексте ошибки названо поле, а не абстрактное «неверно»', () => {
-    expect(() => validateCronField('dayOfWeek', '9')).toThrow(/дня недели/);
-    expect(() => validateCronField('hour', '99')).toThrow(/часа/);
+    // Название поля едет ключом и переводится на краю — «пустое поле» без
+    // указания, какое именно, заставляет человека проверять все пять.
+    const i18n = new I18nService();
+    const say = (field: 'dayOfWeek' | 'hour', value: string, locale: Locale) => {
+      try {
+        validateCronField(field, value);
+      } catch (e) {
+        const body = (e as BadRequestException).getResponse() as {
+          message: string;
+          i18nKeys: { field: string };
+        };
+        return i18n.t(locale, body.message, { field: i18n.t(locale, body.i18nKeys.field) });
+      }
+      throw new Error('ожидалась ошибка');
+    };
+
+    expect(say('dayOfWeek', '9', 'ru')).toMatch(/дня недели/);
+    expect(say('hour', '99', 'ru')).toMatch(/часа/);
+    // И на других языках тоже: подставленное имя поля — тоже строка словаря,
+    // а не кусок, случайно оставшийся русским посреди переведённой фразы.
+    expect(say('dayOfWeek', '9', 'en')).toMatch(/day of week/);
+    expect(say('hour', '99', 'pl')).toMatch(/godziny/);
   });
 });
 

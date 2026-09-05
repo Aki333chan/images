@@ -1104,5 +1104,11 @@
   "servers.sort.name": "По имени",
   "servers.sort.game": "По игре",
   "servers.sort.manual": "Свой порядок",
-  "size.mib": "МиБ"
+  "size.mib": "МиБ",
+  "set.smtp.err.notConfigured": "SMTP не настроен",
+  "set.smtp.err.notConfiguredSend": "SMTP не настроен — письмо не отправлено",
+  "set.smtp.err.auth": "SMTP отверг логин или пароль",
+  "set.smtp.err.connect": "Не удалось соединиться с SMTP-сервером — проверьте host, port и TLS",
+  "set.smtp.err.timeout": "SMTP-сервер не ответил вовремя",
+  "set.smtp.err.unknown": "Неизвестная ошибка SMTP"
 }

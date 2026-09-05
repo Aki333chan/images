@@ -90,9 +90,21 @@ const KEY_PREFIXES = [
   // С точкой после err: «ai.chat» и «users.manage» — это права, а
   // «ai.model» и «users.requireGmApprovalForAdminCreatedAccounts» — поля
   // настроек. Ни то, ни другое в словарь не входит и входить не должно.
+  'cron',
   'auth\\.err',
   'users\\.err',
   'ai\\.err',
+  // И здесь то же самое: «servers.view», «files.view», «backups.view»,
+  // «schedules.manage», «databases.manage», «startup.manage» — права RBAC,
+  // а не строки словаря. Ключами тут становятся только ветки .err.
+  'servers\\.err',
+  'files\\.err',
+  'backups\\.err',
+  'schedules\\.err',
+  'network\\.err',
+  'startup\\.err',
+  'databases\\.err',
+  'ptero\\.err',
 ];
 
 describe('ключи, которые отдаёт бэкенд', () => {

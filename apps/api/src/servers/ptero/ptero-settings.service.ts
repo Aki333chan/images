@@ -79,10 +79,10 @@ export class PteroSettingsService {
     const identifier = await this.identifier(serverId);
     const current = await this.client.listAllocations(identifier);
     const target = current.find((a) => a.id === allocationId);
-    if (!target) throw new BadRequestException('Такой аллокации у сервера нет');
+    if (!target) throw new BadRequestException('network.err.noAllocation');
     if (target.is_default) {
       throw new BadRequestException(
-        'Это основная аллокация — сначала назначьте основной другую, потом удаляйте эту',
+        'network.err.primaryAllocation',
       );
     }
     await this.client.deleteAllocation(identifier, allocationId);
@@ -135,7 +135,7 @@ export class PteroSettingsService {
     const startup = await this.client.getStartup(identifier);
     const allowed = Object.values(startup.meta.docker_images ?? {});
     if (allowed.length > 0 && !allowed.includes(image)) {
-      throw new BadRequestException('Этот образ не разрешён egg этого сервера');
+      throw new BadRequestException('startup.err.imageNotAllowed');
     }
     await this.client.setDockerImage(identifier, image);
     return this.getStartup(serverId);
@@ -159,7 +159,7 @@ export class PteroSettingsService {
   async getDatabaseCredentials(serverId: string, databaseId: string): Promise<PteroDatabaseDto> {
     const list = await this.client.listDatabases(await this.identifier(serverId), true);
     const found = list.find((db) => db.id === databaseId);
-    if (!found) throw new BadRequestException('База не найдена');
+    if (!found) throw new BadRequestException('databases.err.notFound');
     return toDatabaseDto(found, true);
   }
 

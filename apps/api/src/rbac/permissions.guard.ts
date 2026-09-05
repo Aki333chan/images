@@ -41,11 +41,11 @@ export class PermissionsGuard implements CanActivate {
 
     // Достаточно любого из перечисленных прав.
     if (required?.length && !required.some((key) => eff.permissions.has(key))) {
-      throw new ForbiddenException(`Недостаточно прав (${required.join(' или ')})`);
+      throw new ForbiddenException({ message: 'errors.forbidden', i18nValues: { permissions: required.join(', ') } });
     }
     if (scopeParam) {
       const serverId: string | undefined = req.params?.[scopeParam];
-      if (!serverId) throw new ForbiddenException('Не указан сервер');
+      if (!serverId) throw new ForbiddenException('servers.err.notSpecified');
       await this.permissions.assertServerAccess(eff, serverId);
     }
     return true;

@@ -35,11 +35,15 @@ export async function pteroRequest<T>(
   // он ведёт на тот же адрес по https, а сертификат выписан на домен, не на IP.
   if (res.statusCode >= 300 && res.statusCode < 400) {
     const location = res.headers.location;
-    throw new ServiceUnavailableException(
-      `Pterodactyl API ${method} ${path}: ответ ${res.statusCode} (редирект на ${
-        typeof location === 'string' ? location : 'адрес не указан'
-      }). Проверьте PTERO_BASE_URL (сейчас ${env.PTERO_BASE_URL}) — обычно нужен https и доменное имя панели.`,
-    );
+    throw new ServiceUnavailableException({
+      message: 'ptero.err.redirect',
+      i18nValues: {
+        call: `${method} ${path}`,
+        status: res.statusCode,
+        location: typeof location === 'string' ? location : '—',
+        base: env.PTERO_BASE_URL,
+      },
+    });
   }
 
   if (res.statusCode >= 400) {
@@ -54,23 +58,29 @@ export async function pteroRequest<T>(
   // панели. Сообщаем об этом прямо, а не через сбой разбора.
   const contentType = String(res.headers['content-type'] ?? '');
   if (!contentType.includes('json')) {
-    throw new ServiceUnavailableException(
-      `Pterodactyl API ${method} ${path}: вместо JSON вернулся «${
-        contentType || 'ответ без content-type'
-      }» со статусом ${res.statusCode}. Проверьте PTERO_BASE_URL (сейчас ${
-        env.PTERO_BASE_URL
-      }). Начало ответа: ${text.slice(0, 200)}`,
-    );
+    throw new ServiceUnavailableException({
+      message: 'ptero.err.notJson',
+      i18nValues: {
+        call: `${method} ${path}`,
+        type: contentType || '—',
+        status: res.statusCode,
+        base: env.PTERO_BASE_URL,
+        body: text.slice(0, 200),
+      },
+    });
   }
 
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new ServiceUnavailableException(
-      `Pterodactyl API ${method} ${path}: ответ помечен как JSON, но не разбирается (статус ${
-        res.statusCode
-      }). Начало ответа: ${text.slice(0, 200)}`,
-    );
+    throw new ServiceUnavailableException({
+      message: 'ptero.err.badJson',
+      i18nValues: {
+        call: `${method} ${path}`,
+        status: res.statusCode,
+        body: text.slice(0, 200),
+      },
+    });
   }
 }
 

@@ -68,7 +68,7 @@ export class MinecraftConfigService {
       await this.write(serverId, current);
       return;
     }
-    if (!token) throw new BadRequestException('Для companion-плагина нужен токен');
+    if (!token) throw new BadRequestException('mc.err.companionNeedsToken');
     await this.write(serverId, {
       ...current,
       companion: { baseUrl: baseUrl.replace(/\/$/, ''), token },
@@ -80,7 +80,7 @@ export class MinecraftConfigService {
     const creds = await this.read(serverId);
     if (!creds.rcon) {
       throw new BadRequestException(
-        'RCON для этого сервера не настроен — задайте хост, порт и пароль в настройках модуля',
+        'mc.err.rconNotConfigured',
       );
     }
     return creds.rcon;

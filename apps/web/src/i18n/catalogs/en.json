@@ -1100,5 +1100,11 @@
   "servers.sort.name": "By name",
   "servers.sort.game": "By game",
   "servers.sort.manual": "Custom order",
-  "size.mib": "MiB"
+  "size.mib": "MiB",
+  "set.smtp.err.notConfigured": "SMTP is not configured",
+  "set.smtp.err.notConfiguredSend": "SMTP is not configured — the message was not sent",
+  "set.smtp.err.auth": "SMTP rejected the login or the password",
+  "set.smtp.err.connect": "Could not connect to the SMTP server — check host, port and TLS",
+  "set.smtp.err.timeout": "The SMTP server did not answer in time",
+  "set.smtp.err.unknown": "Unknown SMTP error"
 }

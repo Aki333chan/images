@@ -13,7 +13,7 @@ import { useAuth } from '../lib/auth';
 import { AiSettingsCard } from './AiSettingsCard';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 import { LanguagePicker } from '../components/LanguagePicker';
-import { useT } from '../i18n';
+import { useApiText, useT } from '../i18n';
 
 /**
  * Настройки.
@@ -308,6 +308,7 @@ function AccountRules() {
 
 function PendingApprovals() {
   const t = useT();
+  const apiText = useApiText();
   const [pending, setPending] = useState<PendingUserDto[] | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -334,7 +335,9 @@ function PendingApprovals() {
         setNotice(
           res.emailSent
             ? t('set.pend.mailSent')
-            : t('set.pend.mailFailed', { error: res.emailError ?? t('set.pend.checkSmtp') }),
+            : t('set.pend.mailFailed', {
+                error: apiText(res.emailError) || t('set.pend.checkSmtp'),
+              }),
         );
       }
       load();
@@ -403,6 +406,7 @@ function PendingApprovals() {
 
 function SmtpSettings() {
   const t = useT();
+  const apiText = useApiText();
   const [settings, setSettings] = useState<SmtpSettingsDto | null>(null);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -536,7 +540,7 @@ function SmtpSettings() {
       {error && <ErrorText>{error}</ErrorText>}
       {test && (
         <p className={`text-xs ${test.ok ? 'text-emerald-400' : 'text-red-400'}`}>
-          {test.ok ? t('set.smtp.testOk') : t('set.smtp.testFail', { error: test.error ?? '' })}
+          {test.ok ? t('set.smtp.testOk') : t('set.smtp.testFail', { error: apiText(test.error) })}
         </p>
       )}
 

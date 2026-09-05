@@ -54,7 +54,7 @@ export class MailService {
   /** Проверка настроек без отправки письма. */
   async verify(): Promise<SendResult> {
     const config = await this.settings.getSmtpConfig();
-    if (!config?.host) return { sent: false, error: 'SMTP не настроен' };
+    if (!config?.host) return { sent: false, error: 'set.smtp.err.notConfigured' };
     const transport = this.transport(config);
     try {
       await transport.verify();
@@ -101,7 +101,7 @@ export class MailService {
   ): Promise<SendResult> {
     const config = await this.settings.getSmtpConfig();
     if (!config?.host || !config.from) {
-      return { sent: false, error: 'SMTP не настроен — письмо не отправлено' };
+      return { sent: false, error: 'set.smtp.err.notConfiguredSend' };
     }
 
     const transport = this.transport(config);
@@ -124,10 +124,12 @@ export class MailService {
 /** Сообщение об ошибке SMTP без стека и без учётных данных. */
 function describe(e: unknown): string {
   const error = e as { code?: string; responseCode?: number; message?: string };
-  if (error.code === 'EAUTH') return 'SMTP отверг логин или пароль';
+  if (error.code === 'EAUTH') return 'set.smtp.err.auth';
   if (error.code === 'ECONNECTION' || error.code === 'ESOCKET') {
-    return 'Не удалось соединиться с SMTP-сервером — проверьте host, port и TLS';
+    return 'set.smtp.err.connect';
   }
-  if (error.code === 'ETIMEDOUT') return 'SMTP-сервер не ответил вовремя';
-  return error.message ?? 'Неизвестная ошибка SMTP';
+  if (error.code === 'ETIMEDOUT') return 'set.smtp.err.timeout';
+  // Текст от библиотеки — не наш и не переводится: он приходит от SMTP-
+  // сервера и в нём бывает то, чего мы не предвидели.
+  return error.message ?? 'set.smtp.err.unknown';
 }

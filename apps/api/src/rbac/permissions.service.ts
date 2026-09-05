@@ -51,7 +51,7 @@ export class PermissionsService {
       include: { serverAccess: { select: { serverId: true } } },
     });
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Пользователь не найден или деактивирован');
+      throw new UnauthorizedException('users.err.inactive');
     }
     const isOwner = user.role === 'OWNER';
     return {
@@ -68,7 +68,7 @@ export class PermissionsService {
   async assertServerAccess(eff: EffectivePermissions, serverId: string): Promise<void> {
     if (eff.allowedServerIds === null) return;
     if (!eff.allowedServerIds.has(serverId)) {
-      throw new ForbiddenException('Нет доступа к этому серверу');
+      throw new ForbiddenException('servers.err.noAccess');
     }
   }
 
