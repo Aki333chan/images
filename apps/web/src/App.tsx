@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
+import { I18nProvider } from './i18n';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { ServersPage } from './pages/ServersPage';
@@ -98,9 +99,24 @@ function Shell() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Shell />
-      </BrowserRouter>
+      <Localized>
+        <BrowserRouter>
+          <Shell />
+        </BrowserRouter>
+      </Localized>
     </AuthProvider>
   );
+}
+
+/**
+ * Язык панели с учётом профиля сотрудника.
+ *
+ * Внутри AuthProvider, а не снаружи: выбранный язык хранится у пользователя,
+ * и узнать его можно только после загрузки профиля. Пока профиль едет,
+ * работает сохранённый в браузере выбор — экран входа успевает отрисоваться
+ * на нужном языке ещё до того, как станет известно, кто вошёл.
+ */
+function Localized({ children }: { children: JSX.Element }) {
+  const { me } = useAuth();
+  return <I18nProvider userLocale={me?.user.locale}>{children}</I18nProvider>;
 }

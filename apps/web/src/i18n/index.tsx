@@ -1,0 +1,142 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  DEFAULT_LOCALE,
+  LOCALE_TAGS,
+  isLocale,
+  makeTranslator,
+  resolveLocale,
+  type Catalog,
+  type Locale,
+  type Values,
+} from '@aurum/shared';
+import ru from './catalogs/ru.json';
+import en from './catalogs/en.json';
+import pl from './catalogs/pl.json';
+
+const CATALOGS: Record<Locale, Catalog> = {
+  ru: ru as Catalog,
+  en: en as Catalog,
+  pl: pl as Catalog,
+};
+
+/**
+ * Где хранится выбранный язык до входа в панель.
+ *
+ * localStorage, а не только запись в БД: язык нужен на экране входа, когда
+ * никакого пользователя ещё нет. После входа выбор из профиля перекрывает
+ * сохранённый здесь — человек, сменивший язык на рабочем компьютере, должен
+ * увидеть его же и на домашнем.
+ */
+const STORAGE_KEY = 'aurum.locale';
+
+function stored(): Locale | null {
+  try {
+    const value = localStorage.getItem(STORAGE_KEY);
+    return isLocale(value) ? value : null;
+  } catch {
+    // Приватное окно или запрет на хранение — не повод падать.
+    return null;
+  }
+}
+
+function remember(locale: Locale | null) {
+  try {
+    if (locale) localStorage.setItem(STORAGE_KEY, locale);
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* см. stored() */
+  }
+}
+
+/** Языки браузера, от самого желанного к менее. */
+function fromBrowser(): string {
+  return typeof navigator === 'undefined' ? '' : (navigator.languages ?? [navigator.language]).join(',');
+}
+
+interface I18nValue {
+  locale: Locale;
+  t: (key: string, values?: Values) => string;
+  /**
+   * Явный выбор человека. null — «как в браузере»: сохранённый выбор
+   * забывается, и язык снова определяется системой.
+   */
+  setLocale: (locale: Locale | null) => void;
+  /** Выбран ли язык вручную. false — панель следует за системой. */
+  manual: boolean;
+}
+
+const I18nContext = createContext<I18nValue | null>(null);
+
+export function I18nProvider({
+  children,
+  /**
+   * Язык из профиля сотрудника. undefined — профиль ещё не загружен,
+   * null — человек его не выбирал.
+   */
+  userLocale,
+}: {
+  children: ReactNode;
+  userLocale?: Locale | null;
+}) {
+  const [manualLocale, setManualLocale] = useState<Locale | null>(stored);
+
+  // Профиль приезжает позже первого рендера: пока его нет, работает
+  // сохранённый выбор и язык браузера, а как только пришёл — он главнее.
+  const effective = useMemo<Locale>(
+    () => resolveLocale(userLocale ?? manualLocale, fromBrowser()),
+    [userLocale, manualLocale],
+  );
+
+  const setLocale = useCallback((next: Locale | null) => {
+    setManualLocale(next);
+    remember(next);
+  }, []);
+
+  // Атрибут lang нужен не для красоты: по нему браузер выбирает правила
+  // переноса слов и словарь проверки орфографии в полях ввода.
+  useEffect(() => {
+    document.documentElement.lang = LOCALE_TAGS[effective];
+  }, [effective]);
+
+  const value = useMemo<I18nValue>(
+    () => ({
+      locale: effective,
+      t: makeTranslator(effective, CATALOGS[effective], CATALOGS[DEFAULT_LOCALE]),
+      setLocale,
+      manual: (userLocale ?? manualLocale) !== null && (userLocale ?? manualLocale) !== undefined,
+    }),
+    [effective, setLocale, userLocale, manualLocale],
+  );
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function useI18n(): I18nValue {
+  const value = useContext(I18nContext);
+  if (!value) throw new Error('useI18n вызван вне I18nProvider');
+  return value;
+}
+
+/** Короткая форма для самого частого случая — когда нужен только перевод. */
+export function useT() {
+  return useI18n().t;
+}
+
+/**
+ * Язык, который панель считает выбранным прямо сейчас, — для кода вне React.
+ *
+ * Нужен ровно одному месту: клиенту API, который проставляет заголовок
+ * Accept-Language. Тянуть туда контекст нельзя — api() зовут и из обработчиков,
+ * и из эффектов, и из мест без компонента вокруг.
+ */
+export function currentLocale(): Locale {
+  return resolveLocale(stored(), fromBrowser());
+}

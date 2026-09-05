@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/c
 import {
   CORE_PERMISSIONS,
   CORE_ROLE_PERMISSIONS,
+  isLocale,
   MeResponse,
   PermissionKey,
   Role,
@@ -83,6 +84,10 @@ export class PermissionsService {
         role: user.role,
         totpEnabled: user.totpEnabled,
         mustChangePassword: user.mustChangePassword,
+        // Не выбирал язык — null, и панель пойдёт за браузером. Подставлять
+        // здесь DEFAULT_LOCALE нельзя: тогда переключатель показывал бы
+        // «Русский» человеку, который русский не выбирал.
+        locale: isLocale(user.locale) ? user.locale : null,
       },
       permissions: [...eff.permissions].sort(),
       allowedServerIds: eff.allowedServerIds === null ? null : [...eff.allowedServerIds],

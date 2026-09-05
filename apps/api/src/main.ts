@@ -7,6 +7,8 @@ import express from 'express';
 import { AppModule } from './app.module';
 import { MAX_TRANSFER_BYTES } from '@aurum/shared';
 import { env } from './config/env';
+import { I18nExceptionFilter } from './i18n/i18n.filter';
+import { I18nService } from './i18n/i18n.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -32,6 +34,9 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
+  // Переводит текст ошибки на язык того, кто её увидит. Ставится ПОСЛЕ
+  // ValidationPipe, потому что ловит в том числе её сообщения о полях.
+  app.useGlobalFilters(new I18nExceptionFilter(app.get(I18nService)));
   // Доверяем X-Forwarded-For только от перечисленных прокси. Без этого за
   // nginx все сессии выглядели бы пришедшими с 127.0.0.1, а доверять
   // заголовку от кого попало нельзя — его легко подделать.

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
+import { LanguagePicker } from './LanguagePicker';
 
 /**
  * Карточка экранов, которые человек видит до входа: логин, второй фактор,
@@ -49,6 +50,14 @@ export function AuthCard({
           <span className="text-lg font-medium uppercase tracking-[0.1em] text-primary-200">
             Aurum Panel
           </span>
+        </div>
+
+        {/* Переключатель языка — прямо здесь, а не только в настройках.
+            До входа в настройки не попасть, и человек, которому панель
+            открылась на незнакомом языке, иначе не смог бы даже прочитать
+            подпись к полю пароля. */}
+        <div className="mb-4 flex justify-center">
+          <LanguagePicker compact />
         </div>
 
         {title && <h1 className="mb-1.5 text-xl font-semibold">{title}</h1>}

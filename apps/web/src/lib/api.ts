@@ -1,4 +1,5 @@
 import { formatTransferLimit } from '@aurum/shared';
+import { currentLocale } from '../i18n';
 
 /**
  * API-клиент: access-токен хранится только в памяти; при 401 делается
@@ -25,6 +26,11 @@ async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
+      // Язык — тот, что панель показывает прямо сейчас, а не тот, что стоит
+      // в браузере. Разница важна: человек, вручную переключивший панель на
+      // польский, должен и тексты ошибок получать польскими, хотя браузер у
+      // него русский.
+      'accept-language': currentLocale(),
       ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
       ...(init?.headers ?? {}),
     },

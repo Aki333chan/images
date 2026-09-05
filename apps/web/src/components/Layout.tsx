@@ -19,10 +19,12 @@ import {
   type IconProps,
 } from './icons';
 import { AiAssistant } from './AiAssistant';
+import { useT } from '../i18n';
 
 interface NavItem {
   to: string;
-  label: string;
+  /** Ключ подписи, а не сама подпись: список строится до выбора языка. */
+  labelKey: string;
   permission: string | null;
   badge?: number;
   /** Иконка пункта. По ней меню читается боковым зрением, без чтения подписей. */
@@ -39,6 +41,7 @@ interface NavItem {
  * за кнопку-гамбургер и открывается поверх содержимого.
  */
 export function Layout() {
+  const t = useT();
   const { me, ticketsBadge, messagesBadge, hasPermission, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
@@ -70,30 +73,30 @@ export function Layout() {
   if (!me) return null;
 
   const items: NavItem[] = [
-    { to: '/servers', label: 'Серверы', permission: 'servers.view', icon: IconServers },
+    { to: '/servers', labelKey: 'nav.servers', permission: 'servers.view', icon: IconServers },
     {
       to: '/tickets',
-      label: 'Тикеты',
+      labelKey: 'nav.tickets',
       permission: 'tickets.view',
       badge: ticketsBadge,
       icon: IconTickets,
     },
     {
       to: '/messages',
-      label: 'Сообщения',
+      labelKey: 'nav.messages',
       permission: null,
       badge: messagesBadge,
       icon: IconMessages,
     },
     // Установка плагина — запуск чужого кода на сервере, поэтому право
     // по умолчанию только у ГМ и Админа.
-    { to: '/market', label: 'Маркет', permission: 'minecraft.plugins.install', icon: IconMarket },
+    { to: '/market', labelKey: 'nav.market', permission: 'minecraft.plugins.install', icon: IconMarket },
     // Доступы видны и Админу: у него есть право заводить Модераторов.
-    { to: '/access', label: 'Доступы', permission: 'users.create.moderator', icon: IconAccess },
+    { to: '/access', labelKey: 'nav.access', permission: 'users.create.moderator', icon: IconAccess },
     // Без права: внутри есть личный блок — свой ник и пароль.
-    { to: '/settings', label: 'Настройки', permission: null, icon: IconSettings },
-    { to: '/audit', label: 'Аудит', permission: 'audit.view', icon: IconAudit },
-    { to: '/security', label: 'Безопасность', permission: null, icon: IconSecurity },
+    { to: '/settings', labelKey: 'nav.settings', permission: null, icon: IconSettings },
+    { to: '/audit', labelKey: 'nav.audit', permission: 'audit.view', icon: IconAudit },
+    { to: '/security', labelKey: 'nav.security', permission: null, icon: IconSecurity },
   ];
 
   const visible = items.filter((i) => i.permission === null || hasPermission(i.permission));
@@ -150,7 +153,7 @@ export function Layout() {
                   <span className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-sm bg-primary shadow-[0_0_11px_1px_rgba(145,132,217,.65)]" />
                 )}
                 <i.icon size={16} className="shrink-0" />
-                <span className="truncate">{i.label}</span>
+                <span className="truncate">{t(i.labelKey)}</span>
                 {i.badge !== undefined && i.badge > 0 && (
                   <Badge variant="destructive" className="ml-auto font-mono">
                     {i.badge}
@@ -164,7 +167,7 @@ export function Layout() {
 
       <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => void logout()}>
         <IconLogout size={14} />
-        Выйти
+        {t('nav.logout')}
       </Button>
     </>
   );
@@ -179,7 +182,7 @@ export function Layout() {
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
-          aria-label="Открыть меню"
+          aria-label={t('nav.openMenu')}
           aria-expanded={menuOpen}
           className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-neutral-800 transition-colors hover:border-primary hover:bg-primary/10"
         >
@@ -220,7 +223,7 @@ export function Layout() {
         <button
           type="button"
           onClick={() => setMenuOpen(false)}
-          aria-label="Закрыть меню"
+          aria-label={t('nav.closeMenu')}
           className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100 lg:hidden"
         >
           <IconClose size={18} />

@@ -20,6 +20,7 @@ import { AuthService } from './auth.service';
 import { TokensService } from './tokens.service';
 import { CurrentUser, Public, AuthUser } from './decorators';
 import {
+  ChangeLocaleDto,
   ChangeNicknameDto,
   ChangePasswordDto,
   LoginDto,
@@ -172,6 +173,30 @@ export class AuthController {
     await this.onboarding.changeNickname(user.id, {
       nickname: dto.nickname,
       standingPermission: effective.permissions.has('users.manage'),
+    });
+    return this.permissions.buildMeResponse(user.id);
+  }
+
+  /**
+   * Смена языка панели.
+   *
+   * Здесь, рядом со сменой ника и пароля, а не в /users: это настройка
+   * СЕБЯ, и права на неё не нужны никакие — язык интерфейса ничего в панели
+   * не меняет, кроме того, что видит сам человек.
+   *
+   * Тело {"locale": null} возвращает к «как в браузере». Ответ — целиком
+   * MeResponse, тем же приёмом, что и смена ника: панели не нужен второй
+   * запрос, чтобы узнать, что получилось.
+   */
+  @Post('locale')
+  @HttpCode(200)
+  async changeLocale(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangeLocaleDto,
+  ): Promise<MeResponse> {
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { locale: dto.locale ?? null },
     });
     return this.permissions.buildMeResponse(user.id);
   }

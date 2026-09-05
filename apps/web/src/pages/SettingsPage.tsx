@@ -5,12 +5,15 @@ import type {
   PendingUserDto,
   SmtpSettingsDto,
   SmtpTestResultDto,
+  Locale,
 } from '@aurum/shared';
 import { ALERT_SETTINGS_LIMITS, DEFAULT_ALERT_SETTINGS, ROLE_LABELS } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { AiSettingsCard } from './AiSettingsCard';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
+import { LanguagePicker } from '../components/LanguagePicker';
+import { useT } from '../i18n';
 
 /**
  * Настройки.
@@ -21,12 +24,14 @@ import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '.
  * переключатель и очередь, которую он порождает, читаются вместе.
  */
 export function SettingsPage() {
+  const t = useT();
   const { hasPermission } = useAuth();
   const isGm = hasPermission('users.manage');
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">Настройки</h1>
+      <h1 className="text-xl font-bold">{t('nav.settings')}</h1>
+      <MyLanguage />
       <MyNickname />
       <MyPassword />
       {isGm && (
@@ -39,6 +44,49 @@ export function SettingsPage() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Язык панели.
+ *
+ * Первым блоком настроек намеренно: человек, открывший их, чтобы уйти с
+ * непонятного языка, не должен искать переключатель под смены пароля и
+ * настройки почты.
+ *
+ * Выбор сохраняется у пользователя, а не только в браузере: он должен
+ * переезжать с рабочего компьютера на домашний. До ответа сервера панель
+ * уже переключена — переключатель обновляет контекст сразу, и ожидание
+ * запроса не выглядит как «нажал, и ничего не произошло».
+ */
+function MyLanguage() {
+  const t = useT();
+  const { refreshMe } = useAuth();
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  async function save(locale: Locale | null) {
+    setError('');
+    setSaved(false);
+    try {
+      await api('/api/auth/locale', { method: 'POST', body: JSON.stringify({ locale }) });
+      await refreshMe();
+      setSaved(true);
+    } catch (e) {
+      // Язык на экране уже сменился — сообщаем именно о том, что он не
+      // запомнится на другом устройстве, а не о том, что ничего не вышло.
+      setError((e as Error).message || t('language.saveFailed'));
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-1 font-semibold">{t('language.title')}</h2>
+      <p className="mb-3 text-sm text-muted">{t('language.description')}</p>
+      <LanguagePicker onChange={(locale) => void save(locale)} />
+      {saved && <p className="mt-2 text-sm text-emerald-400">{t('language.saved')}</p>}
+      <ErrorText>{error}</ErrorText>
+    </Card>
   );
 }
 

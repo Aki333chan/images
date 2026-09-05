@@ -57,6 +57,11 @@ model User {
   mustChangePassword Boolean @default(false) @map("must_change_password")
   /// Срок годности одноразового пароля. После него вход невозможен.
   passwordExpiresAt  DateTime? @map("password_expires_at")
+  /// Язык панели, выбранный человеком вручную. null — «как в браузере»:
+  /// панель следует за системным языком и меняется вместе с ним.
+  /// Хранится у пользователя, а не только в браузере, чтобы выбор переезжал
+  /// с рабочего компьютера на домашний.
+  locale        String?
   totpSecretEnc String?  @map("totp_secret_enc")
   totpEnabled   Boolean  @default(false) @map("totp_enabled")
   createdAt     DateTime @default(now()) @map("created_at")

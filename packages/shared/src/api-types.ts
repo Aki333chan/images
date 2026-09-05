@@ -1,6 +1,7 @@
 import type { Role } from './roles';
 import type { PermissionKey } from './permissions';
 import type { GameModuleManifest } from './module-manifest';
+import type { Locale } from './locales';
 
 /** Ответ GET /auth/me — единственный источник прав для фронтенда. */
 export interface MeResponse {
@@ -21,6 +22,15 @@ export interface MeResponse {
     mustChangePassword: boolean;
     /** ГМ разрешил сменить ник. Разрешение разовое — гаснет после смены. */
     nicknameChangeAllowed: boolean;
+    /**
+     * Язык панели, выбранный вручную. null — «как в браузере».
+     *
+     * Именно null, а не 'ru': человек, ничего не выбиравший, должен получить
+     * свой системный язык, а не русский по умолчанию. Отличать «выбрал
+     * русский» от «не выбирал ничего» нужно, чтобы переключатель показывал
+     * правду.
+     */
+    locale: Locale | null;
   };
   permissions: PermissionKey[];
   /** null — доступ ко всем серверам (OWNER или незскоупленная роль). */
