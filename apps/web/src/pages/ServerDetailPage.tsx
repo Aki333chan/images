@@ -3,12 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { Badge, Button, Card, Dot, Select, Spinner, Tabs } from '../components/ui';
-import { IconBack, IconPlay, IconRestart, IconStop } from '../components/icons';
+import { Badge, Button, Dot, Select, Spinner, Tabs } from '../components/ui';
+import { IconBack, IconPlay, IconRestart, IconSettings, IconStop } from '../components/icons';
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { ServerStats } from '../components/ServerStats';
 import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
 import { ServerAddress } from '../components/ServerAddress';
+import { Modal } from '../components/Modal';
 import { refreshServerRuntime, useServerRuntime } from '../lib/server-runtime';
 import { SERVER_TABS } from '../server-tabs/registry';
 import { listCapabilities } from '@aurum/shared';
@@ -27,6 +28,8 @@ export function ServerDetailPage() {
   const [activeTab, setActiveTab] = useState<string>('');
   /** Человек уже сам выбрал вкладку — автовыбор ниже больше не вмешивается. */
   const [tabPickedByUser, setTabPickedByUser] = useState(false);
+  /** Открыт ли выбор модуля. Действие редкое — окно, а не постоянный блок. */
+  const [modulePicker, setModulePicker] = useState(false);
   const [error, setError] = useState('');
   /** Отказ Pterodactyl по кнопке питания: молча его терять нельзя. */
   const [powerError, setPowerError] = useState('');
@@ -169,6 +172,15 @@ export function ServerDetailPage() {
           {/* Адрес — крупно и отдельной строкой: это то, что спрашивают
               игроки, и то, что чаще всего приходится диктовать вслух. */}
           <ServerAddress address={server.address} />
+          {/* Модуль — свойство сервера, а не ежедневное действие: назначают
+              его один раз при заведении. Поэтому здесь подпись в строке
+              описания, а не отдельная карточка во всю ширину между кнопками
+              питания и метриками, как было раньше. */}
+          <ModuleBadge
+            name={manifest?.displayName ?? null}
+            canManage={hasPermission('servers.manage')}
+            onOpen={() => setModulePicker(true)}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Значок показывает питание, а не запись в Pterodactyl: «active»
@@ -206,19 +218,25 @@ export function ServerDetailPage() {
 
       {powerError && <p className="text-sm text-red-400">{powerError}</p>}
 
-      {hasPermission('servers.manage') && (
-        <Card className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-sm text-muted">{t('server.module')}</span>
-          <Select
-            className="min-w-0 flex-1 sm:flex-none"
-            value={server.moduleId ?? ''}
-            onChange={(v) => void setModule(v || null)}
-            options={[
-              { value: '', label: t('server.module.none') },
-              ...(modules?.enabled.map((m) => ({ value: m.id, label: m.displayName })) ?? []),
-            ]}
-          />
-        </Card>
+      {modulePicker && (
+        <Modal title={t('server.module.title')} onClose={() => setModulePicker(false)}>
+          <div className="space-y-3">
+            <p className="text-xs text-muted">{t('server.module.hint')}</p>
+            <Select
+              value={server.moduleId ?? ''}
+              onChange={(v) => void setModule(v || null)}
+              options={[
+                { value: '', label: t('server.module.none') },
+                ...(modules?.enabled.map((m) => ({ value: m.id, label: m.displayName })) ?? []),
+              ]}
+            />
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => setModulePicker(false)}>
+                {t('common.close')}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       <ServerStats
@@ -232,10 +250,14 @@ export function ServerDetailPage() {
       )}
 
       {!manifest ? (
-        <p className="text-muted">
-          {t('server.module.missing')}
-          {hasPermission('servers.manage') && t('server.module.assignHint')}
-        </p>
+        <div className="space-y-2">
+          <p className="text-muted">{t('server.module.missing')}</p>
+          {hasPermission('servers.manage') && (
+            <Button size="sm" variant="outline" onClick={() => setModulePicker(true)}>
+              {t('server.module.assign')}
+            </Button>
+          )}
+        </div>
       ) : tabs.length === 0 ? (
         <p className="text-muted">{t('server.noTabs')}</p>
       ) : (
@@ -321,5 +343,45 @@ function PowerBadge({ state }: { state: string | null }) {
       <Dot className={state === 'starting' || state === 'stopping' ? 'aurum-pulse' : undefined} />
       {label[state] ?? state}
     </Badge>
+  );
+}
+
+/**
+ * Игровой модуль сервера — строкой в описании.
+ *
+ * Раньше здесь была карточка во всю ширину с выпадающим списком, стоявшая
+ * между кнопками питания и метриками. Модуль назначают один раз за жизнь
+ * сервера, а место она занимала на каждом открытии страницы.
+ *
+ * Без права на управление это просто подпись: показать, чем сервер является,
+ * полезно и модератору, а нажимать ему нечего.
+ */
+function ModuleBadge({
+  name,
+  canManage,
+  onOpen,
+}: {
+  name: string | null;
+  canManage: boolean;
+  onOpen: () => void;
+}) {
+  const t = useT();
+  const label = name ?? t('server.module.none');
+
+  if (!canManage) {
+    return <p className="truncate text-[11px] text-muted">{t('server.module')} {label}</p>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={t('server.module.change')}
+      className="-ml-1 flex min-h-8 max-w-full items-center gap-1 rounded-sm px-1 text-[11px] text-muted transition-colors hover:text-primary-200"
+    >
+      <span className="shrink-0">{t('server.module')}</span>
+      <span className="truncate font-medium">{label}</span>
+      <IconSettings size={11} className="shrink-0 opacity-70" />
+    </button>
   );
 }

@@ -69,10 +69,9 @@
   "server.start": "Start",
   "server.restart": "Restart",
   "server.stop": "Stop",
-  "server.module": "Game module:",
+  "server.module": "Module:",
   "server.module.none": "— not assigned —",
-  "server.module.missing": "No module assigned, or it is disabled — the tabs are unavailable.",
-  "server.module.assignHint": " Assign a module above.",
+  "server.module.missing": "No module is assigned, or it is switched off — the tabs are unavailable.",
   "server.noTabs": "No tabs available to your role.",
   "server.state.running": "running",
   "server.state.offline": "offline",
@@ -991,5 +990,12 @@
   "mc.qc.kit": "Give a kit",
   "mc.qc.kit.d": "EssentialsX: gives the player a set of items (kit)",
   "mc.qc.arg.kit": "Kit name",
-  "mc.err.fieldRequired": "The field “{field}” is empty"
+  "mc.err.fieldRequired": "The field “{field}” is empty",
+  "server.module.title": "Game module",
+  "server.module.hint": "The module decides which tabs a server gets. It is rarely changed — usually once, when the server is set up.",
+  "server.module.change": "Change the module",
+  "server.module.assign": "Assign a module",
+  "server.copyAddress": "Copy the address",
+  "server.copied": "copied",
+  "server.copy": "copy"
 }

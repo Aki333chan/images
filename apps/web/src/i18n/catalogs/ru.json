@@ -69,10 +69,9 @@
   "server.start": "Старт",
   "server.restart": "Рестарт",
   "server.stop": "Стоп",
-  "server.module": "Игровой модуль:",
+  "server.module": "Модуль:",
   "server.module.none": "— не назначен —",
   "server.module.missing": "Модуль не назначен или выключен — вкладки недоступны.",
-  "server.module.assignHint": " Назначьте модуль выше.",
   "server.noTabs": "Нет вкладок, доступных вашей роли.",
   "server.state.running": "работает",
   "server.state.offline": "выключен",
@@ -993,5 +992,12 @@
   "mc.qc.kit": "Выдать кит",
   "mc.qc.kit.d": "EssentialsX: выдаёт игроку набор предметов (kit)",
   "mc.qc.arg.kit": "Название кита",
-  "mc.err.fieldRequired": "Не заполнено поле «{field}»"
+  "mc.err.fieldRequired": "Не заполнено поле «{field}»",
+  "server.module.title": "Игровой модуль",
+  "server.module.hint": "Модуль решает, какие вкладки появятся у сервера. Меняют его редко — обычно один раз, когда сервер заводят.",
+  "server.module.change": "Сменить модуль",
+  "server.module.assign": "Назначить модуль",
+  "server.copyAddress": "Скопировать адрес",
+  "server.copied": "скопировано",
+  "server.copy": "копировать"
 }

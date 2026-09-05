@@ -69,10 +69,9 @@
   "server.start": "Start",
   "server.restart": "Restart",
   "server.stop": "Stop",
-  "server.module": "Moduł gry:",
+  "server.module": "Moduł:",
   "server.module.none": "— nieprzypisany —",
   "server.module.missing": "Moduł nie jest przypisany albo jest wyłączony — zakładki są niedostępne.",
-  "server.module.assignHint": " Przypisz moduł powyżej.",
   "server.noTabs": "Brak zakładek dostępnych dla twojej roli.",
   "server.state.running": "działa",
   "server.state.offline": "wyłączony",
@@ -993,5 +992,12 @@
   "mc.qc.kit": "Wydaj kit",
   "mc.qc.kit.d": "EssentialsX: daje graczowi zestaw przedmiotów (kit)",
   "mc.qc.arg.kit": "Nazwa kitu",
-  "mc.err.fieldRequired": "Nie wypełniono pola „{field}”"
+  "mc.err.fieldRequired": "Nie wypełniono pola „{field}”",
+  "server.module.title": "Moduł gry",
+  "server.module.hint": "Moduł decyduje, jakie zakładki dostanie serwer. Zmienia się go rzadko — zwykle raz, przy zakładaniu serwera.",
+  "server.module.change": "Zmień moduł",
+  "server.module.assign": "Przypisz moduł",
+  "server.copyAddress": "Skopiuj adres",
+  "server.copied": "skopiowano",
+  "server.copy": "kopiuj"
 }

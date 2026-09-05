@@ -42,13 +42,13 @@ export function ServerAddress({ address }: { address: string | null }) {
     <button
       type="button"
       onClick={() => void copy()}
-      title="Скопировать адрес"
+      title={t('server.copyAddress')}
       className="-mx-2 flex min-h-11 items-center gap-2 rounded px-2 text-left hover:bg-white/5 sm:mx-0 sm:min-h-0 sm:px-0 sm:hover:bg-transparent"
     >
       <span className="select-all break-all font-mono text-base font-semibold text-neutral-100">
         {address}
       </span>
-      <span className="shrink-0 text-[11px] text-muted">{copied ? 'скопировано' : 'копировать'}</span>
+      <span className="shrink-0 text-[11px] text-muted">{t(copied ? 'server.copied' : 'server.copy')}</span>
     </button>
   );
 }
