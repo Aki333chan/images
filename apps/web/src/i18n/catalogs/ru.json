@@ -1098,5 +1098,11 @@
   "dummy.demo": "Демонстрация: модуль вызывает core-сервис createOrAppendTicket.",
   "dummy.makeTicket": "Создать тестовый тикет",
   "dummy.ticketDone": "Создан/дополнен тикет {id} — проверьте бейдж в меню",
-  "dummy.ticketsHere": "Тикеты этого сервера доступны на общем экране {link}. (Фильтр по серверу {server} — на общем экране.)"
+  "dummy.ticketsHere": "Тикеты этого сервера доступны на общем экране {link}. (Фильтр по серверу {server} — на общем экране.)",
+  "servers.sort.status": "Сначала онлайн",
+  "servers.sort.players": "По игрокам онлайн",
+  "servers.sort.name": "По имени",
+  "servers.sort.game": "По игре",
+  "servers.sort.manual": "Свой порядок",
+  "size.mib": "МиБ"
 }

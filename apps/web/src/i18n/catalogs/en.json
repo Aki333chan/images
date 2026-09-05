@@ -1094,5 +1094,11 @@
   "dummy.demo": "Demo: the module calls the core createOrAppendTicket service.",
   "dummy.makeTicket": "Create a test ticket",
   "dummy.ticketDone": "Ticket {id} created or appended — check the badge in the menu",
-  "dummy.ticketsHere": "This server's tickets live on the shared {link} screen. (Filtering by server {server} is there too.)"
+  "dummy.ticketsHere": "This server's tickets live on the shared {link} screen. (Filtering by server {server} is there too.)",
+  "servers.sort.status": "Online first",
+  "servers.sort.players": "By players online",
+  "servers.sort.name": "By name",
+  "servers.sort.game": "By game",
+  "servers.sort.manual": "Custom order",
+  "size.mib": "MiB"
 }

@@ -232,5 +232,7 @@
   "ai.sum.plugins": "List of plugins on server {server}",
   "ai.sum.give": "Give {player}: {items}",
   "ai.sum.clearInventory": "Clear {player}'s inventory",
-  "ai.sum.resetPassword": "Reset password for {player}"
+  "ai.sum.resetPassword": "Reset password for {player}",
+  "alert.cpu": "CPU load",
+  "alert.memory": "Memory usage"
 }

@@ -232,5 +232,7 @@
   "ai.sum.plugins": "Lista pluginów serwera {server}",
   "ai.sum.give": "Wydaj graczowi {player}: {items}",
   "ai.sum.clearInventory": "Wyczyść ekwipunek gracza {player}",
-  "ai.sum.resetPassword": "Zresetuj hasło gracza {player}"
+  "ai.sum.resetPassword": "Zresetuj hasło gracza {player}",
+  "alert.cpu": "Obciążenie CPU",
+  "alert.memory": "Zużycie pamięci"
 }

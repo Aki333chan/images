@@ -1098,5 +1098,11 @@
   "dummy.demo": "Demonstracja: moduł wywołuje usługę createOrAppendTicket z rdzenia.",
   "dummy.makeTicket": "Utwórz testowe zgłoszenie",
   "dummy.ticketDone": "Zgłoszenie {id} utworzone lub uzupełnione — sprawdź plakietkę w menu",
-  "dummy.ticketsHere": "Zgłoszenia tego serwera są na wspólnym ekranie {link}. (Filtr po serwerze {server} też tam.)"
+  "dummy.ticketsHere": "Zgłoszenia tego serwera są na wspólnym ekranie {link}. (Filtr po serwerze {server} też tam.)",
+  "servers.sort.status": "Najpierw online",
+  "servers.sort.players": "Po graczach online",
+  "servers.sort.name": "Po nazwie",
+  "servers.sort.game": "Po grze",
+  "servers.sort.manual": "Własna kolejność",
+  "size.mib": "MiB"
 }

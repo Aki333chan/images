@@ -1,4 +1,4 @@
-import { ALERT_TYPE_LABELS, type AlertType } from '@aurum/shared';
+import { type AlertType } from '@aurum/shared';
 import { escapeHtml } from '../../mail/mail-templates';
 
 const BRAND = 'Aurum Panel';
@@ -13,6 +13,13 @@ const WARN = '#f59e0b';
 export interface AlertMailInput {
   serverName: string;
   type: AlertType;
+  /**
+   * Подпись метрики, уже переведённая.
+   *
+   * Готовая строка, а не ключ: письмо собирается для конкретного получателя,
+   * и язык выбирает тот, кто знает, кому оно уходит, — шаблон этого не знает.
+   */
+  label: string;
   /** Текущее значение в процентах ОТ ЛИМИТА сервера. */
   percentOfLimit: number;
   /** Порог, который был превышен, в тех же процентах от лимита. */
@@ -43,7 +50,7 @@ export function alertMail(input: AlertMailInput): {
   html: string;
   text: string;
 } {
-  const label = ALERT_TYPE_LABELS[input.type];
+  const label = input.label;
   const percent = Math.round(input.percentOfLimit);
   const serverUrl = `${input.panelUrl.replace(/\/$/, '')}/servers/${input.serverId}`;
 

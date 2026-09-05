@@ -86,7 +86,7 @@ async function messageFor(res: Response): Promise<string> {
     // тело не JSON — значит, отвечал не бэкенд
   }
   if (res.status === 413) {
-    return translateOutside('net.tooLarge', { limit: formatTransferLimit() });
+    return translateOutside('net.tooLarge', { limit: formatTransferLimit(translateOutside) });
   }
   if (res.status === 502 || res.status === 504) {
     return translateOutside('net.gateway');

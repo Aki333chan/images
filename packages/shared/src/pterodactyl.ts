@@ -96,9 +96,16 @@ export const MAX_EDITABLE_BYTES = 4 * 1024 * 1024;
  */
 export const MAX_TRANSFER_BYTES = 64 * 1024 * 1024;
 
-/** «64 МиБ» — одна формулировка на все сообщения о превышении. */
-export function formatTransferLimit(): string {
-  return `${Math.round(MAX_TRANSFER_BYTES / 1024 / 1024)} МиБ`;
+/**
+ * «64 МиБ» — одна формулировка на все сообщения о превышении.
+ *
+ * Переводчик аргументом — по той же причине, что и в resources.ts: функция
+ * зовётся и из панели, и из бэкенда, хука здесь взять неоткуда. Умолчание
+ * русское, чтобы вызовы, до которых перевод ещё не дошёл, работали как
+ * раньше, а не показывали ключ.
+ */
+export function formatTransferLimit(t: (key: string) => string = () => 'МиБ'): string {
+  return `${Math.round(MAX_TRANSFER_BYTES / 1024 / 1024)} ${t('size.mib')}`;
 }
 
 /** Можно ли предложить открыть файл в редакторе. */

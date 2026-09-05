@@ -2,7 +2,8 @@ import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import {
-  ALERT_TYPE_LABELS,
+  ALERT_TYPE_KEYS,
+  DEFAULT_LOCALE,
   cpuUsage,
   formatBytesUsage,
   formatCpu,
@@ -14,6 +15,7 @@ import { AuditService } from '../../audit/audit.service';
 import { MailService } from '../../mail/mail.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../../settings/settings.service';
+import { I18nService } from '../../i18n/i18n.service';
 import { alertMail } from './alert-mail';
 import { ServerMetricsService, type Reading } from './server-metrics.service';
 
@@ -56,6 +58,7 @@ export class ServerMetricsProcessor extends WorkerHost {
     private readonly settings: SettingsService,
     private readonly mail: MailService,
     private readonly audit: AuditService,
+    private readonly i18n: I18nService,
   ) {
     super();
   }
@@ -138,9 +141,14 @@ export class ServerMetricsProcessor extends WorkerHost {
             memoryUsage(0, (server.memoryLimitMb ?? 0) * 1024 * 1024).limitBytes,
           );
 
+    // Пока — язык панели по умолчанию: письма по языку получателя это
+    // отдельный шаг, там же и остальной текст шаблона.
+    const label = this.i18n.t(DEFAULT_LOCALE, ALERT_TYPE_KEYS[reading.type]);
+
     const message = alertMail({
       serverName: server.name,
       type: reading.type,
+      label,
       percentOfLimit: percent,
       thresholdPercent:
         (reading.type === 'cpu' ? settings.cpuThresholdPercent : settings.memoryThresholdPercent) ??
@@ -174,7 +182,7 @@ export class ServerMetricsProcessor extends WorkerHost {
       },
     });
     this.logger.log(
-      `Алерт «${ALERT_TYPE_LABELS[reading.type]}» по серверу «${server.name}»: ` +
+      `Алерт «${label}» по серверу «${server.name}»: ` +
         `${Math.round(percent)}%, отправлено ${sent} из ${recipients.length}`,
     );
   }

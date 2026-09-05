@@ -236,7 +236,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
     const tooBig = Array.from(files).find((file) => file.size > MAX_TRANSFER_BYTES);
     if (tooBig) {
       setError(
-        t('files.tooBig', { name: tooBig.name, limit: formatTransferLimit() }),
+        t('files.tooBig', { name: tooBig.name, limit: formatTransferLimit(t) }),
       );
       if (uploadInput.current) uploadInput.current.value = '';
       return;

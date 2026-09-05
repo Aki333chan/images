@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   DEFAULT_SERVER_LIST_PREFS,
   SERVER_SORTS,
-  SERVER_SORT_LABELS,
+  SERVER_SORT_KEYS,
   cpuUsage,
   formatBytesUsage,
   formatCpu,
@@ -134,7 +134,7 @@ export function ServersPage() {
             className="sm:w-56"
             value={prefs.sort}
             onChange={(v) => savePrefs({ ...prefs, sort: v as ServerSort })}
-            options={SERVER_SORTS.map((s) => ({ value: s, label: SERVER_SORT_LABELS[s] }))}
+            options={SERVER_SORTS.map((s) => ({ value: s, label: t(SERVER_SORT_KEYS[s]) }))}
           />
         </div>
       )}

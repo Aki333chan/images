@@ -232,5 +232,7 @@
   "ai.sum.plugins": "Список плагинов сервера {server}",
   "ai.sum.give": "Выдать игроку {player}: {items}",
   "ai.sum.clearInventory": "Очистить инвентарь игрока {player}",
-  "ai.sum.resetPassword": "Сбросить пароль игроку {player}"
+  "ai.sum.resetPassword": "Сбросить пароль игроку {player}",
+  "alert.cpu": "Загрузка CPU",
+  "alert.memory": "Использование памяти"
 }

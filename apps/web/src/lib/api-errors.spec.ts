@@ -91,6 +91,11 @@ describe('сообщения об ошибках API', () => {
     speak('en');
     respondWith(418, 'something', 'text/plain');
     await expect(api('/api/servers')).rejects.toThrow('Error 418');
+
+    // Единица измерения тоже строка словаря: «64 МиБ» в английском тексте
+    // выглядит опечаткой, а не переводом.
+    respondWith(413, '<html>413</html>', 'text/html');
+    await expect(api('/api/x')).rejects.toThrow(/MiB/);
   });
 
   it('код ответа доезжает до вызывающего вместе с текстом', async () => {

@@ -9,7 +9,9 @@ import { TestDummyModule } from './test-dummy.module';
  */
 export const testDummyManifest: GameModuleManifest = {
   id: 'test-dummy',
-  displayName: 'Тестовый модуль',
+  // Имя собственное, как и у остальных модулей: displayName попадает в
+  // бейдж модуля и в список выбора как есть, переводчика там нет.
+  displayName: 'Test Dummy',
   capabilities: {
     playerList: true,
     quickCommands: true,
