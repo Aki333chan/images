@@ -1,0 +1,43 @@
+# Komunikaty widziane przez gracza. Polski.
+#
+# Ten plik można edytować ręcznie: zmiany wczytuje /auth reload, przebudowa
+# pluginu nie jest potrzebna. Zostaw {podstawienia} w klamrach — bez nich z
+# komunikatu znika liczba, dla której go napisano. Nieznane podstawienie
+# zostaje na czacie takie, jakie jest, więc literówkę widać od razu.
+#
+# Nie usuwaj wierszy: brakujący klucz jest brany z wbudowanego rosyjskiego, a
+# zmiana po prostu się nie zastosuje. Do całkowitego wyciszenia komunikatu są
+# osobne przełączniki w config.yml.
+
+auth:
+  # -------------------------------------------------------------- logowanie
+  loggedIn: "Zalogowano"
+  registered: "Rejestracja zakończona, jesteś zalogowany"
+  wrongPassword: "Błędne hasło"
+  notRegistered: "Nie jesteś jeszcze zarejestrowany: /register <hasło> <hasło>"
+  alreadyRegistered: "Ten nick jest już zarejestrowany: /login <hasło>"
+  mismatch: "Hasła nie są zgodne"
+  serviceDown: "Usługa logowania jest niedostępna, spróbuj później"
+
+  # ------------------------------------------------------------------ hasło
+  passwordShort: "Hasło jest krótsze niż {min} znaków"
+  passwordLong: "Hasło jest dłuższe niż {max} znaków"
+  passwordChanged: "Hasło zmienione, jesteś zalogowany"
+
+  # ------------------------------------------------------ ochrona przed atakiem
+  throttled: "Za często. Spróbuj za {seconds} s"
+  locked: "Zbyt wiele nieudanych prób. Logowanie zamknięte na {minutes} min"
+
+  # ------------------------------------------------------ dwuskładnikowe
+  totpRequired: "Wpisz kod z aplikacji: /2fa <kod>"
+  totpInvalid: "Kod się nie zgadza. Sprawdź zegar w telefonie"
+  totpEnabled: "Weryfikacja dwuskładnikowa włączona. Kod będzie pytany przy każdym logowaniu"
+  totpDisabled: "Weryfikacja dwuskładnikowa wyłączona"
+  totpAlreadyOff: "Weryfikacja dwuskładnikowa i tak jest wyłączona"
+
+  # ------------------------------------------------------- reset hasła
+  resetTokenInvalid: "Token się nie zgadza albo wygasł"
+  resetReady: "Token przyjęty. Wymyśl nowe hasło: /reset <hasło> <hasło jeszcze raz>"
+
+  # -------------------------------------------------------- rejestracja
+  unregistered: "Rejestracja usunięta"

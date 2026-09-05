@@ -1,0 +1,43 @@
+# Player-facing messages. English.
+#
+# Edit this file by hand: /auth reload picks the changes up, no rebuild needed.
+# Keep the {placeholders} — without them the number the message was written
+# for disappears. An unknown placeholder stays in chat as-is, so a typo shows
+# up immediately.
+#
+# Do not delete lines: a missing key falls back to the bundled Russian, so the
+# edit simply would not apply. To silence a message entirely there are
+# separate switches in config.yml.
+
+auth:
+  # ---------------------------------------------------------------- login
+  loggedIn: "You are logged in"
+  registered: "Registration complete, you are logged in"
+  wrongPassword: "Wrong password"
+  notRegistered: "You are not registered yet: /register <password> <password>"
+  alreadyRegistered: "This nickname is already registered: /login <password>"
+  mismatch: "The passwords do not match"
+  serviceDown: "The authentication service is unavailable, try again later"
+
+  # -------------------------------------------------------------- password
+  passwordShort: "The password is shorter than {min} characters"
+  passwordLong: "The password is longer than {max} characters"
+  passwordChanged: "Password changed, you are logged in"
+
+  # -------------------------------------------------------- brute-force
+  throttled: "Too often. Try again in {seconds} s"
+  locked: "Too many failed attempts. Login is closed for {minutes} min"
+
+  # ---------------------------------------------------- two-factor
+  totpRequired: "Enter the code from your app: /2fa <code>"
+  totpInvalid: "The code did not match. Check the clock on your phone"
+  totpEnabled: "Two-factor is on. The code will be asked on every login"
+  totpDisabled: "Two-factor is off"
+  totpAlreadyOff: "Two-factor is already off"
+
+  # --------------------------------------------------- password reset
+  resetTokenInvalid: "The token did not match or has expired"
+  resetReady: "Token accepted. Choose a new password: /reset <password> <password again>"
+
+  # ------------------------------------------------------- registration
+  unregistered: "Registration removed"

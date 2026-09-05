@@ -139,16 +139,28 @@ public record AuthConfig(
         return raw != null && raw.matches("[A-Za-z0-9_]{1,64}") ? raw : DEFAULT_TABLE;
     }
 
-    /** Проверка пароля на длину. Возвращает null, если всё в порядке. */
-    public String validatePassword(String password) {
+    /**
+     * Годится ли пароль по длине.
+     *
+     * @return null, если годится; иначе ключ сообщения и подстановка к нему.
+     *   Не готовая фраза: «короче 8 символов» и «shorter than 8 characters»
+     *   отличаются и порядком слов, и склонением числа, и собрать это в
+     *   конфиге, не зная языка сервера, нельзя.
+     */
+    public PasswordProblem validatePassword(String password) {
         if (password.length() < minPasswordLength) {
-            return "Пароль короче " + minPasswordLength + " символов";
+            return new PasswordProblem("auth.passwordShort",
+                    Map.of("min", String.valueOf(minPasswordLength)));
         }
         if (password.length() > maxPasswordLength) {
-            return "Пароль длиннее " + maxPasswordLength + " символов";
+            return new PasswordProblem("auth.passwordLong",
+                    Map.of("max", String.valueOf(maxPasswordLength)));
         }
         return null;
     }
+
+    /** Причина, по которой пароль не подошёл: ключ сообщения и его значения. */
+    public record PasswordProblem(String key, Map<String, String> values) {}
 
     private static String string(Map<String, Object> raw, String key, String fallback) {
         Object value = raw.get(key);

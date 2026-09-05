@@ -81,7 +81,7 @@ class AuthServiceTest {
         AuthOutcome outcome = service.register(PLAYER, "хорошийпароль".toCharArray(),
                 "хорошийпароль".toCharArray(), IP).join();
 
-        assertTrue(outcome.isSuccess(), outcome.message());
+        assertTrue(outcome.isSuccess(), outcome.messageKey());
         assertTrue(service.isAuthenticated(PLAYER));
         assertEquals(AuthStatus.AUTHENTICATED, service.status(PLAYER).orElseThrow());
     }
@@ -119,7 +119,7 @@ class AuthServiceTest {
 
         assertEquals(AuthStatus.AWAITING_LOGIN, preLogin(PremiumVerdict.OFFLINE_NAME));
         AuthOutcome outcome = service.login(PLAYER, "хорошийпароль".toCharArray(), IP).join();
-        assertTrue(outcome.isSuccess(), outcome.message());
+        assertTrue(outcome.isSuccess(), outcome.messageKey());
         assertTrue(service.isAuthenticated(PLAYER));
     }
 
@@ -143,9 +143,12 @@ class AuthServiceTest {
         service.onQuit(PLAYER);
         sessions.forget(PLAYER);
         preLogin(PremiumVerdict.OFFLINE_NAME);
-        String wrongPassword = service.login(PLAYER, "не тот".toCharArray(), IP).join().message();
+        AuthOutcome outcome = service.login(PLAYER, "не тот".toCharArray(), IP).join();
 
-        assertEquals("Неверный пароль", wrongPassword);
+        // Ключ, а не фраза: текст лежит в lang/messages_*.yml и правится
+        // руками. Проверять здесь формулировку значило бы ронять тест на
+        // каждой правке запятой в файле, который для того и заведён.
+        assertEquals("auth.wrongPassword", outcome.messageKey());
     }
 
     @Test
@@ -293,6 +296,6 @@ class AuthServiceTest {
         preLogin(PremiumVerdict.OFFLINE_NAME);
         AuthOutcome outcome = service.register(PLAYER, "хорошийпароль".toCharArray(),
                 "хорошийпароль".toCharArray(), IP).join();
-        assertTrue(outcome.isSuccess(), outcome.message());
+        assertTrue(outcome.isSuccess(), outcome.messageKey());
     }
 }

@@ -13,6 +13,7 @@ import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.auth.api.AurumAuthApi;
 import ovh.aurumgg.auth.core.AuthConfig;
+import ovh.aurumgg.auth.core.Messages;
 import ovh.aurumgg.auth.core.AuthService;
 import ovh.aurumgg.auth.event.PlayerAccountDeletedEvent;
 import ovh.aurumgg.auth.core.DeferredMessages;
@@ -38,6 +39,11 @@ public final class AurumAuthPlugin extends JavaPlugin {
 
     private AuthService service;
     private AuthConfig config;
+    /**
+     * Тексты для игроков. volatile: /auth reload меняет их на живом сервере,
+     * а читают их и из рабочих потоков сервиса.
+     */
+    private volatile Messages messages;
     private JoinMessageListener joinMessages;
     private LoginPrompt loginPrompt;
     private final DeferredMessages<Component> deferredJoins = new DeferredMessages<>();
@@ -47,6 +53,8 @@ public final class AurumAuthPlugin extends JavaPlugin {
         saveDefaultConfig();
         Map<String, Object> raw = new HashMap<>(getConfig().getValues(true));
         config = AuthConfig.fromMap(raw);
+        messages = LanguageFiles.load(this, Messages.normalizeLanguage(
+                String.valueOf(raw.getOrDefault("language", Messages.DEFAULT_LANGUAGE))));
 
         String requestedTable = String.valueOf(raw.getOrDefault("database.table", AuthConfig.DEFAULT_TABLE));
         if (!requestedTable.equals(config.tableName())) {
@@ -229,6 +237,24 @@ public final class AurumAuthPlugin extends JavaPlugin {
         for (String line : lines) to.sendMessage(colored(line));
     }
 
+    /**
+     * Текст для игрока по ключу.
+     *
+     * Через плагин, а не статикой: язык перечитывается на живом сервере, и
+     * ссылка на старую карту сообщений пережила бы /auth reload.
+     */
+    String text(String key, java.util.Map<String, String> values) {
+        return messages.get(key, values);
+    }
+
+    String text(String key) {
+        return messages.get(key, java.util.Map.of());
+    }
+
+    java.util.List<String> lines(String key, java.util.Map<String, String> values) {
+        return messages.list(key, values);
+    }
+
     /** Применить настроенные префикс и цвет — при старте и при /auth reload. */
     private static void applyTexts(PromptSettings settings) {
         prefix = COLORS.deserialize(settings.prefix());
@@ -258,6 +284,8 @@ public final class AurumAuthPlugin extends JavaPlugin {
     void reloadMessages() {
         reloadConfig();
         Map<String, Object> raw = getConfig().getValues(true);
+        messages = LanguageFiles.load(this, Messages.normalizeLanguage(
+                String.valueOf(raw.getOrDefault("language", Messages.DEFAULT_LANGUAGE))));
         MessageSettings updated = MessageSettings.fromMap(raw);
         if (joinMessages != null) joinMessages.updateMessages(updated);
 

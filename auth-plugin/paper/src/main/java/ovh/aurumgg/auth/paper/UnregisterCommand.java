@@ -38,7 +38,7 @@ final class UnregisterCommand extends AuthCommandBase {
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     if (!player.isOnline()) return;
                     if (outcome.kind() != AuthOutcome.Kind.OK) {
-                        player.sendMessage(AurumAuthPlugin.prefixed(outcome.message()));
+                        player.sendMessage(AurumAuthPlugin.prefixed(plugin.text(outcome.messageKey(), outcome.values())));
                         return;
                     }
                     guard.cancelTimeout(player.getUniqueId());

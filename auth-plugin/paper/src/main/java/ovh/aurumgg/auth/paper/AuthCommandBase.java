@@ -52,7 +52,7 @@ abstract class AuthCommandBase implements CommandExecutor {
     protected void finish(Player player, AuthOutcome outcome) {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
-            player.sendMessage(AurumAuthPlugin.prefixed(outcome.message()));
+            player.sendMessage(AurumAuthPlugin.prefixed(plugin.text(outcome.messageKey(), outcome.values())));
             if (!outcome.isSuccess()) {
                 // Не вошёл. Показываем подсказку заново — уже по новой
                 // ступени: после верного пароля с двухфакторкой это «введите
