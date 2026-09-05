@@ -93,6 +93,8 @@ final class AuthGuardListener implements Listener {
     @EventHandler(priority = EventPriority.NORMAL)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        // NPC не входят и не выходят — их спавнит плагин. См. Npcs.
+        if (Npcs.isNpc(player)) return;
         UUID uuid = player.getUniqueId();
 
         // Байпас проверяется здесь, а не на pre-login: права в Bukkit
@@ -217,6 +219,7 @@ final class AuthGuardListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
+        if (Npcs.isNpc(event.getPlayer())) return;
         UUID uuid = event.getPlayer().getUniqueId();
         cancelTimeout(uuid);
         // Иначе повторяющаяся задача осталась бы висеть на каждом, кого

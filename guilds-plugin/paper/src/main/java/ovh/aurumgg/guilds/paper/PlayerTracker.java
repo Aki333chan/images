@@ -29,6 +29,8 @@ final class PlayerTracker implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
+        // Ник NPC в справочнике ников не нужен — см. Npcs.
+        if (Npcs.isNpc(event.getPlayer())) return;
         guilds.touchUsername(event.getPlayer().getUniqueId(), event.getPlayer().getName());
     }
 
