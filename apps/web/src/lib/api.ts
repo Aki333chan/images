@@ -1,5 +1,5 @@
 import { formatTransferLimit } from '@aurum/shared';
-import { currentLocale } from '../i18n';
+import { currentLocale, translateOutside } from '../i18n';
 
 /**
  * API-клиент: access-токен хранится только в памяти; при 401 делается
@@ -86,16 +86,12 @@ async function messageFor(res: Response): Promise<string> {
     // тело не JSON — значит, отвечал не бэкенд
   }
   if (res.status === 413) {
-    return (
-      `Файл слишком большой — его не пропустил веб-сервер перед панелью. ` +
-      `Панель принимает до ${formatTransferLimit()}; если файл меньше, ` +
-      `значит на сервере занижен client_max_body_size в nginx.`
-    );
+    return translateOutside('net.tooLarge', { limit: formatTransferLimit() });
   }
   if (res.status === 502 || res.status === 504) {
-    return 'Панель не ответила вовремя. Если это повторяется, проверьте, запущен ли сервис API.';
+    return translateOutside('net.gateway');
   }
-  return `Ошибка ${res.status}`;
+  return translateOutside('net.status', { status: res.status });
 }
 
 /**

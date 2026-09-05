@@ -399,7 +399,7 @@ export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
           placeholder={t('mc.bans.search')}
         />
         <Button size="sm" variant="outline" onClick={() => void load(search)}>
-          Найти
+          {t('common.find')}
         </Button>
       </div>
       <ErrorText>{error}</ErrorText>
@@ -476,7 +476,7 @@ export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
                     className="mt-2 w-full"
                     onClick={() => void pardon(b.id)}
                   >
-                    Снять бан
+                    {t('mc.bans.pardon')}
                   </Button>
                 )}
               </li>
@@ -526,7 +526,7 @@ export function MinecraftWhitelistTab({ serverId, moduleId }: ModuleTabProps) {
       <div className="mb-3 flex items-center justify-between">
         <span className="text-sm text-muted">{t('mc.whitelist.count', { count: players?.length ?? 0 })}</span>
         <Button size="sm" onClick={() => setAdding(true)}>
-          Добавить игрока
+          {t('mc.whitelist.add')}
         </Button>
       </div>
       <ErrorText>{error}</ErrorText>
@@ -728,7 +728,7 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
             ))}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={() => setActive(null)} disabled={busy}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button onClick={() => void run(active, args)} disabled={busy}>
                 {t('mc.quick.run')}

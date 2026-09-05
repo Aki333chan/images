@@ -222,3 +222,21 @@ export function useDates() {
 export function currentLocale(): Locale {
   return resolveLocale(stored(), fromBrowser());
 }
+
+/**
+ * Перевод вне React — для кода, до которого не дотянуть хук.
+ *
+ * Нужен ровно там же, где и currentLocale(): в клиенте API, который
+ * формулирует ошибки прокси (413, 502) до того, как ответ дойдёт до
+ * компонента. Возвращать оттуда ключ нельзя — сообщение попадает прямо в
+ * Error.message и рисуется как есть, без useApiText.
+ *
+ * Язык берётся из localStorage и браузера, а не из профиля: профиль живёт в
+ * контексте, а сюда приходят из обработчиков и промисов. Расхождение
+ * возможно ровно одно — человек выбрал язык в профиле и ни разу не
+ * переключал его в этом браузере, — и цена ему одна фраза об ошибке сети.
+ */
+export function translateOutside(key: string, values?: Values): string {
+  const locale = currentLocale();
+  return makeTranslator(locale, CATALOGS[locale], CATALOGS[DEFAULT_LOCALE])(key, values);
+}

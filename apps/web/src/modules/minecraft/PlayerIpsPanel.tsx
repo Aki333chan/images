@@ -56,9 +56,7 @@ export function PlayerIpsPanel({
       </div>
 
       {!open && (
-        <p className="text-xs text-muted">
-          Личные данные игрока. Открываются по запросу, обращение попадает в журнал действий.
-        </p>
+        <p className="text-xs text-muted">{t('mc.ips.personal')}</p>
       )}
 
       {open && error && <ErrorText>{error}</ErrorText>}

@@ -17,7 +17,7 @@ import { Badge, Button, Card, ErrorText, Label, Select, Spinner, Tabs, Textarea 
 import { Modal } from '../../components/Modal';
 import { BalancePanel } from './BalancePanel';
 import { InventoryGrid } from './InventoryGrid';
-import { parseGiveList } from './give-list';
+import { parseGiveList, type GiveListError } from './give-list';
 import { PermissionsPanel } from './PermissionsPanel';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 import { PlayerIpsPanel } from './PlayerIpsPanel';
@@ -410,12 +410,12 @@ function PlayerActions({
         <div className="flex flex-wrap gap-2">
           {hasPermission('minecraft.kick') && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => onPunish('kick')}>
-              Кик
+              {t('mc.pd.kick')}
             </Button>
           )}
           {hasPermission('minecraft.ban') && (
             <Button size="sm" variant="destructive" disabled={busy} onClick={() => onPunish('ban')}>
-              Бан
+              {t('mc.pd.ban')}
             </Button>
           )}
         </div>
@@ -481,7 +481,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [giveText, setGiveText] = useState('');
   const [giveResults, setGiveResults] = useState<MinecraftGiveResultDto[] | null>(null);
-  const [giveErrors, setGiveErrors] = useState<string[]>([]);
+  const [giveErrors, setGiveErrors] = useState<GiveListError[]>([]);
   const [confirmWipe, setConfirmWipe] = useState(false);
 
   const load = useCallback(async () => {
@@ -518,7 +518,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
             target="_blank"
             rel="noreferrer"
           >
-            Как установить companion-плагин
+            {t('mc.pd.companionDocs')}
           </a>
         )}
       </div>
@@ -590,11 +590,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
               value={giveText}
               onChange={(e) => setGiveText(e.target.value)}
             />
-            <p className="text-[11px] text-muted">
-              {t('mc.pd.giveHint')}
-              выдастся один. Существование предмета проверяет игровой сервер, поэтому работают и
-              предметы модов.
-            </p>
+            <p className="text-[11px] text-muted">{t('mc.pd.giveHint')}</p>
             <Button size="sm" disabled={busy || !giveText.trim()} onClick={() => void give()}>
               {t('mc.pd.giveBtn')}
             </Button>
@@ -602,8 +598,8 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
 
           {giveErrors.length > 0 && (
             <ul className="space-y-0.5 text-xs text-red-400">
-              {giveErrors.map((line) => (
-                <li key={line}>{line}</li>
+              {giveErrors.map((e, i) => (
+                <li key={i}>{t(e.key, e.values)}</li>
               ))}
             </ul>
           )}
@@ -651,9 +647,13 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
       {confirmWipe && (
         <Modal title={t('mc.pd.wipeTitle')} onClose={() => setConfirmWipe(false)}>
           <div className="space-y-3">
+            {/* Ник жирным внутри фразы: порядок слов у языков разный, поэтому
+                строка режется по самому плейсхолдеру, а не склеивается из
+                двух половин — иначе польский пришлось бы выворачивать. */}
             <p className="text-sm">
-              У игрока <b>{name}</b> будет стёрт весь инвентарь: хотбар, основные слоты, броня и
-              вторая рука.
+              {t('mc.pd.wipeBody')
+                .split('{name}')
+                .flatMap((part, i) => (i === 0 ? [part] : [<b key={i}>{name}</b>, part]))}
             </p>
             <p className="text-sm text-red-400">
               {t('mc.pd.wipeWarn')}
@@ -801,7 +801,7 @@ function PasswordReset({
           onClick={() => void issue()}
         />
         <span className="text-xs text-muted">
-          Игрок вводит токен в игре: <code>/reset &lt;токен&gt;</code>
+          {t('mc.pd.resetHow')} <code>/reset &lt;{t('mc.pd.resetTokenArg')}&gt;</code>
         </span>
       </div>
 

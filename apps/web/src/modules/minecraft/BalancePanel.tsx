@@ -165,9 +165,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
               {t('common.refresh')}
             </Button>
           </div>
-          <p className="text-xs text-muted">
-            Любое начисление и списание записывается в журнал аудита: кто, кому, сколько и за что.
-          </p>
+          <p className="text-xs text-muted">{t('mc.economy.audited')}</p>
         </div>
       )}
 

@@ -178,7 +178,7 @@ export function DatabasesTab({ serverId }: ServerTabProps) {
                   .catch((e: Error) => setError(e.message))
               }
             >
-              Сменить пароль
+              {t('databases.rotate')}
             </Button>
           </div>
         </Modal>

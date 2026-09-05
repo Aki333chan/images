@@ -71,7 +71,7 @@ export function PunishModal({
             попадают пальцем, и подтверждающая оказывается сверху. */}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose} disabled={busy}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button variant="destructive" onClick={() => void submit()} disabled={busy}>
             {t(kind === 'kick' ? 'mc.punish.kick' : 'mc.punish.ban')}
@@ -132,7 +132,7 @@ export function PromptModal({
             попадают пальцем, и подтверждающая оказывается сверху. */}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose} disabled={busy}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button onClick={() => void submit()} disabled={busy || !value.trim()}>
             {t('common.add')}

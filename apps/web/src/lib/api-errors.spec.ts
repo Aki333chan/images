@@ -12,9 +12,37 @@ import { formatTransferLimit } from '@aurum/shared';
 describe('сообщения об ошибках API', () => {
   const originalFetch = global.fetch;
 
+  /**
+   * Хранилище тут своё: тесты идут в node, где localStorage нет вовсе.
+   * Панель это переживает (stored() ловит исключение), но выбранный язык
+   * тогда неоткуда взять, а проверить нужно именно его.
+   */
+  let store: Record<string, string> = {};
+  beforeAll(() => {
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => {
+        store[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+    };
+  });
+
   afterEach(() => {
     global.fetch = originalFetch;
+    store = {};
   });
+
+  /**
+   * Язык панели для кода вне React берётся из localStorage и браузера.
+   * Проверяем на явно выбранном: иначе тест зависел бы от языка окружения,
+   * в котором его запустили.
+   */
+  const speak = (locale: string) => {
+    store['aurum.locale'] = locale;
+  };
 
   function respondWith(status: number, body: string, contentType: string) {
     global.fetch = jest.fn(async () =>
@@ -23,6 +51,7 @@ describe('сообщения об ошибках API', () => {
   }
 
   it('413 от прокси объясняет предел и куда смотреть', async () => {
+    speak('ru');
     respondWith(413, '<html><head><title>413 Request Entity Too Large</title></head></html>', 'text/html');
 
     await expect(api('/api/servers/x/files/upload')).rejects.toThrow(ApiError);
@@ -41,13 +70,27 @@ describe('сообщения об ошибках API', () => {
   });
 
   it('502 и 504 не превращаются в загадочный номер', async () => {
+    speak('ru');
     respondWith(502, '<html>502 Bad Gateway</html>', 'text/html');
     await expect(api('/api/servers')).rejects.toThrow(/не ответила вовремя/);
   });
 
   it('остальные коды остаются как есть — выдумывать нечего', async () => {
+    speak('ru');
     respondWith(418, 'нечто', 'text/plain');
     await expect(api('/api/servers')).rejects.toThrow('Ошибка 418');
+  });
+
+  it('говорит на языке панели, а не всегда по-русски', async () => {
+    // Ответил прокси, а не бэкенд: фразу сочиняет сам клиент API, и без
+    // перевода она осталась бы русской на польском интерфейсе.
+    speak('pl');
+    respondWith(502, '<html>502 Bad Gateway</html>', 'text/html');
+    await expect(api('/api/servers')).rejects.toThrow(/nie odpowiedział na czas/);
+
+    speak('en');
+    respondWith(418, 'something', 'text/plain');
+    await expect(api('/api/servers')).rejects.toThrow('Error 418');
   });
 
   it('код ответа доезжает до вызывающего вместе с текстом', async () => {

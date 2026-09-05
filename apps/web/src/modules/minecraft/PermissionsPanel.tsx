@@ -66,9 +66,7 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
       <div className="space-y-2">
         <p className="text-sm text-muted">{apiText(data.reason)}</p>
         {data.code === 'requires-luckperms' && (
-          <p className="text-xs text-muted">
-            Установите LuckPerms на игровой сервер и перезапустите его — вкладка появится сама.
-          </p>
+          <p className="text-xs text-muted">{t('mc.perm.installLuckPerms')}</p>
         )}
       </div>
     );
@@ -196,9 +194,7 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
       </div>
 
       {!canEdit && (
-        <p className="text-xs text-muted">
-          У вашей роли нет права менять доступы — список показан только для просмотра.
-        </p>
+        <p className="text-xs text-muted">{t('mc.perm.readOnly')}</p>
       )}
     </div>
   );
