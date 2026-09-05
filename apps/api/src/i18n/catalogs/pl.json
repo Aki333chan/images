@@ -234,5 +234,55 @@
   "ai.sum.clearInventory": "Wyczyść ekwipunek gracza {player}",
   "ai.sum.resetPassword": "Zresetuj hasło gracza {player}",
   "alert.cpu": "Obciążenie CPU",
-  "alert.memory": "Zużycie pamięci"
+  "alert.memory": "Zużycie pamięci",
+  "mail.auto": "Wiadomość wysłana automatycznie, nie trzeba na nią odpowiadać.",
+  "mail.hello": "Dzień dobry!",
+  "mail.welcome.titleNew": "Dostęp do {brand}",
+  "mail.welcome.titleReset": "Nowe hasło do {brand}",
+  "mail.welcome.subjectNew": "{brand}: dostęp do panelu",
+  "mail.welcome.subjectReset": "{brand}: nowe hasło",
+  "mail.welcome.introNew": "Utworzono dla ciebie konto w panelu administracyjnym. Zaloguj się hasłem tymczasowym poniżej — przy pierwszym logowaniu panel poprosi o ustawienie własnego hasła i wybranie nicku.",
+  "mail.welcome.introReset": "Twoje hasło w panelu administracyjnym zostało zresetowane. Zaloguj się hasłem tymczasowym poniżej — zaraz potem panel poprosi o ustawienie nowego stałego hasła.",
+  "mail.welcome.loginIs": "Login to ten adres: {login}",
+  "mail.welcome.passwordIs": "Hasło tymczasowe: {password}",
+  "mail.welcome.panelIs": "Adres panelu: {url}",
+  "mail.welcome.tempPassword": "Hasło tymczasowe",
+  "mail.welcome.enter": "Zaloguj się do panelu",
+  "mail.welcome.validity": {
+    "one": "Hasło jest ważne {count} godzinę i działa jeden raz. Jeśli nie zdążysz — poproś o nowe.",
+    "few": "Hasło jest ważne {count} godziny i działa jeden raz. Jeśli nie zdążysz — poproś o nowe.",
+    "many": "Hasło jest ważne {count} godzin i działa jeden raz. Jeśli nie zdążysz — poproś o nowe.",
+    "other": "Hasło jest ważne {count} godziny i działa jeden raz. Jeśli nie zdążysz — poproś o nowe."
+  },
+  "mail.welcome.unexpected": "Jeśli nie spodziewałeś się tej wiadomości, po prostu ją usuń: bez hasła nie da się zalogować.",
+  "mail.welcome.unexpectedShort": "Jeśli nie spodziewałeś się tej wiadomości, po prostu ją usuń.",
+  "mail.alert.title": "{brand}: przeciążenie serwera",
+  "mail.alert.subject": "{brand}: przeciążenie „{server}” — {label} {percent}%",
+  "mail.alert.summary": {
+    "one": "{label} na serwerze „{server}” utrzymuje się powyżej {threshold}% przydzielonego limitu już {count} minutę.",
+    "few": "{label} na serwerze „{server}” utrzymuje się powyżej {threshold}% przydzielonego limitu już {count} minuty.",
+    "many": "{label} na serwerze „{server}” utrzymuje się powyżej {threshold}% przydzielonego limitu już {count} minut.",
+    "other": "{label} na serwerze „{server}” utrzymuje się powyżej {threshold}% przydzielonego limitu już {count} minuty."
+  },
+  "mail.alert.ofLimit": "{percent}% limitu",
+  "mail.alert.open": "Otwórz serwer w panelu",
+  "mail.alert.serverLink": "Serwer w panelu: {url}",
+  "mail.alert.cooldown": {
+    "one": "Kolejna wiadomość o tym serwerze przyjdzie nie wcześniej niż za {count} minutę, nawet jeśli przeciążenie trwa. Próg i opóźnienie ustawia właściciel w ustawieniach panelu.",
+    "few": "Kolejna wiadomość o tym serwerze przyjdzie nie wcześniej niż za {count} minuty, nawet jeśli przeciążenie trwa. Próg i opóźnienie ustawia właściciel w ustawieniach panelu.",
+    "many": "Kolejna wiadomość o tym serwerze przyjdzie nie wcześniej niż za {count} minut, nawet jeśli przeciążenie trwa. Próg i opóźnienie ustawia właściciel w ustawieniach panelu.",
+    "other": "Kolejna wiadomość o tym serwerze przyjdzie nie wcześniej niż za {count} minuty, nawet jeśli przeciążenie trwa. Próg i opóźnienie ustawia właściciel w ustawieniach panelu."
+  },
+  "mail.alert.cooldownShort": {
+    "one": "Kolejna wiadomość — nie wcześniej niż za {count} minutę.",
+    "few": "Kolejna wiadomość — nie wcześniej niż za {count} minuty.",
+    "many": "Kolejna wiadomość — nie wcześniej niż za {count} minut.",
+    "other": "Kolejna wiadomość — nie wcześniej niż za {count} minuty."
+  },
+  "size.b": "B",
+  "size.kb": "KB",
+  "size.mb": "MB",
+  "size.gb": "GB",
+  "res.noLimitParens": "(bez limitu)",
+  "res.ofPercent": "{value} z {limit}%"
 }

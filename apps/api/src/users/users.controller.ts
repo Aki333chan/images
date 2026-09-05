@@ -104,8 +104,12 @@ export class UsersController {
 
   @Post('pending/:id/approve')
   @RequirePermission('users.manage')
-  approve(@Param('id', ParseUUIDPipe) id: string): Promise<CreateUserResultDto> {
-    return this.provisioning.approve(id);
+  approve(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CreateUserResultDto> {
+    // Актор нужен ради языка письма: у нового сотрудника своего ещё нет.
+    return this.provisioning.approve(id, actor.id);
   }
 
   @Post('pending/:id/reject')

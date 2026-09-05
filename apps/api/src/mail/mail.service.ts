@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createTransport, type Transporter } from 'nodemailer';
 import { SettingsService, type SmtpConfig } from '../settings/settings.service';
+import { I18nService } from '../i18n/i18n.service';
 import { welcomeMail, type WelcomeMailInput } from './mail-templates';
 
 export interface SendResult {
@@ -21,7 +22,10 @@ export interface SendResult {
 export class MailService {
   private readonly logger = new Logger(MailService.name);
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly i18n: I18nService,
+  ) {}
 
   async isConfigured(): Promise<boolean> {
     const config = await this.settings.getSmtpConfig();
@@ -70,7 +74,9 @@ export class MailService {
    * интерфейс об этом прямо говорит.
    */
   async sendWelcome(to: string, input: WelcomeMailInput): Promise<SendResult> {
-    return this.send(to, welcomeMail(input), 'письмо с доступом');
+    const t = (key: string, values?: Record<string, string | number>) =>
+      this.i18n.t(input.locale, key, values);
+    return this.send(to, welcomeMail(input, t), 'письмо с доступом');
   }
 
   /**

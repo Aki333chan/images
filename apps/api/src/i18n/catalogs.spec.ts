@@ -83,6 +83,10 @@ const KEY_PREFIXES = [
   'set',
   'role',
   'errors',
+  'mail',
+  'alert',
+  'size',
+  'res',
   // С точкой после err: «ai.chat» и «users.manage» — это права, а
   // «ai.model» и «users.requireGmApprovalForAdminCreatedAccounts» — поля
   // настроек. Ни то, ни другое в словарь не входит и входить не должно.

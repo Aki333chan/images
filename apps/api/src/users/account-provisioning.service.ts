@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
+import { DEFAULT_LOCALE, isLocale, type Locale } from '@aurum/shared';
 import type { CreateUserResultDto, PendingUserDto, Role, UserAdminDto } from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -110,7 +111,9 @@ export class AccountProvisioningService {
       include: { serverAccess: { select: { serverId: true } } },
     });
 
-    const delivery = await this.issueOneTimePassword(user.id, user.email);
+    const delivery = await this.issueOneTimePassword(user.id, user.email, {
+      fallbackLocale: await this.localeOf(actor.id),
+    });
     const fresh = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
       include: { serverAccess: { select: { serverId: true } } },
@@ -146,7 +149,7 @@ export class AccountProvisioningService {
   }
 
   /** Подтверждение заявки: аккаунт активируется, уходит письмо с паролем. */
-  async approve(userId: string): Promise<CreateUserResultDto> {
+  async approve(userId: string, actorId?: string): Promise<CreateUserResultDto> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('users.err.requestNotFound');
     if (user.status !== 'pending_approval') {
@@ -157,7 +160,9 @@ export class AccountProvisioningService {
       where: { id: userId },
       data: { status: 'active', isActive: true },
     });
-    const delivery = await this.issueOneTimePassword(user.id, user.email);
+    const delivery = await this.issueOneTimePassword(user.id, user.email, {
+      fallbackLocale: actorId ? await this.localeOf(actorId) : undefined,
+    });
 
     const fresh = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -195,21 +200,48 @@ export class AccountProvisioningService {
    * Используется и при активации, и когда прежний пароль протух.
    * В БД попадает только хэш — открытый текст живёт ровно до отправки письма.
    */
+  /**
+   * Язык сотрудника, если он его выбирал.
+   *
+   * undefined — «не выбирал»: тогда решать будет вызывающий. Явный выбор
+   * отличается от его отсутствия, и подменять одно другим здесь нельзя —
+   * иначе «как в браузере» превратилось бы в русский навсегда.
+   */
+  private async localeOf(userId: string): Promise<Locale | undefined> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { locale: true },
+    });
+    return isLocale(user?.locale) ? user.locale : undefined;
+  }
+
   async issueOneTimePassword(
     userId: string,
     email: string,
-    options?: { reset?: boolean },
+    options?: {
+      reset?: boolean;
+      /**
+       * Язык на случай, если получатель своего ещё не выбирал.
+       *
+       * У нового аккаунта выбора нет и быть не может — человек в панель ещё
+       * не заходил. Единственный осмысленный сигнал в этот момент — язык
+       * того, кто аккаунт заводит: коллеги обычно говорят на одном языке.
+       * Свой выбор получателя, когда он есть, всегда главнее.
+       */
+      fallbackLocale?: Locale;
+    },
   ): Promise<{ sent: boolean; error?: string }> {
     const password = generateOneTimePassword();
     const expiresAt = new Date(Date.now() + ONE_TIME_PASSWORD_HOURS * 3600 * 1000);
 
-    await this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         passwordHash: await argon2.hash(password),
         mustChangePassword: true,
         passwordExpiresAt: expiresAt,
       },
+      select: { locale: true },
     });
 
     // Все прежние сессии недействительны: пароль сменился.
@@ -218,7 +250,12 @@ export class AccountProvisioningService {
       data: { revokedAt: new Date() },
     });
 
+    const locale = isLocale(updated.locale)
+      ? updated.locale
+      : (options?.fallbackLocale ?? DEFAULT_LOCALE);
+
     const result = await this.mail.sendWelcome(email, {
+      locale,
       login: email,
       oneTimePassword: password,
       panelUrl: env.PANEL_URL,

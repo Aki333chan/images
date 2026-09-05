@@ -234,5 +234,47 @@
   "ai.sum.clearInventory": "Clear {player}'s inventory",
   "ai.sum.resetPassword": "Reset password for {player}",
   "alert.cpu": "CPU load",
-  "alert.memory": "Memory usage"
+  "alert.memory": "Memory usage",
+  "mail.auto": "This message was sent automatically — there is no need to reply.",
+  "mail.hello": "Hello!",
+  "mail.welcome.titleNew": "Access to {brand}",
+  "mail.welcome.titleReset": "New password for {brand}",
+  "mail.welcome.subjectNew": "{brand}: access to the panel",
+  "mail.welcome.subjectReset": "{brand}: new password",
+  "mail.welcome.introNew": "An account has been created for you in the administration panel. Sign in with the temporary password below — on the first sign-in the panel will ask you to set your own password and pick a nickname.",
+  "mail.welcome.introReset": "Your password in the administration panel has been reset. Sign in with the temporary password below — right after that the panel will ask you to set a new permanent password.",
+  "mail.welcome.loginIs": "Your login is this address: {login}",
+  "mail.welcome.passwordIs": "Temporary password: {password}",
+  "mail.welcome.panelIs": "Panel address: {url}",
+  "mail.welcome.tempPassword": "Temporary password",
+  "mail.welcome.enter": "Sign in to the panel",
+  "mail.welcome.validity": {
+    "one": "The password is valid for {count} hour and works once. If it expires, ask for a new one.",
+    "other": "The password is valid for {count} hours and works once. If it expires, ask for a new one."
+  },
+  "mail.welcome.unexpected": "If you were not expecting this message, just delete it: nobody can sign in without the password.",
+  "mail.welcome.unexpectedShort": "If you were not expecting this message, just delete it.",
+  "mail.alert.title": "{brand}: server overload",
+  "mail.alert.subject": "{brand}: “{server}” overloaded — {label} {percent}%",
+  "mail.alert.summary": {
+    "one": "{label} on server “{server}” has stayed above {threshold}% of the allocated limit for {count} minute.",
+    "other": "{label} on server “{server}” has stayed above {threshold}% of the allocated limit for {count} minutes."
+  },
+  "mail.alert.ofLimit": "{percent}% of the limit",
+  "mail.alert.open": "Open the server in the panel",
+  "mail.alert.serverLink": "Server in the panel: {url}",
+  "mail.alert.cooldown": {
+    "one": "The next message about this server will not arrive sooner than in {count} minute, even if the overload continues. The owner sets the threshold and the delay in the panel settings.",
+    "other": "The next message about this server will not arrive sooner than in {count} minutes, even if the overload continues. The owner sets the threshold and the delay in the panel settings."
+  },
+  "mail.alert.cooldownShort": {
+    "one": "Next message: no sooner than in {count} minute.",
+    "other": "Next message: no sooner than in {count} minutes."
+  },
+  "size.b": "B",
+  "size.kb": "KB",
+  "size.mb": "MB",
+  "size.gb": "GB",
+  "res.noLimitParens": "(no limit)",
+  "res.ofPercent": "{value} of {limit}%"
 }

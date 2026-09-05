@@ -7,8 +7,10 @@ import {
   cpuUsage,
   formatBytesUsage,
   formatCpu,
+  isLocale,
   memoryUsage,
   type AlertSettingsDto,
+  type Locale,
 } from '@aurum/shared';
 import { env } from '../../config/env';
 import { AuditService } from '../../audit/audit.service';
@@ -133,36 +135,52 @@ export class ServerMetricsProcessor extends WorkerHost {
     const sample = await this.prisma.serverMetricSample.findUnique({
       where: { serverId: server.id },
     });
-    const absolute =
-      reading.type === 'cpu'
-        ? formatCpu(cpuUsage(sample?.cpuAbsolute ?? 0, server.cpuLimitPercent))
-        : formatBytesUsage(
-            Number(sample?.memoryBytes ?? 0),
-            memoryUsage(0, (server.memoryLimitMb ?? 0) * 1024 * 1024).limitBytes,
-          );
 
-    // Пока — язык панели по умолчанию: письма по языку получателя это
-    // отдельный шаг, там же и остальной текст шаблона.
-    const label = this.i18n.t(DEFAULT_LOCALE, ALERT_TYPE_KEYS[reading.type]);
+    /**
+     * Письмо собирается на каждый язык, а не на каждого получателя: у
+     * десяти адресатов языков всё равно два-три, а сборка HTML не бесплатна.
+     * Единицы измерения («3.2 ГБ») тоже внутри — их выбирает тот же язык.
+     */
+    const build = (locale: Locale) => {
+      const t = (key: string, values?: Record<string, string | number>) =>
+        this.i18n.t(locale, key, values);
+      const absolute =
+        reading.type === 'cpu'
+          ? formatCpu(cpuUsage(sample?.cpuAbsolute ?? 0, server.cpuLimitPercent), t)
+          : formatBytesUsage(
+              Number(sample?.memoryBytes ?? 0),
+              memoryUsage(0, (server.memoryLimitMb ?? 0) * 1024 * 1024).limitBytes,
+              t,
+            );
+      return alertMail(
+        {
+          locale,
+          serverName: server.name,
+          type: reading.type,
+          percentOfLimit: percent,
+          thresholdPercent:
+            (reading.type === 'cpu'
+              ? settings.cpuThresholdPercent
+              : settings.memoryThresholdPercent) ?? 0,
+          heldMinutes,
+          absolute,
+          panelUrl: env.PANEL_URL,
+          serverId: server.id,
+          cooldownMinutes: settings.cooldownMinutes,
+        },
+        t,
+      );
+    };
 
-    const message = alertMail({
-      serverName: server.name,
-      type: reading.type,
-      label,
-      percentOfLimit: percent,
-      thresholdPercent:
-        (reading.type === 'cpu' ? settings.cpuThresholdPercent : settings.memoryThresholdPercent) ??
-        0,
-      heldMinutes,
-      absolute,
-      panelUrl: env.PANEL_URL,
-      serverId: server.id,
-      cooldownMinutes: settings.cooldownMinutes,
-    });
-
+    const byLocale = new Map<Locale, ReturnType<typeof build>>();
     let sent = 0;
-    for (const email of recipients) {
-      const result = await this.mail.sendTo(email, message, 'алерт о перегрузке');
+    for (const person of recipients) {
+      let message = byLocale.get(person.locale);
+      if (!message) {
+        message = build(person.locale);
+        byLocale.set(person.locale, message);
+      }
+      const result = await this.mail.sendTo(person.email, message, 'алерт о перегрузке');
       if (result.sent) sent++;
     }
 
@@ -181,8 +199,11 @@ export class ServerMetricsProcessor extends WorkerHost {
         sent,
       },
     });
+    // В журнале — всегда русский: его читают потом и совсем другие люди, и
+    // язык записи не должен зависеть от того, кому ушло письмо.
     this.logger.log(
-      `Алерт «${label}» по серверу «${server.name}»: ` +
+      `Алерт «${this.i18n.t(DEFAULT_LOCALE, ALERT_TYPE_KEYS[reading.type])}» ` +
+        `по серверу «${server.name}»: ` +
         `${Math.round(percent)}%, отправлено ${sent} из ${recipients.length}`,
     );
   }
@@ -198,16 +219,21 @@ export class ServerMetricsProcessor extends WorkerHost {
    * Заблокированные и неактивные сотрудники исключены: письмо человеку,
    * которого только что отключили от панели, — это утечка.
    */
-  private async recipients(serverId: string): Promise<string[]> {
+  private async recipients(serverId: string): Promise<{ email: string; locale: Locale }[]> {
     const users = await this.prisma.user.findMany({
       where: {
         isActive: true,
         status: 'active',
         OR: [{ role: 'OWNER' }, { serverAccess: { some: { serverId } } }],
       },
-      select: { email: true },
+      select: { email: true, locale: true },
       orderBy: { email: 'asc' },
     });
-    return users.map((u) => u.email);
+    // null в locale — «как в браузере». Браузера здесь нет: письмо читают в
+    // почте, и единственный доступный запасной вариант — язык панели.
+    return users.map((u) => ({
+      email: u.email,
+      locale: isLocale(u.locale) ? u.locale : DEFAULT_LOCALE,
+    }));
   }
 }
