@@ -5,6 +5,7 @@ import { Button, Card, ErrorText, Input, Label, Spinner } from '../components/ui
 import { Modal } from '../components/Modal';
 import { IconCopy, IconPlus, IconTrash } from '../components/icons';
 import type { ServerTabProps } from './registry';
+import { useT } from '../i18n';
 
 const base = (serverId: string) => `/api/servers/${serverId}/databases`;
 
@@ -16,6 +17,7 @@ const base = (serverId: string) => `/api/servers/${serverId}/databases`;
  * аудите видно отдельно, кто именно смотрел креденшлы.
  */
 export function DatabasesTab({ serverId }: ServerTabProps) {
+  const t = useT();
   const [list, setList] = useState<PteroDatabaseDto[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,16 +68,16 @@ export function DatabasesTab({ serverId }: ServerTabProps) {
     <div className="space-y-4">
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">Базы данных</h2>
+          <h2 className="font-semibold">{t('databases.title')}</h2>
           <Button size="sm" onClick={() => setCreating(true)} disabled={busy}>
-            <IconPlus size={14} /> Создать
+            <IconPlus size={14} /> {t('databases.create')}
           </Button>
         </div>
 
         <ErrorText>{error}</ErrorText>
 
         {list && list.length === 0 ? (
-          <p className="text-muted">Баз нет.</p>
+          <p className="text-muted">{t('databases.empty')}</p>
         ) : (
           <ul className="space-y-2">
             {list?.map((db) => (
@@ -84,19 +86,19 @@ export function DatabasesTab({ serverId }: ServerTabProps) {
                   <div className="min-w-0">
                     <div className="truncate font-medium">{db.name}</div>
                     <div className="break-all font-mono text-[11px] text-muted">
-                      {db.host.address}:{db.host.port} · {db.username} · с адресов {db.connectionsFrom}
+                      {db.host.address}:{db.host.port} · {db.username} · {t('databases.from', { hosts: db.connectionsFrom })}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => void showCredentials(db)}>
-                      Креденшлы
+                      {t('databases.credentials')}
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
                       disabled={busy}
                       onClick={() => {
-                        if (!confirm(`Удалить базу ${db.name} вместе со всеми данными?`)) return;
+                        if (!confirm(t('databases.confirmDelete', { name: db.name }))) return;
                         void run(() => api(`${base(serverId)}/${db.id}`, { method: 'DELETE' }));
                       }}
                     >
@@ -111,26 +113,25 @@ export function DatabasesTab({ serverId }: ServerTabProps) {
       </Card>
 
       {creating && (
-        <Modal title="Новая база данных" onClose={() => setCreating(false)}>
+        <Modal title={t('databases.new')} onClose={() => setCreating(false)}>
           <div className="space-y-3">
             <div>
-              <Label>Имя базы</Label>
+              <Label>{t('databases.name')}</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="survival" autoFocus />
               <p className="mt-1 text-[11px] text-muted">
-                Латинские буквы, цифры, дефис и подчёркивание. Pterodactyl добавит к имени
-                свой префикс.
+                {t('databases.name.hint')}
               </p>
             </div>
             <div>
-              <Label>С каких адресов разрешено подключаться</Label>
+              <Label>{t('databases.allowed')}</Label>
               <Input value={remote} onChange={(e) => setRemote(e.target.value)} placeholder="%" />
               <p className="mt-1 text-[11px] text-muted">
-                «%» — откуда угодно. Если база нужна только самому серверу, укажите его адрес.
+                {t('databases.allowed.hint')}
               </p>
             </div>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={() => setCreating(false)} disabled={busy}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button
                 disabled={busy || name.trim().length < 3}
@@ -155,7 +156,7 @@ export function DatabasesTab({ serverId }: ServerTabProps) {
                   }
                 }}
               >
-                Создать
+                {t('databases.create')}
               </Button>
             </div>
           </div>
@@ -163,12 +164,12 @@ export function DatabasesTab({ serverId }: ServerTabProps) {
       )}
 
       {credentials && (
-        <Modal title={`Креденшлы ${credentials.name}`} onClose={() => setCredentials(null)}>
+        <Modal title={t('databases.credentialsOf', { name: credentials.name })} onClose={() => setCredentials(null)}>
           <div className="space-y-3">
-            <Field label="Хост" value={`${credentials.host.address}:${credentials.host.port}`} />
-            <Field label="База" value={credentials.name} />
-            <Field label="Пользователь" value={credentials.username} />
-            <Field label="Пароль" value={credentials.password ?? '—'} />
+            <Field label={t('databases.host')} value={`${credentials.host.address}:${credentials.host.port}`} />
+            <Field label={t('databases.db')} value={credentials.name} />
+            <Field label={t('databases.user')} value={credentials.username} />
+            <Field label={t('databases.password')} value={credentials.password ?? '—'} />
             <Button
               variant="outline"
               onClick={() =>
@@ -188,6 +189,7 @@ export function DatabasesTab({ serverId }: ServerTabProps) {
 
 /** Поле креденшлов с копированием: перепечатывать пароль руками — так себе занятие. */
 function Field({ label, value }: { label: string; value: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <div>
@@ -199,7 +201,7 @@ function Field({ label, value }: { label: string; value: string }) {
         <Button
           size="sm"
           variant="ghost"
-          title="Скопировать"
+          title={t('common.copy')}
           onClick={() => {
             void navigator.clipboard.writeText(value);
             setCopied(true);

@@ -83,30 +83,58 @@ export function resourceTone(percentOfLimit: number | null): ResourceTone {
 }
 
 /**
+ * Переводчик, который эти функции принимают аргументом.
+ *
+ * Они живут в shared и зовутся из двух мест с разными языками: из панели —
+ * на языке того, кто смотрит, и из рассыльщика писем — на языке того, кому
+ * письмо. Хука здесь взять неоткуда, поэтому переводчик приходит снаружи.
+ *
+ * По умолчанию — русский. Так вызовы, до которых перевод ещё не дошёл,
+ * продолжают работать ровно как раньше, а не начинают показывать ключи.
+ */
+type Translate = (key: string, values?: Record<string, string>) => string;
+
+const RU_STRINGS: Record<string, string> = {
+  'size.b': 'Б',
+  'size.kb': 'КБ',
+  'size.mb': 'МБ',
+  'size.gb': 'ГБ',
+  'res.noLimitParens': '(без лимита)',
+  'res.ofPercent': '{value} из {limit}%',
+};
+
+const RU: Translate = (key, values) => {
+  const text = RU_STRINGS[key] ?? key;
+  return values ? text.replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole) : text;
+};
+
+/**
  * Подпись загрузки CPU для человека.
  *
  * Рядом с индикатором показываем и абсолютные цифры: «107% из 200%» сразу
  * отвечает на вопрос «а сколько это в ядрах», которого нормализованная доля
  * не отвечает вовсе.
  */
-export function formatCpu(usage: CpuUsage): string {
+export function formatCpu(usage: CpuUsage, t: Translate = RU): string {
   const absolute = `${round1(usage.absolutePercent)}%`;
-  return usage.unlimited ? `${absolute} (без лимита)` : `${absolute} из ${usage.limitPercent}%`;
+  return usage.unlimited
+    ? `${absolute} ${t('res.noLimitParens')}`
+    : t('res.ofPercent', { value: absolute, limit: String(usage.limitPercent) });
 }
 
 /** «3.2 ГБ / 4 ГБ». Без лимита — только использованное. */
-export function formatBytesUsage(usedBytes: number, limitBytes: number): string {
+export function formatBytesUsage(usedBytes: number, limitBytes: number, t: Translate = RU): string {
   return limitBytes > 0
-    ? `${formatBytes(usedBytes)} / ${formatBytes(limitBytes)}`
-    : formatBytes(usedBytes);
+    ? `${formatBytes(usedBytes, t)} / ${formatBytes(limitBytes, t)}`
+    : formatBytes(usedBytes, t);
 }
 
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number, t: Translate = RU): string {
   const gb = 1024 ** 3;
   const mb = 1024 ** 2;
-  if (bytes >= gb) return `${round1(bytes / gb)} ГБ`;
-  if (bytes >= mb) return `${Math.round(bytes / mb)} МБ`;
-  return `${Math.round(bytes / 1024)} КБ`;
+  if (bytes >= gb) return `${round1(bytes / gb)} ${t('size.gb')}`;
+  if (bytes >= mb) return `${Math.round(bytes / mb)} ${t('size.mb')}`;
+  return `${Math.round(bytes / 1024)} ${t('size.kb')}`;
 }
 
 function round1(value: number): number {

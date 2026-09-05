@@ -12,11 +12,13 @@ import { ServerAddress } from '../components/ServerAddress';
 import { refreshServerRuntime, useServerRuntime } from '../lib/server-runtime';
 import { SERVER_TABS } from '../server-tabs/registry';
 import { listCapabilities } from '@aurum/shared';
+import { useT } from '../i18n';
 
 /** Не пересекается с id capability: те приходят из манифеста модуля. */
 const SETTINGS_TAB_ID = '__settings';
 
 export function ServerDetailPage() {
+  const t = useT();
   const { serverId = '' } = useParams();
   const navigate = useNavigate();
   const { me, modules, hasPermission, canSeeServer } = useAuth();
@@ -93,13 +95,15 @@ export function ServerDetailPage() {
 
     const coreTabs = SERVER_TABS.filter((tab) => hasPermission(tab.permission)).map((tab) => ({
       id: `core:${tab.id}`,
-      label: tab.label,
+      // Вкладки ядра переведены; у модульных подписи пока приходят из их
+      // собственных реестров как есть — они в следующем заходе.
+      label: t(tab.labelKey),
       component: tab.component,
       state: true as const,
     }));
 
     return [...moduleTabs, ...coreTabs];
-  }, [manifest, hasPermission]);
+  }, [manifest, hasPermission, t]);
 
   /** Виджет модуля на дашборде сервера (напр. быстрые команды Minecraft). */
   const dashboard = useMemo(() => {
@@ -153,7 +157,7 @@ export function ServerDetailPage() {
         className="-ml-1.5 -mt-1 flex min-h-11 items-center gap-1.5 rounded-sm px-1.5 text-[11.5px] font-medium text-muted transition-colors hover:text-primary-200 sm:min-h-9"
       >
         <IconBack size={14} />
-        Все серверы
+        {t('server.allServers')}
       </button>
 
       {/* Название и кнопки питания в столбик на телефоне: три кнопки плюс
@@ -185,15 +189,15 @@ export function ServerDetailPage() {
                 onClick={() => void power('start')}
               >
                 <IconPlay size={13} />
-                Старт
+                {t('server.start')}
               </Button>
               <Button size="sm" variant="outline" onClick={() => void power('restart')}>
                 <IconRestart size={13} />
-                Рестарт
+                {t('server.restart')}
               </Button>
               <Button size="sm" variant="destructive" onClick={() => void power('stop')}>
                 <IconStop size={13} />
-                Стоп
+                {t('server.stop')}
               </Button>
             </>
           )}
@@ -204,13 +208,13 @@ export function ServerDetailPage() {
 
       {hasPermission('servers.manage') && (
         <Card className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-sm text-muted">Игровой модуль:</span>
+          <span className="text-sm text-muted">{t('server.module')}</span>
           <Select
             className="min-w-0 flex-1 sm:flex-none"
             value={server.moduleId ?? ''}
             onChange={(v) => void setModule(v || null)}
             options={[
-              { value: '', label: '— не назначен —' },
+              { value: '', label: t('server.module.none') },
               ...(modules?.enabled.map((m) => ({ value: m.id, label: m.displayName })) ?? []),
             ]}
           />
@@ -229,11 +233,11 @@ export function ServerDetailPage() {
 
       {!manifest ? (
         <p className="text-muted">
-          Модуль не назначен или выключен — вкладки недоступны.
-          {hasPermission('servers.manage') && ' Назначьте модуль выше.'}
+          {t('server.module.missing')}
+          {hasPermission('servers.manage') && t('server.module.assignHint')}
         </p>
       ) : tabs.length === 0 ? (
-        <p className="text-muted">Нет вкладок, доступных вашей роли.</p>
+        <p className="text-muted">{t('server.noTabs')}</p>
       ) : (
         <>
           <Tabs
@@ -299,12 +303,13 @@ export function ServerDetailPage() {
  * ровно тогда, когда сервер только что остановили.
  */
 function PowerBadge({ state }: { state: string | null }) {
+  const t = useT();
   if (state === null) return <Badge variant="outline">…</Badge>;
   const label: Record<string, string> = {
-    running: 'работает',
-    offline: 'выключен',
-    starting: 'запускается',
-    stopping: 'останавливается',
+    running: t('server.state.running'),
+    offline: t('server.state.offline'),
+    starting: t('server.state.starting'),
+    stopping: t('server.state.stopping'),
   };
   return (
     <Badge

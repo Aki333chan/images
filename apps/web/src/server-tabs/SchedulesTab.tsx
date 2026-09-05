@@ -6,15 +6,22 @@ import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '.
 import { Modal } from '../components/Modal';
 import { IconPlay, IconPlus, IconTrash } from '../components/icons';
 import type { ServerTabProps } from './registry';
+import { useI18n, useT } from '../i18n';
+
+/** Подпись расписания словами; пусто — интерфейс покажет само cron-выражение. */
+function cronText(cron: PteroScheduleDto['cron'], t: (k: string, v?: Record<string, string>) => string): string {
+  const described = describeCron(cron);
+  return described ? `${t(described.key, described.values)} · ` : '';
+}
 
 const base = (serverId: string) => `/api/servers/${serverId}/schedules`;
 
 const EMPTY_CRON = { minute: '0', hour: '4', dayOfMonth: '*', month: '*', dayOfWeek: '*' };
 
 const ACTION_LABELS: Record<ScheduleAction, string> = {
-  command: 'Команда серверу',
-  power: 'Питание',
-  backup: 'Бэкап',
+  command: 'schedules.action.command',
+  power: 'schedules.action.power',
+  backup: 'schedules.action.backup',
 };
 
 /**
@@ -24,6 +31,7 @@ const ACTION_LABELS: Record<ScheduleAction, string> = {
  * включает и запускает вручную.
  */
 export function SchedulesTab({ serverId }: ServerTabProps) {
+  const { t, formatDateTime } = useI18n();
   const [list, setList] = useState<PteroScheduleDto[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -60,16 +68,16 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
     <div className="space-y-4">
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">Расписания</h2>
+          <h2 className="font-semibold">{t('schedules.title')}</h2>
           <Button size="sm" onClick={() => setCreating(true)} disabled={busy}>
-            <IconPlus size={14} /> Создать
+            <IconPlus size={14} /> {t('schedules.create')}
           </Button>
         </div>
 
         <ErrorText>{error}</ErrorText>
 
         {list && list.length === 0 ? (
-          <p className="text-muted">Расписаний нет.</p>
+          <p className="text-muted">{t('schedules.empty')}</p>
         ) : (
           <ul className="space-y-3">
             {list?.map((s) => (
@@ -79,17 +87,17 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-medium">{s.name}</span>
                       {s.isActive ? (
-                        <Badge variant="success">включено</Badge>
+                        <Badge variant="success">{t('schedules.enabled')}</Badge>
                       ) : (
-                        <Badge variant="outline">выключено</Badge>
+                        <Badge variant="outline">{t('schedules.disabled')}</Badge>
                       )}
-                      {s.isProcessing && <Badge variant="outline">выполняется</Badge>}
-                      {s.onlyWhenOnline && <Badge variant="outline">только на запущенном</Badge>}
+                      {s.isProcessing && <Badge variant="outline">{t('schedules.running')}</Badge>}
+                      {s.onlyWhenOnline && <Badge variant="outline">{t('schedules.onlyOnline')}</Badge>}
                     </div>
                     <div className="mt-1 text-[11px] text-muted">
                       {/* Человеческую подпись показываем, когда можем; cron —
                           всегда, потому что именно он и выполняется. */}
-                      {describeCron(s.cron) && `${describeCron(s.cron)} · `}
+                      {cronText(s.cron, t)}
                       <span className="font-mono">
                         {s.cron.minute} {s.cron.hour} {s.cron.dayOfMonth} {s.cron.month}{' '}
                         {s.cron.dayOfWeek}
@@ -97,9 +105,9 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
                     </div>
                     <div className="text-[11px] text-muted">
                       {s.nextRunAt
-                        ? `Следующий запуск: ${new Date(s.nextRunAt).toLocaleString('ru-RU')}`
-                        : 'Следующий запуск не запланирован'}
-                      {s.lastRunAt && ` · последний: ${new Date(s.lastRunAt).toLocaleString('ru-RU')}`}
+                        ? t('schedules.nextRun', { date: formatDateTime(s.nextRunAt) })
+                        : t('schedules.noNextRun')}
+                      {s.lastRunAt && t('schedules.lastRun', { date: formatDateTime(s.lastRunAt) })}
                     </div>
                   </div>
 
@@ -117,15 +125,15 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
                         )
                       }
                     >
-                      {s.isActive ? 'Выключить' : 'Включить'}
+                      {t(s.isActive ? 'schedules.disable' : 'schedules.enable')}
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      title="Запустить прямо сейчас"
+                      title={t('schedules.runNow')}
                       disabled={busy}
                       onClick={() => {
-                        if (!confirm(`Выполнить «${s.name}» сейчас?`)) return;
+                        if (!confirm(t('schedules.confirmRun', { name: s.name }))) return;
                         void run(() =>
                           api(`${base(serverId)}/${s.id}/execute`, { method: 'POST' }),
                         );
@@ -138,7 +146,7 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
                       variant="destructive"
                       disabled={busy}
                       onClick={() => {
-                        if (!confirm(`Удалить расписание «${s.name}»?`)) return;
+                        if (!confirm(t('schedules.confirmDelete', { name: s.name }))) return;
                         void run(() => api(`${base(serverId)}/${s.id}`, { method: 'DELETE' }));
                       }}
                     >
@@ -152,16 +160,16 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
                 <ol className="mt-2 space-y-1 border-t border-border pt-2">
                   {s.tasks.length === 0 ? (
                     <li className="text-[11px] text-muted">
-                      Шагов нет — расписание ничего не делает.
+                      {t('schedules.noSteps')}
                     </li>
                   ) : (
-                    s.tasks.map((t) => (
-                      <li key={t.id} className="flex items-center gap-2 text-xs">
-                        <span className="w-5 shrink-0 text-muted">{t.sequenceId}.</span>
-                        <span className="shrink-0 text-muted">{ACTION_LABELS[t.action]}</span>
-                        {t.payload && <code className="min-w-0 truncate font-mono">{t.payload}</code>}
-                        {t.timeOffset > 0 && (
-                          <span className="shrink-0 text-muted">через {t.timeOffset} с</span>
+                    s.tasks.map((step) => (
+                      <li key={step.id} className="flex items-center gap-2 text-xs">
+                        <span className="w-5 shrink-0 text-muted">{step.sequenceId}.</span>
+                        <span className="shrink-0 text-muted">{t(ACTION_LABELS[step.action])}</span>
+                        {step.payload && <code className="min-w-0 truncate font-mono">{step.payload}</code>}
+                        {step.timeOffset > 0 && (
+                          <span className="shrink-0 text-muted">{t('schedules.after', { seconds: step.timeOffset })}</span>
                         )}
                         <Button
                           size="sm"
@@ -170,7 +178,7 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
                           disabled={busy}
                           onClick={() =>
                             void run(() =>
-                              api(`${base(serverId)}/${s.id}/tasks/${t.id}`, { method: 'DELETE' }),
+                              api(`${base(serverId)}/${s.id}/tasks/${step.id}`, { method: 'DELETE' }),
                             )
                           }
                         >
@@ -188,7 +196,7 @@ export function SchedulesTab({ serverId }: ServerTabProps) {
                   disabled={busy}
                   onClick={() => setAddingTaskTo(s)}
                 >
-                  <IconPlus size={12} /> Добавить шаг
+                  <IconPlus size={12} /> {t('schedules.addStep')}
                 </Button>
               </li>
             ))}
@@ -232,7 +240,8 @@ function ScheduleModal({
   onClose: () => void;
   onSubmit: (body: unknown) => void | Promise<void>;
 }) {
-  const [name, setName] = useState('Ночной бэкап');
+  const t = useT();
+  const [name, setName] = useState(t('schedules.defaultName'));
   const [preset, setPreset] = useState(SCHEDULE_PRESETS[0]!.id);
   const [custom, setCustom] = useState(false);
   const [cron, setCron] = useState(EMPTY_CRON);
@@ -243,15 +252,15 @@ function ScheduleModal({
     : (SCHEDULE_PRESETS.find((p) => p.id === preset)?.cron ?? EMPTY_CRON);
 
   return (
-    <Modal title="Новое расписание" onClose={onClose}>
+    <Modal title={t('schedules.new')} onClose={onClose}>
       <div className="space-y-3">
         <div>
-          <Label>Название</Label>
+          <Label>{t('schedules.name')}</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </div>
 
         <div>
-          <Label>Когда выполнять</Label>
+          <Label>{t('schedules.when')}</Label>
           {/* Пресеты сверху, cron — под галочкой: cron знают не все, а
               «каждый день в 4 утра» понимают все. */}
           <Select
@@ -264,8 +273,8 @@ function ScheduleModal({
               }
             }}
             options={[
-              ...SCHEDULE_PRESETS.map((p) => ({ value: p.id, label: p.label })),
-              { value: '__custom', label: 'Своё cron-выражение' },
+              ...SCHEDULE_PRESETS.map((p) => ({ value: p.id, label: t(p.labelKey) })),
+              { value: '__custom', label: t('schedules.customCron') },
             ]}
           />
         </div>
@@ -274,11 +283,11 @@ function ScheduleModal({
           <div className="grid grid-cols-5 gap-2">
             {(
               [
-                ['minute', 'мин'],
-                ['hour', 'час'],
-                ['dayOfMonth', 'день'],
-                ['month', 'мес'],
-                ['dayOfWeek', 'д/н'],
+                ['minute', t('schedules.cron.minute')],
+                ['hour', t('schedules.cron.hour')],
+                ['dayOfMonth', t('schedules.cron.day')],
+                ['month', t('schedules.cron.month')],
+                ['dayOfWeek', t('schedules.cron.weekday')],
               ] as const
             ).map(([key, label]) => (
               <div key={key}>
@@ -300,12 +309,12 @@ function ScheduleModal({
             checked={onlyWhenOnline}
             onChange={(e) => setOnlyWhenOnline(e.target.checked)}
           />
-          Пропускать, если сервер выключен
+          {t('schedules.skipOffline')}
         </label>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button
             disabled={name.trim() === ''}
@@ -313,7 +322,7 @@ function ScheduleModal({
               void onSubmit({ name: name.trim(), isActive: true, onlyWhenOnline, cron: chosen })
             }
           >
-            Создать
+            {t('schedules.create')}
           </Button>
         </div>
       </div>
@@ -330,16 +339,17 @@ function TaskModal({
   onClose: () => void;
   onSubmit: (body: unknown) => void | Promise<void>;
 }) {
+  const t = useT();
   const [action, setAction] = useState<ScheduleAction>('backup');
   const [payload, setPayload] = useState('');
   const [timeOffset, setTimeOffset] = useState('0');
   const [continueOnFailure, setContinueOnFailure] = useState(false);
 
   return (
-    <Modal title={`Шаг для «${scheduleName}»`} onClose={onClose}>
+    <Modal title={t('schedules.stepFor', { name: scheduleName })} onClose={onClose}>
       <div className="space-y-3">
         <div>
-          <Label>Что делать</Label>
+          <Label>{t('schedules.what')}</Label>
           <Select
             value={action}
             onChange={(v) => {
@@ -349,23 +359,23 @@ function TaskModal({
               setPayload(v === 'power' ? 'restart' : '');
             }}
             options={[
-              { value: 'backup', label: 'Сделать бэкап' },
-              { value: 'command', label: 'Выполнить команду' },
-              { value: 'power', label: 'Управление питанием' },
+              { value: 'backup', label: t('schedules.do.backup') },
+              { value: 'command', label: t('schedules.do.command') },
+              { value: 'power', label: t('schedules.do.power') },
             ]}
           />
         </div>
 
         {action === 'command' && (
           <div>
-            <Label>Команда</Label>
+            <Label>{t('schedules.command')}</Label>
             <Input value={payload} onChange={(e) => setPayload(e.target.value)} placeholder="save-all" />
           </div>
         )}
 
         {action === 'power' && (
           <div>
-            <Label>Сигнал</Label>
+            <Label>{t('schedules.signal')}</Label>
             <Select
               value={payload || 'restart'}
               onChange={setPayload}
@@ -376,17 +386,16 @@ function TaskModal({
 
         {action === 'backup' && (
           <div>
-            <Label>Что не класть в бэкап (необязательно)</Label>
+            <Label>{t('schedules.ignore')}</Label>
             <Input value={payload} onChange={(e) => setPayload(e.target.value)} placeholder="*.log" />
           </div>
         )}
 
         <div>
-          <Label>Пауза перед шагом, секунд</Label>
+          <Label>{t('schedules.delay')}</Label>
           <Input value={timeOffset} onChange={(e) => setTimeOffset(e.target.value)} inputMode="numeric" />
           <p className="mt-1 text-[11px] text-muted">
-            Нужна, когда предыдущий шаг что-то запускает: например, дать серверу
-            выключиться перед бэкапом.
+            {t('schedules.delayHint')}
           </p>
         </div>
 
@@ -397,12 +406,12 @@ function TaskModal({
             checked={continueOnFailure}
             onChange={(e) => setContinueOnFailure(e.target.checked)}
           />
-          Продолжать, даже если шаг не удался
+          {t('schedules.continueOnFail')}
         </label>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button
             onClick={() =>
@@ -414,7 +423,7 @@ function TaskModal({
               })
             }
           >
-            Добавить
+            {t('schedules.add')}
           </Button>
         </div>
       </div>

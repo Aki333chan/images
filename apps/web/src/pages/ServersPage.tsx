@@ -235,14 +235,14 @@ function ServerCard({
                   ? `${cpu.absolutePercent.toFixed(0)}%`
                   : `${Math.round(cpu.percentOfLimit ?? 0)}%`
             }
-            hint={online ? formatCpu(cpu) : t('servers.offline')}
+            hint={online ? formatCpu(cpu, t) : t('servers.offline')}
             tone={online ? resourceTone(cpu.percentOfLimit) : 'unknown'}
           />
           <CardMetric
             label={t('servers.memory')}
             value={
               online && metrics.memoryBytes !== null
-                ? formatBytesUsage(metrics.memoryBytes, metrics.memoryLimitBytes)
+                ? formatBytesUsage(metrics.memoryBytes, metrics.memoryLimitBytes, t)
                 : '—'
             }
           />

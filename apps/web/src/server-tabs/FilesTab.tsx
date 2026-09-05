@@ -36,6 +36,7 @@ const CodeEditor = lazy(() =>
   import('./CodeEditor').then((m) => ({ default: m.CodeEditor })),
 );
 import type { ServerTabProps } from './registry';
+import { useT } from '../i18n';
 
 const base = (serverId: string) => `/api/servers/${serverId}/files`;
 
@@ -50,6 +51,7 @@ const base = (serverId: string) => `/api/servers/${serverId}/files`;
  * тот не увидит кнопок изменения, а не наткнётся на отказ после нажатия.
  */
 export function FilesTab({ serverId }: ServerTabProps) {
+  const t = useT();
   const { hasPermission } = useAuth();
   const canManage = hasPermission('files.manage');
   const canDelete = hasPermission('files.delete');
@@ -173,7 +175,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
     if (!isEditableFile(file)) {
       // Не открываем бинарник в текстовом редакторе: сохранить его обратно
       // значило бы испортить файл, а прочитать всё равно не выйдет.
-      setError('Такой файл в редакторе не открыть — скачайте его');
+      setError(t('files.notEditable'));
       return;
     }
     setBusy(true);
@@ -234,8 +236,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
     const tooBig = Array.from(files).find((file) => file.size > MAX_TRANSFER_BYTES);
     if (tooBig) {
       setError(
-        `«${tooBig.name}» больше ${formatTransferLimit()} — столько панель не пропускает. ` +
-          'Такие файлы загружают по SFTP.',
+        t('files.tooBig', { name: tooBig.name, limit: formatTransferLimit() }),
       );
       if (uploadInput.current) uploadInput.current.value = '';
       return;
@@ -283,8 +284,8 @@ export function FilesTab({ serverId }: ServerTabProps) {
             type="button"
             onClick={() => step(goBack)}
             disabled={!canGoBack(history)}
-            title="Назад (или кнопка «назад» на мыши)"
-            aria-label="Назад"
+            title={t('files.backTitle')}
+            aria-label={t('files.back')}
             className="rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-surface hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
           >
             ←
@@ -293,8 +294,8 @@ export function FilesTab({ serverId }: ServerTabProps) {
             type="button"
             onClick={() => step(goForward)}
             disabled={!canGoForward(history)}
-            title="Вперёд (или кнопка «вперёд» на мыши)"
-            aria-label="Вперёд"
+            title={t('files.forwardTitle')}
+            aria-label={t('files.forward')}
             className="mr-1 rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-surface hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
           >
             →
@@ -320,20 +321,21 @@ export function FilesTab({ serverId }: ServerTabProps) {
           <div className="flex items-center gap-2 rounded border border-border bg-surface/60 px-3 py-2 text-xs">
             <Spinner />
             <span className="min-w-0 flex-1 truncate">
-              Загружаю «{uploading.name}»
-              {uploading.total > 1 && ` — ${uploading.done + 1} из ${uploading.total}`}
+              {t('files.uploading', { name: uploading.name })}
+              {uploading.total > 1 &&
+                t('files.uploadingOf', { done: uploading.done + 1, total: uploading.total })}
             </span>
           </div>
         )}
 
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => void load(path)} disabled={busy}>
-            Обновить
+            {t('files.refresh')}
           </Button>
           {canManage && (
             <>
               <Button size="sm" variant="outline" onClick={() => setCreating(true)} disabled={busy}>
-                <IconPlus size={14} /> Папка
+                <IconPlus size={14} /> {t('files.newFolder')}
               </Button>
               <Button
                 size="sm"
@@ -341,7 +343,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
                 onClick={() => uploadInput.current?.click()}
                 disabled={busy}
               >
-                <IconUpload size={14} /> {uploading ? 'Загружаю…' : 'Загрузить'}
+                <IconUpload size={14} /> {t(uploading ? 'files.uploadBusy' : 'files.upload')}
               </Button>
               <input
                 ref={uploadInput}
@@ -366,7 +368,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
                 )
               }
             >
-              <IconArchive size={14} /> В архив ({names.length})
+              <IconArchive size={14} /> {t('files.archive', { count: names.length })}
             </Button>
           )}
           {canDelete && names.length > 0 && (
@@ -375,7 +377,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
               variant="destructive"
               disabled={busy}
               onClick={() => {
-                if (!confirm(`Удалить безвозвратно: ${names.join(', ')}?`)) return;
+                if (!confirm(t('files.confirmDelete', { names: names.join(', ') }))) return;
                 void run(() =>
                   api(`${base(serverId)}/delete`, {
                     method: 'POST',
@@ -384,7 +386,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
                 );
               }}
             >
-              <IconTrash size={14} /> Удалить ({names.length})
+              <IconTrash size={14} /> {t('files.delete', { count: names.length })}
             </Button>
           )}
         </div>
@@ -392,7 +394,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
         <ErrorText>{error}</ErrorText>
 
         {dir && dir.entries.length === 0 ? (
-          <p className="text-muted">Каталог пуст.</p>
+          <p className="text-muted">{t('files.empty')}</p>
         ) : (
           <ul className="divide-y divide-border">
             {dir?.entries.map((entry) => (
@@ -419,22 +421,22 @@ export function FilesTab({ serverId }: ServerTabProps) {
                     {entry.isFile ? <IconFile size={16} /> : <IconFolder size={16} />}
                   </span>
                   <span className="truncate text-sm">{entry.name}</span>
-                  {entry.isSymlink && <Badge variant="outline">ссылка</Badge>}
+                  {entry.isSymlink && <Badge variant="outline">{t('files.symlink')}</Badge>}
                 </button>
                 <span className="shrink-0 text-[11px] tabular-nums text-muted">
-                  {entry.isFile ? formatSize(entry.size) : ''}
+                  {entry.isFile ? formatSize(entry.size, t) : ''}
                 </span>
                 <span className="hidden shrink-0 text-[11px] text-muted sm:inline">
                   {new Date(entry.modifiedAt).toLocaleString('ru-RU')}
                 </span>
                 <div className="flex shrink-0 gap-1">
                   {entry.isFile && (
-                    <Button size="sm" variant="ghost" onClick={() => void download(entry)} title="Скачать">
+                    <Button size="sm" variant="ghost" onClick={() => void download(entry)} title={t('files.download')}>
                       <IconDownload size={14} />
                     </Button>
                   )}
                   {canManage && (
-                    <Button size="sm" variant="ghost" onClick={() => setRenaming(entry)} title="Переименовать или перенести">
+                    <Button size="sm" variant="ghost" onClick={() => setRenaming(entry)} title={t('files.rename')}>
                       ⋯
                     </Button>
                   )}
@@ -442,7 +444,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      title="Распаковать"
+                      title={t('files.unpack')}
                       onClick={() =>
                         void run(() =>
                           api(`${base(serverId)}/decompress`, {
@@ -467,7 +469,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
           title={editing.file.name}
           wide
           onClose={() => {
-            if (dirty && !confirm('Изменения не сохранены. Закрыть?')) return;
+            if (dirty && !confirm(t('files.confirmClose'))) return;
             setEditing(null);
           }}
         >
@@ -475,8 +477,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
             {editing.truncated && (
               // Сохранить обрезанный файл значило бы стереть его хвост.
               <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
-                Файл слишком велик и показан не целиком — сохранение отключено, иначе
-                остаток был бы стёрт.
+                {t('files.truncated')}
               </p>
             )}
             <Suspense
@@ -498,11 +499,11 @@ export function FilesTab({ serverId }: ServerTabProps) {
             </Suspense>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={() => setEditing(null)} disabled={busy}>
-                Закрыть
+                {t('common.close')}
               </Button>
               {canManage && !editing.truncated && (
                 <Button onClick={() => void save()} disabled={busy || !dirty}>
-                  <IconSave size={14} /> Сохранить
+                  <IconSave size={14} /> {t('common.save')}
                 </Button>
               )}
             </div>
@@ -512,8 +513,8 @@ export function FilesTab({ serverId }: ServerTabProps) {
 
       {creating && (
         <NameModal
-          title="Новая папка"
-          label="Имя папки"
+          title={t('files.newFolderTitle')}
+          label={t('files.folderName')}
           onClose={() => setCreating(false)}
           onSubmit={(name) => {
             setCreating(false);
@@ -529,10 +530,10 @@ export function FilesTab({ serverId }: ServerTabProps) {
 
       {renaming && (
         <NameModal
-          title={`Переименовать «${renaming.name}»`}
-          label="Новое имя или путь"
+          title={t('files.renameTitle', { name: renaming.name })}
+          label={t('files.renameLabel')}
           initial={renaming.name}
-          hint="Можно указать путь — тогда файл переедет: например /plugins/старое.yml"
+          hint={t('files.renameHint')}
           onClose={() => setRenaming(null)}
           onSubmit={(value) => {
             const from = join(path, renaming.name);
@@ -566,6 +567,7 @@ function NameModal({
   onClose: () => void;
   onSubmit: (value: string) => void | Promise<void>;
 }) {
+  const t = useT();
   const [value, setValue] = useState(initial);
   return (
     <Modal title={title} onClose={onClose}>
@@ -582,10 +584,10 @@ function NameModal({
         </div>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button disabled={value.trim() === ''} onClick={() => void onSubmit(value.trim())}>
-            Готово
+            {t('files.done')}
           </Button>
         </div>
       </div>
@@ -602,9 +604,10 @@ function isArchive(name: string): boolean {
 }
 
 /** Размер в человеческом виде. Байты показываем как есть — так короче. */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} ГБ`;
+/** Переводчик аргументом: хук снаружи компонента звать нельзя. */
+function formatSize(bytes: number, unit: (key: string) => string): string {
+  if (bytes < 1024) return `${bytes} ${unit('size.b')}`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${unit('size.kb')}`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} ${unit('size.mb')}`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} ${unit('size.gb')}`;
 }

@@ -243,38 +243,47 @@ export interface PteroScheduleDto {
  */
 export const SCHEDULE_PRESETS: {
   id: string;
-  label: string;
+  /** Ключ подписи: список — константа, а язык известен только в интерфейсе. */
+  labelKey: string;
   cron: { minute: string; hour: string; dayOfMonth: string; month: string; dayOfWeek: string };
 }[] = [
   {
     id: 'daily-4am',
-    label: 'Каждый день в 4:00',
+    labelKey: 'cron.daily4',
     cron: { minute: '0', hour: '4', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
   },
   {
     id: 'daily-6am',
-    label: 'Каждый день в 6:00',
+    labelKey: 'cron.daily6',
     cron: { minute: '0', hour: '6', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
   },
   {
     id: 'every-6h',
-    label: 'Каждые 6 часов',
+    labelKey: 'cron.every6h',
     cron: { minute: '0', hour: '*/6', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
   },
   {
     id: 'hourly',
-    label: 'Каждый час',
+    labelKey: 'cron.hourly',
     cron: { minute: '0', hour: '*', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
   },
   {
     id: 'weekly-mon-5am',
-    label: 'По понедельникам в 5:00',
+    labelKey: 'cron.weeklyMon5',
     cron: { minute: '0', hour: '5', dayOfMonth: '*', month: '*', dayOfWeek: '1' },
   },
 ];
 
-/** Человеческая подпись расписания. Пусто — описать не берёмся, показываем cron. */
-export function describeCron(cron: PteroScheduleDto['cron']): string {
+/**
+ * Человеческая подпись расписания.
+ *
+ * Возвращает ключ перевода и значения к нему, а не готовую строку: сам
+ * список пресетов — константа, живущая вне интерфейса, и языка она не знает.
+ * null — описать не берёмся, интерфейс покажет само cron-выражение.
+ */
+export function describeCron(
+  cron: PteroScheduleDto['cron'],
+): { key: string; values?: Record<string, string> } | null {
   const preset = SCHEDULE_PRESETS.find(
     (p) =>
       p.cron.minute === cron.minute &&
@@ -282,7 +291,7 @@ export function describeCron(cron: PteroScheduleDto['cron']): string {
       p.cron.dayOfMonth === cron.dayOfMonth &&
       p.cron.dayOfWeek === cron.dayOfWeek,
   );
-  if (preset) return preset.label;
+  if (preset) return { key: preset.labelKey };
 
   // Простой ежедневный случай описываем сами — он самый частый.
   if (
@@ -292,7 +301,10 @@ export function describeCron(cron: PteroScheduleDto['cron']): string {
     /^\d+$/.test(cron.hour) &&
     /^\d+$/.test(cron.minute)
   ) {
-    return `Каждый день в ${cron.hour.padStart(2, '0')}:${cron.minute.padStart(2, '0')}`;
+    return {
+      key: 'cron.dailyAt',
+      values: { time: `${cron.hour.padStart(2, '0')}:${cron.minute.padStart(2, '0')}` },
+    };
   }
-  return '';
+  return null;
 }

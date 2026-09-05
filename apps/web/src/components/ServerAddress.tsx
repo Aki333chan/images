@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../i18n';
 
 /**
  * Адрес сервера с копированием в один тап.
@@ -8,6 +9,7 @@ import { useEffect, useState } from 'react';
  * выделить «ip:port» пальцем, не захватив соседний текст, почти невозможно.
  */
 export function ServerAddress({ address }: { address: string | null }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export function ServerAddress({ address }: { address: string | null }) {
   if (!address) {
     return (
       <p className="text-xs text-muted">
-        Адрес неизвестен — синхронизируйте список серверов с Pterodactyl.
+        {t('address.unknown')}
       </p>
     );
   }

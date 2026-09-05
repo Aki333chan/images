@@ -61,9 +61,32 @@ function fromBrowser(): string {
   return typeof navigator === 'undefined' ? '' : (navigator.languages ?? [navigator.language]).join(',');
 }
 
+/** Форматтер собирается один раз на язык: Intl дорог при создании. */
+function makeDateFormatter(locale: Locale, options: Intl.DateTimeFormatOptions) {
+  const format = new Intl.DateTimeFormat(LOCALE_TAGS[locale], options);
+  return (value: string | number | Date | null | undefined): string => {
+    if (value === null || value === undefined || value === '') return '—';
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : format.format(date);
+  };
+}
+
 interface I18nValue {
   locale: Locale;
   t: (key: string, values?: Values) => string;
+  /**
+   * Дата и время на языке панели.
+   *
+   * Здесь, а не toLocaleString('ru-RU') по месту: зашитая локаль означала бы
+   * польский интерфейс с русским порядком дня и месяца. Формат при этом
+   * задаёт не только язык, но и страна — 05.09.2026 в России, 05/09/2026 в
+   * Польше, 05/09/2026 в Британии, — и угадывать это самим незачем.
+   *
+   * null и нечитаемая дата дают прочерк: «Invalid Date» на экране выглядит
+   * поломкой панели, хотя это просто пустое поле.
+   */
+  formatDate: (value: string | number | Date | null | undefined) => string;
+  formatDateTime: (value: string | number | Date | null | undefined) => string;
   /**
    * Явный выбор человека. null — «как в браузере»: сохранённый выбор
    * забывается, и язык снова определяется системой.
@@ -145,6 +168,8 @@ export function I18nProvider({
     () => ({
       locale: effective,
       t: makeTranslator(effective, CATALOGS[effective], CATALOGS[DEFAULT_LOCALE]),
+      formatDate: makeDateFormatter(effective, { dateStyle: 'short' }),
+      formatDateTime: makeDateFormatter(effective, { dateStyle: 'short', timeStyle: 'short' }),
       setLocale,
       manual: (userLocale ?? manualLocale) !== null && (userLocale ?? manualLocale) !== undefined,
     }),
@@ -163,6 +188,12 @@ export function useI18n(): I18nValue {
 /** Короткая форма для самого частого случая — когда нужен только перевод. */
 export function useT() {
   return useI18n().t;
+}
+
+/** Дата и время на языке панели. */
+export function useDates() {
+  const { formatDate, formatDateTime } = useI18n();
+  return { formatDate, formatDateTime };
 }
 
 /**

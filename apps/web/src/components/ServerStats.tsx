@@ -4,6 +4,8 @@ import {
   formatCpu,
   memoryUsage,
   resourceTone,
+  LOCALE_TAGS,
+  type Locale,
   type MinecraftEconomyDto,
   type MinecraftPerformanceDto,
 } from '@aurum/shared';
@@ -11,26 +13,34 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { RUNTIME_POLL_MS, useServerRuntime } from '../lib/server-runtime';
 import { Button, Card } from './ui';
+import { useI18n } from '../i18n';
 
 /** Байты в человекочитаемый вид: 1.5 ГБ вместо 1610612736. */
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 Б';
-  const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+export /** Переводчик аргументом: функции вне компонента, хук туда не занести. */
+/** Время без даты: «посчитано в 14:32» — дата там лишняя. */
+function makeTimeFormatter(locale: Locale) {
+  const format = new Intl.DateTimeFormat(LOCALE_TAGS[locale], { hour: '2-digit', minute: '2-digit' });
+  return (value: string) => format.format(new Date(value));
+}
+
+function formatBytes(bytes: number, unit: (key: string) => string): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return `0 ${unit('size.b')}`;
+  const units = [unit('size.b'), unit('size.kb'), unit('size.mb'), unit('size.gb'), unit('size.tb')];
   const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / 1024 ** power;
   return `${value >= 100 || power === 0 ? Math.round(value) : value.toFixed(1)} ${units[power]}`;
 }
 
 /** Аптайм: 3 д 4 ч, 12 м — точность до секунд тут не нужна. */
-export function formatUptime(ms: number): string {
+export function formatUptime(ms: number, t: (key: string, values?: Record<string, number>) => string): string {
   if (!Number.isFinite(ms) || ms <= 0) return '—';
   const totalMinutes = Math.floor(ms / 60000);
   const days = Math.floor(totalMinutes / (60 * 24));
   const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
   const minutes = totalMinutes % 60;
-  if (days > 0) return `${days} д ${hours} ч`;
-  if (hours > 0) return `${hours} ч ${minutes} м`;
-  return `${minutes} м`;
+  if (days > 0) return t('stats.uptime.days', { days, hours });
+  if (hours > 0) return t('stats.uptime.hours', { hours, minutes });
+  return t('stats.uptime.minutes', { minutes });
 }
 
 function Metric({
@@ -83,6 +93,8 @@ export function ServerStats({
   moduleId: string | null;
   canSeePerformance: boolean;
 }) {
+  const { t, locale } = useI18n();
+  const formatTime = makeTimeFormatter(locale);
   const { hasPermission } = useAuth();
   const { resources, failed } = useServerRuntime(serverId);
   const [performance, setPerformance] = useState<MinecraftPerformanceDto | null>(null);
@@ -155,15 +167,16 @@ export function ServerStats({
   if (failed && !resources) {
     return (
       <Card className="text-xs text-muted">
-        Статистика недоступна: Pterodactyl не отвечает или у служебного пользователя нет доступа к
-        этому серверу.
+        {t('stats.unavailable')}
       </Card>
     );
   }
   if (!resources) return null;
 
   const diskHint =
-    resources.diskLimitBytes > 0 ? `из ${formatBytes(resources.diskLimitBytes)}` : 'без лимита';
+    resources.diskLimitBytes > 0
+      ? t('stats.of', { value: formatBytes(resources.diskLimitBytes, t) })
+      : t('stats.noLimit');
 
   /**
    * ЦПУ считается ОТ ЛИМИТА СЕРВЕРА, а не от абстрактных 100%.
@@ -184,34 +197,34 @@ export function ServerStats({
   return (
     <Card className="flex flex-wrap items-start gap-x-6 gap-y-3">
       <Metric
-        label="ЦПУ"
+        label={t('servers.cpu')}
         value={
           cpu.unlimited ? `${cpu.absolutePercent.toFixed(1)} %` : `${Math.round(cpu.percentOfLimit ?? 0)} %`
         }
-        hint={formatCpu(cpu)}
+        hint={formatCpu(cpu, t)}
         tone={resourceTone(cpu.percentOfLimit)}
       />
       <Metric
-        label="Память"
-        value={formatBytes(resources.memoryBytes)}
+        label={t('servers.memory')}
+        value={formatBytes(resources.memoryBytes, t)}
         hint={
-          memory.unlimited ? 'без лимита' : `из ${formatBytes(resources.memoryLimitBytes)}`
+          memory.unlimited ? t('stats.noLimit') : t('stats.of', { value: formatBytes(resources.memoryLimitBytes, t) })
         }
         tone={resourceTone(memory.percentOfLimit)}
       />
-      <Metric label="Диск" value={formatBytes(resources.diskBytes)} hint={diskHint} />
+      <Metric label={t('stats.disk')} value={formatBytes(resources.diskBytes, t)} hint={diskHint} />
       <Metric
-        label="Сеть"
-        value={`↓ ${formatBytes(resources.networkRxBytes)}`}
-        hint={`↑ ${formatBytes(resources.networkTxBytes)}`}
+        label={t('stats.network')}
+        value={`↓ ${formatBytes(resources.networkRxBytes, t)}`}
+        hint={`↑ ${formatBytes(resources.networkTxBytes, t)}`}
       />
-      <Metric label="Аптайм" value={formatUptime(resources.uptimeMs)} hint={resources.state} />
+      <Metric label={t('stats.uptime')} value={formatUptime(resources.uptimeMs, t)} hint={resources.state} />
 
       {wantsEconomy && economy?.available && (
         <Metric
-          label="Экономика"
+          label={t('stats.economy')}
           value={economy.totalFormatted ?? String(economy.total ?? 0)}
-          hint={`${economy.playersCounted ?? 0} ${plural(economy.playersCounted ?? 0)}`}
+          hint={t('stats.players', { count: economy.playersCounted ?? 0 })}
         />
       )}
 
@@ -226,9 +239,9 @@ export function ServerStats({
             }
             hint={
               !performance.tpsSupported
-                ? 'нужен Paper/Spigot'
+                ? t('stats.tps.needsPaper')
                 : performance.tps5m !== null && performance.tps15m !== null
-                  ? `5м ${performance.tps5m.toFixed(1)} · 15м ${performance.tps15m.toFixed(1)}`
+                  ? t('stats.tps.detail', { tps5: performance.tps5m.toFixed(1), tps15: performance.tps15m.toFixed(1) })
                   : undefined
             }
             // Ниже 18 — заметно на глаз, ниже 15 — сервер ощутимо тормозит.
@@ -246,11 +259,11 @@ export function ServerStats({
             label="MSPT"
             value={
               performance.msptSupported && performance.mspt !== null
-                ? `${performance.mspt.toFixed(1)} мс`
+                ? t('stats.mspt.value', { value: performance.mspt.toFixed(1) })
                 : '—'
             }
             // Тик длится 50 мс: если обработка дольше, TPS начинает падать.
-            hint={!performance.msptSupported ? 'нужен Paper' : 'бюджет тика 50 мс'}
+            hint={t(performance.msptSupported ? 'stats.mspt.budget' : 'stats.mspt.needsPaper')}
             tone={
               performance.mspt === null
                 ? 'normal'
@@ -271,19 +284,16 @@ export function ServerStats({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
             <span>
               {economy.calculatedAt
-                ? `посчитано ${new Date(economy.calculatedAt).toLocaleTimeString('ru-RU', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}`
-                : 'посчитано только что'}
-              {economy.cached ? ' (из кэша)' : ''}
+                ? t('stats.economy.countedAt', { time: formatTime(economy.calculatedAt) })
+                : t('stats.economy.countedNow')}
+              {economy.cached ? t('stats.economy.cached') : ''}
             </span>
             <Button size="sm" variant="ghost" disabled={economyBusy} onClick={() => void loadEconomy(true)}>
-              Обновить
+              {t('common.refresh')}
             </Button>
             {(economy.top?.length ?? 0) > 0 && (
               <Button size="sm" variant="ghost" onClick={() => setShowRich((v) => !v)}>
-                {showRich ? 'Скрыть богатейших' : 'Богатейшие'}
+                {t(showRich ? 'stats.economy.hideRich' : 'stats.economy.showRich')}
               </Button>
             )}
           </div>
@@ -307,18 +317,3 @@ export function ServerStats({
   );
 }
 
-/** «1 игрок», «2 игрока», «5 игроков» — иначе подпись читается как машинная. */
-function plural(count: number): string {
-  const mod100 = count % 100;
-  if (mod100 >= 11 && mod100 <= 14) return 'игроков';
-  switch (count % 10) {
-    case 1:
-      return 'игрок';
-    case 2:
-    case 3:
-    case 4:
-      return 'игрока';
-    default:
-      return 'игроков';
-  }
-}
