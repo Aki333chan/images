@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MINECRAFT_GUILD_RANK_TITLES } from '@aurum/shared';
+import { MINECRAFT_GUILD_RANK_KEYS } from '@aurum/shared';
 import type {
   MinecraftGiveResponse,
   MinecraftGiveResultDto,
@@ -22,6 +22,7 @@ import { PermissionsPanel } from './PermissionsPanel';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 import { PlayerIpsPanel } from './PlayerIpsPanel';
 import { PlayerName } from './PlayerName';
+import { useApiText, useT } from '../../i18n';
 
 /** Тот же принцип, что и во вкладках: префикс берётся из модуля сервера. */
 const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
@@ -32,12 +33,13 @@ const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/s
  */
 type Requirement = null | 'Essentials' | 'LuckPerms' | 'companion' | 'AurumAuth' | 'AurumGuilds';
 
+/** Ключи подсказок: сам список — константа, язык известен только в интерфейсе. */
 const REQUIREMENT_HINT: Record<Exclude<Requirement, null>, string> = {
-  Essentials: 'нужен EssentialsX',
-  LuckPerms: 'нужен LuckPerms',
-  companion: 'нужен companion-плагин',
-  AurumAuth: 'нужен AurumAuth',
-  AurumGuilds: 'нужен AurumGuilds',
+  Essentials: 'mc.need.Essentials',
+  LuckPerms: 'mc.need.LuckPerms',
+  companion: 'mc.need.companion',
+  AurumAuth: 'mc.need.AurumAuth',
+  AurumGuilds: 'mc.need.AurumGuilds',
 };
 
 /** Кнопка действия, которая честно объясняет, почему она неактивна. */
@@ -58,6 +60,7 @@ function ActionButton({
   variant?: 'outline' | 'destructive';
   onClick: () => void;
 }) {
+  const t = useT();
   const blocked = requirement !== null && !available;
   return (
     <Button
@@ -66,11 +69,11 @@ function ActionButton({
       // Серая с подсказкой, а не спрятанная: человек должен понимать, что
       // возможность есть, но её нужно доустановить на игровой сервер.
       disabled={blocked || disabled}
-      title={blocked ? `${hint} — ${REQUIREMENT_HINT[requirement]}` : hint}
+      title={blocked ? `${hint} — ${t(REQUIREMENT_HINT[requirement])}` : hint}
       onClick={onClick}
     >
       {label}
-      {blocked && <span className="ml-1 opacity-60">·{REQUIREMENT_HINT[requirement]}</span>}
+      {blocked && <span className="ml-1 opacity-60">·{t(REQUIREMENT_HINT[requirement])}</span>}
     </Button>
   );
 }
@@ -115,6 +118,7 @@ export function PlayerDetail({
   onChanged: () => void;
   onPunish: (kind: 'kick' | 'ban') => void;
 }) {
+  const t = useT();
   const { hasPermission } = useAuth();
   const [tab, setTab] = useState<'actions' | 'inventory' | 'rights'>('actions');
 
@@ -148,9 +152,9 @@ export function PlayerDetail({
           active={tab}
           onChange={(id) => setTab(id as typeof tab)}
           tabs={[
-            { id: 'actions', label: 'Действия' },
-            { id: 'inventory', label: 'Инвентарь' },
-            { id: 'rights', label: 'Группа прав' },
+            { id: 'actions', label: t('mc.pd.tab.actions') },
+            { id: 'inventory', label: t('mc.pd.tab.inventory') },
+            { id: 'rights', label: t('mc.pd.tab.rights') },
           ]}
         />
       )}
@@ -187,12 +191,12 @@ export function PlayerDetail({
               подписи нечитаемыми. */}
           {bukkit && hasPermission('minecraft.economy.view') && (
             <div className="space-y-2 border-t border-border pt-4">
-              <Label>Валюта</Label>
+              <Label>{t('mc.pd.balance')}</Label>
               {player.uuid ? (
                 <BalancePanel serverId={serverId} uuid={player.uuid} />
               ) : (
                 <p className="text-sm text-muted">
-                  Для работы с валютой нужен UUID игрока, а его отдаёт только companion-плагин.
+                  {t('mc.pd.needUuid.balance')}
                 </p>
               )}
             </div>
@@ -213,8 +217,7 @@ export function PlayerDetail({
           <PlayerInventory serverId={serverId} name={player.name} />
         ) : (
           <p className="text-sm text-muted">
-            Инвентарь показывает companion-плагин — сейчас он не отвечает. Проверьте адрес и
-            токен во вкладке «Настройки» сервера.
+            {t('mc.pd.invUnavailable')}
           </p>
         ))}
 
@@ -223,7 +226,7 @@ export function PlayerDetail({
           <PermissionsPanel serverId={serverId} uuid={player.uuid} />
         ) : (
           <p className="text-sm text-muted">
-            Для работы с группой прав нужен UUID игрока, а его отдаёт только companion-плагин.
+            {t('mc.pd.needUuid.rights')}
           </p>
         ))}
     </div>
@@ -238,12 +241,13 @@ function PlayerStats({
   player: MinecraftPlayerDto;
   known: MinecraftKnownPlayerDto | null;
 }) {
+  const t = useT();
   const cells: [string, string][] = [
-    ['Здоровье', player.health !== null ? `${(player.health / 2).toFixed(1)} ♥` : '—'],
-    ['Пинг', player.ping !== null ? `${player.ping} мс` : '—'],
-    ['Мир', player.world ?? '—'],
+    [t('mc.th.health'), player.health !== null ? `${(player.health / 2).toFixed(1)} ♥` : '—'],
+    [t('mc.th.ping'), player.ping !== null ? t('mc.ms', { value: player.ping }) : '—'],
+    [t('mc.pd.world'), player.world ?? '—'],
     [
-      'Координаты',
+      t('mc.pd.coords'),
       player.position
         ? `${Math.round(player.position.x)}, ${Math.round(player.position.y)}, ${Math.round(player.position.z)}`
         : '—',
@@ -252,7 +256,7 @@ function PlayerStats({
   return (
     <Card className="flex flex-wrap gap-x-6 gap-y-2">
       <div className="min-w-0 basis-full">
-        <div className="text-[11px] uppercase tracking-wide text-muted">Имя</div>
+        <div className="text-[11px] uppercase tracking-wide text-muted">{t('mc.pd.name')}</div>
         <PlayerName name={player.name} alias={known?.alias ?? null} op={known?.op ?? false} />
       </div>
       {cells.map(([label, value]) => (
@@ -289,6 +293,7 @@ function PlayerActions({
   onChanged: () => void;
   onPunish: (kind: 'kick' | 'ban') => void;
 }) {
+  const t = useT();
   const { hasPermission } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -308,7 +313,7 @@ function PlayerActions({
         method: 'POST',
         body: JSON.stringify({ args }),
       });
-      setResult(res.output || 'Выполнено');
+      setResult(res.output || t('mc.pd.done'));
       onChanged();
     } catch (e) {
       setError((e as Error).message);
@@ -323,26 +328,26 @@ function PlayerActions({
     <div className="space-y-4">
       {!canAct && (
         <p className="text-xs text-muted">
-          У вашей роли нет права на быстрые действия — доступны только кик и бан.
+          {t('mc.pd.noQuick')}
         </p>
       )}
 
       <div className="space-y-2">
-        <Label>Режим игры</Label>
+        <Label>{t('mc.pd.gamemode')}</Label>
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={mode}
             onChange={setMode}
             options={[
-              { value: 'survival', label: 'Выживание' },
-              { value: 'creative', label: 'Творческий' },
-              { value: 'adventure', label: 'Приключение' },
-              { value: 'spectator', label: 'Наблюдатель' },
+              { value: 'survival', label: t('mc.gm.survival') },
+              { value: 'creative', label: t('mc.gm.creative') },
+              { value: 'adventure', label: t('mc.gm.adventure') },
+              { value: 'spectator', label: t('mc.gm.spectator') },
             ]}
           />
           <ActionButton
-            label="Применить"
-            hint="Ванильная команда gamemode — работает без плагинов"
+            label={t('mc.pd.apply')}
+            hint={t('mc.pd.applyHint')}
             requirement={null}
             available
             disabled={busy || !canAct}
@@ -352,25 +357,25 @@ function PlayerActions({
       </div>
 
       <div className="space-y-2">
-        <Label>Состояние</Label>
+        <Label>{t('mc.pd.state')}</Label>
         <div className="flex flex-wrap gap-2">
           <ActionButton
-            label="Вылечить"
-            hint="Восстанавливает здоровье и сытость"
+            label={t('mc.pd.heal')}
+            hint={t('mc.pd.healHint')}
             requirement="Essentials"
             available={has('Essentials')}
             disabled={busy || !canAct}
             onClick={() => void runQuick('ess-heal', { player: name })}
           />
           <ActionButton
-            label="Убить"
-            hint="Ванильная команда kill"
+            label={t('mc.pd.kill')}
+            hint={t('mc.pd.killHint')}
             requirement={null}
             available
             variant="destructive"
             disabled={busy || !canAct}
             onClick={() => {
-              if (!confirm(`Убить игрока ${name}?`)) return;
+              if (!confirm(t('mc.pd.killConfirm', { name }))) return;
               void runQuick('vanilla-kill', { player: name });
             }}
           />
@@ -378,20 +383,20 @@ function PlayerActions({
       </div>
 
       <div className="space-y-2">
-        <Label>Телепорт</Label>
+        <Label>{t('mc.pd.teleport')}</Label>
         <div className="flex flex-wrap items-center gap-2">
           <PlayerPicker
             value={target}
             onChange={setTarget}
             players={online}
-            placeholder="Ник, к кому телепортировать"
+            placeholder={t('mc.pd.teleportTo')}
             // На телефоне поле занимает строку целиком, на десктопе —
             // прежняя узкая колонка рядом с кнопкой.
             className="min-w-0 flex-1 sm:w-[220px] sm:flex-none"
           />
           <ActionButton
-            label="Переместить"
-            hint="Ванильная команда tp — работает без плагинов"
+            label={t('mc.pd.move')}
+            hint={t('mc.pd.moveHint')}
             requirement={null}
             available
             disabled={busy || !canAct || !target.trim()}
@@ -401,7 +406,7 @@ function PlayerActions({
       </div>
 
       <div className="space-y-2">
-        <Label>Наказания</Label>
+        <Label>{t('mc.pd.punish')}</Label>
         <div className="flex flex-wrap gap-2">
           {hasPermission('minecraft.kick') && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => onPunish('kick')}>
@@ -463,6 +468,8 @@ function selectionToRequest(selected: Set<string>): MinecraftInventoryClearDto {
  * инвентарь — рутина модерации, а полная очистка необратима.
  */
 function PlayerInventory({ serverId, name }: { serverId: string; name: string }) {
+  const t = useT();
+  const apiText = useApiText();
   const { hasPermission } = useAuth();
   const canEdit = hasPermission('minecraft.inventory.edit');
 
@@ -503,7 +510,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
   if (!data.available) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-muted">{data.reason}</p>
+        <p className="text-sm text-muted">{apiText(data.reason, { player: name })}</p>
         {data.docsUrl && (
           <a
             className="text-xs text-primary underline"
@@ -530,13 +537,13 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
   return (
     <div className="space-y-4">
       <div>
-        <Label>Хотбар</Label>
+        <Label>{t('mc.pd.hotbar')}</Label>
         <div className="mt-1 max-w-[420px]">
           <InventoryGrid items={data.items} size={9} cols={9} area="main" {...selectionProps} />
         </div>
       </div>
       <div>
-        <Label>Инвентарь</Label>
+        <Label>{t('mc.pd.inventory')}</Label>
         <div className="mt-1 max-w-[420px]">
           <InventoryGrid
             items={data.items}
@@ -550,13 +557,13 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
       </div>
       <div className="flex gap-6">
         <div>
-          <Label>Броня</Label>
+          <Label>{t('mc.pd.armor')}</Label>
           <div className="mt-1 w-[52px]">
             <InventoryGrid items={data.armor} size={4} cols={1} area="armor" {...selectionProps} />
           </div>
         </div>
         <div>
-          <Label>Вторая рука</Label>
+          <Label>{t('mc.pd.offhand')}</Label>
           <div className="mt-1 w-[52px]">
             <InventoryGrid
               items={data.offhand ? [data.offhand] : []}
@@ -575,7 +582,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
               целиком, и десять отдельных отправок — это десять шансов
               ошибиться и десять записей в журнале вместо одной. */}
           <div className="space-y-1">
-            <Label>Выдать предметы</Label>
+            <Label>{t('mc.pd.give')}</Label>
             <Textarea
               rows={3}
               className="font-mono text-xs"
@@ -584,12 +591,12 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
               onChange={(e) => setGiveText(e.target.value)}
             />
             <p className="text-[11px] text-muted">
-              По предмету в строке: идентификатор и количество. Количество можно не писать —
+              {t('mc.pd.giveHint')}
               выдастся один. Существование предмета проверяет игровой сервер, поэтому работают и
               предметы модов.
             </p>
             <Button size="sm" disabled={busy || !giveText.trim()} onClick={() => void give()}>
-              Выдать
+              {t('mc.pd.giveBtn')}
             </Button>
           </div>
 
@@ -608,8 +615,8 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
               {giveResults.map((r, i) => (
                 <li key={`${r.id}-${i}`} className={r.error ? 'text-amber-400' : 'text-emerald-400'}>
                   {r.id} ×{r.requested}
-                  {r.error ? ` — ${r.error}` : ' — выдано'}
-                  {r.error && r.given > 0 ? ` (легло ${r.given})` : ''}
+                  {r.error ? ` — ${r.error}` : t('mc.pd.given')}
+                  {r.error && r.given > 0 ? t('mc.pd.givePartly', { count: r.given }) : ''}
                 </li>
               ))}
             </ul>
@@ -622,15 +629,15 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
               disabled={busy || selected.size === 0}
               onClick={() => void removeSelected()}
             >
-              Удалить выбранные{selected.size > 0 ? ` (${selected.size})` : ''}
+              {t('mc.pd.clearSelected')}{selected.size > 0 ? ` (${selected.size})` : ''}
             </Button>
             <Button size="sm" variant="destructive" disabled={busy} onClick={() => setConfirmWipe(true)}>
-              Очистить инвентарь
+              {t('mc.pd.clearAll')}
             </Button>
             <span className="text-[11px] text-muted">
               {selected.size === 0
-                ? 'Щёлкните по ячейкам, чтобы выбрать их для удаления'
-                : 'Повторный щелчок снимает выбор'}
+                ? t('mc.pd.selectHint')
+                : t('mc.pd.selectHint2')}
             </span>
           </div>
 
@@ -642,21 +649,21 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
           стёртое панель не умеет. Поэтому она спрашивает подтверждение и
           называет игрока по нику, чтобы нельзя было очистить не того. */}
       {confirmWipe && (
-        <Modal title="Очистить инвентарь целиком?" onClose={() => setConfirmWipe(false)}>
+        <Modal title={t('mc.pd.wipeTitle')} onClose={() => setConfirmWipe(false)}>
           <div className="space-y-3">
             <p className="text-sm">
               У игрока <b>{name}</b> будет стёрт весь инвентарь: хотбар, основные слоты, броня и
               вторая рука.
             </p>
             <p className="text-sm text-red-400">
-              Отменить это нельзя — панель не хранит копию инвентаря.
+              {t('mc.pd.wipeWarn')}
             </p>
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="outline" onClick={() => setConfirmWipe(false)}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button size="sm" variant="destructive" disabled={busy} onClick={() => void wipe()}>
-                Да, очистить
+                {t('mc.pd.wipeYes')}
               </Button>
             </div>
           </div>
@@ -699,7 +706,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
         method: 'POST',
         body: JSON.stringify(selectionToRequest(selected)),
       });
-      setNotice(`Удалено ячеек: ${selected.size}`);
+      setNotice(t('mc.pd.cleared', { count: selected.size }));
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -718,7 +725,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
         body: JSON.stringify({ all: true }),
       });
       setConfirmWipe(false);
-      setNotice('Инвентарь очищен');
+      setNotice(t('mc.pd.wiped'));
       await load();
     } catch (e) {
       setConfirmWipe(false);
@@ -752,6 +759,7 @@ function PasswordReset({
   player: string;
   installed: boolean;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [issued, setIssued] = useState<MinecraftPasswordResetDto | null>(null);
@@ -782,11 +790,11 @@ function PasswordReset({
 
   return (
     <div className="space-y-2">
-      <Label>Пароль от входа на сервер</Label>
+      <Label>{t('mc.pd.password')}</Label>
       <div className="flex flex-wrap items-center gap-2">
         <ActionButton
-          label={busy ? 'Выдаём…' : issued ? 'Выдать новый токен' : 'Сбросить пароль'}
-          hint="Одноразовый токен для входа: игрок задаст новый пароль сам"
+          label={t(busy ? 'mc.pd.issuing' : issued ? 'mc.pd.issueNew' : 'mc.pd.resetPassword')}
+          hint={t('mc.pd.resetHint')}
           requirement="AurumAuth"
           available={installed}
           disabled={busy}
@@ -815,12 +823,11 @@ function PasswordReset({
                   .catch(() => undefined);
               }}
             >
-              {copied ? 'Скопировано' : 'Копировать'}
+              {t(copied ? 'mc.pd.copied' : 'mc.pd.copy')}
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted">
-            Действует {minutes} мин и сработает один раз. Показан только сейчас — сервер хранит
-            его хеш и повторить не сможет; если токен потерян, выдайте новый.
+            {t('mc.pd.tokenLife', { minutes })}
           </p>
         </Card>
       )}
@@ -852,6 +859,7 @@ function PlayerGuild({
   moduleId: string;
   uuid: string;
 }) {
+  const t = useT();
   const [membership, setMembership] = useState<MinecraftGuildMembershipDto | null>(null);
 
   useEffect(() => {
@@ -876,12 +884,12 @@ function PlayerGuild({
 
   return (
     <div className="space-y-1 border-t border-border pt-4">
-      <Label>Гильдия</Label>
+      <Label>{t('mc.pd.guild')}</Label>
       <p className="text-sm">
         <span className="font-medium">
           [{membership.guildTag}] {membership.guildName}
         </span>
-        <span className="text-muted"> — {MINECRAFT_GUILD_RANK_TITLES[membership.rank]}</span>
+        <span className="text-muted"> — {t(MINECRAFT_GUILD_RANK_KEYS[membership.rank])}</span>
       </p>
     </div>
   );

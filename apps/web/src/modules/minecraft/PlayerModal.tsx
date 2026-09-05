@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { Button, ErrorText, Input, Label, Select, Textarea } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { useT } from '../../i18n';
 
 // Modal переехал в components/Modal.tsx — им пользуются и другие модули.
 // Реэкспорт, чтобы не править импорты во всех местах модуля Minecraft.
 export { Modal };
 
 const BAN_DURATIONS = [
-  { value: '', label: 'Навсегда' },
-  { value: '3600', label: '1 час' },
-  { value: '86400', label: '1 день' },
-  { value: '604800', label: '7 дней' },
-  { value: '2592000', label: '30 дней' },
+  { value: '', labelKey: 'mc.punish.forever' },
+  { value: '3600', labelKey: 'mc.punish.1h' },
+  { value: '86400', labelKey: 'mc.punish.1d' },
+  { value: '604800', labelKey: 'mc.punish.7d' },
+  { value: '2592000', labelKey: 'mc.punish.30d' },
 ];
 
 export function PunishModal({
@@ -25,6 +26,7 @@ export function PunishModal({
   onClose: () => void;
   onSubmit: (reason: string, expiresAt: string | null) => Promise<void>;
 }) {
+  const t = useT();
   const [reason, setReason] = useState('');
   const [duration, setDuration] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,21 +49,21 @@ export function PunishModal({
   }
 
   return (
-    <Modal title={`${kind === 'kick' ? 'Кик' : 'Бан'} игрока ${player}`} onClose={onClose}>
+    <Modal title={t(kind === 'kick' ? 'mc.punish.kickTitle' : 'mc.punish.banTitle', { name: player })} onClose={onClose}>
       <div className="space-y-3">
         <div>
-          <Label>Причина</Label>
+          <Label>{t('mc.punish.reason')}</Label>
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder={kind === 'kick' ? 'Нарушение правил чата' : 'Гриферство на спавне'}
+            placeholder={t(kind === 'kick' ? 'mc.punish.kickPlaceholder' : 'mc.punish.banPlaceholder')}
             autoFocus
           />
         </div>
         {kind === 'ban' && (
           <div>
-            <Label>Срок</Label>
-            <Select value={duration} onChange={setDuration} options={BAN_DURATIONS} className="w-full" />
+            <Label>{t('mc.th.until')}</Label>
+            <Select value={duration} onChange={setDuration} options={BAN_DURATIONS.map((d) => ({ value: d.value, label: t(d.labelKey) }))} className="w-full" />
           </div>
         )}
         <ErrorText>{error}</ErrorText>
@@ -72,7 +74,7 @@ export function PunishModal({
             Отмена
           </Button>
           <Button variant="destructive" onClick={() => void submit()} disabled={busy}>
-            {kind === 'kick' ? 'Кикнуть' : 'Забанить'}
+            {t(kind === 'kick' ? 'mc.punish.kick' : 'mc.punish.ban')}
           </Button>
         </div>
       </div>
@@ -93,6 +95,7 @@ export function PromptModal({
   onClose: () => void;
   onSubmit: (value: string) => Promise<void>;
 }) {
+  const t = useT();
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -132,7 +135,7 @@ export function PromptModal({
             Отмена
           </Button>
           <Button onClick={() => void submit()} disabled={busy || !value.trim()}>
-            Добавить
+            {t('common.add')}
           </Button>
         </div>
       </div>

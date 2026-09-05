@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  MINECRAFT_BONUS_TITLES,
+  MINECRAFT_BONUS_KEYS,
   MINECRAFT_BONUS_TYPES,
-  MINECRAFT_GUILD_RANK_TITLES,
+  MINECRAFT_GUILD_RANK_KEYS,
   type MinecraftBonusType,
   type MinecraftGuildBonusDto,
   type MinecraftGuildDto,
@@ -21,6 +21,7 @@ import {
   Spinner,
 } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
+import { useApiText, useI18n, useT } from '../../i18n';
 import { Modal, PromptModal } from './PlayerModal';
 
 /**
@@ -34,14 +35,24 @@ import { Modal, PromptModal } from './PlayerModal';
  */
 const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
 
+/**
+ * Переводчик, который принимают функции вне компонентов.
+ *
+ * Хук в них не позовёшь, а зашивать русский текст — значит получить польскую
+ * панель с русскими подписями бонусов.
+ */
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
 /** Ранг цветом: лидера должно быть видно, не читая подпись. */
 function RankBadge({ rank }: { rank: MinecraftGuildMemberDto['rank'] }) {
+  const t = useT();
   const variant = rank === 'leader' ? 'warn' : rank === 'officer' ? 'default' : 'outline';
-  return <Badge variant={variant}>{MINECRAFT_GUILD_RANK_TITLES[rank]}</Badge>;
+  return <Badge variant={variant}>{t(MINECRAFT_GUILD_RANK_KEYS[rank])}</Badge>;
 }
 
 export function MinecraftGuildsTab({ serverId, moduleId }: ModuleTabProps) {
   const { hasPermission } = useAuth();
+  const t = useT();
   const [guilds, setGuilds] = useState<MinecraftGuildDto[] | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
@@ -87,15 +98,15 @@ export function MinecraftGuildsTab({ serverId, moduleId }: ModuleTabProps) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-[12rem] flex-1">
-          <Label>Поиск по названию или тегу</Label>
+          <Label>{t('mc.g.search')}</Label>
           <Input
             value={query}
-            placeholder="Драконы или DRG"
+            placeholder={t('mc.g.searchPlaceholder')}
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
         <Button variant="outline" onClick={() => void load()}>
-          Обновить
+          {t('common.refresh')}
         </Button>
       </div>
 
@@ -103,15 +114,12 @@ export function MinecraftGuildsTab({ serverId, moduleId }: ModuleTabProps) {
 
       {guilds.length === 0 && !error && (
         <Card>
-          <p className="text-sm text-muted">
-            Гильдий нет. Если вы их ожидали — проверьте, что на игровом сервере установлен плагин
-            AurumGuilds, а companion-плагин отвечает: без них панели неоткуда взять список.
-          </p>
+          <p className="text-sm text-muted">{t('mc.g.emptyHint')}</p>
         </Card>
       )}
 
       {shown.length === 0 && guilds.length > 0 && (
-        <p className="text-sm text-muted">По запросу ничего не нашлось.</p>
+        <p className="text-sm text-muted">{t('mc.g.notFound')}</p>
       )}
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -127,8 +135,8 @@ export function MinecraftGuildsTab({ serverId, moduleId }: ModuleTabProps) {
                 <span className="font-medium">{guild.name}</span>
               </div>
               <p className="mt-1 text-xs text-muted">
-                {guild.memberCount} чел. · лидер {guild.leaderName}
-                {guild.bankBalance > 0 && ` · общак ${formatMoney(guild.bankBalance)}`}
+                {t('mc.g.members', { count: guild.memberCount })} · {t('mc.g.leader', { name: guild.leaderName })}
+                {guild.bankBalance > 0 && ` · ${t('mc.g.bankShort', { value: formatMoney(guild.bankBalance) })}`}
               </p>
             </button>
           </Card>
@@ -183,6 +191,8 @@ function GuildCard({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const { t, formatDate } = useI18n();
+  const apiText = useApiText();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
@@ -215,21 +225,21 @@ function GuildCard({
     <Modal title={`${guild.name} [${guild.tag}]`} onClose={onClose}>
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2 text-xs text-muted">
-          <span>Лидер: {guild.leaderName}</span>
+          <span>{t('mc.g.leaderLabel', { name: guild.leaderName })}</span>
           <span>·</span>
-          <span>Создана {new Date(guild.createdAt).toLocaleDateString('ru-RU')}</span>
+          <span>{t('mc.g.created', { date: formatDate(guild.createdAt) })}</span>
           {/* Общак показываем, только если он есть: строка «0» на сервере без
               Vault выглядит как пропавшие деньги, а не как «банка нет». */}
           {guild.bankBalance > 0 && (
             <>
               <span>·</span>
-              <span>Общак: {formatMoney(guild.bankBalance)}</span>
+              <span>{t('mc.g.bank', { value: formatMoney(guild.bankBalance) })}</span>
             </>
           )}
         </div>
 
         <div>
-          <Label>Состав ({guild.members.length})</Label>
+          <Label>{t('mc.g.roster', { count: guild.members.length })}</Label>
           <ul className="mt-1 divide-y divide-border rounded border border-border">
             {guild.members.map((member) => (
               <li key={member.uuid} className="flex items-center justify-between gap-2 px-3 py-2">
@@ -249,10 +259,9 @@ function GuildCard({
 
         {canManage && (
           <div className="space-y-2 border-t border-border pt-4">
-            <Label>Вмешательство администрации</Label>
+            <Label>{t('mc.g.admin')}</Label>
             <p className="text-xs text-muted">
-              Те же действия, что и командами <code>/guild admin</code> в игре. Каждое попадает в
-              журнал панели и в лог игрового сервера.
+              {t('mc.g.adminHintA')} <code>/guild admin</code> {t('mc.g.adminHintB')}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -261,10 +270,10 @@ function GuildCard({
                 disabled={busy}
                 onClick={() => setPrompt('transfer')}
               >
-                Передать лидерство
+                {t('mc.g.transferLead')}
               </Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => setPrompt('remove')}>
-                Исключить участника
+                {t('mc.g.kickMember')}
               </Button>
               <Button
                 size="sm"
@@ -272,20 +281,20 @@ function GuildCard({
                 disabled={busy}
                 onClick={() => setConfirmDisband(true)}
               >
-                Распустить
+                {t('mc.g.disband')}
               </Button>
             </div>
           </div>
         )}
 
         {error && <ErrorText>{error}</ErrorText>}
-        {result && <p className="text-xs text-emerald-400">{result}</p>}
+        {result && <p className="text-xs text-emerald-400">{apiText(result)}</p>}
       </div>
 
       {prompt && (
         <PromptModal
-          title={prompt === 'transfer' ? 'Кого назначить лидером' : 'Кого исключить'}
-          label="Ник участника"
+          title={t(prompt === 'transfer' ? 'mc.g.promptTransfer' : 'mc.g.promptKick')}
+          label={t('mc.g.memberNick')}
           placeholder="Steve"
           onClose={() => setPrompt(null)}
           onSubmit={async (target) => {
@@ -300,18 +309,17 @@ function GuildCard({
       )}
 
       {confirmDisband && (
-        <Modal title="Распустить гильдию?" onClose={() => setConfirmDisband(false)}>
+        <Modal title={t('mc.g.disbandTitle')} onClose={() => setConfirmDisband(false)}>
           <div className="space-y-3">
             {/* Подтверждение отдельным окном, а не одной кнопкой: роспуск
                 необратим и уносит состав вместе с общаком, а кнопка стоит
                 рядом с безобидными. */}
             <p className="text-sm">
-              Гильдия «{guild.name}» будет удалена вместе с составом ({guild.members.length} чел.)
-              и общаком. Отменить это нельзя.
+              {t('mc.g.disbandWarn', { name: guild.name, count: guild.members.length })}
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setConfirmDisband(false)}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button
                 variant="destructive"
@@ -321,7 +329,7 @@ function GuildCard({
                   void act(`/guilds/${guild.id}/disband`, {}, true);
                 }}
               >
-                Распустить
+                {t('mc.g.disband')}
               </Button>
             </div>
           </div>
@@ -344,12 +352,12 @@ function formatMoney(value: number): string {
  * порядок. Постоянный бонус стоит первым — это то, что выдают за заслуги, а
  * временный обычно приходит от NPC-торговца, а не из панели.
  */
-const BONUS_DURATIONS: { value: string; label: string; seconds: number }[] = [
-  { value: 'forever', label: 'Навсегда', seconds: 0 },
-  { value: '1h', label: 'На час', seconds: 3600 },
-  { value: '1d', label: 'На сутки', seconds: 24 * 3600 },
-  { value: '7d', label: 'На неделю', seconds: 7 * 24 * 3600 },
-  { value: '30d', label: 'На месяц', seconds: 30 * 24 * 3600 },
+const BONUS_DURATIONS: { value: string; labelKey: string; seconds: number }[] = [
+  { value: 'forever', labelKey: 'mc.g.bonusForever', seconds: 0 },
+  { value: '1h', labelKey: 'mc.g.bonus1h', seconds: 3600 },
+  { value: '1d', labelKey: 'mc.g.bonus1d', seconds: 24 * 3600 },
+  { value: '7d', labelKey: 'mc.g.bonus7d', seconds: 7 * 24 * 3600 },
+  { value: '30d', labelKey: 'mc.g.bonus30d', seconds: 30 * 24 * 3600 },
 ];
 
 /**
@@ -375,6 +383,8 @@ function GuildBonuses({
   guildId: number;
   canManage: boolean;
 }) {
+  const { t, formatDateTime } = useI18n();
+  const apiText = useApiText();
   const path = `${base(moduleId, serverId)}/guilds/${guildId}/bonuses`;
   const [bonuses, setBonuses] = useState<MinecraftGuildBonusDto[] | null>(null);
   const [error, setError] = useState('');
@@ -402,20 +412,20 @@ function GuildBonuses({
 
   return (
     <div className="space-y-2 border-t border-border pt-4">
-      <Label>Бонусы гильдии</Label>
+      <Label>{t('mc.g.bonuses')}</Label>
 
       {bonuses.length === 0 ? (
-        <p className="text-xs text-muted">Бонусов нет.</p>
+        <p className="text-xs text-muted">{t('mc.g.noBonuses')}</p>
       ) : (
         <ul className="divide-y divide-border rounded border border-border">
           {bonuses.map((bonus) => (
             <li key={bonus.type} className="flex items-center justify-between gap-2 px-3 py-2">
               <div className="min-w-0">
                 <p className="truncate text-sm">
-                  {bonus.title} · {describeMagnitude(bonus)}
+                  {apiText(bonus.title)} · {describeMagnitude(bonus, t)}
                 </p>
                 <p className="text-xs text-muted">
-                  {describeExpiry(bonus.expiresAt)} · выдал {bonus.grantedBy}
+                  {describeExpiry(bonus.expiresAt, t, formatDateTime)} · {t('mc.g.grantedBy', { name: bonus.grantedBy })}
                 </p>
               </div>
               {canManage && (
@@ -425,7 +435,7 @@ function GuildBonuses({
                   disabled={busy}
                   onClick={() => void revoke(bonus)}
                 >
-                  Снять
+                  {t('mc.g.revoke')}
                 </Button>
               )}
             </li>
@@ -436,26 +446,24 @@ function GuildBonuses({
       {canManage && (
         <div className="space-y-2">
           <p className="text-xs text-muted">
-            Один бонус каждого вида: выдача поверх действующего заменяет его, а не складывается с
-            ним. Множитель 1.5 значит «в полтора раза», для скорости и добычи — уровень эффекта
-            (1, 2, 3). С зачарованиями бонус <strong className="font-medium">складывается</strong>:
-            множитель считается от того, что выпало бы и так, уже с «Удачей» и «Добычей», — то есть
-            чем лучше инструмент, тем больше даёт бонус.
+            {t('mc.g.bonusHintA')}{' '}
+            <strong className="font-medium">{t('mc.g.bonusHintStacks')}</strong>
+            {t('mc.g.bonusHintB')}
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[10rem] flex-1">
-              <Label>Вид</Label>
+              <Label>{t('mc.g.bonusKind')}</Label>
               <Select
                 value={type}
                 onChange={(v) => setType(v as MinecraftBonusType)}
                 options={MINECRAFT_BONUS_TYPES.map((id) => ({
                   value: id,
-                  label: MINECRAFT_BONUS_TITLES[id],
+                  label: t(MINECRAFT_BONUS_KEYS[id]),
                 }))}
               />
             </div>
             <div className="w-24">
-              <Label>Величина</Label>
+              <Label>{t('mc.g.bonusValue')}</Label>
               <Input
                 value={magnitude}
                 inputMode="decimal"
@@ -463,22 +471,22 @@ function GuildBonuses({
               />
             </div>
             <div className="min-w-[8rem]">
-              <Label>Срок</Label>
+              <Label>{t('mc.g.bonusTerm')}</Label>
               <Select
                 value={duration}
                 onChange={setDuration}
-                options={BONUS_DURATIONS.map((d) => ({ value: d.value, label: d.label }))}
+                options={BONUS_DURATIONS.map((d) => ({ value: d.value, label: t(d.labelKey) }))}
               />
             </div>
             <Button size="sm" disabled={busy} onClick={() => void grant()}>
-              Выдать
+              {t('mc.g.grant')}
             </Button>
           </div>
         </div>
       )}
 
       {error && <ErrorText>{error}</ErrorText>}
-      {result && <p className="text-xs text-emerald-400">{result}</p>}
+      {result && <p className="text-xs text-emerald-400">{apiText(result)}</p>}
     </div>
   );
 
@@ -487,7 +495,7 @@ function GuildBonuses({
     // из-за неё незачем: понятно же, что имелось в виду.
     const value = Number(magnitude.replace(',', '.'));
     if (!Number.isFinite(value) || value <= 0) {
-      setError('Величина — положительное число, например 1.5 или 2');
+      setError(t('mc.g.badValue'));
       return;
     }
     const seconds = BONUS_DURATIONS.find((d) => d.value === duration)?.seconds ?? 0;
@@ -527,9 +535,9 @@ function GuildBonuses({
 }
 
 /** «×1.5» или «уровень 2» — смотря что за величина. */
-function describeMagnitude(bonus: MinecraftGuildBonusDto): string {
+function describeMagnitude(bonus: MinecraftGuildBonusDto, t: Translate): string {
   if (bonus.multiplier) return `×${formatMultiplier(bonus.magnitude)}`;
-  return `уровень ${Math.round(bonus.magnitude)}`;
+  return t('mc.g.level', { value: Math.round(bonus.magnitude) });
 }
 
 /**
@@ -548,10 +556,14 @@ function formatMultiplier(value: number): string {
  * Дата истечения сама по себе мало что говорит — «до 14.09» требует посмотреть
  * на календарь. Поэтому рядом остаётся и сама дата, и сколько до неё осталось.
  */
-function describeExpiry(expiresAt: string | null): string {
-  if (!expiresAt) return 'постоянный';
+function describeExpiry(
+  expiresAt: string | null,
+  t: Translate,
+  formatDateTime: (value: string) => string,
+): string {
+  if (!expiresAt) return t('mc.g.permanent');
   const left = new Date(expiresAt).getTime() - Date.now();
-  if (left <= 0) return 'истёк';
+  if (left <= 0) return t('mc.g.expired');
 
   // Округление к ближайшему, а не вниз. Выданный на неделю бонус живёт
   // 167 часов с копейками, и округление вниз показало бы «осталось 6 дн.»
@@ -559,9 +571,9 @@ function describeExpiry(expiresAt: string | null): string {
   const hours = left / 3600_000;
   const human =
     hours >= 48
-      ? `${Math.round(hours / 24)} дн.`
+      ? t('mc.g.leftDays', { count: Math.round(hours / 24) })
       : hours >= 1
-        ? `${Math.round(hours)} ч.`
-        : `${Math.max(1, Math.round(left / 60_000))} мин.`;
-  return `осталось ${human} (до ${new Date(expiresAt).toLocaleString('ru-RU')})`;
+        ? t('mc.g.leftHours', { count: Math.round(hours) })
+        : t('mc.g.leftMinutes', { count: Math.max(1, Math.round(left / 60_000)) });
+  return t('mc.g.left', { human, date: formatDateTime(expiresAt) });
 }

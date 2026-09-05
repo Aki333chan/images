@@ -32,20 +32,22 @@ interface Protected {
    * запрос приходит то с одним, то с другим.
    */
   aliases: string[];
-  reason: string;
+  /**
+   * Ключ словаря, а не готовая фраза.
+   *
+   * Причину видят двое: тот, кто открыл список плагинов (она приходит в DTO),
+   * и тот, кто попытался выключить защищённый плагин (она прилетает текстом
+   * ошибки). Языки у них разные, а список здесь один и собирается при старте
+   * процесса — значит собрать фразу тут нельзя, можно только назвать её.
+   */
+  reasonKey: string;
 }
 
-const COMPANION_REASON =
-  'Это companion-плагин самой панели: выключив его, панель потеряет связь с сервером ' +
-  'и включить обратно будет уже нечем. Снимайте его только вручную по SFTP.';
-
 const PROTECTED: Protected[] = [
-  { aliases: [COMPANION_PLUGIN], reason: COMPANION_REASON },
+  { aliases: [COMPANION_PLUGIN], reasonKey: 'mc.protected.companion' },
   ...KNOWN_PLUGINS.map((p) => ({
     aliases: [p.id, p.displayName],
-    reason:
-      `${p.displayName} — один из плагинов, на которых держится панель (${p.gives}). ` +
-      'Выключить или удалить его отсюда нельзя: снимайте вручную по SFTP, если он больше не нужен.',
+    reasonKey: 'mc.protected.known',
   })),
 ];
 
@@ -56,9 +58,9 @@ const PROTECTED: Protected[] = [
  * точное: «EssentialsChat» — отдельный плагин, и запрещать его заодно с
  * «Essentials» оснований нет.
  */
-export function protectionReason(pluginName: string): string | null {
+export function protectionReasonKey(pluginName: string): string | null {
   const needle = normalize(pluginName);
-  return PROTECTED.find((p) => p.aliases.some((a) => normalize(a) === needle))?.reason ?? null;
+  return PROTECTED.find((p) => p.aliases.some((a) => normalize(a) === needle))?.reasonKey ?? null;
 }
 
 /**
@@ -71,7 +73,9 @@ export function protectionReason(pluginName: string): string | null {
  * .disabled/ и обнаружить это после перезапуска, когда права у всех
  * пропали, — уже происшествие.
  */
-export function fileProtectionReason(fileName: string): string | null {
+export function fileProtectionReasonKey(fileName: string): string | null {
   const needle = normalize(fileName);
-  return PROTECTED.find((p) => p.aliases.some((a) => needle.startsWith(normalize(a))))?.reason ?? null;
+  return (
+    PROTECTED.find((p) => p.aliases.some((a) => needle.startsWith(normalize(a))))?.reasonKey ?? null
+  );
 }

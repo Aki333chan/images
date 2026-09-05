@@ -3,6 +3,7 @@ import type { MinecraftPluginsDto } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { useServerRuntime } from '../../lib/server-runtime';
 import { Badge, Button, Card, ErrorText, Spinner } from '../../components/ui';
+import { useApiText, useT } from '../../i18n';
 
 /**
  * Что панель помнит о плагинах этого сервера.
@@ -83,6 +84,8 @@ export function rememberedFits(kept: Remembered, bootAt: number | null): boolean
 const MAX_RETRIES = 30;
 
 export function PluginsPanel({ serverId }: { serverId: string }) {
+  const t = useT();
+  const apiText = useApiText();
   const runtime = useServerRuntime(serverId);
   const [data, setData] = useState<MinecraftPluginsDto | null>(null);
   /** Показанное — из памяти, живого ответа сейчас нет. */
@@ -171,26 +174,23 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">Поддерживаемые плагины</h2>
+        <h2 className="font-semibold">{t('mc.plug.title')}</h2>
         <div className="flex items-center gap-2">
           {data.available && !stale && (
-            <span className="text-xs text-muted">всего на сервере: {data.installed.length}</span>
+            <span className="text-xs text-muted">{t('mc.plug.total', { count: data.installed.length })}</span>
           )}
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load(runtime.bootAt)}>
-            {busy ? 'Проверяем…' : 'Обновить'}
+            {t(busy ? 'mc.plug.checking' : 'common.refresh')}
           </Button>
         </div>
       </div>
 
       {stale && (
-        <p className="text-xs text-warn">
-          Сервер сейчас не отвечает — показано состояние на момент последней проверки. Список
-          обновится сам, когда сервер запустится.
-        </p>
+        <p className="text-xs text-warn">{t('mc.plug.stale')}</p>
       )}
       {!data.available && !stale && (
         <p className="text-xs text-warn">
-          {retrying ? 'Сервер запущен, ждём ответа companion-плагина…' : data.reason}
+          {retrying ? t('mc.plug.waiting') : apiText(data.reason)}
         </p>
       )}
 
@@ -198,25 +198,20 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
         {data.known.map((plugin) => (
           <li key={plugin.id} className="flex items-start gap-3">
             <Badge variant={plugin.installed ? 'success' : 'outline'}>
-              {plugin.installed ? 'есть' : 'нет'}
+              {t(plugin.installed ? 'mc.plug.yes' : 'mc.plug.no')}
             </Badge>
             <div className="min-w-0">
               <div className="text-sm font-medium">
                 {plugin.displayName}
                 {plugin.version && <span className="ml-2 text-xs text-muted">{plugin.version}</span>}
               </div>
-              <div className="text-xs text-muted">{plugin.gives}</div>
+              <div className="text-xs text-muted">{t(plugin.givesKey)}</div>
             </div>
           </li>
         ))}
       </ul>
 
-      <p className="text-xs text-muted">
-        Плагина нет — соответствующие кнопки и вкладки просто не появляются. Ничего настраивать
-        дополнительно не нужно: панель проверяет список сама. Выключить или удалить эти плагины из
-        панели нельзя — на них держится половина её возможностей; снимать их можно только вручную,
-        по SFTP.
-      </p>
+      <p className="text-xs text-muted">{t('mc.plug.hint')}</p>
 
       {data.installed.length > 0 && (
         <div>
@@ -226,7 +221,7 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
             className="-mx-2 flex min-h-11 items-center px-2 text-xs text-muted underline underline-offset-2 sm:mx-0 sm:min-h-0 sm:px-0"
             onClick={() => setShowAll((v) => !v)}
           >
-            {showAll ? 'Скрыть' : 'Показать'} все плагины сервера
+            {t(showAll ? 'mc.plug.hide' : 'mc.plug.show')} {t('mc.plug.allPlugins')}
           </button>
           {showAll && (
             <div className="mt-2 flex flex-wrap gap-1.5">

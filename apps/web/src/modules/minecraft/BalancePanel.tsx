@@ -3,6 +3,7 @@ import type { MinecraftBalanceChangeDto, MinecraftBalanceDto } from '@aurum/shar
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Button, ErrorText, Input, Label, Spinner } from '../../components/ui';
+import { useApiText, useT } from '../../i18n';
 
 /**
  * Блок «Валюта» в карточке игрока.
@@ -18,6 +19,8 @@ import { Button, ErrorText, Input, Label, Spinner } from '../../components/ui';
  * человеку, чтобы поле «за что» не выглядело необязательной формальностью.
  */
 export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: string }) {
+  const t = useT();
+  const apiText = useApiText();
   const { hasPermission } = useAuth();
   const [data, setData] = useState<MinecraftBalanceDto | null>(null);
   const [error, setError] = useState('');
@@ -41,7 +44,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
   async function change(direction: 'deposit' | 'withdraw') {
     const value = Number(amount.replace(',', '.'));
     if (!Number.isFinite(value) || value <= 0) {
-      setError('Сумма должна быть положительным числом');
+      setError(t('mc.bal.positive'));
       return;
     }
     setBusy(true);
@@ -60,11 +63,14 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
       if (!res.ok) {
         // Отказ провайдера («недостаточно средств») — это его текст, а не
         // сбой панели, и подменять его своим было бы неправдой.
-        setError(res.error ?? 'Операция отклонена плагином экономики');
+        setError(apiText(res.error) || t('mc.bal.rejected'));
       } else {
         setResult(
-          `${direction === 'deposit' ? 'Начислено' : 'Списано'} ${value}: ` +
-            `было ${res.balanceBefore}, стало ${res.balanceAfter}`,
+          t(direction === 'deposit' ? 'mc.bal.deposited' : 'mc.bal.withdrawn', {
+            value,
+            before: res.balanceBefore,
+            after: res.balanceAfter,
+          }),
         );
         setAmount('');
         setReason('');
@@ -88,13 +94,13 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
   // Валюты на сервере нет. Показываем причину и оставляем поля видимыми, но
   // неактивными — так понятно, что появится после установки Vault.
   const unavailable = !data?.available;
-  const hint = data?.reason ?? 'нужен Vault';
-  const shortHint = data?.code === 'no-companion' ? 'нужен companion-плагин' : 'нужен Vault';
+  const hint = apiText(data?.reason) || t('mc.bal.needVault');
+  const shortHint = t(data?.code === 'no-companion' ? 'mc.bal.needCompanion' : 'mc.bal.needVault');
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Label className="mb-0">Баланс</Label>
+        <Label className="mb-0">{t('mc.bal.title')}</Label>
         <span className="text-lg font-semibold">
           {unavailable ? '—' : (data?.formatted ?? String(data?.balance ?? 0))}
         </span>
@@ -107,7 +113,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
 
       {!canEdit && !unavailable && (
         <p className="text-xs text-muted">
-          У вашей роли нет права менять баланс — здесь только просмотр.
+          {t('mc.bal.readOnly')}
         </p>
       )}
 
@@ -122,7 +128,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
               value={amount}
               disabled={unavailable || busy}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="Сумма"
+              placeholder={t('mc.bal.amount')}
               className="sm:w-[140px]"
             />
             <Input
@@ -130,7 +136,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
               value={reason}
               disabled={unavailable || busy}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="За что (попадёт в журнал)"
+              placeholder={t('mc.bal.reason')}
               maxLength={200}
               className="min-w-0 flex-1"
             />
@@ -139,24 +145,24 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
             <Button
               size="sm"
               disabled={unavailable || busy || !amount.trim()}
-              title={unavailable ? `Начислить — ${shortHint}` : 'Начислить игроку указанную сумму'}
+              title={unavailable ? `${t('mc.bal.deposit')} — ${shortHint}` : t('mc.bal.depositHint')}
               onClick={() => void change('deposit')}
             >
-              Начислить
+              {t('mc.bal.deposit')}
               {unavailable && <span className="ml-1 opacity-60">·{shortHint}</span>}
             </Button>
             <Button
               size="sm"
               variant="outline"
               disabled={unavailable || busy || !amount.trim()}
-              title={unavailable ? `Списать — ${shortHint}` : 'Списать у игрока указанную сумму'}
+              title={unavailable ? `${t('mc.bal.withdraw')} — ${shortHint}` : t('mc.bal.withdrawHint')}
               onClick={() => void change('withdraw')}
             >
-              Списать
+              {t('mc.bal.withdraw')}
               {unavailable && <span className="ml-1 opacity-60">·{shortHint}</span>}
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={load}>
-              Обновить
+              {t('common.refresh')}
             </Button>
           </div>
           <p className="text-xs text-muted">

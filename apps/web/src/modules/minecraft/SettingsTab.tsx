@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
+import { useI18n, useT } from '../../i18n';
 import { InstalledPluginsPanel } from './InstalledPluginsPanel';
 
 /** Тот же принцип, что и во вкладках: префикс берётся из модуля сервера. */
@@ -79,6 +80,7 @@ function RconForm({
   const [host, setHost] = useState('');
   const [port, setPort] = useState('25575');
   const [password, setPassword] = useState('');
+  const { t, formatDateTime } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [probe, setProbe] = useState('');
@@ -94,7 +96,7 @@ function RconForm({
         method: 'PUT',
         body: JSON.stringify({ host: host.trim(), port: Number(port), password }),
       });
-      setProbe(res.probe || 'команда выполнена, ответ пустой');
+      setProbe(res.probe || t('mc.s.emptyProbe'));
       setPassword('');
       onSaved();
     } catch (e) {
@@ -111,43 +113,40 @@ function RconForm({
   return (
     <Card className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Подключение по RCON</h2>
+        <h2 className="font-semibold">{t('mc.s.rcon')}</h2>
         <Badge variant={status?.rconConfigured ? 'success' : 'outline'}>
-          {status?.rconConfigured ? 'настроено' : 'не настроено'}
+          {status?.rconConfigured ? t('mc.s.configured') : t('mc.s.notConfigured')}
         </Badge>
       </div>
 
       <p className="text-xs text-muted">
-        Через RCON работают вкладки «Игроки», «Баны», «Whitelist» и быстрые команды. Адрес
-        указывайте приватный, через туннель — например <code>10.0.0.2</code>, а не публичный.
-        {status?.lastSeenAt && (
-          <> Последняя успешная команда: {new Date(status.lastSeenAt).toLocaleString()}.</>
-        )}
+        {t('mc.s.rconHintA')} <code>10.0.0.2</code>{t('mc.s.rconHintB')}
+        {status?.lastSeenAt && <>{t('mc.s.lastOk', { date: formatDateTime(status.lastSeenAt) })}</>}
       </p>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
-          <Label>Хост</Label>
+          <Label>{t('mc.s.host')}</Label>
           <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="10.0.0.2" />
         </div>
         <div>
-          <Label>Порт</Label>
+          <Label>{t('mc.s.port')}</Label>
           <Input
             value={port}
             onChange={(e) => setPort(e.target.value)}
             inputMode="numeric"
             placeholder="25575"
           />
-          {!portValid && port !== '' && <ErrorText>Порт должен быть числом от 1 до 65535</ErrorText>}
+          {!portValid && port !== '' && <ErrorText>{t('mc.s.badPort')}</ErrorText>}
         </div>
         <div>
-          <Label>Пароль</Label>
+          <Label>{t('mc.s.password')}</Label>
           <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
-            placeholder={status?.rconConfigured ? 'ввести заново для замены' : 'rcon.password'}
+            placeholder={status?.rconConfigured ? t('mc.s.replace') : 'rcon.password'}
           />
         </div>
       </div>
@@ -155,16 +154,16 @@ function RconForm({
       {error && <ErrorText>{error}</ErrorText>}
       {probe && (
         <p className="text-xs text-emerald-400">
-          Проверка прошла, сервер ответил: <span className="font-mono">{probe}</span>
+          {t('mc.s.probeOk')} <span className="font-mono">{probe}</span>
         </p>
       )}
 
       <div className="flex items-center gap-3">
         <Button onClick={() => void save()} disabled={!canSave}>
-          {busy ? 'Проверяем связь…' : 'Сохранить и проверить'}
+          {busy ? t('mc.s.checking') : t('mc.s.saveCheck')}
         </Button>
         <span className="text-xs text-muted">
-          Сохранённый пароль обратно не показывается — его нельзя прочитать даже владельцу.
+          {t('mc.s.passwordHidden')}
         </span>
       </div>
     </Card>
@@ -180,6 +179,7 @@ function CompanionForm({
   status: MinecraftConfigStatusDto | null;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [baseUrl, setBaseUrl] = useState('');
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -216,21 +216,19 @@ function CompanionForm({
   return (
     <Card className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Companion-плагин</h2>
+        <h2 className="font-semibold">{t('mc.s.companion')}</h2>
         <Badge variant={status?.companionConfigured ? 'success' : 'outline'}>
-          {status?.companionConfigured ? 'настроено' : 'не настроено'}
+          {status?.companionConfigured ? t('mc.s.configured') : t('mc.s.notConfigured')}
         </Badge>
       </div>
 
       <p className="text-xs text-muted">
-        Нужен только для вкладки «Инвентарь», а также чтобы во вкладке «Игроки» появились UUID и
-        пинг. Без него остальное работает по RCON. Адрес — приватный, через туннель; наружу порт
-        плагина выставлять не нужно.
+        {t('mc.s.companionHint')}
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label>Адрес плагина</Label>
+          <Label>{t('mc.s.address')}</Label>
           <Input
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
@@ -238,28 +236,28 @@ function CompanionForm({
           />
         </div>
         <div>
-          <Label>Токен</Label>
+          <Label>{t('mc.s.token')}</Label>
           <Input
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             autoComplete="new-password"
-            placeholder={status?.companionConfigured ? 'ввести заново для замены' : 'из config.yml'}
+            placeholder={status?.companionConfigured ? t('mc.s.replace') : t('mc.s.tokenFromConfig')}
           />
-          {!tokenIsAscii && <ErrorText>Токен может содержать только латиницу и цифры</ErrorText>}
+          {!tokenIsAscii && <ErrorText>{t('mc.s.tokenAscii')}</ErrorText>}
         </div>
       </div>
 
       {error && <ErrorText>{error}</ErrorText>}
-      {saved && <p className="text-xs text-emerald-400">Сохранено.</p>}
+      {saved && <p className="text-xs text-emerald-400">{t('mc.s.saved')}</p>}
 
       <div className="flex items-center gap-2">
         <Button onClick={() => void save()} disabled={!canSave}>
-          {busy ? 'Сохраняем…' : 'Сохранить'}
+          {busy ? t('common.saving') : t('common.save')}
         </Button>
         {status?.companionConfigured && (
           <Button variant="outline" onClick={() => void save(true)} disabled={busy}>
-            Отключить
+            {t('mc.s.disable')}
           </Button>
         )}
       </div>

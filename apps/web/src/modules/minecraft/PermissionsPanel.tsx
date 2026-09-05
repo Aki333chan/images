@@ -3,6 +3,7 @@ import type { MinecraftPermissionChangeDto, MinecraftPermissionsDto } from '@aur
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Badge, Button, ErrorText, Input, Label, Spinner } from '../../components/ui';
+import { useApiText, useT } from '../../i18n';
 
 /**
  * Права игрока через LuckPerms.
@@ -15,6 +16,8 @@ import { Badge, Button, ErrorText, Input, Label, Spinner } from '../../component
  * перезапрашивать и он не может разойтись с реальностью.
  */
 export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: string }) {
+  const t = useT();
+  const apiText = useApiText();
   const { hasPermission } = useAuth();
   const [data, setData] = useState<MinecraftPermissionsDto | null>(null);
   const [error, setError] = useState('');
@@ -43,7 +46,7 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
         body: JSON.stringify(body),
       });
       if (!next.available) {
-        setError(next.reason ?? 'Не удалось изменить права');
+        setError(apiText(next.reason) || t('mc.perm.failed'));
         return;
       }
       setData(next);
@@ -61,7 +64,7 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
   if (!data.available) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-muted">{data.reason}</p>
+        <p className="text-sm text-muted">{apiText(data.reason)}</p>
         {data.code === 'requires-luckperms' && (
           <p className="text-xs text-muted">
             Установите LuckPerms на игровой сервер и перезапустите его — вкладка появится сама.
@@ -77,11 +80,11 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
 
       <div>
         <div className="mb-1 text-xs text-muted">
-          Основная группа: <span className="font-medium text-neutral-100">{data.primaryGroup}</span>
+          {t('mc.perm.primary')} <span className="font-medium text-neutral-100">{data.primaryGroup}</span>
         </div>
-        <Label>Группы</Label>
+        <Label>{t('mc.perm.groups')}</Label>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {data.groups?.length === 0 && <span className="text-xs text-muted">групп нет</span>}
+          {data.groups?.length === 0 && <span className="text-xs text-muted">{t('mc.perm.noGroups')}</span>}
           {data.groups?.map((group) =>
             canEdit ? (
               // Своя «плашка» вместо Badge: крестик внутри Badge получался
@@ -94,8 +97,8 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
                 {group}
                 <button
                   className="ml-0.5 flex h-10 w-10 items-center justify-center rounded-full text-base opacity-70 hover:bg-white/10 hover:opacity-100 sm:h-6 sm:w-6 sm:text-xs"
-                  title={`Убрать из группы ${group}`}
-                  aria-label={`Убрать из группы ${group}`}
+                  title={t('mc.perm.removeFrom', { group })}
+                  aria-label={t('mc.perm.removeFrom', { group })}
                   disabled={busy}
                   onClick={() => void change({ kind: 'group', key: group, remove: true })}
                 >
@@ -114,24 +117,24 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
             <Input
               value={newGroup}
               onChange={(e) => setNewGroup(e.target.value)}
-              placeholder="Имя группы, напр. vip"
+              placeholder={t('mc.perm.groupPlaceholder')}
             />
             <Button
               size="sm"
               disabled={busy || !newGroup.trim()}
               onClick={() => void change({ kind: 'group', key: newGroup.trim(), value: true })}
             >
-              Добавить
+              {t('common.add')}
             </Button>
           </div>
         )}
       </div>
 
       <div>
-        <Label>Права</Label>
+        <Label>{t('mc.perm.nodes')}</Label>
         <div className="mt-1 space-y-1">
           {data.permissions?.length === 0 && (
-            <span className="text-xs text-muted">отдельных прав нет — всё приходит из групп</span>
+            <span className="text-xs text-muted">{t('mc.perm.noNodes')}</span>
           )}
           {data.permissions?.map((node) => (
             <div
@@ -143,7 +146,7 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
                 {/* Явный запрет выглядит иначе, чем выдача: у LuckPerms это
                     разные состояния, и путать их нельзя. */}
                 <Badge variant={node.value ? 'success' : 'destructive'}>
-                  {node.value ? 'выдано' : 'запрещено'}
+                  {t(node.value ? 'mc.perm.granted' : 'mc.perm.denied')}
                 </Badge>
                 {canEdit && (
                   <Button
@@ -154,7 +157,7 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
                       void change({ kind: 'permission', key: node.permission, remove: true })
                     }
                   >
-                    Снять
+                    {t('mc.perm.revoke')}
                   </Button>
                 )}
               </div>
@@ -166,7 +169,7 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
             <Input
               value={newPermission}
               onChange={(e) => setNewPermission(e.target.value)}
-              placeholder="Право, напр. essentials.fly"
+              placeholder={t('mc.perm.nodePlaceholder')}
             />
             <Button
               size="sm"
@@ -175,18 +178,18 @@ export function PermissionsPanel({ serverId, uuid }: { serverId: string; uuid: s
                 void change({ kind: 'permission', key: newPermission.trim(), value: true })
               }
             >
-              Выдать
+              {t('mc.perm.grant')}
             </Button>
             <Button
               size="sm"
               variant="destructive"
               disabled={busy || !newPermission.trim()}
-              title="Явный запрет: перебивает право, полученное из группы"
+              title={t('mc.perm.denyHint')}
               onClick={() =>
                 void change({ kind: 'permission', key: newPermission.trim(), value: false })
               }
             >
-              Запретить
+              {t('mc.perm.deny')}
             </Button>
           </div>
         )}

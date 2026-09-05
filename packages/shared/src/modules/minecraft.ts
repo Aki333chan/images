@@ -169,8 +169,13 @@ export interface KnownPluginDto {
   id: string;
   /** Человеческое название — оно нередко другое, чем id. */
   displayName: string;
-  /** Что панель умеет, если плагин установлен. */
-  gives: string;
+  /**
+   * Что панель умеет, если плагин установлен, — ключ словаря, а не текст.
+   *
+   * Строку собирает браузер: список плагинов одинаков для всех, а язык у
+   * каждого свой, и переводить его на сервере значило бы решать за читателя.
+   */
+  givesKey: string;
   installed: boolean;
   /** Версия с сервера; null, если не установлен. */
   version: string | null;
@@ -322,17 +327,17 @@ export const KNOWN_PLUGINS = [
   {
     id: 'LuckPerms',
     displayName: 'LuckPerms',
-    gives: 'вкладка «Права» у игрока: группы и права через API плагина',
+    givesKey: 'mc.plugin.gives.luckperms',
   },
   {
     id: 'Essentials',
     displayName: 'EssentialsX',
-    gives: 'быстрые действия: heal, god, fly, kit, режим игры, телепорт',
+    givesKey: 'mc.plugin.gives.essentials',
   },
   {
     id: 'InvSeePlusPlus',
     displayName: 'InvSee++',
-    gives: 'инвентари игроков, которых нет в сети',
+    givesKey: 'mc.plugin.gives.invsee',
   },
   {
     // Vault сам по себе экономику не ведёт — он прослойка между плагинами.
@@ -340,7 +345,7 @@ export const KNOWN_PLUGINS = [
     // бы плагином тот ни предоставлялся (EssentialsX, CMI, любой другой).
     id: 'Vault',
     displayName: 'Vault',
-    gives: 'блок «Валюта» у игрока и баланс сервера: начисления и списания через Economy-провайдер',
+    givesKey: 'mc.plugin.gives.vault',
   },
   {
     // Наш собственный плагин авторизации. Панель обращается к нему не
@@ -348,7 +353,7 @@ export const KNOWN_PLUGINS = [
     // публичному API и отдаёт результат сюда.
     id: 'AurumAuth',
     displayName: 'AurumAuth',
-    gives: 'кнопка «Сбросить пароль» в карточке игрока: одноразовый токен на 20 минут',
+    givesKey: 'mc.plugin.gives.aurumauth',
   },
   {
     // Наш плагин гильдий и пати. Панель, как и с AurumAuth, ходит к нему не
@@ -356,7 +361,7 @@ export const KNOWN_PLUGINS = [
     // результат сюда. Второго HTTP-сервера на игровом сервере не появляется.
     id: 'AurumGuilds',
     displayName: 'AurumGuilds',
-    gives: 'вкладка «Гильдии»: состав, общак и вмешательство администрации; гильдия в карточке игрока',
+    givesKey: 'mc.plugin.gives.aurumguilds',
   },
 ] as const;
 
@@ -546,11 +551,17 @@ export interface MinecraftGuildRemoveMemberDto {
   target: string;
 }
 
-/** Названия рангов по-русски — одни и те же в списке, карточке и модалке игрока. */
-export const MINECRAFT_GUILD_RANK_TITLES: Record<MinecraftGuildRank, string> = {
-  leader: 'лидер',
-  officer: 'офицер',
-  member: 'участник',
+/**
+  * Ключи подписей рангов — одни и те же в списке, карточке и модалке игрока.
+  *
+  * Здесь ключи, а не готовые слова: подписи живут в словарях панели, и «лидер»
+  * на польском интерфейсе должен быть «lider», а не остатком русского текста
+  * посреди переведённой карточки.
+  */
+export const MINECRAFT_GUILD_RANK_KEYS: Record<MinecraftGuildRank, string> = {
+  leader: 'mc.rank.leader',
+  officer: 'mc.rank.officer',
+  member: 'mc.rank.member',
 };
 
 /**
@@ -577,13 +588,13 @@ export const MINECRAFT_BONUS_TYPES: MinecraftBonusType[] = [
   'experience',
 ];
 
-/** Подписи для выпадающего списка, пока плагин не прислал свои. */
-export const MINECRAFT_BONUS_TITLES: Record<MinecraftBonusType, string> = {
-  mining_speed: 'Скорость добычи',
-  movement_speed: 'Скорость передвижения',
-  block_drops: 'Добыча из блоков',
-  mob_drops: 'Добыча с мобов',
-  experience: 'Опыт',
+/** Ключи подписей для выпадающего списка, пока плагин не прислал свои. */
+export const MINECRAFT_BONUS_KEYS: Record<MinecraftBonusType, string> = {
+  mining_speed: 'mc.bonus.miningSpeed',
+  movement_speed: 'mc.bonus.movementSpeed',
+  block_drops: 'mc.bonus.blockDrops',
+  mob_drops: 'mc.bonus.mobDrops',
+  experience: 'mc.bonus.experience',
 };
 
 export interface MinecraftGuildBonusDto {

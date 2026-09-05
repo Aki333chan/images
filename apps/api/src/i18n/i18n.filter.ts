@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import type { Values } from '@aurum/shared';
 import { I18nService } from './i18n.service';
 
 /**
@@ -65,20 +66,41 @@ export class I18nExceptionFilter implements ExceptionFilter {
 
     const record = body as Record<string, unknown>;
     const message = record['message'];
+    // Подстановки к ключу: `throw new BadRequestException({ message: key,
+    // i18nValues: { name } })`. Наружу они не идут — это сырьё для перевода,
+    // а не часть контракта ошибки.
+    const { i18nValues, ...rest } = record;
+    const values = isValues(i18nValues) ? i18nValues : undefined;
     response.status(status).json({
-      ...record,
+      ...rest,
       statusCode: status,
       // message бывает массивом: так class-validator отдаёт разбор тела
       // запроса, по строке на каждое непрошедшее поле.
       message: Array.isArray(message)
-        ? message.map((item) => this.translate(locale, String(item)))
+        ? message.map((item) => this.translate(locale, String(item), values))
         : typeof message === 'string'
-          ? this.translate(locale, message)
+          ? this.translate(locale, message, values)
           : message,
     });
   }
 
-  private translate(locale: Parameters<I18nService['t']>[0], text: string): string {
-    return this.i18n.known(text) ? this.i18n.t(locale, text) : text;
+  private translate(
+    locale: Parameters<I18nService['t']>[0],
+    text: string,
+    values?: Values,
+  ): string {
+    return this.i18n.known(text) ? this.i18n.t(locale, text, values) : text;
   }
+}
+
+/**
+ * Похоже ли это на подстановки.
+ *
+ * Проверка отдельная, потому что тело исключения пишет человек руками, и
+ * опечатка в нём не должна ронять обработчик ошибок — иначе вместо понятного
+ * 400 приедет 500 из фильтра, который как раз и должен был всё объяснить.
+ */
+function isValues(value: unknown): value is Values {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return Object.values(value).every((v) => typeof v === 'string' || typeof v === 'number');
 }

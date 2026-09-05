@@ -58,7 +58,7 @@ export class PermissionChangeDto {
   @MinLength(1)
   @MaxLength(120)
   @Matches(/^[A-Za-z0-9_.*:-]+$/, {
-    message: 'Допустимы только латиница, цифры и символы . _ - * :',
+    message: 'mc.val.nickChars',
   })
   key!: string;
 
@@ -81,8 +81,8 @@ export class PermissionChangeDto {
  * выглядела бы ровно наоборот. Поэтому здесь только положительные числа.
  */
 export class BalanceChangeDto {
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Сумма — число не более чем с двумя знаками после запятой' })
-  @Min(0.01, { message: 'Сумма должна быть больше нуля' })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'mc.val.amountDecimals' })
+  @Min(0.01, { message: 'mc.val.amountPositive' })
   // Верхняя граница — не про «столько не бывает», а про опечатку: лишний
   // ноль в поле не должен приводить к необратимой выдаче.
   @Max(1_000_000_000)
@@ -104,7 +104,7 @@ export class BalanceChangeDto {
  */
 export class GuildTransferDto {
   @IsString()
-  @MinLength(1, { message: 'Укажите ник участника' })
+  @MinLength(1, { message: 'mc.val.memberNick' })
   @MaxLength(16)
   target!: string;
 }
@@ -112,7 +112,7 @@ export class GuildTransferDto {
 /** Кого исключить из его гильдии. Гильдию искать не нужно: она у игрока одна. */
 export class GuildRemoveMemberDto {
   @IsString()
-  @MinLength(1, { message: 'Укажите ник игрока' })
+  @MinLength(1, { message: 'mc.val.playerNick' })
   @MaxLength(16)
   target!: string;
 }
@@ -128,26 +128,26 @@ export class GuildRemoveMemberDto {
  */
 export class GiveItemDto {
   @IsString()
-  @MinLength(1, { message: 'Укажите предмет' })
+  @MinLength(1, { message: 'mc.val.itemRequired' })
   @MaxLength(120)
   @Matches(/^[a-z0-9_.:/-]+$/i, {
-    message: 'Идентификатор предмета — латиница, цифры и символы _ . : - /',
+    message: 'mc.val.itemChars',
   })
   id!: string;
 
-  @IsInt({ message: 'Количество — целое число' })
-  @Min(1, { message: 'Количество должно быть больше нуля' })
+  @IsInt({ message: 'mc.val.countInteger' })
+  @Min(1, { message: 'mc.val.countPositive' })
   // 36 слотов по 64 — ровно полный инвентарь одним материалом. Всё сверх
   // всё равно вернулось бы как не поместившееся, а опечатка вроде «64000000»
   // заставила бы игровой сервер собирать миллион стаков в основном потоке.
-  @Max(36 * 64, { message: 'За раз можно выдать не больше 2304 штук одного предмета' })
+  @Max(36 * 64, { message: 'mc.val.countMax' })
   count!: number;
 }
 
 export class GiveItemsDto {
   @IsArray()
-  @ArrayNotEmpty({ message: 'Список пуст — нечего выдавать' })
-  @ArrayMaxSize(45, { message: 'Не больше 45 строк за раз' })
+  @ArrayNotEmpty({ message: 'mc.val.listEmpty' })
+  @ArrayMaxSize(45, { message: 'mc.val.listMax' })
   @ValidateNested({ each: true })
   @Type(() => GiveItemDto)
   items!: GiveItemDto[];
@@ -200,13 +200,13 @@ export class InventoryClearDto {
  */
 export class GuildBonusGrantDto {
   @IsString()
-  @MinLength(1, { message: 'Укажите вид бонуса' })
+  @MinLength(1, { message: 'mc.val.bonusKind' })
   @MaxLength(32)
-  @Matches(/^[a-z_]+$/, { message: 'Вид бонуса — латиница и подчёркивания' })
+  @Matches(/^[a-z_]+$/, { message: 'mc.val.bonusKindChars' })
   type!: string;
 
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Величина — число' })
-  @Min(0.01, { message: 'Величина должна быть больше нуля' })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'mc.val.magnitudeNumber' })
+  @Min(0.01, { message: 'mc.val.magnitudePositive' })
   @Max(1000)
   magnitude!: number;
 

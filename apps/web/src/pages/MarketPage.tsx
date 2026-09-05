@@ -22,6 +22,7 @@ import {
   type ServerTargetDto,
 } from '@aurum/shared';
 import { api } from '../lib/api';
+import { useApiText } from '../i18n';
 import { Badge, Button, ErrorText, Input, Select, Spinner, Tabs } from '../components/ui';
 import { PluginIcon } from './PluginIcon';
 import { Modal } from '../components/Modal';
@@ -605,6 +606,10 @@ function InstallWizard({
   preferredServerId: string | null;
   onClose: () => void;
 }) {
+  // Экран маркета ещё не переведён целиком, но сообщение об установке
+  // приходит от API ключом — показать его сырым значило бы вывести человеку
+  // «mc.err.installedPluginRunning» вместо фразы.
+  const apiText = useApiText();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [serverId, setServerId] = useState<string>(
     preferredServerId && targets.some((t) => t.serverId === preferredServerId)
@@ -736,7 +741,9 @@ function InstallWizard({
           <div className="space-y-3">
             {result ? (
               <>
-                <p className="text-sm text-emerald-400">{result.message}</p>
+                <p className="text-sm text-emerald-400">
+                  {apiText(result.message, result.messageValues)}
+                </p>
                 <p className="text-[11px] text-muted">
                   {result.fileName} · {formatSize(result.sizeBytes)}
                 </p>

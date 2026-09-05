@@ -356,7 +356,7 @@ export class MinecraftController {
       // плагина авторизации либо нет такого аккаунта. Различать эти случаи
       // в ответе не станем: это подсказка тому, кто перебирает ники.
       throw new ConflictException(
-        'Сбросить пароль не удалось: проверьте, что на сервере установлен AurumAuth и такой игрок зарегистрирован',
+        'mc.err.resetFailed',
       );
     }
     return reset;
@@ -390,7 +390,7 @@ export class MinecraftController {
   ): Promise<MinecraftGuildDto> {
     const guild = await this.companion.getGuild(serverId, Number(guildId));
     if (!guild) {
-      throw new NotFoundException('Гильдия не найдена или плагин гильдий недоступен');
+      throw new NotFoundException('mc.err.guildNotFound');
     }
     return guild;
   }
@@ -434,7 +434,7 @@ export class MinecraftController {
   ): Promise<MinecraftGuildBonusDto[]> {
     const bonuses = await this.companion.getGuildBonuses(serverId, Number(guildId));
     if (bonuses === null) {
-      throw new NotFoundException('Плагин гильдий недоступен');
+      throw new NotFoundException('mc.err.guildsUnavailable');
     }
     return bonuses;
   }

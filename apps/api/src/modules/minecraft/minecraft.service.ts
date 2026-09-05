@@ -232,14 +232,12 @@ export class MinecraftService {
     if (!installed) {
       return {
         available: false,
-        reason:
-          'Список плагинов отдаёт companion-плагин. Пока он не настроен или не отвечает, ' +
-          'проверить установленное невозможно.',
+        reason: 'mc.err.pluginListNeedsCompanion',
         installed: [],
         known: KNOWN_PLUGINS.map((p) => ({
           id: p.id,
           displayName: p.displayName,
-          gives: p.gives,
+          givesKey: p.givesKey,
           installed: false,
           version: null,
         })),
@@ -255,7 +253,7 @@ export class MinecraftService {
         return {
           id: p.id,
           displayName: p.displayName,
-          gives: p.gives,
+          givesKey: p.givesKey,
           // Выключенный плагин командой не отзовётся — считаем неустановленным.
           installed: !!match && match.enabled,
           version: match?.version ?? null,
@@ -305,8 +303,7 @@ export class MinecraftService {
     const uuid = await this.companion.resolveUuid(serverId, player);
     if (!uuid) {
       throw new BadRequestException(
-        `Не удалось определить UUID игрока ${player}. UUID отдаёт companion-плагин и только ` +
-          'для тех, кто сейчас в сети — проверьте, что плагин настроен и игрок онлайн.',
+        { message: 'mc.err.noUuid', i18nValues: { player } },
       );
     }
     return uuid;
@@ -334,7 +331,7 @@ export class MinecraftService {
     actorId: string,
   ): Promise<MinecraftBalanceChangeDto> {
     if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('Сумма должна быть больше нуля');
+      throw new BadRequestException('mc.err.amountPositive');
     }
     // Дробные копейки провайдеры округляют по-своему, и в журнале потом не
     // сходится. Две цифры после запятой — то, что показывают все известные
@@ -345,7 +342,7 @@ export class MinecraftService {
     if (!result.ok) {
       // Валюты на сервере нет — это не состоявшаяся операция, писать в журнал
       // «изменение баланса» было бы неправдой.
-      throw new BadRequestException(result.failure.reason ?? 'Валюта на этом сервере недоступна');
+      throw new BadRequestException(result.failure.reason ?? 'mc.err.ecoUnavailable');
     }
 
     // Ник ищем среди онлайна: в журнале «Steve» читается, а UUID — нет.

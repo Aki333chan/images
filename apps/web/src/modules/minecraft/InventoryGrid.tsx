@@ -1,6 +1,7 @@
 import type { MinecraftInventoryItemDto, MinecraftInventoryResponse } from '@aurum/shared';
 import { ItemGlyph } from './ItemGlyph';
 import { itemIcon, itemShortLabel } from './item-icon';
+import { useT } from '../../i18n';
 
 /**
  * Где лежит слот. Основной инвентарь, броня и вторая рука приходят разными
@@ -45,6 +46,7 @@ export function InventoryGrid({
   selected?: Set<string>;
   onToggle?: (key: string) => void;
 }) {
+  const t = useT();
   const bySlot = new Map((items ?? []).map((i) => [i.slot, i]));
   const selectable = !!onToggle;
 
@@ -68,7 +70,11 @@ export function InventoryGrid({
             key={key}
             role={clickable ? 'checkbox' : undefined}
             aria-checked={clickable ? picked : undefined}
-            aria-label={clickable ? `Слот ${slot}: ${item?.displayName ?? item?.id}` : undefined}
+            aria-label={
+              clickable
+                ? t('mc.inv.slotItem', { slot, item: item?.displayName ?? item?.id ?? '' })
+                : undefined
+            }
             tabIndex={clickable ? 0 : undefined}
             onClick={clickable ? () => onToggle?.(key) : undefined}
             onKeyDown={
@@ -81,7 +87,7 @@ export function InventoryGrid({
                   }
                 : undefined
             }
-            title={item ? describeItem(item) : `Слот ${slot}`}
+            title={item ? describeItem(item) : t('mc.inv.slot', { slot })}
             style={
               item && icon
                 ? { color: icon.color, backgroundColor: icon.background, borderColor: `${icon.color}66` }

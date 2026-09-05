@@ -79,7 +79,7 @@ export function ServerDetailPage() {
           if (tab.permission && !hasPermission(tab.permission)) return [];
           // id как string: ниже к списку добавляются вкладки, которых в
           // перечислении capability нет.
-          return [{ id: capability as string, label: tab.label, component: tab.component, state }];
+          return [{ id: capability as string, label: t(tab.labelKey), component: tab.component, state }];
         });
 
     // Настройки модуля — последними среди модульных: пользуются ими редко.
@@ -87,7 +87,7 @@ export function ServerDetailPage() {
     if (settings && hasPermission(settings.permission)) {
       moduleTabs.push({
         id: SETTINGS_TAB_ID,
-        label: settings.label,
+        label: t(settings.labelKey),
         component: settings.component,
         state: true,
       });

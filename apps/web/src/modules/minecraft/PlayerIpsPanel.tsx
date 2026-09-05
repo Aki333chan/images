@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MinecraftPlayerIpsResponse } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Button, ErrorText, Label, Spinner } from '../../components/ui';
+import { useApiText, useI18n } from '../../i18n';
 
 const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
 
@@ -28,6 +29,8 @@ export function PlayerIpsPanel({
   moduleId: string;
   uuid: string;
 }) {
+  const { t, formatDate, formatDateTime } = useI18n();
+  const apiText = useApiText();
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<MinecraftPlayerIpsResponse | null>(null);
   const [error, setError] = useState('');
@@ -44,10 +47,10 @@ export function PlayerIpsPanel({
   return (
     <div className="space-y-2 border-t border-border pt-4">
       <div className="flex items-center justify-between gap-2">
-        <Label>Известные IP</Label>
+        <Label>{t('mc.ips.title')}</Label>
         {!open && (
           <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-            Показать
+            {t('mc.ips.show')}
           </Button>
         )}
       </div>
@@ -62,12 +65,12 @@ export function PlayerIpsPanel({
       {open && !error && !data && <Spinner />}
 
       {open && data && !data.available && (
-        <p className="text-sm text-muted">{data.reason ?? 'Адреса недоступны.'}</p>
+        <p className="text-sm text-muted">{apiText(data.reason) || t('mc.ips.unavailable')}</p>
       )}
 
       {open && data?.available && data.addresses.length === 0 && (
         <p className="text-sm text-muted">
-          Записей нет. Историю адресов ведёт плагин авторизации — без него сервер их не хранит.
+          {t('mc.ips.empty')}
         </p>
       )}
 
@@ -77,16 +80,12 @@ export function PlayerIpsPanel({
             <li key={record.ip} className="flex flex-wrap items-baseline gap-x-3 py-1.5">
               <span className="font-mono">{record.ip}</span>
               <span className="text-xs text-muted">
-                впервые {new Date(record.firstSeen).toLocaleDateString('ru-RU')}
+                {t('mc.ips.first', { date: formatDate(record.firstSeen) })}
               </span>
               <span className="ml-auto text-xs text-muted">
                 {/* Без секунд: точность до минуты здесь и так избыточна, а
                     «14:54:09» превращает строку в мусор из цифр. */}
-                последний раз{' '}
-                {new Date(record.lastSeen).toLocaleString('ru-RU', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                })}
+                {t('mc.ips.last', { date: formatDateTime(record.lastSeen) })}
               </span>
             </li>
           ))}

@@ -18,6 +18,7 @@ import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
 import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 import { KnownPlayersPanel } from './KnownPlayersPanel';
 import { PlayerName } from './PlayerName';
+import { useI18n, useT } from '../../i18n';
 import { knownByName } from './player-name';
 
 /**
@@ -83,6 +84,8 @@ function HealthBar({ health, maxHealth }: { health: number; maxHealth: number })
 // ---------------------------------------------------------------- Игроки
 
 export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
+  const t = useT();
+
   const [data, setData] = useState<MinecraftPlayersResponse | null>(null);
   const [error, setError] = useState('');
   const [punish, setPunish] = useState<{ player: string; kind: 'kick' | 'ban' } | null>(null);
@@ -137,7 +140,7 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
         <Card>
           <ErrorText>{error}</ErrorText>
           <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
-            Повторить
+            {t('common.retry')}
           </Button>
         </Card>
         {/* История онлайна лежит в нашей БД, поэтому график остаётся
@@ -179,21 +182,21 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
       <Card>
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm text-muted">
-            Онлайн: {data.online}
+            {t('mc.tab.online', { count: data.online })}
             {data.max !== null && ` / ${data.max}`}
             {data.source === 'rcon' && (
               <span className="ml-2 text-xs">
-                (данные по RCON — UUID и пинг доступны с companion-плагином)
+                {t('mc.tab.rconHint')}
               </span>
             )}
           </div>
           <Button size="sm" variant="outline" onClick={() => void load()}>
-            Обновить
+            {t('mc.tab.refresh')}
           </Button>
         </div>
 
         {data.players.length === 0 ? (
-          <p className="text-muted">Сейчас никого нет онлайн.</p>
+          <p className="text-muted">{t('mc.tab.nobody')}</p>
         ) : (
           <>
             {/* Таблица — только с md. На узком экране пять колонок либо
@@ -202,11 +205,11 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
             <table className="hidden w-full text-sm md:table">
               <thead className="text-left text-xs text-muted">
                 <tr>
-                  <th className="pb-2">Игрок</th>
-                  <th className="pb-2">Здоровье</th>
-                  <th className="pb-2">Положение</th>
-                  <th className="pb-2">Пинг</th>
-                  <th className="pb-2 text-right">Действия</th>
+                  <th className="pb-2">{t('mc.th.player')}</th>
+                  <th className="pb-2">{t('mc.th.health')}</th>
+                  <th className="pb-2">{t('mc.th.position')}</th>
+                  <th className="pb-2">{t('mc.th.ping')}</th>
+                  <th className="pb-2 text-right">{t('mc.th.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -238,9 +241,9 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
                         ? `${p.world ?? '?'} · ${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}`
                         : '—'}
                     </td>
-                    <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
+                    <td className="py-2 text-muted">{p.ping !== null ? t('mc.ms', { value: p.ping }) : '—'}</td>
                     <td className="py-2 text-right">
-                      <span className="text-xs text-muted">подробнее →</span>
+                      <span className="text-xs text-muted">{t('mc.more')}</span>
                     </td>
                   </tr>
                 ))}
@@ -267,7 +270,7 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
                           className="min-w-0 truncate"
                         />
                         <span className="shrink-0 text-xs text-muted">
-                          {p.ping !== null ? `${p.ping} мс` : ''}
+                          {p.ping !== null ? t('mc.ms', { value: p.ping }) : ''}
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -316,7 +319,7 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
         )}
 
         {selectedPlayer && (
-          <Modal title={`Игрок ${selectedPlayer.name}`} onClose={closeCard}>
+          <Modal title={t('mc.playerTitle', { name: selectedPlayer.name })} onClose={closeCard}>
             <PlayerDetail
               serverId={serverId}
               moduleId={moduleId}
@@ -353,6 +356,8 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
 // ------------------------------------------------------------------ Баны
 
 export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
+  const { t, formatDateTime } = useI18n();
+
   const { hasPermission } = useAuth();
   const [bans, setBans] = useState<MinecraftBanDto[] | null>(null);
   const [search, setSearch] = useState('');
@@ -391,7 +396,7 @@ export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void load(search)}
-          placeholder="Поиск по нику…"
+          placeholder={t('mc.bans.search')}
         />
         <Button size="sm" variant="outline" onClick={() => void load(search)}>
           Найти
@@ -400,17 +405,17 @@ export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
       <ErrorText>{error}</ErrorText>
 
       {bans && bans.length === 0 ? (
-        <p className="text-muted">Банов нет.</p>
+        <p className="text-muted">{t('mc.bans.empty')}</p>
       ) : (
         <>
           <table className="hidden w-full text-sm md:table">
             <thead className="text-left text-xs text-muted">
               <tr>
-                <th className="pb-2">Игрок</th>
-                <th className="pb-2">Причина</th>
-                <th className="pb-2">Срок</th>
-                <th className="pb-2">Кем</th>
-                <th className="pb-2 text-right">Статус</th>
+                <th className="pb-2">{t('mc.th.player')}</th>
+                <th className="pb-2">{t('mc.th.reason')}</th>
+                <th className="pb-2">{t('mc.th.until')}</th>
+                <th className="pb-2">{t('mc.th.by')}</th>
+                <th className="pb-2 text-right">{t('mc.th.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -419,22 +424,22 @@ export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
                   <td className="py-2 font-medium">{b.playerName}</td>
                   <td className="py-2 text-muted">{b.reason}</td>
                   <td className="py-2 text-xs text-muted">
-                    {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
+                    {b.expiresAt ? formatDateTime(b.expiresAt) : t('mc.bans.forever')}
                   </td>
                   <td className="py-2 text-xs text-muted">{b.createdByName ?? '—'}</td>
                   <td className="py-2 text-right">
                     {b.active ? (
                       <div className="flex items-center justify-end gap-2">
-                        <Badge variant="destructive">активен</Badge>
+                        <Badge variant="destructive">{t('mc.bans.active')}</Badge>
                         {hasPermission('minecraft.ban.pardon') && (
                           <Button size="sm" variant="outline" onClick={() => void pardon(b.id)}>
-                            Снять
+                            {t('mc.bans.pardon')}
                           </Button>
                         )}
                       </div>
                     ) : (
                       <Badge variant="outline">
-                        {b.pardonedByName ? `снял ${b.pardonedByName}` : 'снят'}
+                        {b.pardonedByName ? t('mc.bans.pardonedBy', { name: b.pardonedByName }) : t('mc.bans.pardoned')}
                       </Badge>
                     )}
                   </td>
@@ -452,16 +457,16 @@ export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
                 <div className="flex items-start justify-between gap-2">
                   <span className="min-w-0 truncate font-medium">{b.playerName}</span>
                   {b.active ? (
-                    <Badge variant="destructive">активен</Badge>
+                    <Badge variant="destructive">{t('mc.bans.active')}</Badge>
                   ) : (
                     <Badge variant="outline">
-                      {b.pardonedByName ? `снял ${b.pardonedByName}` : 'снят'}
+                      {b.pardonedByName ? t('mc.bans.pardonedBy', { name: b.pardonedByName }) : t('mc.bans.pardoned')}
                     </Badge>
                   )}
                 </div>
                 <p className="mt-1 break-words text-sm text-muted">{b.reason}</p>
                 <p className="mt-1 text-xs text-muted">
-                  до {b.expiresAt ? new Date(b.expiresAt).toLocaleString('ru-RU') : 'навсегда'}
+                  {t('mc.bans.until', { date: b.expiresAt ? formatDateTime(b.expiresAt) : t('mc.bans.forever') })}
                   {b.createdByName ? ` · ${b.createdByName}` : ''}
                 </p>
                 {b.active && hasPermission('minecraft.ban.pardon') && (
@@ -486,6 +491,8 @@ export function MinecraftBansTab({ serverId, moduleId }: ModuleTabProps) {
 // ------------------------------------------------------------- Whitelist
 
 export function MinecraftWhitelistTab({ serverId, moduleId }: ModuleTabProps) {
+  const t = useT();
+
   const [players, setPlayers] = useState<string[] | null>(null);
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
@@ -517,7 +524,7 @@ export function MinecraftWhitelistTab({ serverId, moduleId }: ModuleTabProps) {
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-sm text-muted">В белом списке: {players?.length ?? 0}</span>
+        <span className="text-sm text-muted">{t('mc.whitelist.count', { count: players?.length ?? 0 })}</span>
         <Button size="sm" onClick={() => setAdding(true)}>
           Добавить игрока
         </Button>
@@ -525,7 +532,7 @@ export function MinecraftWhitelistTab({ serverId, moduleId }: ModuleTabProps) {
       <ErrorText>{error}</ErrorText>
 
       {players && players.length === 0 ? (
-        <p className="text-muted">Белый список пуст.</p>
+        <p className="text-muted">{t('mc.whitelist.empty')}</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {players?.map((name) => (
@@ -540,8 +547,8 @@ export function MinecraftWhitelistTab({ serverId, moduleId }: ModuleTabProps) {
               <button
                 className="flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-white/5 hover:text-red-400 sm:h-8 sm:w-8"
                 onClick={() => void remove(name)}
-                title="Убрать из whitelist"
-                aria-label={`Убрать ${name} из whitelist`}
+                title={t('mc.whitelist.remove')}
+                aria-label={t('mc.whitelist.removeOf', { name })}
               >
                 ✕
               </button>
@@ -552,8 +559,8 @@ export function MinecraftWhitelistTab({ serverId, moduleId }: ModuleTabProps) {
 
       {adding && (
         <PromptModal
-          title="Добавить в whitelist"
-          label="Ник игрока"
+          title={t('mc.whitelist.add')}
+          label={t('mc.whitelist.nick')}
           placeholder="Steve"
           onClose={() => setAdding(false)}
           onSubmit={async (name) => {
@@ -581,6 +588,8 @@ function defaultArgs(command: MinecraftQuickCommandDto): Record<string, string> 
 }
 
 export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabProps) {
+  const t = useT();
+
   const [commands, setCommands] = useState<MinecraftQuickCommandDto[] | null>(null);
   const [active, setActive] = useState<MinecraftQuickCommandDto | null>(null);
   const [args, setArgs] = useState<Record<string, string>>({});
@@ -608,7 +617,7 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
         method: 'POST',
         body: JSON.stringify({ args: values }),
       });
-      setResult(res.output || `Команда «${command.label}» выполнена`);
+      setResult(res.output || t('mc.quick.done', { label: command.label }));
       setActive(null);
       setArgs({});
     } catch (e) {
@@ -636,7 +645,7 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
       {ordered.map(([plugin, list]) => (
         <div key={plugin || 'vanilla'} className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-sm text-muted">
-            {plugin ? (PLUGIN_LABELS[plugin] ?? plugin) : 'Быстрые команды'}:
+            {plugin ? (PLUGIN_LABELS[plugin] ?? plugin) : t('mc.quick.title')}:
           </span>
           {list.map((c) => (
             <Button
@@ -654,7 +663,7 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
                   setActive(c);
                   return;
                 }
-                if (c.destructive && !confirm(`${c.description}\n\nВыполнить?`)) return;
+                if (c.destructive && !confirm(t('mc.quick.confirm', { description: c.description }))) return;
                 void run(c, {});
               }}
             >
@@ -714,7 +723,7 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
                 Отмена
               </Button>
               <Button onClick={() => void run(active, args)} disabled={busy}>
-                Выполнить
+                {t('mc.quick.run')}
               </Button>
             </div>
           </div>
