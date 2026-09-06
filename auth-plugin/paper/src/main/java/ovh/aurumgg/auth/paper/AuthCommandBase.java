@@ -31,7 +31,7 @@ abstract class AuthCommandBase implements CommandExecutor {
     @Override
     public final boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Команда только для игроков");
+            sender.sendMessage(plugin.text("cmd.playersOnly"));
             return true;
         }
         // Пароль пришёл аргументом команды, а значит уже мог попасть в чужие

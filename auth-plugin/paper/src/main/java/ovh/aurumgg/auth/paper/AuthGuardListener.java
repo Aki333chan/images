@@ -106,7 +106,7 @@ final class AuthGuardListener implements Listener {
             // разборе инцидента, а не только в чьей-то памяти.
             plugin.getLogger().info("Игрок " + player.getName()
                     + " пропущен без пароля по праву " + BYPASS_PERMISSION);
-            player.sendMessage(AurumAuthPlugin.prefixed("Вход без пароля по праву администратора"));
+            player.sendMessage(AurumAuthPlugin.prefixed(plugin.text("guard.bypass")));
             authenticated(player);
             return;
         }
@@ -114,7 +114,7 @@ final class AuthGuardListener implements Listener {
         AuthStatus status = service.status(uuid).orElse(AuthStatus.AWAITING_LOGIN);
         if (status.isAuthenticated()) {
             if (status == AuthStatus.AUTHENTICATED_BY_SESSION) {
-                player.sendMessage(AurumAuthPlugin.prefixed("С возвращением, пароль не нужен"));
+                player.sendMessage(AurumAuthPlugin.prefixed(plugin.text("guard.welcomeBack")));
             }
             authenticated(player);
             return;
@@ -198,7 +198,7 @@ final class AuthGuardListener implements Listener {
         BukkitTask task = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             timeouts.remove(uuid);
             if (!player.isOnline() || service.isAuthenticated(uuid)) return;
-            player.kick(Component.text("Вы не вошли за отведённое время"));
+            player.kick(Component.text(plugin.text("guard.timeoutKick")));
         }, AurumAuthPlugin.ticks(config.loginTimeout()));
         timeouts.put(uuid, task);
     }
@@ -262,7 +262,7 @@ final class AuthGuardListener implements Listener {
     public void onChat(io.papermc.paper.event.player.AsyncChatEvent event) {
         if (!blocked(event.getPlayer())) return;
         event.setCancelled(true);
-        event.getPlayer().sendMessage(AurumAuthPlugin.prefixed("Сначала войдите"));
+        event.getPlayer().sendMessage(AurumAuthPlugin.prefixed(plugin.text("guard.loginFirst")));
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -281,9 +281,9 @@ final class AuthGuardListener implements Listener {
         AuthStatus status = service.status(event.getPlayer().getUniqueId())
                 .orElse(AuthStatus.AWAITING_LOGIN);
         event.getPlayer().sendMessage(AurumAuthPlugin.prefixed(switch (status) {
-            case AWAITING_NEW_PASSWORD -> "Сначала задайте новый пароль: /reset <пароль> <пароль ещё раз>";
-            case AWAITING_TOTP -> "Сначала введите код: /2fa <код>";
-            default -> "Сначала войдите: /login <пароль>";
+            case AWAITING_NEW_PASSWORD -> plugin.text("guard.needNewPassword");
+            case AWAITING_TOTP -> plugin.text("guard.needCode");
+            default -> plugin.text("guard.needLogin");
         }));
     }
 

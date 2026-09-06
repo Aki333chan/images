@@ -256,6 +256,12 @@ public final class AurumAuthPlugin extends JavaPlugin {
         return messages.list(key, values);
     }
 
+    /** Служебные подписи справки на языке сервера: «дальше» и счётчик страниц. */
+    ovh.aurumgg.auth.core.HelpBook.Labels helpLabels() {
+        return new ovh.aurumgg.auth.core.HelpBook.Labels(
+                text("help.next"), text("help.counter"));
+    }
+
     /**
      * Сказать вслух про тексты, оставшиеся в config.yml от старых версий.
      *

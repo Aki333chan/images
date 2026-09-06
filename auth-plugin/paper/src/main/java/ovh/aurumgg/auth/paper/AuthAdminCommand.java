@@ -86,7 +86,7 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (sub.equals("reload")) {
             if (!allowed(sender, "aurumauth.admin.reload")) return true;
             plugin.reloadMessages();
-            sender.sendMessage(AurumAuthPlugin.prefixed("Тексты сообщений и подсказок перечитаны"));
+            sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.reloaded")));
             return true;
         }
 
@@ -121,14 +121,16 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (!allowed(sender, "aurumauth.admin.reset")) return;
         service.issueResetToken(name).thenAccept(token -> back(() -> {
             if (token.isEmpty()) {
-                sender.sendMessage(AurumAuthPlugin.prefixed("Аккаунт «" + name + "» не найден"));
+                sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.noAccount", Map.of("name", name))));
                 return;
             }
             long minutes = Math.max(1, Duration.between(Instant.now(), token.get().expiresAt()).toMinutes());
             sender.sendMessage(AurumAuthPlugin.prefixed(
-                    "Токен сброса для " + token.get().username() + ": " + token.get().token()));
+                    plugin.text("admin.reset.token", Map.of(
+                            "player", token.get().username(), "token", token.get().token()))));
             sender.sendMessage(AurumAuthPlugin.prefixed(
-                    "Действует " + minutes + " мин. Игрок вводит: /reset " + token.get().token()));
+                    plugin.text("admin.reset.valid", Map.of(
+                            "minutes", String.valueOf(minutes), "token", token.get().token()))));
         }));
     }
 
@@ -136,52 +138,59 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (!allowed(sender, "aurumauth.admin.info")) return;
         service.lookup(name).thenAccept(found -> back(() -> {
             if (found.isEmpty()) {
-                sender.sendMessage(AurumAuthPlugin.prefixed("Аккаунт «" + name + "» не найден"));
+                sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.noAccount", Map.of("name", name))));
                 return;
             }
             AuthAccount account = found.get();
-            sender.sendMessage(AurumAuthPlugin.prefixed("Аккаунт " + account.username()));
+            sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.info.title", Map.of("player", account.username()))));
             sender.sendMessage(Component.text("  UUID: " + account.uuid()));
-            sender.sendMessage(Component.text("  Зарегистрирован: " + account.registeredAt()));
-            sender.sendMessage(Component.text("  Последний вход: "
-                    + (account.lastLoginAt() == null ? "никогда" : account.lastLoginAt())));
+            sender.sendMessage(Component.text("  " + plugin.text("admin.info.registered",
+                    Map.of("value", String.valueOf(account.registeredAt())))));
+            sender.sendMessage(Component.text("  " + plugin.text("admin.info.lastLogin",
+                    Map.of("value", account.lastLoginAt() == null
+                            ? plugin.text("admin.info.never")
+                            : String.valueOf(account.lastLoginAt())))));
             // Адрес последнего входа — сведения о человеке, а не о сервере.
             // Показываем только тому, кому отдельно разрешено их видеть.
             if (sender.hasPermission("aurumauth.admin.info.ip")) {
-                sender.sendMessage(Component.text("  Последний адрес: "
-                        + (account.lastIp() == null ? "нет данных" : account.lastIp())));
+                sender.sendMessage(Component.text("  " + plugin.text("admin.info.lastIp",
+                        Map.of("value", account.lastIp() == null
+                                ? plugin.text("admin.info.noData")
+                                : account.lastIp()))));
             }
 
-            sender.sendMessage(Component.text("  Двухфакторка: "
-                    + (account.hasTotp() ? "включена" : "выключена")));
+            sender.sendMessage(Component.text("  " + plugin.text("admin.info.totp",
+                    Map.of("value", plugin.text(account.hasTotp()
+                            ? "admin.info.totpOn" : "admin.info.totpOff")))));
 
             Optional<AuthStatus> status = onlineStatus(account.username());
-            sender.sendMessage(Component.text("  Сейчас: "
-                    + status.map(Enum::name).orElse("не в сети")));
+            sender.sendMessage(Component.text("  " + plugin.text("admin.info.now",
+                    Map.of("value", status.map(Enum::name)
+                            .orElse(plugin.text("admin.info.offline"))))));
         }));
     }
 
     private void unlock(CommandSender sender, String name) {
         if (!allowed(sender, "aurumauth.admin.unlock")) return;
         service.unlock(name);
-        sender.sendMessage(AurumAuthPlugin.prefixed("Блокировка по попыткам входа для «" + name + "» снята"));
+        sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.unlocked", Map.of("name", name))));
     }
 
     private void logout(CommandSender sender, String name) {
         if (!allowed(sender, "aurumauth.admin.logout")) return;
         Player player = Bukkit.getPlayerExact(name);
         if (player == null) {
-            sender.sendMessage(AurumAuthPlugin.prefixed("Игрока «" + name + "» нет в сети"));
+            sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.notOnline", Map.of("name", name))));
             return;
         }
         boolean changed = service.forceLogout(player.getUniqueId());
-        player.sendMessage(AurumAuthPlugin.prefixed("Вход сброшен администратором: /login <пароль>"));
+        player.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.loggedOutPlayer")));
         // Возвращаем игрока в то же положение, что и сразу после захода:
         // подсказка на экране, отсчёт до кика, только команды входа.
         guard.onDeauthenticated(player);
         sender.sendMessage(AurumAuthPlugin.prefixed(changed
-                ? "Игрок «" + name + "» разавторизован, сессия погашена"
-                : "Игрок «" + name + "» и так не был авторизован; сессия погашена"));
+                ? plugin.text("admin.logout.was", Map.of("name", name))
+                : plugin.text("admin.logout.wasNot", Map.of("name", name))));
     }
 
     /**
@@ -196,18 +205,22 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         Duration period = PERIODS.get(periodKey.toLowerCase(Locale.ROOT));
         if (period == null) {
             sender.sendMessage(AurumAuthPlugin.prefixed(
-                    "Период: " + String.join(", ", PERIODS.keySet().stream().sorted().toList())));
+                    plugin.text("admin.history.periods", Map.of(
+                            "list", String.join(", ", PERIODS.keySet().stream().sorted().toList())))));
             return;
         }
 
         service.loginHistory(name, period, HISTORY_LIMIT).thenAccept(records -> back(() -> {
             if (records.isEmpty()) {
                 sender.sendMessage(AurumAuthPlugin.prefixed(
-                        "За " + periodKey + " входов игрока «" + name + "» не было"));
+                        plugin.text("admin.history.empty", Map.of(
+                                "period", periodKey, "name", name))));
                 return;
             }
             sender.sendMessage(AurumAuthPlugin.prefixed(
-                    "Входы «" + name + "» за " + periodKey + " (" + records.size() + "):"));
+                    plugin.text("admin.history.title", Map.of(
+                            "name", name, "period", periodKey,
+                            "count", String.valueOf(records.size())))));
             boolean showIp = sender.hasPermission("aurumauth.admin.info.ip");
             for (LoginRecord record : records) {
                 sender.sendMessage(Component.text("  " + TIME.format(record.at())
@@ -219,7 +232,8 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
             }
             if (records.size() == HISTORY_LIMIT) {
                 sender.sendMessage(AurumAuthPlugin.prefixed(
-                        "Показаны последние " + HISTORY_LIMIT + " — возьмите период поменьше"));
+                        plugin.text("admin.history.trimmed", Map.of(
+                                "limit", String.valueOf(HISTORY_LIMIT)))));
             }
         }));
     }
@@ -228,15 +242,15 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
             java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm:ss")
                     .withZone(java.time.ZoneId.systemDefault());
 
-    /** По-русски и коротко: список читают глазами в чате. */
-    private static String describe(LoginRecord.Result result) {
+    /** Коротко и словами: список читают глазами в чате, а не разбирают кодами. */
+    private String describe(LoginRecord.Result result) {
         return switch (result) {
-            case SUCCESS -> "вошёл";
-            case WRONG_PASSWORD -> "неверный пароль";
-            case WRONG_CODE -> "неверный код 2FA";
-            case SESSION -> "по сессии";
-            case BYPASS -> "без пароля";
-            case RESET -> "сброс пароля";
+            case SUCCESS -> plugin.text("admin.history.success");
+            case WRONG_PASSWORD -> plugin.text("admin.history.wrongPassword");
+            case WRONG_CODE -> plugin.text("admin.history.wrongCode");
+            case SESSION -> plugin.text("admin.history.session");
+            case BYPASS -> plugin.text("admin.history.bypass");
+            case RESET -> plugin.text("admin.history.reset");
         };
     }
 
@@ -251,24 +265,23 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (!allowed(sender, "aurumauth.admin.unregister")) return;
         if (!confirmed) {
             sender.sendMessage(AurumAuthPlugin.prefixed(
-                    "Аккаунт «" + name + "» будет удалён без возможности восстановления."));
+                    plugin.text("admin.unregister.warn", Map.of("name", name))));
             sender.sendMessage(AurumAuthPlugin.prefixed(
-                    "Ник при этом освободится: зарегистрировать его сможет любой. "
-                            + "Если нужно закрыть ник — забаньте отдельно."));
+                    plugin.text("admin.unregister.freed")));
             sender.sendMessage(AurumAuthPlugin.prefixed(
-                    "Подтвердите: /auth unregister " + name + " confirm"));
+                    plugin.text("admin.unregister.confirm", Map.of("name", name))));
             return;
         }
 
         service.unregisterByAdmin(name).thenAccept(removed -> back(() -> {
             if (!removed) {
-                sender.sendMessage(AurumAuthPlugin.prefixed("Аккаунт «" + name + "» не найден"));
+                sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.noAccount", Map.of("name", name))));
                 return;
             }
-            sender.sendMessage(AurumAuthPlugin.prefixed("Регистрация «" + name + "» снята"));
+            sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.unregister.done", Map.of("name", name))));
             Player player = Bukkit.getPlayerExact(name);
             if (player != null) {
-                player.kick(Component.text("Ваша регистрация снята администратором"));
+                player.kick(Component.text(plugin.text("admin.unregister.kick")));
             }
         }));
     }
@@ -284,8 +297,8 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
         if (!allowed(sender, "aurumauth.admin.2fa")) return;
         service.disableTotpByAdmin(name).thenAccept(done -> back(() -> sender.sendMessage(
                 AurumAuthPlugin.prefixed(done
-                        ? "Двухфакторка «" + name + "» выключена"
-                        : "У «" + name + "» двухфакторка не включена или аккаунта нет"))));
+                        ? plugin.text("admin.totpOff.done", Map.of("name", name))
+                        : plugin.text("admin.totpOff.nothing", Map.of("name", name))))));
     }
 
     private Optional<AuthStatus> onlineStatus(String username) {
@@ -296,7 +309,7 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
     /** Права проверяются по каждой подкоманде отдельно — они очень разные по весу. */
     private boolean allowed(CommandSender sender, String permission) {
         if (sender.hasPermission(permission)) return true;
-        sender.sendMessage(AurumAuthPlugin.prefixed("Недостаточно прав: " + permission));
+        sender.sendMessage(AurumAuthPlugin.prefixed(plugin.text("admin.noPermission", Map.of("permission", permission))));
         return false;
     }
 
@@ -318,15 +331,16 @@ final class AuthAdminCommand implements CommandExecutor, TabCompleter {
     }
 
     private void usage(CommandSender sender, String page) {
-        HelpBook book = HelpBook.titled("Авторизация — администрирование", "/auth help")
-                .add("/auth info <ник>", "что известно об аккаунте: когда и откуда заходил")
-                .add("/auth reset <ник>", "выдать одноразовый токен смены пароля")
-                .add("/auth unlock <ник>", "снять блокировку после неудачных попыток входа")
-                .add("/auth logout <ник>", "выкинуть на экран входа и погасить сессию")
-                .add("/auth history <ник> [24h|3d|7d|30d]", "история входов за период")
-                .add("/auth 2fa-off <ник>", "выключить двухфакторку потерявшему телефон")
-                .add("/auth unregister <ник> confirm", "снять регистрацию — потребует confirm")
-                .add("/auth reload", "перечитать тексты сообщений без перезапуска")
+        HelpBook book = HelpBook.titled(
+                        plugin.text("help.admin.title"), "/auth help", plugin.helpLabels())
+                .add(plugin.text("help.admin.info.use"), plugin.text("help.admin.info.what"))
+                .add(plugin.text("help.admin.reset.use"), plugin.text("help.admin.reset.what"))
+                .add(plugin.text("help.admin.unlock.use"), plugin.text("help.admin.unlock.what"))
+                .add(plugin.text("help.admin.logout.use"), plugin.text("help.admin.logout.what"))
+                .add(plugin.text("help.admin.history.use"), plugin.text("help.admin.history.what"))
+                .add(plugin.text("help.admin.totpOff.use"), plugin.text("help.admin.totpOff.what"))
+                .add(plugin.text("help.admin.unregister.use"), plugin.text("help.admin.unregister.what"))
+                .add(plugin.text("help.admin.reload.use"), plugin.text("help.admin.reload.what"))
                 .build();
 
         AurumAuthPlugin.sendLines(sender, book.page(parsePage(page)));

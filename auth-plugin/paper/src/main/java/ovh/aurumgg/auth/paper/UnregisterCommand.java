@@ -27,10 +27,9 @@ final class UnregisterCommand extends AuthCommandBase {
     protected void run(Player player, String[] args) {
         if (args.length != 1) {
             player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
-                    "/unregister <ваш пароль>",
-                    "удалить свой аккаунт; вход после этого — только заново через /register")));
+                    plugin.text("help.unregister.use"), plugin.text("help.unregister.what"))));
             player.sendMessage(AurumAuthPlugin.prefixed(
-                    "Аккаунт будет удалён, ник освободится. Отменить это нельзя."));
+                    plugin.text("cmd.unregister.warn")));
             return;
         }
 
@@ -43,7 +42,7 @@ final class UnregisterCommand extends AuthCommandBase {
                     }
                     guard.cancelTimeout(player.getUniqueId());
                     player.kick(Component.text(
-                            "Регистрация удалена. Зайдите снова, чтобы зарегистрироваться заново."));
+                            plugin.text("cmd.unregister.done")));
                 }));
     }
 }

@@ -19,13 +19,12 @@ final class RegisterCommand extends AuthCommandBase {
     @Override
     protected void run(Player player, String[] args) {
         if (service.isAuthenticated(player.getUniqueId())) {
-            player.sendMessage(AurumAuthPlugin.prefixed("Вы уже вошли"));
+            player.sendMessage(AurumAuthPlugin.prefixed(plugin.text("cmd.alreadyIn")));
             return;
         }
         if (args.length != 2) {
             player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
-                    "/register <пароль> <пароль ещё раз>",
-                    "завести аккаунт; пароль вводится дважды, чтобы не опечататься")));
+                    plugin.text("help.register.use"), plugin.text("help.register.what"))));
             return;
         }
 

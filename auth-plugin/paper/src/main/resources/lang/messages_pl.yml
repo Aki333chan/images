@@ -97,3 +97,145 @@ messages:
     lines:
       - "&aWitaj, &f{player}&a!"
       - "&7Na serwerze jest: &f{online}&7/&f{max}"
+
+# ----------------------------------------------------------- polecenia
+cmd:
+  playersOnly: "Polecenie tylko dla graczy"
+  alreadyIn: "Jesteś już zalogowany"
+  reset:
+    alreadyIn: "Jesteś już zalogowany. Reset jest tylko dla tych, którzy nie pamiętają hasła."
+    tokenHint: "Token to 8 znaków, wydaje go administrator. Jeśli twój został już przyjęty, wpisz: /reset <hasło> <hasło jeszcze raz>"
+  unregister:
+    warn: "Konto zostanie usunięte, a nick zwolniony. Nie da się tego cofnąć."
+    done: "Rejestracja usunięta. Wejdź ponownie, aby zarejestrować się od nowa."
+
+# ------------------------------------------------------ przed zalogowaniem
+guard:
+  bypass: "Wejście bez hasła na podstawie uprawnienia administratora"
+  welcomeBack: "Witaj z powrotem, hasło niepotrzebne"
+  timeoutKick: "Nie zalogowałeś się w wyznaczonym czasie"
+  loginFirst: "Najpierw się zaloguj"
+  needLogin: "Najpierw się zaloguj: /login <hasło>"
+  needCode: "Najpierw wpisz kod: /2fa <kod>"
+  needNewPassword: "Najpierw ustaw nowe hasło: /reset <hasło> <hasło jeszcze raz>"
+
+# ------------------------------------------------------ dwuskładnikowe
+totp:
+  notNeeded: "Kod nie jest teraz potrzebny. Najpierw /login <hasło>"
+  setupFailed: "Nie udało się rozpocząć konfiguracji"
+  addToApp: "Dodaj do Google Authenticator (albo dowolnej innej aplikacji):"
+  openInApp: "[otwórz w aplikacji]"
+  thenConfirm: "Następnie potwierdź: /2fa confirm <kod z aplikacji>"
+  untilConfirmed: "Dopóki nie potwierdzisz, logowanie zostaje na samym haśle."
+
+# --------------------------------------------------- polecenia administratora
+admin:
+  reloaded: "Teksty komunikatów i podpowiedzi wczytane ponownie"
+  noAccount: "Nie znaleziono konta „{name}”"
+  noPermission: "Za mało uprawnień: {permission}"
+  notOnline: "Gracza „{name}” nie ma w sieci"
+  unlocked: "Blokada za próby logowania dla „{name}” zdjęta"
+  loggedOutPlayer: "Administrator zresetował twoje logowanie: /login <hasło>"
+  reset:
+    token: "Token resetu dla {player}: {token}"
+    valid: "Ważny {minutes} min. Gracz wpisuje: /reset {token}"
+  logout:
+    was: "Gracz „{name}” wylogowany, sesja wygaszona"
+    wasNot: "Gracz „{name}” i tak nie był zalogowany; sesja wygaszona"
+  info:
+    title: "Konto {player}"
+    registered: "Zarejestrowany: {value}"
+    lastLogin: "Ostatnie logowanie: {value}"
+    lastIp: "Ostatni adres: {value}"
+    totp: "Dwuskładnikowe: {value}"
+    now: "Teraz: {value}"
+    never: "nigdy"
+    noData: "brak danych"
+    totpOn: "włączone"
+    totpOff: "wyłączone"
+    offline: "poza siecią"
+  history:
+    periods: "Okres: {list}"
+    empty: "Przez {period} gracz „{name}” się nie logował"
+    title: "Logowania „{name}” przez {period} ({count}):"
+    trimmed: "Pokazano ostatnie {limit} — wybierz krótszy okres"
+    success: "zalogował się"
+    wrongPassword: "błędne hasło"
+    wrongCode: "błędny kod 2FA"
+    session: "po sesji"
+    bypass: "bez hasła"
+    reset: "reset hasła"
+  unregister:
+    warn: "Konto „{name}” zostanie usunięte bez możliwości przywrócenia."
+    freed: "Nick przy tym się zwolni: zarejestrować go będzie mógł każdy. Jeśli trzeba zamknąć nick — zbanuj go osobno."
+    confirm: "Potwierdź: /auth unregister {name} confirm"
+    done: "Rejestracja „{name}” zdjęta"
+    kick: "Administrator zdjął twoją rejestrację"
+  totpOff:
+    done: "Dwuskładnikowe dla „{name}” wyłączone"
+    nothing: "„{name}” nie ma włączonego dwuskładnikowego albo nie ma takiego konta"
+
+# ----------------------------------------------------------- pomoc
+#
+# Po lewej jak wpisać polecenie, po prawej co ono robi. Słowa samego polecenia
+# (login, register, confirm) nie są tłumaczone: się je wpisuje, a nie czyta.
+help:
+  next: "&8Dalej: &e{command} {page}"
+  counter: "&7(str. {page} z {total})"
+  login:
+    use: "/login <hasło>"
+    what: "zaloguj się na swoje konto"
+  register:
+    use: "/register <hasło> <hasło jeszcze raz>"
+    what: "załóż konto; hasło wpisuje się dwa razy, żeby nie zrobić literówki"
+  unregister:
+    use: "/unregister <twoje hasło>"
+    what: "usuń swoje konto; potem wejście tylko od nowa przez /register"
+  reset:
+    title: "Zmiana hasła"
+    token:
+      use: "/reset <token>"
+      what: "rozpocznij zmianę: token wydaje administrator"
+    new:
+      use: "/reset <hasło> <hasło jeszcze raz>"
+      what: "ustaw nowe hasło po tokenie"
+  2fa:
+    title: "Uwierzytelnianie dwuskładnikowe"
+    code:
+      use: "/2fa <kod>"
+      what: "wpisz kod przy logowaniu — to, co potrzebne codziennie"
+    enable:
+      use: "/2fa enable"
+      what: "rozpocznij podłączanie: pokaże sekret dla aplikacji"
+    confirm:
+      use: "/2fa confirm <kod>"
+      what: "potwierdź podłączenie pierwszym kodem z aplikacji"
+    disable:
+      use: "/2fa disable <kod>"
+      what: "wyłącz dwuskładnikowe"
+  admin:
+    title: "Logowanie — administrowanie"
+    info:
+      use: "/auth info <nick>"
+      what: "co wiadomo o koncie: kiedy i skąd wchodził"
+    reset:
+      use: "/auth reset <nick>"
+      what: "wydaj jednorazowy token zmiany hasła"
+    unlock:
+      use: "/auth unlock <nick>"
+      what: "zdejmij blokadę po nieudanych próbach logowania"
+    logout:
+      use: "/auth logout <nick>"
+      what: "wyrzuć na ekran logowania i wygaś sesję"
+    history:
+      use: "/auth history <nick> [24h|3d|7d|30d]"
+      what: "historia logowań za okres"
+    totpOff:
+      use: "/auth 2fa-off <nick>"
+      what: "wyłącz dwuskładnikowe komuś, kto zgubił telefon"
+    unregister:
+      use: "/auth unregister <nick> confirm"
+      what: "zdejmij rejestrację — wymaga confirm"
+    reload:
+      use: "/auth reload"
+      what: "wczytaj teksty komunikatów bez restartu"

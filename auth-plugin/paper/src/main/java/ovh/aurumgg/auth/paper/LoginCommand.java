@@ -14,12 +14,12 @@ final class LoginCommand extends AuthCommandBase {
     @Override
     protected void run(Player player, String[] args) {
         if (service.isAuthenticated(player.getUniqueId())) {
-            player.sendMessage(AurumAuthPlugin.prefixed("Вы уже вошли"));
+            player.sendMessage(AurumAuthPlugin.prefixed(plugin.text("cmd.alreadyIn")));
             return;
         }
         if (args.length != 1) {
             player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
-                    "/login <пароль>", "войти под своим аккаунтом")));
+                    plugin.text("help.login.use"), plugin.text("help.login.what"))));
             return;
         }
 

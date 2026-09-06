@@ -97,3 +97,146 @@ messages:
     lines:
       - "&aWelcome, &f{player}&a!"
       - "&7Players online: &f{online}&7/&f{max}"
+
+# ----------------------------------------------------------- commands
+cmd:
+  playersOnly: "This command is for players only"
+  alreadyIn: "You are already logged in"
+  reset:
+    alreadyIn: "You are already logged in. A reset is only for those who forgot the password."
+    tokenHint: "The token is 8 characters, an admin gives it out. If yours has already been accepted, type: /reset <password> <password again>"
+  unregister:
+    warn: "The account will be deleted and the nickname freed. This cannot be undone."
+    done: "Registration removed. Join again to register anew."
+
+# -------------------------------------------------------- before login
+guard:
+  bypass: "Logged in without a password by admin permission"
+  welcomeBack: "Welcome back, no password needed"
+  timeoutKick: "You did not log in within the allotted time"
+  loginFirst: "Log in first"
+  needLogin: "Log in first: /login <password>"
+  needCode: "Enter the code first: /2fa <code>"
+  needNewPassword: "Set a new password first: /reset <password> <password again>"
+
+# ----------------------------------------------------------- two-factor
+totp:
+  notNeeded: "No code is needed right now. First /login <password>"
+  setupFailed: "Could not start the setup"
+  addToApp: "Add to Google Authenticator (or any other app):"
+  openInApp: "[open in the app]"
+  thenConfirm: "Then confirm: /2fa confirm <code from the app>"
+  untilConfirmed: "Until you confirm, login stays password-only."
+
+# -------------------------------------------------------- admin commands
+admin:
+  reloaded: "Message and prompt texts reloaded"
+  noAccount: "Account “{name}” not found"
+  noPermission: "Not enough permissions: {permission}"
+  notOnline: "Player “{name}” is not online"
+  unlocked: "The login-attempt lockout for “{name}” has been lifted"
+  loggedOutPlayer: "An admin reset your login: /login <password>"
+  reset:
+    token: "Reset token for {player}: {token}"
+    valid: "Valid for {minutes} min. The player types: /reset {token}"
+  logout:
+    was: "Player “{name}” was logged out, the session is cleared"
+    wasNot: "Player “{name}” was not logged in anyway; the session is cleared"
+  info:
+    title: "Account {player}"
+    registered: "Registered: {value}"
+    lastLogin: "Last login: {value}"
+    lastIp: "Last address: {value}"
+    totp: "Two-factor: {value}"
+    now: "Right now: {value}"
+    never: "never"
+    noData: "no data"
+    totpOn: "on"
+    totpOff: "off"
+    offline: "offline"
+  history:
+    periods: "Period: {list}"
+    empty: "No logins by “{name}” over {period}"
+    title: "Logins by “{name}” over {period} ({count}):"
+    trimmed: "Showing the last {limit} — pick a shorter period"
+    success: "logged in"
+    wrongPassword: "wrong password"
+    wrongCode: "wrong 2FA code"
+    session: "by session"
+    bypass: "without a password"
+    reset: "password reset"
+  unregister:
+    warn: "Account “{name}” will be deleted with no way to restore it."
+    freed: "The nickname will be freed: anyone will be able to register it. To close the nickname, ban it separately."
+    confirm: "Confirm: /auth unregister {name} confirm"
+    done: "Registration of “{name}” removed"
+    kick: "An admin removed your registration"
+  totpOff:
+    done: "Two-factor for “{name}” turned off"
+    nothing: "“{name}” has no two-factor enabled, or there is no such account"
+
+# ------------------------------------------------------------- help
+#
+# On the left is how to type the command, on the right what it does. The words
+# of the command itself (login, register, confirm) are not translated: they
+# are typed, not read.
+help:
+  next: "&8Next: &e{command} {page}"
+  counter: "&7(page {page} of {total})"
+  login:
+    use: "/login <password>"
+    what: "log in to your account"
+  register:
+    use: "/register <password> <password again>"
+    what: "create an account; the password is typed twice to avoid a typo"
+  unregister:
+    use: "/unregister <your password>"
+    what: "delete your account; after that, only /register gets you back"
+  reset:
+    title: "Password change"
+    token:
+      use: "/reset <token>"
+      what: "start the change: an admin gives out the token"
+    new:
+      use: "/reset <password> <password again>"
+      what: "set the new password after the token"
+  2fa:
+    title: "Two-factor authentication"
+    code:
+      use: "/2fa <code>"
+      what: "enter the code on login — the everyday one"
+    enable:
+      use: "/2fa enable"
+      what: "start the setup: shows the secret for the app"
+    confirm:
+      use: "/2fa confirm <code>"
+      what: "confirm the setup with the first code from the app"
+    disable:
+      use: "/2fa disable <code>"
+      what: "turn two-factor off"
+  admin:
+    title: "Authentication — administration"
+    info:
+      use: "/auth info <nickname>"
+      what: "what is known about the account: when and from where"
+    reset:
+      use: "/auth reset <nickname>"
+      what: "issue a one-time password-change token"
+    unlock:
+      use: "/auth unlock <nickname>"
+      what: "lift the lockout after failed login attempts"
+    logout:
+      use: "/auth logout <nickname>"
+      what: "throw back to the login screen and clear the session"
+    history:
+      use: "/auth history <nickname> [24h|3d|7d|30d]"
+      what: "login history over a period"
+    totpOff:
+      use: "/auth 2fa-off <nickname>"
+      what: "turn off two-factor for somebody who lost their phone"
+    unregister:
+      use: "/auth unregister <nickname> confirm"
+      what: "remove the registration — requires confirm"
+    reload:
+      use: "/auth reload"
+      what: "reload message texts without a restart"
