@@ -88,4 +88,60 @@ class MessagesTest {
         assertEquals("ru", Messages.normalizeLanguage(null));
         assertEquals("ru", Messages.normalizeLanguage(""));
     }
+
+    // ------------------------------------ подсказки и свои сообщения
+
+    @Test
+    @DisplayName("Тексты подсказок берутся из файла языка")
+    void подсказкиИзЯзыка() {
+        Messages en = new Messages(
+                Map.of("prompt.login.title", "&c&lLOG IN",
+                        "prompt.prefix", "&6[&eLogin&6]&r "),
+                RU);
+
+        PromptSettings settings = PromptSettings.fromMap(Map.of(), en);
+
+        assertEquals("&c&lLOG IN", settings.prompts().get(PromptSettings.Stage.LOGIN).title());
+        assertEquals("&6[&eLogin&6]&r ", settings.prefix());
+    }
+
+    @Test
+    @DisplayName("Текст, прописанный в config.yml, главнее файла языка")
+    void конфигГлавнееЯзыка() {
+        // Кто-то уже поправил формулировку прямо в конфиге. Молча откатить её
+        // сменой языка нельзя — это чужая работа.
+        Messages en = new Messages(Map.of("prompt.login.title", "&c&lLOG IN"), RU);
+
+        PromptSettings settings = PromptSettings.fromMap(
+                Map.of("prompt.login.title", "&4СВОЁ"), en);
+
+        assertEquals("&4СВОЁ", settings.prompts().get(PromptSettings.Stage.LOGIN).title());
+        // И такой ключ должен быть назван поимённо, чтобы человек понял,
+        // почему смена языка на него не подействовала.
+        assertEquals(List.of("prompt.login.title"),
+                PromptSettings.legacyTextKeys(Map.of("prompt.login.title", "&4СВОЁ")));
+    }
+
+    @Test
+    @DisplayName("Ключа нет ни в языке, ни в конфиге — берётся встроенное умолчание")
+    void умолчаниеВместоКлюча() {
+        // Пустой язык: так плагин переживает файл от старой версии, где
+        // подсказок ещё нет. На экран не должно попасть «prompt.login.title».
+        PromptSettings settings = PromptSettings.fromMap(Map.of(), new Messages(Map.of(), Map.of()));
+
+        assertEquals(PromptSettings.DEFAULTS.get(PromptSettings.Stage.LOGIN).title(),
+                settings.prompts().get(PromptSettings.Stage.LOGIN).title());
+    }
+
+    @Test
+    @DisplayName("Выключатели остаются в конфиге, формулировки — в языке")
+    void выключателиИТексты() {
+        Messages en = new Messages(Map.of("messages.join.text", "&e{player} joined"), RU);
+
+        MessageSettings settings = MessageSettings.fromMap(
+                Map.of("messages.join.enabled", true), en);
+
+        assertTrue(settings.joinEnabled(), "выключатель — настройка сервера");
+        assertEquals("&e{player} joined", settings.joinText(), "формулировка — текст языка");
+    }
 }

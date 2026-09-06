@@ -41,3 +41,59 @@ auth:
 
   # ------------------------------------------------------- registration
   unregistered: "Registration removed"
+
+# ------------------------------------------------------- the login prompt
+#
+# A large title across the screen, a line under it, a line above the hotbar
+# and a line in chat. Being noticeable is the whole point here: a prompt that
+# is seen differs from one that is not by exactly the number of people who
+# left the server without understanding anything.
+#
+# Whether the title is shown, how often it repeats and how long it stays are
+# in config.yml. Only the words live here.
+prompt:
+  prefix: "&6[&eLogin&6]&r "
+
+  # The nickname is already registered — a password is needed.
+  login:
+    title: "&c&lLOG IN"
+    subtitle: "&ftype in chat &e/login <password>"
+    action-bar: "&e» &ftype &e/login <password> &7({seconds} s) &e«"
+    chat: "&7This nickname is already registered. &aLog in: &f/login <password>"
+
+  # The nickname is seen for the first time.
+  register:
+    title: "&a&lREGISTER"
+    subtitle: "&ftype in chat &e/register <password> <password>"
+    action-bar: "&e» &ftype &e/register <password> <password> &7({seconds} s) &e«"
+    chat: "&aWelcome, &f{player}&a! Register: &f/register <password> <password again>"
+
+  # The password is accepted, two-factor is left.
+  totp:
+    title: "&6&lCODE FROM THE APP"
+    subtitle: "&ftype in chat &e/2fa <code>"
+    action-bar: "&e» &ftype &e/2fa <code> &7({seconds} s) &e«"
+    chat: "&6The two-factor code is left: &f/2fa <code>"
+
+  # The reset token is accepted, waiting for a new password.
+  new-password:
+    title: "&b&lNEW PASSWORD"
+    subtitle: "&ftype in chat &e/reset <password> <password>"
+    action-bar: "&e» &ftype &e/reset <password> <password> &7({seconds} s) &e«"
+    chat: "&bChoose a new password: &f/reset <password> <password again>"
+
+# --------------------------------- own join messages and the greeting
+#
+# Whether to show them at all is in config.yml: on a server with EssentialsX
+# they are turned off so there are no two messages in a row.
+messages:
+  join:
+    text: "&e{player} joined"
+    # Shown instead of the usual one to somebody who has just registered.
+    first-time: "&6Meet a new player: &e{player}&6!"
+  quit:
+    text: "&e{player} left"
+  motd:
+    lines:
+      - "&aWelcome, &f{player}&a!"
+      - "&7Players online: &f{online}&7/&f{max}"

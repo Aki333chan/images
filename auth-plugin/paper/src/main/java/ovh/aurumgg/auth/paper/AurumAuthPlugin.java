@@ -52,9 +52,10 @@ public final class AurumAuthPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
         Map<String, Object> raw = new HashMap<>(getConfig().getValues(true));
-        config = AuthConfig.fromMap(raw);
         messages = LanguageFiles.load(this, Messages.normalizeLanguage(
                 String.valueOf(raw.getOrDefault("language", Messages.DEFAULT_LANGUAGE))));
+        config = AuthConfig.fromMap(raw, messages);
+        warnAboutLegacyTexts(raw);
 
         String requestedTable = String.valueOf(raw.getOrDefault("database.table", AuthConfig.DEFAULT_TABLE));
         if (!requestedTable.equals(config.tableName())) {
@@ -255,6 +256,25 @@ public final class AurumAuthPlugin extends JavaPlugin {
         return messages.list(key, values);
     }
 
+    /**
+     * Сказать вслух про тексты, оставшиеся в config.yml от старых версий.
+     *
+     * Они по-прежнему работают и по-прежнему главнее файла языка: молча
+     * откатывать чужую правку нельзя. Но пока они там лежат, смена language
+     * на них не действует — и человек будет считать, что перевод сломан, а не
+     * что его формулировка просто побеждает. Поэтому ключи называются
+     * поимённо: их видно в консоли при старте, и понятно, что переносить.
+     */
+    private void warnAboutLegacyTexts(Map<String, Object> raw) {
+        java.util.List<String> stale = new java.util.ArrayList<>();
+        stale.addAll(PromptSettings.legacyTextKeys(raw));
+        stale.addAll(MessageSettings.legacyTextKeys(raw));
+        if (stale.isEmpty()) return;
+        getLogger().warning("Тексты в config.yml перекрывают файл языка и не переводятся: "
+                + String.join(", ", stale)
+                + ". Перенесите их в lang/messages_<язык>.yml и уберите отсюда.");
+    }
+
     /** Применить настроенные префикс и цвет — при старте и при /auth reload. */
     private static void applyTexts(PromptSettings settings) {
         prefix = COLORS.deserialize(settings.prefix());
@@ -286,10 +306,10 @@ public final class AurumAuthPlugin extends JavaPlugin {
         Map<String, Object> raw = getConfig().getValues(true);
         messages = LanguageFiles.load(this, Messages.normalizeLanguage(
                 String.valueOf(raw.getOrDefault("language", Messages.DEFAULT_LANGUAGE))));
-        MessageSettings updated = MessageSettings.fromMap(raw);
+        MessageSettings updated = MessageSettings.fromMap(raw, messages);
         if (joinMessages != null) joinMessages.updateMessages(updated);
 
-        PromptSettings prompts = PromptSettings.fromMap(raw);
+        PromptSettings prompts = PromptSettings.fromMap(raw, messages);
         applyTexts(prompts);
         if (loginPrompt != null) loginPrompt.updateSettings(prompts);
 

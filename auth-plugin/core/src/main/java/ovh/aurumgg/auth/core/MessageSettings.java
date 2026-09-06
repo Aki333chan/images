@@ -39,15 +39,50 @@ public record MessageSettings(
             "&aДобро пожаловать, &f{player}&a!",
             "&7Сейчас на сервере: &f{online}&7/&f{max}");
 
+    /** Ключи текстов, оставшиеся в config.yml от старых версий. См. PromptSettings. */
+    public static List<String> legacyTextKeys(Map<String, Object> raw) {
+        return List.of("messages.join.text", "messages.join.first-time",
+                        "messages.quit.text", "messages.motd.lines")
+                .stream()
+                .filter(raw::containsKey)
+                .toList();
+    }
+
     public static MessageSettings fromMap(Map<String, Object> raw) {
+        return fromMap(raw, null);
+    }
+
+    /**
+     * Выключатели — из config.yml, тексты — из файла языка.
+     *
+     * Разделение не случайное: «показывать ли своё сообщение о входе» это
+     * настройка сервера (на сервере с EssentialsX её выключают, чтобы не было
+     * двух сообщений подряд), а сама формулировка — текст, и лежать он должен
+     * там же, где все остальные.
+     *
+     * @param texts тексты языка сервера; null — только встроенные умолчания.
+     */
+    public static MessageSettings fromMap(Map<String, Object> raw, Messages texts) {
         return new MessageSettings(
                 bool(raw, "messages.join.enabled"),
-                text(raw, "messages.join.text", DEFAULT_JOIN),
-                text(raw, "messages.join.first-time", DEFAULT_FIRST_JOIN),
+                text(raw, "messages.join.text", said(texts, "messages.join.text", DEFAULT_JOIN)),
+                text(raw, "messages.join.first-time",
+                        said(texts, "messages.join.first-time", DEFAULT_FIRST_JOIN)),
                 bool(raw, "messages.quit.enabled"),
-                text(raw, "messages.quit.text", DEFAULT_QUIT),
+                text(raw, "messages.quit.text", said(texts, "messages.quit.text", DEFAULT_QUIT)),
                 bool(raw, "messages.motd.enabled"),
-                lines(raw, "messages.motd.lines", DEFAULT_MOTD));
+                lines(raw, "messages.motd.lines", saidLines(texts, "messages.motd.lines", DEFAULT_MOTD)));
+    }
+
+    /** См. PromptSettings.said: ключ без перевода не должен доехать до экрана. */
+    private static String said(Messages texts, String key, String fallback) {
+        if (texts == null || !texts.has(key)) return fallback;
+        return texts.get(key);
+    }
+
+    private static List<String> saidLines(Messages texts, String key, List<String> fallback) {
+        if (texts == null || !texts.has(key)) return fallback;
+        return texts.list(key);
     }
 
     /**

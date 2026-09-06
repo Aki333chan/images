@@ -41,3 +41,59 @@ auth:
 
   # -------------------------------------------------------- rejestracja
   unregistered: "Rejestracja usunięta"
+
+# --------------------------------------------------------- prośba o zalogowanie
+#
+# Duży napis na cały ekran, wiersz pod nim, wiersz nad paskiem szybkiego
+# dostępu i wiersz na czacie. Widoczność to tutaj cały sens: podpowiedź, którą
+# widać, różni się od tej, której nie widać, dokładnie o liczbę ludzi, którzy
+# wyszli z serwera niczego nie zrozumiawszy.
+#
+# Czy pokazywać title, jak często powtarzać i jak długo wisi — w config.yml.
+# Tutaj są tylko słowa.
+prompt:
+  prefix: "&6[&eLogowanie&6]&r "
+
+  # Nick jest już zarejestrowany — potrzebne hasło.
+  login:
+    title: "&c&lZALOGUJ SIĘ"
+    subtitle: "&fnapisz na czacie &e/login <hasło>"
+    action-bar: "&e» &fnapisz &e/login <hasło> &7({seconds} s) &e«"
+    chat: "&7Ten nick jest już zarejestrowany. &aZaloguj się: &f/login <hasło>"
+
+  # Nick widziany po raz pierwszy.
+  register:
+    title: "&a&lREJESTRACJA"
+    subtitle: "&fnapisz na czacie &e/register <hasło> <hasło>"
+    action-bar: "&e» &fnapisz &e/register <hasło> <hasło> &7({seconds} s) &e«"
+    chat: "&aWitaj, &f{player}&a! Zarejestruj się: &f/register <hasło> <hasło jeszcze raz>"
+
+  # Hasło przyjęte, została weryfikacja dwuskładnikowa.
+  totp:
+    title: "&6&lKOD Z APLIKACJI"
+    subtitle: "&fnapisz na czacie &e/2fa <kod>"
+    action-bar: "&e» &fnapisz &e/2fa <kod> &7({seconds} s) &e«"
+    chat: "&6Został kod dwuskładnikowy: &f/2fa <kod>"
+
+  # Token resetu przyjęty, czekamy na nowe hasło.
+  new-password:
+    title: "&b&lNOWE HASŁO"
+    subtitle: "&fnapisz na czacie &e/reset <hasło> <hasło>"
+    action-bar: "&e» &fnapisz &e/reset <hasło> <hasło> &7({seconds} s) &e«"
+    chat: "&bWymyśl nowe hasło: &f/reset <hasło> <hasło jeszcze raz>"
+
+# ------------------------- własne komunikaty o wejściu i powitanie
+#
+# Czy w ogóle je pokazywać — w config.yml: na serwerze z EssentialsX wyłącza
+# się je, żeby nie było dwóch komunikatów pod rząd.
+messages:
+  join:
+    text: "&e{player} dołączył"
+    # Pokazywane zamiast zwykłego temu, kto właśnie się zarejestrował.
+    first-time: "&6Poznajcie nowego gracza: &e{player}&6!"
+  quit:
+    text: "&e{player} wyszedł"
+  motd:
+    lines:
+      - "&aWitaj, &f{player}&a!"
+      - "&7Na serwerze jest: &f{online}&7/&f{max}"

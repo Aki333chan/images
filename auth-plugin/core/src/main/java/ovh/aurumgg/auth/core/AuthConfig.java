@@ -71,6 +71,15 @@ public record AuthConfig(
     }
 
     public static AuthConfig fromMap(Map<String, Object> raw) {
+        return fromMap(raw, null);
+    }
+
+    /**
+     * @param texts тексты языка сервера; из них берутся подсказки входа и
+     *   свои сообщения о входе. null — только встроенные умолчания: так
+     *   зовут тесты, которым язык не нужен.
+     */
+    public static AuthConfig fromMap(Map<String, Object> raw, Messages texts) {
         return new AuthConfig(
                 string(raw, "database.jdbc-url", "jdbc:mariadb://127.0.0.1:3306/aurum_auth"),
                 string(raw, "database.username", "aurum"),
@@ -117,8 +126,8 @@ public record AuthConfig(
                 // которая растёт весь срок жизни сервера.
                 Duration.ofDays(clamp(integer(raw, "history.keep-days", 90), 1, 3650)),
                 string(raw, "server-id", "server"),
-                MessageSettings.fromMap(raw),
-                PromptSettings.fromMap(raw),
+                MessageSettings.fromMap(raw, texts),
+                PromptSettings.fromMap(raw, texts),
                 bool(raw, "login.hide-other-commands", true));
     }
 
