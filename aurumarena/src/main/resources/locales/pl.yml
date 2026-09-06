@@ -1,0 +1,212 @@
+locale-name: Polski
+messages:
+  prefix: "&6[Arena] &r"
+  no-permission: "&cNie masz uprawnień."
+  database-unavailable: "&cStatystyki są chwilowo niedostępne. Zakłady i walki nadal działają."
+  vault-unavailable: "&cVault lub dostawca ekonomii jest niedostępny. Operacje finansowe zostały zablokowane."
+  final-stats: "&6&l🏆 PULA MISTRZOWSKA 🏆\n\n&ePula: &f%pool% %currency%\n\n&c&lPoprzedni mistrzowie:\n%champions%"
+help:
+  player:
+    - "&6=== AurumArena 1.2.0 ==="
+    - "&f/arena list | odds [arena] | stats [gracz] | spectate <arena> | leave"
+  admin:
+    - "&eAdmin: &fcreate/delete, status, validate, gui, start, stop, reload, recover [gracz]"
+    - "&fsetred/setblue/sethost/setreset, sethopred/sethopblue, setfhop, bankomat"
+    - "&fsetspawn, spawnred1/2, spawnblue1/2, radius, maxplayers"
+    - "&fauto/manual, betting, kit, friendlyfire, showbar, final"
+    - "&fwinxp <liczba>, finalxp <liczba>, xpmode <points|levels>"
+    - "&ffinalstats, fstatsremove [all], fstatsscale, debug hologram"
+replacements:
+  - {from: "§6§lАРЕНА: ", to: "§6§lARENA: "}
+  - {from: "Арены: §e", to: "Areny: §e"}
+  - {from: "§cИгрок не найден.", to: "§cNie znaleziono gracza."}
+  - {from: "§cУкажите арену: /arena odds <арена>", to: "§cPodaj arenę: /arena odds <arena>"}
+  - {from: "§cУкажите арену: /arena spectate <арена>", to: "§cPodaj arenę: /arena spectate <arena>"}
+  - {from: "§cЭта команда доступна только игроку.", to: "§cTej komendy może użyć tylko gracz."}
+  - {from: "§eВы не участвуете в арене.", to: "§eNie uczestniczysz w arenie."}
+  - {from: "§cНельзя восстанавливать инвентарь активному участнику арены.", to: "§cNie można przywrócić ekwipunku aktywnemu uczestnikowi areny."}
+  - {from: " нет сохранённой резервной копии.", to: " nie ma zapisanej kopii ekwipunku."}
+  - {from: "§aВаш инвентарь восстановлен администратором.", to: "§aTwój ekwipunek został przywrócony przez administratora."}
+  - {from: "§aКонфигурация, Vault и база данных перезагружены.", to: "§aKonfiguracja, Vault i baza danych zostały przeładowane."}
+  - {from: "§cВы не в радиусе арены.", to: "§cNie znajdujesz się w zasięgu areny."}
+  - {from: "§cРежим комплекта меняется только на пустой ожидающей арене.", to: "§cTryb zestawu można zmienić tylko na pustej oczekującej arenie."}
+  - {from: "Автостарт включён", to: "Automatyczny start włączony"}
+  - {from: "Ручной старт включён", to: "Ręczny start włączony"}
+  - {from: "Ставки: ", to: "Zakłady: "}
+  - {from: "Комплект: ", to: "Zestaw: "}
+  - {from: "Игроков в команде: ", to: "Graczy w drużynie: "}
+  - {from: "Радиус: ", to: "Promień: "}
+  - {from: "Опыт за бой: ", to: "Doświadczenie za walkę: "}
+  - {from: "Опыт за финал: ", to: "Doświadczenie za finał: "}
+  - {from: "Режим опыта: ", to: "Tryb doświadczenia: "}
+  - {from: "BossBar: ", to: "Pasek bossa: "}
+  - {from: "Friendly fire: ", to: "Obrażenia sojusznicze: "}
+  - {from: "Vault Economy недоступен", to: "Ekonomia Vault jest niedostępna"}
+  - {from: "§cИспользование: /arena create <имя>", to: "§cUżycie: /arena create <nazwa>"}
+  - {from: "§cИспользование: /arena delete <арена>", to: "§cUżycie: /arena delete <arena>"}
+  - {from: "§cИспользование: /arena ", to: "§cUżycie: /arena "}
+  - {from: "§cАрена уже существует.", to: "§cTa arena już istnieje."}
+  - {from: "§cНовая арена пересечётся с ", to: "§cNowa arena nachodziłaby na "}
+  - {from: "§aАрена удалена вместе с её голограммами.", to: "§aArena i jej hologramy zostały usunięte."}
+  - {from: "§cАрена не найдена.", to: "§cNie znaleziono areny."}
+  - {from: "§cУкажите число.", to: "§cPodaj liczbę."}
+  - {from: "§cТакой радиус пересекает другую арену.", to: "§cTaki promień nachodzi na inną arenę."}
+  - {from: "§cНужно целое число.", to: "§cWymagana jest liczba całkowita."}
+  - {from: "§cОпыт должен быть от 0 до 1000000.", to: "§cDoświadczenie musi wynosić od 0 do 1 000 000."}
+  - {from: "§cИспользование: /arena xpmode <points|levels>", to: "§cUżycie: /arena xpmode <points|levels>"}
+  - {from: "§cНеизвестная команда. /arena help", to: "§cNieznana komenda. Użyj /arena help"}
+  - {from: "§cСмотрите на блок не дальше 6 блоков.", to: "§cSpójrz na blok oddalony najwyżej o 6 bloków."}
+  - {from: "§aТочка ", to: "§aPunkt "}
+  - {from: " установлена: ", to: " ustawiony: "}
+  - {from: " установлена.", to: " ustawiony."}
+  - {from: " удалена.", to: " usunięty."}
+  - {from: "§eВ этом блоке уже настроена финальная голограмма; физические дубликаты очищены.", to: "§eW tym bloku jest już hologram statystyk finału; fizyczne duplikaty usunięto."}
+  - {from: "§aФинальная голограмма добавлена. Всего: ", to: "§aDodano hologram statystyk finału. Łącznie: "}
+  - {from: "§aУдалены все финальные голограммы: ", to: "§aUsunięto wszystkie hologramy statystyk finału: "}
+  - {from: "§cНет настроенной финальной голограммы в радиусе 5 блоков. Для удаления всех: /arena fstatsremove all", to: "§cBrak skonfigurowanego hologramu statystyk finału w promieniu 5 bloków. Aby usunąć wszystkie: /arena fstatsremove all"}
+  - {from: "§aБлижайшая финальная голограмма удалена. Осталось: ", to: "§aUsunięto najbliższy hologram statystyk finału. Pozostało: "}
+  - {from: "§cНет голограммы в радиусе 5 блоков.", to: "§cBrak hologramu w promieniu 5 bloków."}
+  - {from: "§aМасштаб: ", to: "§aSkala: "}
+  - {from: "§cНекорректное число.", to: "§cNieprawidłowa liczba."}
+  - {from: "§cГолограмма AurumArena не найдена в радиусе 8 блоков.", to: "§cNie znaleziono hologramu AurumArena w promieniu 8 bloków."}
+  - {from: "§aБлижайшая голограмма удалена.", to: "§aUsunięto najbliższy hologram."}
+  - {from: "§eСтатистика ", to: "§eStatystyki gracza "}
+  - {from: " побед§7, §c", to: " zwycięstw§7, §c"}
+  - {from: " поражений§7, серия §f", to: " porażek§7, seria §f"}
+  - {from: "§7, заработано §6", to: "§7, zarobiono §6"}
+  - {from: "§cРежим наблюдателя отключён.", to: "§cTryb obserwatora jest wyłączony."}
+  - {from: "§cУчастник боя не может стать наблюдателем.", to: "§cUczestnik walki nie może zostać obserwatorem."}
+  - {from: "§aВы наблюдаете за ареной ", to: "§aObserwujesz arenę "}
+  - {from: ". Выход за границу вернёт вас назад.", to: ". Przekroczenie granicy przeniesie cię z powrotem."}
+  - {from: "§eНаблюдение завершено, исходное состояние восстановлено.", to: "§eObserwacja zakończona; przywrócono poprzedni stan."}
+  - {from: "§cВы покинули границу арены; наблюдение автоматически завершено.", to: "§cPrzekroczono granicę areny; obserwacja zakończyła się automatycznie."}
+  - {from: "§cТелепортация за арену завершила наблюдение.", to: "§cTeleportacja poza arenę zakończyła obserwację."}
+  - {from: "§aИнвентарь восстановлен после незавершённого матча.", to: "§aEkwipunek przywrócono po przerwanym meczu."}
+  - {from: "§eАвтостарт: ", to: "§eAutomatyczny start: "}
+  - {from: "§eСтавки: ", to: "§eZakłady: "}
+  - {from: "§eКомплект: ", to: "§eZestaw: "}
+  - {from: "§aСтарт", to: "§aStart"}
+  - {from: "§cСтоп", to: "§cStop"}
+  - {from: "§bПроверить настройку", to: "§bSprawdź konfigurację"}
+  - {from: "§cРегистрация закрыта.", to: "§cZapisy do drużyn są zamknięte."}
+  - {from: "§cВы уже участвуете в арене ", to: "§cJuż uczestniczysz w arenie "}
+  - {from: ". Сначала используйте /arena leave.", to: ". Najpierw użyj /arena leave."}
+  - {from: "§cСначала выйдите из другой команды.", to: "§cNajpierw opuść drugą drużynę."}
+  - {from: "§eВы вышли из команды.", to: "§eOpuszczono drużynę."}
+  - {from: "§cКоманда заполнена.", to: "§cTa drużyna jest pełna."}
+  - {from: "§aВы вступили в ", to: "§aDołączono do drużyny "}
+  - {from: "красную", to: "czerwonej"}
+  - {from: "синюю", to: "niebieskiej"}
+  - {from: " команду.", to: "."}
+  - {from: "§cСначала не удалось восстановить предыдущую резервную копию; комплект не выдан.", to: "§cNie udało się przywrócić poprzedniej kopii ekwipunku; zestaw nie został wydany."}
+  - {from: "§eПредыдущая резервная копия инвентаря восстановлена перед выдачей нового комплекта.", to: "§ePoprzednia kopia ekwipunku została przywrócona przed wydaniem nowego zestawu."}
+  - {from: "§cНе удалось создать резервную копию инвентаря.", to: "§cNie udało się utworzyć kopii ekwipunku."}
+  - {from: "§eВ kits.yml нет комплекта; выдан пустой комплект.", to: "§eBrak zestawu w kits.yml; wydano pusty zestaw."}
+  - {from: "§eСтавки открыты. Автостарт через ", to: "§eZakłady otwarte. Automatyczny start za "}
+  - {from: "§eКоманды готовы. Ожидаем ручного старта.", to: "§eObie drużyny są gotowe. Oczekiwanie na ręczny start."}
+  - {from: "§eОжидание обеих команд.", to: "§eOczekiwanie na obie drużyny."}
+  - {from: "§cДля старта нужны обе команды.", to: "§cDo startu potrzebne są obie drużyny."}
+  - {from: "§cАрена не готова:", to: "§cArena nie jest gotowa:"}
+  - {from: "§eБой начнётся через ", to: "§eWalka rozpocznie się za "}
+  - {from: " с. Урон заблокирован.", to: " s. Obrażenia są zablokowane."}
+  - {from: "§c§l⚔ БОЙ! ⚔ §eСтавки закрыты.", to: "§c§l⚔ WALKA! ⚔ §eZakłady zamknięte."}
+  - {from: "§c§l⚔ БОЙ! ⚔", to: "§c§l⚔ WALKA! ⚔"}
+  - {from: "§eСтавки закрыты", to: "§eZakłady zamknięte"}
+  - {from: "§eВы покинули арену: ", to: "§eOpuszczono arenę: "}
+  - {from: "§6Победитель: ", to: "§6Zwycięzca: "}
+  - {from: " §fпобедили!", to: " §fwygrywa!"}
+  - {from: "§eРезультаты и выплаты сохранены", to: "§eWyniki i wypłaty zapisane"}
+  - {from: "§aНаграда за ", to: "§aNagroda za "}
+  - {from: "победу", to: "zwycięstwo"}
+  - {from: "финал", to: "finał"}
+  - {from: "очков опыта", to: "punktów doświadczenia"}
+  - {from: "уровней", to: "poziomów"}
+  - {from: "§cСтавки сейчас закрыты.", to: "§cZakłady są teraz zamknięte."}
+  - {from: "§cНельзя ставить на обе команды.", to: "§cNie można obstawiać obu drużyn."}
+  - {from: "§cСтавка должна быть от ", to: "§cZakład musi wynosić od "}
+  - {from: " до ", to: " do "}
+  - {from: "§aСтавка на ", to: "§aZakład na "}
+  - {from: "§cкрасных", to: "§cczerwonych"}
+  - {from: "§9синих", to: "§9niebieskich"}
+  - {from: "§a принята: §f", to: "§a przyjęty: §f"}
+  - {from: "§a. Всего поставлено: §f", to: "§a. Łączny zakład: §f"}
+  - {from: "§cОтмена доступна только на этапе ставок.", to: "§cZakład można anulować tylko podczas obstawiania."}
+  - {from: "§cВы уже отменяли ставку.", to: "§cZakład został już wcześniej anulowany."}
+  - {from: "§eУ вас нет ставки.", to: "§eNie masz zakładu."}
+  - {from: "§aСтавка возвращена: ", to: "§aZakład zwrócony: "}
+  - {from: "§cФинальная касса заблокирована.", to: "§cPula finałowa jest zablokowana."}
+  - {from: "§aВзнос принят. Пул: ", to: "§aWpłata przyjęta. Pula: "}
+  - {from: "§eПри Vault размен не нужен.", to: "§eW trybie Vault nie trzeba rozmieniać waluty."}
+  - {from: "§cНужен 1 основной или 10 мелких предметов валюты.", to: "§cPotrzeba 1 głównego albo 10 drobnych przedmiotów waluty."}
+  - {from: "До закрытия ставок: ", to: "Do zamknięcia zakładów: "}
+  - {from: "До боя: ", to: "Do walki: "}
+  - {from: "§7Ожидание игроков", to: "§7Oczekiwanie na graczy"}
+  - {from: "§eОжидание ведущего", to: "§eOczekiwanie na prowadzącego"}
+  - {from: "§cСтарт: ", to: "§cStart: "}
+  - {from: "§cБой: ", to: "§cWalka: "}
+  - {from: "§6Матч завершён", to: "§6Mecz zakończony"}
+  - {from: "§cКрасные: §f", to: "§cCzerwoni: §f"}
+  - {from: "§9Синие: §f", to: "§9Niebiescy: §f"}
+  - {from: "§eБанк: §f", to: "§ePula: §f"}
+  - {from: "§cК: §f", to: "§cC: §f"}
+  - {from: "§9С: §f", to: "§9N: §f"}
+  - {from: "§7Ваша: §c", to: "§7Twój: §c"}
+  - {from: "§7Ваша: §9", to: "§7Twój: §9"}
+  - {from: "§cКрасные", to: "§cCzerwoni"}
+  - {from: "§9Синие", to: "§9Niebiescy"}
+  - {from: "§7Нет данных", to: "§7Brak danych"}
+  - {from: ": банк §f", to: ": pula §f"}
+  - {from: "§7, §cКрасные ", to: "§7, §cCzerwoni "}
+  - {from: "x§7, §9Синие ", to: "x§7, §9Niebiescy "}
+  - {from: "x§7, комиссия ", to: "x§7, prowizja "}
+  - {from: "§7Ваша ставка: §cкрасные §f", to: "§7Twój zakład: §cczerwoni §f"}
+  - {from: "§7Ваша ставка: §9синие §f", to: "§7Twój zakład: §9niebiescy §f"}
+  - {from: "§7, текущий коэффициент §f", to: "§7, aktualny kurs §f"}
+  - {from: "§7Опыт каждому победителю: бой §e", to: "§7Doświadczenie dla każdego zwycięzcy: walka §e"}
+  - {from: "§7, финал §6", to: "§7, finał §6"}
+  - {from: "§aАрена полностью готова.", to: "§aArena jest w pełni skonfigurowana."}
+  - {from: "§cПроблемы настройки:", to: "§cProblemy konfiguracji:"}
+  - {from: "не задана кнопка красных", to: "brak przycisku czerwonej drużyny"}
+  - {from: "не задана кнопка синих", to: "brak przycisku niebieskiej drużyny"}
+  - {from: "не задан spawnred", to: "brak spawnred"}
+  - {from: "не задан spawnblue", to: "brak spawnblue"}
+  - {from: "не задан setspawn", to: "brak punktu obserwatorów"}
+  - {from: "не заданы обе воронки ставок", to: "wymagane są oba leje zakładów"}
+  - {from: "радиус пересекает другую арену", to: "promień nachodzi na inną arenę"}
+  - {from: "§cФинал переключается только на пустой арене.", to: "§cTryb finału można przełączyć tylko na pustej arenie."}
+  - {from: "§6Финальный режим включён.", to: "§6Tryb finału włączony."}
+  - {from: "§eФинальный режим выключен.", to: "§eTryb finału wyłączony."}
+  - {from: "§cВозьмите валюту в основную руку.", to: "§cTrzymaj walutę w głównej ręce."}
+  - {from: "§cНедостаточно средств: нужно ", to: "§cZa mało środków; potrzeba: "}
+  - {from: "§cПлатёж отклонён: ", to: "§cPłatność odrzucona: "}
+  - {from: "§eVault недоступен; выплата сохранена.", to: "§eVault jest niedostępny; wypłata została zapisana."}
+  - {from: "§aПолучена отложенная выплата: ", to: "§aOtrzymano oczekującą wypłatę: "}
+  - {from: "§aПолучена отложенная награда: §e", to: "§aOtrzymano oczekującą nagrodę: §e"}
+  - {from: " очков опыта§a, §e", to: " punktów doświadczenia§a, §e"}
+  - {from: " уровней§a.", to: " poziomów§a."}
+  - {from: "§cНе удалось восстановить инвентарь. Резервная копия сохранена; обратитесь к администратору.", to: "§cNie udało się przywrócić ekwipunku. Kopia została zachowana; skontaktuj się z administratorem."}
+  - {from: " зол.", to: " złota"}
+  - {from: "§eНичья", to: "§eRemis"}
+  - {from: "§aАрена ", to: "§aArena "}
+  - {from: " создана.", to: " utworzona."}
+  - {from: "§aИнвентарь ", to: "§aEkwipunek gracza "}
+  - {from: " восстановлен.", to: " przywrócony."}
+  - {from: "§eДля ", to: "§eDla "}
+  - {from: "§7, банк §f", to: "§7, pula §f"}
+  - {from: "§cМатч ", to: "§cMecz "}
+  - {from: "§aБлижайшая финальная голограмма", to: "§aNajbliższy hologram statystyk finału"}
+  - {from: " Осталось: ", to: " Pozostało: "}
+  - {from: "§aБлижайшая голограмма", to: "§aNajbliższy hologram"}
+  - {from: "остановлена администратором", to: "został zatrzymany przez administratora"}
+  - {from: "остановлена из GUI", to: "został zatrzymany z GUI"}
+  - {from: "остановлен при выключении плагина", to: "został zatrzymany podczas wyłączania pluginu"}
+  - {from: "покинул границу — техническое поражение", to: "przekroczył granicę — porażka techniczna"}
+  - {from: "вышел с сервера — техническое поражение", to: "rozłączył się — porażka techniczna"}
+  - {from: "сдался — техническое поражение", to: "poddał się — porażka techniczna"}
+  - {from: "вышел из команды", to: "opuścił drużynę"}
+  - {from: "вышел", to: "wyszedł"}
+  - {from: "погиб", to: "zginął"}
+  - {from: "покинул арену", to: "opuścił arenę"}
+  - {from: "нет", to: "brak"}
+  - {from: " с.", to: " s."}
+  - {from: " с", to: " s"}
