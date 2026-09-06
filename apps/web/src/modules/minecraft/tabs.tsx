@@ -15,6 +15,7 @@ import type { ModuleTabProps } from '../registry';
 import { Modal, PromptModal, PunishModal } from './PlayerModal';
 import { PlayerDetail } from './PlayerDetail';
 import { PlayerPicker, useOnlinePlayers } from './PlayerPicker';
+import { JailActions } from './JailPanel';
 import { ActivityHeatmap } from '../../components/ActivityHeatmap';
 import { KnownPlayersPanel } from './KnownPlayersPanel';
 import { PlayerName } from './PlayerName';
@@ -675,6 +676,22 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
               {t(c.labelKey)}
             </Button>
           ))}
+          {/* Тюрьма стоит в ряду EssentialsX, но идёт не из каталога быстрых
+              команд: список тюрем задаёт админ в игре, а сама команда зависит
+              от того, сидит ли уже игрок. Шаблоном с подстановками это не
+              выражается — см. JailPanel. Ряд появляется, только если сервер
+              подтвердил, что EssentialsX установлен. */}
+          {plugin === 'Essentials' && (
+            <JailActions
+              serverId={serverId}
+              moduleId={moduleId}
+              disabled={busy}
+              onResult={(output) => {
+                setError('');
+                setResult(output);
+              }}
+            />
+          )}
         </div>
       ))}
 

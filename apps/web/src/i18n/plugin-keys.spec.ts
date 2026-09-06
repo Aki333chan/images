@@ -57,7 +57,13 @@ const OWN = [
 function pluginKeys(file: string): Set<string> {
   const keys = new Set<string>();
   const path: string[] = [];
-  for (const raw of readFileSync(file, 'utf8').split('\n')) {
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    // Возврат каретки срезаем сразу: файл языка правят и в Windows, и через
+    // веб-интерфейс GitHub, и тогда он приезжает с CRLF. В регулярке ниже
+    // «$» без флага m это конец всей строки, а «.» не совпадает с \r — из-за
+    // одного невидимого символа разбор молча терял ключи, и тест падал на
+    // строках, которые в файле есть.
+    const raw = line.replace(/\r$/, '');
     if (raw.trim() === '' || raw.trim().startsWith('#') || raw.trim().startsWith('- ')) continue;
     const match = /^(\s*)([\w.]+):(.*)$/.exec(raw);
     if (!match) continue;
