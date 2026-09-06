@@ -1,0 +1,54 @@
+locale-name: Русский
+status:
+  items: "предметы"
+  vault-unavailable: "Vault (недоступен)"
+  none: "нет"
+hologram:
+  bet: "&eСтавка: &a%bet%"
+  vault-unavailable: "&c[Vault недоступен]"
+  legacy-prefixes: ["Bet:", "Zakład:", "Ставка:"]
+messages:
+  no_permission: "&cНет прав."
+  help: |-
+    &e=== AurumSlots ===
+    &b/slots [shelf|hop|button] <ID>
+    &b/slots bet <ID> <ставка>
+    &b/slots remove <ID>
+    &b/slots ban <игрок>
+    &b/slots status
+    &b/slots debug removehologram [радиус]
+    &b/slots reload
+  reload: "&aКонфигурация перезагружена. Режим оплаты: %mode%."
+  status: "&eРежим: &f%mode%&e, провайдер: &f%provider%"
+  unbanned: "&aИгрок %player% разбанен."
+  banned: "&cИгроку %player% запрещена игра в казино."
+  removed: "&aАвтомат %id% удалён."
+  bet_set: "&aСтавка для %id% = %bet%"
+  invalid_bet: "&cСтавка должна быть положительным числом%item_hint%."
+  item_bet_integer_hint: " без дробной части"
+  look_block: "&cСмотрите на блок."
+  shelf_linked: "&aПолка привязана к %id%."
+  button_linked: "&aКнопка привязана к %id%."
+  hop_linked: "&aВоронка привязана к %id%."
+  banned_play: "&cВам запрещено играть в казино."
+  spinning: "&eАвтомат уже крутится."
+  no_bet: "&cСтавка не внесена."
+  bet_accepted: "&aСтавка принята."
+  not_enough: "&cНедостаточно валюты. Нужно %req% предметов."
+  not_enough_vault: "&cНедостаточно средств на балансе."
+  vault_unavailable: "&cРежим Vault включён, но провайдер экономики недоступен. Сообщите администратору."
+  vault_hopper: "&eВ режиме Vault нажмите кнопку автомата; ставка будет списана с баланса."
+  vault_withdraw_failed: "&cНе удалось списать ставку через Vault. Деньги не были приняты."
+  vault_deposit_failed: "&cНе удалось зачислить выигрыш через Vault. Сообщите администратору."
+  exchange: "&cСтавка требует размена или не кратна 10."
+  wrong_currency: "&cНеверная валюта."
+  win: "&aВы выиграли %win%! (x%multi%)"
+  lose: "&cНе повезло."
+  item_amount_suffix: " шт."
+  spin_error: "&cОшибка автомата. Сообщите администратору."
+  machine_protected: "&cЭтот блок принадлежит автомату."
+  machine_broken: "&cАвтомат %id% удалён из-за разрушения одного из его блоков."
+  debug_hologram_removed: "&aБлижайшая голограмма AurumSlots удалена. Расстояние: %distance% блоков."
+  debug_hologram_not_found: "&eГолограммы AurumSlots в радиусе %radius% блоков не найдены."
+  debug_invalid_radius: "&cРадиус должен быть числом от 1 до 64."
+  debug_player_only: "&cЭту debug-команду может выполнить только игрок."

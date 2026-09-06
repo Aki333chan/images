@@ -1,0 +1,20 @@
+# Interface language: en, pl or ru. Existing installations with the old LANGUAGE key are migrated at runtime.
+language: en
+
+# true: списывать и выдавать деньги через Vault.
+# Если Vault или поставщик экономики недоступен, игра блокируется и НЕ переходит на золото.
+use_vault: true
+
+# Используется только для отображения цены и выигрыша в режиме Vault.
+vault_symbol: "$"
+
+# Размер надписи над воронкой. Рекомендуемый диапазон: 0.25–2.0.
+hologram_scale: 0.7
+
+# Валюты предметами. Игнорируются при use_vault: true.
+SUB_CURRENCY: GOLD_NUGGET
+CURRENCY: GOLD_INGOT
+
+# Служебные данные.
+banned_players: []
+machines: {}

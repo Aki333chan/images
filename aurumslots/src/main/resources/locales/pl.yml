@@ -1,0 +1,54 @@
+locale-name: Polski
+status:
+  items: "przedmioty"
+  vault-unavailable: "Vault (niedostępny)"
+  none: "brak"
+hologram:
+  bet: "&eZakład: &a%bet%"
+  vault-unavailable: "&c[Vault niedostępny]"
+  legacy-prefixes: ["Bet:", "Zakład:", "Ставка:"]
+messages:
+  no_permission: "&cNie masz uprawnień."
+  help: |-
+    &e=== AurumSlots ===
+    &b/slots [shelf|hop|button] <ID>
+    &b/slots bet <ID> <stawka>
+    &b/slots remove <ID>
+    &b/slots ban <gracz>
+    &b/slots status
+    &b/slots debug removehologram [promień]
+    &b/slots reload
+  reload: "&aKonfiguracja została przeładowana. Tryb płatności: %mode%."
+  status: "&eTryb: &f%mode%&e, dostawca: &f%provider%"
+  unbanned: "&aGracz %player% został odblokowany."
+  banned: "&cGracz %player% otrzymał zakaz gry w kasynie."
+  removed: "&aMaszyna %id% została usunięta."
+  bet_set: "&aStawka dla %id% = %bet%"
+  invalid_bet: "&cStawka musi być liczbą dodatnią%item_hint%."
+  item_bet_integer_hint: " bez części ułamkowej"
+  look_block: "&cSpójrz na blok."
+  shelf_linked: "&aPółka została przypisana do %id%."
+  button_linked: "&aPrzycisk został przypisany do %id%."
+  hop_linked: "&aLej został przypisany do %id%."
+  banned_play: "&cNie możesz grać w kasynie."
+  spinning: "&eTa maszyna już działa."
+  no_bet: "&cNie wpłacono zakładu."
+  bet_accepted: "&aZakład został przyjęty."
+  not_enough: "&cZa mało waluty. Potrzeba %req% przedmiotów."
+  not_enough_vault: "&cMasz za mało środków."
+  vault_unavailable: "&cTryb Vault jest włączony, ale dostawca ekonomii jest niedostępny. Skontaktuj się z administratorem."
+  vault_hopper: "&eW trybie Vault naciśnij przycisk maszyny; stawka zostanie pobrana z salda."
+  vault_withdraw_failed: "&cNie udało się pobrać stawki przez Vault. Pieniądze nie zostały przyjęte."
+  vault_deposit_failed: "&cNie udało się wypłacić wygranej przez Vault. Skontaktuj się z administratorem."
+  exchange: "&cStawka wymaga rozmienienia albo nie jest podzielna przez 10."
+  wrong_currency: "&cNieprawidłowa waluta."
+  win: "&aWygrywasz %win%! (x%multi%)"
+  lose: "&cTym razem się nie udało."
+  item_amount_suffix: " szt."
+  spin_error: "&cWystąpił błąd automatu. Skontaktuj się z administratorem."
+  machine_protected: "&cTen blok należy do automatu."
+  machine_broken: "&cMaszyna %id% została usunięta, ponieważ zniszczono jeden z jej bloków."
+  debug_hologram_removed: "&aUsunięto najbliższy hologram AurumSlots. Odległość: %distance% bloków."
+  debug_hologram_not_found: "&eNie znaleziono hologramu AurumSlots w promieniu %radius% bloków."
+  debug_invalid_radius: "&cPromień musi być liczbą od 1 do 64."
+  debug_player_only: "&cTej komendy debug może użyć tylko gracz."

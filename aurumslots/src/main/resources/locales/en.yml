@@ -1,0 +1,54 @@
+locale-name: English
+status:
+  items: "items"
+  vault-unavailable: "Vault (unavailable)"
+  none: "none"
+hologram:
+  bet: "&eBet: &a%bet%"
+  vault-unavailable: "&c[Vault unavailable]"
+  legacy-prefixes: ["Bet:", "Zakład:", "Ставка:"]
+messages:
+  no_permission: "&cYou do not have permission."
+  help: |-
+    &e=== AurumSlots ===
+    &b/slots [shelf|hop|button] <ID>
+    &b/slots bet <ID> <bet>
+    &b/slots remove <ID>
+    &b/slots ban <player>
+    &b/slots status
+    &b/slots debug removehologram [radius]
+    &b/slots reload
+  reload: "&aConfiguration reloaded. Payment mode: %mode%."
+  status: "&eMode: &f%mode%&e, provider: &f%provider%"
+  unbanned: "&aPlayer %player% was unbanned."
+  banned: "&cPlayer %player% was banned from the casino."
+  removed: "&aMachine %id% removed."
+  bet_set: "&aBet for %id% = %bet%"
+  invalid_bet: "&cThe bet must be a positive number%item_hint%."
+  item_bet_integer_hint: " without a fractional part"
+  look_block: "&cLook at a block."
+  shelf_linked: "&aShelf linked to %id%."
+  button_linked: "&aButton linked to %id%."
+  hop_linked: "&aHopper linked to %id%."
+  banned_play: "&cYou are not allowed to play."
+  spinning: "&eThis machine is already spinning."
+  no_bet: "&cNo bet has been deposited."
+  bet_accepted: "&aBet accepted."
+  not_enough: "&cNot enough currency. Required: %req% items."
+  not_enough_vault: "&cYour balance is too low."
+  vault_unavailable: "&cVault mode is enabled, but no economy provider is available. Contact an administrator."
+  vault_hopper: "&eIn Vault mode, press the machine button; the bet is taken from your balance."
+  vault_withdraw_failed: "&cVault could not withdraw the bet. No money was accepted."
+  vault_deposit_failed: "&cVault could not deposit your winnings. Contact an administrator."
+  exchange: "&cThe bet requires change or is not divisible by 10."
+  wrong_currency: "&cWrong currency."
+  win: "&aYou won %win%! (x%multi%)"
+  lose: "&cBetter luck next time."
+  item_amount_suffix: " items"
+  spin_error: "&cThe slot machine encountered an error. Contact an administrator."
+  machine_protected: "&cThis block belongs to a slot machine."
+  machine_broken: "&cMachine %id% was removed because one of its blocks was broken."
+  debug_hologram_removed: "&aRemoved the nearest AurumSlots hologram. Distance: %distance% blocks."
+  debug_hologram_not_found: "&eNo AurumSlots hologram was found within %radius% blocks."
+  debug_invalid_radius: "&cRadius must be a number from 1 to 64."
+  debug_player_only: "&cOnly a player can use this debug command."
