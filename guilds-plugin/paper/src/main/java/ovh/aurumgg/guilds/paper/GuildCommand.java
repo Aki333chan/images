@@ -363,7 +363,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         row(player, "Состав", "&f" + guild.members().size() + " &7чел., в сети &f" + online);
         row(player, "Создана", "&f" + DATE.format(
                 guild.createdAt().atZone(java.time.ZoneId.systemDefault())));
-        row(player, "Вступление", "&f" + guild.settings().joinPolicy().title());
+        row(player, "Вступление", "&f" + Msg.text(guild.settings().joinPolicy().titleKey()));
         row(player, "Свой огонь", guild.settings().friendlyFire() ? "&cразрешён" : "&aвыключен");
         // Банк — только если он вообще работает: строка «Банк: 0» на сервере
         // без Vault выглядит как пропавшие деньги, а не как отсутствие банка.
@@ -400,7 +400,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         for (GuildMember member : guild.members()) {
             boolean isOnline = Bukkit.getPlayer(member.uuid()) != null;
             player.sendMessage(Msg.colored((isOnline ? "&a● &f" : "&8● &7") + member.username()
-                    + " &8— " + member.rank().title()));
+                    + " &8— " + Msg.text(member.rank().titleKey())));
         }
     }
 
@@ -442,7 +442,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
                 : " (" + HudLines.shortDurationText(
                         Math.max(0, Duration.between(Instant.now(), bonus.expiresAt()).toSeconds()))
                         + ")";
-        return bonus.type().shortTitle() + " " + value + left;
+        return Msg.text(bonus.type().shortTitleKey()) + " " + value + left;
     }
 
     private void list(CommandSender sender, String[] args) {
@@ -638,7 +638,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         try {
             magnitude = Double.parseDouble(args[4].replace(',', '.'));
         } catch (NumberFormatException e) {
-            Msg.send(sender, "Величина должна быть числом. Для «" + type.title() + "» это "
+            Msg.send(sender, "Величина должна быть числом. Для «" + Msg.text(type.titleKey()) + "» это "
                     + (type.kind() == BonusType.Kind.EFFECT_LEVEL
                             ? "уровень эффекта, 1-" + (int) type.max()
                             : "множитель, 1.0-" + type.max()));
@@ -678,7 +678,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         for (BonusType type : BonusType.values()) {
             Msg.lines(sender, List.of(HelpBook.line(
                     type.name().toLowerCase(Locale.ROOT),
-                    type.title() + " \u2014 "
+                    Msg.text(type.titleKey()) + " \u2014 "
                             + (type.kind() == BonusType.Kind.EFFECT_LEVEL
                                     ? "уровень эффекта 1-" + (int) type.max()
                                     : "множитель 1.0-" + type.max()))));
@@ -719,7 +719,7 @@ final class GuildCommand implements CommandExecutor, TabCompleter {
         String left = bonus.permanent()
                 ? "&aнавсегда"
                 : "&eещё " + GuildService.humanDuration(bonus.remaining(Instant.now()));
-        return "&f" + bonus.type().title() + " &7"
+        return "&f" + Msg.text(bonus.type().titleKey()) + " &7"
                 + GuildService.describe(bonus.type(), bonus.magnitude())
                 + " &8— " + left + " &8(выдал " + bonus.grantedBy() + ")";
     }

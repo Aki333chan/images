@@ -11,19 +11,19 @@ import java.util.Locale;
 public enum BankAccess {
 
     /** Только лидер — значение по умолчанию. */
-    LEADER_ONLY("только лидер"),
+    LEADER_ONLY("guild.bankAccess.leader"),
 
     /** Лидер и офицеры. */
-    LEADER_AND_OFFICERS("лидер и офицеры");
+    LEADER_AND_OFFICERS("guild.bankAccess.leaderAndOfficers");
 
-    private final String title;
+    private final String titleKey;
 
-    BankAccess(String title) {
-        this.title = title;
+    BankAccess(String titleKey) {
+        this.titleKey = titleKey;
     }
 
-    public String title() {
-        return title;
+    public String titleKey() {
+        return titleKey;
     }
 
     public BankAccess next() {

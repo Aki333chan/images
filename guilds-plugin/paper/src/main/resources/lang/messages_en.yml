@@ -1,0 +1,192 @@
+# Player-facing messages. English.
+#
+# Edit by hand: /guild admin reload picks the changes up, no rebuild needed.
+# Keep the {placeholders} — without them the name the message was written for
+# disappears. An unknown placeholder stays in chat as-is, so a typo shows up
+# immediately.
+#
+# Do not delete lines: a missing key falls back to the bundled Russian, so the
+# edit simply would not apply.
+
+# The tag every plugin message starts with. Colour codes use &.
+prefix: "&6[&eGuilds&6]&r "
+
+# ------------------------------------------------- ranks and bonus types
+#
+# THE PANEL KNOWS THE SAME KEY NAMES. The plugin renders them in the server
+# language, the panel in the language of whoever is looking. Adding a bonus
+# means writing one line in two places, not maintaining a second lookup table.
+mc:
+  rank:
+    leader: "leader"
+    officer: "officer"
+    member: "member"
+  bonus:
+    miningSpeed: "Mining speed"
+    movementSpeed: "Movement speed"
+    blockDrops: "Block drops"
+    mobDrops: "Mob drops"
+    experience: "Experience"
+    # The magnitude of an effect bonus, in words.
+    level: "level {n}"
+    # Short ones for the sidebar: the full name does not fit, and the first
+    # thing to be cut off is the remaining time the line exists for.
+    short:
+      miningSpeed: "Haste"
+      movementSpeed: "Speed"
+      blockDrops: "Blocks"
+      mobDrops: "Mobs"
+      experience: "XP"
+
+# --------------------------------------------------------------- sidebar
+hud:
+  party: "Party"
+  guild: "Guild"
+  rank: "Rank"
+  online: "Online"
+  bank: "Bank"
+  bonuses: "Bonuses"
+  more: "… and {count} more"
+  d: "d"
+  h: "h"
+  m: "m"
+  lessThanMinute: "<1m"
+
+# ----------------------------------------------------------------- guild
+guild:
+  created: "Guild “{guild}” [{tag}] created"
+  invited: "{player} has been invited to the guild"
+  joined: "You joined the guild “{guild}”"
+  left: "You left the guild"
+  leftAndDisbanded: "You left, and the guild was disbanded — nobody was left in it"
+  kicked: "{player} was removed from the guild"
+  rankSet: "{player} is now {rank}"
+  transferred: "{player} is now the guild leader"
+  disbanded: "Guild “{guild}” disbanded"
+  settingsSaved: "Settings saved"
+  tagSet: "The guild tag is now [{tag}]"
+
+  policy:
+    open: "open"
+    invite: "by invitation"
+    closed: "closed"
+
+  bankAccess:
+    leader: "the leader only"
+    leaderAndOfficers: "the leader and officers"
+
+  bank:
+    deposited: "{amount} deposited into the guild bank, it now holds {total}"
+    withdrawn: "{amount} withdrawn, {left} left in the bank"
+
+  bonus:
+    granted: "Guild “{guild}” was granted the bonus “{bonus}” {value} for {duration}"
+    grantedForever: "Guild “{guild}” was granted the bonus “{bonus}” {value} permanently"
+    revoked: "The bonus “{bonus}” has been revoked"
+
+  admin:
+    wasNotInGuild: "The player was not in a guild"
+    leaderSet: "{player} has been made the leader of “{guild}”"
+    removed: "{player} was removed from the guild “{guild}”"
+
+  err:
+    leaveFirst: "Leave your current guild first: /guild leave"
+    nameTaken: "That name is already taken"
+    tagTaken: "That tag is already taken"
+    createRace: "Could not create the guild: the name or the tag is already taken"
+    inviteSelf: "There is nowhere to invite yourself"
+    notInGuild: "You are not in a guild"
+    inviteRank: "Only the leader and officers can invite"
+    closed: "The guild is closed — change that in /guild settings first"
+    targetInGuild: "{player} is already in a guild"
+    full: "The guild already has {max} members — no more fit"
+    alreadyInvited: "{player} has already been invited"
+    alreadyInGuild: "You are already in a guild"
+    noSuchName: "There is no guild with that name"
+    inviteOnly: "This guild is joined by invitation"
+    noInvite: "Nobody invited you to a guild"
+    gone: "That guild no longer exists"
+    noSlots: "The guild has no free slots"
+    leaderMustTransfer: "Transfer the leadership first (/guild transfer <nickname>) or disband the guild (/guild disband)"
+    kickSelf: "To leave yourself there is /guild leave"
+    kickRank: "Only the leader and officers can kick"
+    notYourMember: "{player} is not in your guild"
+    kickLower: "You can only kick somebody below your rank"
+    rankLeaderOnly: "Only the leader can change ranks"
+    rankLeadership: "Leadership is transferred separately: /guild transfer <nickname>"
+    rankSelf: "You cannot change your own rank"
+    rankSame: "{player} is {rank} already"
+    transferLeaderOnly: "Only the leader can transfer leadership"
+    alreadyLeader: "You are the leader already"
+    disbandLeaderOnly: "Only the leader can disband the guild"
+    settingsLeaderOnly: "Only the leader can change guild settings"
+    tagLeaderOnly: "Only the leader can change the tag"
+    bankOff: "The guild bank is not available on this server"
+    amountPositive: "The amount must be greater than zero"
+    notEnoughMoney: "Not enough money"
+    bankAccess: "Withdrawals are for {who}"
+    bankHasOnly: "The guild bank only holds {amount}"
+    economyRefused: "The economy plugin refused, the money stayed in the bank"
+    noSuchGuild: "There is no such guild"
+    noMemberNamed: "The guild “{guild}” has no player {player}"
+    targetAlreadyLeader: "{player} is the leader already"
+    targetNoGuild: "{player} is not in a guild"
+    noBonusType: "No bonus type given"
+    noSuchBonus: "The guild has no such bonus"
+    internal: "Internal error, try again later"
+    nameEmpty: "A guild name cannot be empty"
+    nameSpaces: "The name must not start or end with a space"
+    nameShort: "The name is shorter than {max} characters"
+    nameLong: "The name is longer than {max} characters"
+    nameColors: "The name cannot contain § or & — those are colour codes"
+    tagEmpty: "A tag cannot be empty"
+    tagEdgeSpaces: "The tag must not start or end with a space"
+    tagSpaces: "The tag must not contain spaces"
+    tagLong: "The tag is longer than {max} characters"
+    tagColors: "The tag cannot contain § or & — those are colour codes"
+
+# ------------------------------------------------------------------ help
+help:
+  next: "&8Next: &e{command} {page}"
+  counter: "&7(page {page} of {total})"
+
+# ------------------------------------------------------------ durations
+#
+# Units are abbreviated on purpose: spelled-out words would have to agree with
+# the number, and abbreviations never do. {n} is the amount, {m} the minutes in
+# "2 h 30 min", {h} the hours in "3 d 4 h".
+time:
+  forever: "forever"
+  s: "{n} s"
+  min: "{n} min"
+  h: "{n} h"
+  hMin: "{n} h {m} min"
+  d: "{n} d"
+  dH: "{n} d {h} h"
+
+# ---------------------------------------------------------------- party
+party:
+  created: "Party created. Invite with: /party invite <name>"
+  invited: "{player} invited. The invite is good for {duration}"
+  joined: "You joined {leader}'s party"
+  left: "You left the party"
+  kicked: "{player} was kicked from the party"
+  promoted: "{player} is now the party leader"
+
+  err:
+    already: "You are already in a party"
+    inviteSelf: "There is nowhere to invite yourself to"
+    createFirst: "Create a party first: /party create"
+    targetInParty: "{player} is already in a party"
+    full: "The party is already {max} strong — no room left"
+    alreadyInvited: "{player} has already been invited"
+    noInvite: "Nobody has invited you to a party"
+    notInvitedBy: "{player} did not invite you to a party"
+    gone: "That party is gone"
+    noSlots: "The party has no room left"
+    notInParty: "You are not in a party"
+    kickLeaderOnly: "Only the party leader can kick"
+    kickSelf: "To leave yourself, use /party leave"
+    notYourMember: "{player} is not in your party"
+    promoteLeaderOnly: "Only the party leader can hand over leadership"
+    alreadyLeader: "You are the leader already"

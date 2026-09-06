@@ -72,7 +72,7 @@ class GuildServiceTest {
     void создание() {
         GuildActionResult result = service.create(LEADER, "Драконы", "DRG").join();
 
-        assertTrue(result.ok(), result.message());
+        assertTrue(result.ok(), result.messageKey());
         StoredGuild guild = service.guildOf(LEADER).orElseThrow();
         assertEquals("Драконы", guild.name());
         assertEquals("DRG", guild.tag());

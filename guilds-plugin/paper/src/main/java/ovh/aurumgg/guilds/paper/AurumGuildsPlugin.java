@@ -18,6 +18,9 @@ import ovh.aurumgg.guilds.core.EconomyBridge;
 import ovh.aurumgg.guilds.core.GuildHooks;
 import ovh.aurumgg.guilds.core.GuildService;
 import ovh.aurumgg.guilds.core.GuildsConfig;
+import ovh.aurumgg.guilds.core.HelpBook;
+import ovh.aurumgg.guilds.core.HudLines;
+import ovh.aurumgg.guilds.core.Messages;
 import ovh.aurumgg.guilds.core.MariaDbGuildRepository;
 import ovh.aurumgg.guilds.core.PartyService;
 
@@ -62,10 +65,43 @@ public final class AurumGuildsPlugin extends JavaPlugin {
     /** Настройки на момент последней загрузки — с ними сверяется перезагрузка. */
     private GuildsConfig config;
 
+    /**
+     * Тексты для игроков. volatile: /guild admin reload меняет их на живом
+     * сервере, а читают их и из планировщика сайдбара.
+     */
+    private volatile Messages messages;
+
+    /** Текст на языке сервера. */
+    String text(String key) {
+        return messages.get(key);
+    }
+
+    String text(String key, Map<String, String> values) {
+        return messages.get(key, values);
+    }
+
+    java.util.List<String> lines(String key, Map<String, String> values) {
+        return messages.list(key, values);
+    }
+
+    /** Подписи справки: «дальше» и счётчик страниц. */
+    HelpBook.Labels helpLabels() {
+        return new HelpBook.Labels(text("help.next"), text("help.counter"));
+    }
+
+    /** Подписи сайдбара — тем же способом, что и всё остальное. */
+    HudLines.Labels hudLabels() {
+        Messages current = messages;
+        return current::get;
+    }
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
         Map<String, Object> raw = new HashMap<>(getConfig().getValues(true));
+        messages = LanguageFiles.load(this, Messages.normalizeLanguage(
+                String.valueOf(raw.getOrDefault("language", Messages.DEFAULT_LANGUAGE))));
+        Msg.use(this);
         GuildsConfig config = GuildsConfig.fromMap(raw);
         this.config = config;
 
@@ -143,6 +179,11 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         }
         parties = new PartyService(
                 Instant::now, names, config.maxPartyMembers(), config.partyInviteTtl());
+
+        // Словарь сервера — обоим сервисам. Не снимок, а ссылка на text():
+        // /guild admin reload меняет messages, и оба должны увидеть новое сами.
+        guilds.useLabels(this::text);
+        parties.useLabels(this::text);
 
         // ------------------------------- команды, слушатели, задачи --------
         ChatPrompt prompts = new ChatPrompt(this);
@@ -269,7 +310,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         }
         long period = Math.max(1, config.hudRefresh().toMillis() / 50);
         hudTask = getServer().getScheduler().runTaskTimer(
-                this, new HudTask(guilds, parties, sidebar), period, period);
+                this, new HudTask(this, guilds, parties, sidebar), period, period);
     }
 
     /** Разрешён ли сейчас урон по своим внутри пати. */
@@ -306,6 +347,9 @@ public final class AurumGuildsPlugin extends JavaPlugin {
      */
     List<String> reloadSettings() {
         reloadConfig();
+        messages = LanguageFiles.load(this, Messages.normalizeLanguage(
+                String.valueOf(getConfig().getValues(true)
+                        .getOrDefault("language", Messages.DEFAULT_LANGUAGE))));
         GuildsConfig fresh = GuildsConfig.fromMap(new HashMap<>(getConfig().getValues(true)));
 
         List<String> report = new ArrayList<>();

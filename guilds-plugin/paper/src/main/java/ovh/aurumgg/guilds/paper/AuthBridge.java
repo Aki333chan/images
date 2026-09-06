@@ -62,6 +62,6 @@ final class AuthBridge implements Listener {
     public void onAccountDeleted(PlayerAccountDeletedEvent event) {
         guilds.onAccountDeleted(event.uuid(), event.username()).thenAccept(result ->
                 plugin.getLogger().info("Удаление аккаунта " + event.username() + ": "
-                        + result.message()));
+                        + Msg.render(result)));
     }
 }

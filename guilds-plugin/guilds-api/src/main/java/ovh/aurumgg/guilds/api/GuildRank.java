@@ -18,27 +18,27 @@ public enum GuildRank {
      * Эти три действия необратимы или меняют саму гильдию, поэтому делить их
      * с кем-то ещё нельзя.
      */
-    LEADER("лидер", 2),
+    LEADER("mc.rank.leader", 2),
 
     /**
      * Офицер. Набирает и выгоняет, но не решает судьбу гильдии.
      */
-    OFFICER("офицер", 1),
+    OFFICER("mc.rank.officer", 1),
 
     /** Участник. */
-    MEMBER("участник", 0);
+    MEMBER("mc.rank.member", 0);
 
-    private final String title;
+    private final String titleKey;
     private final int weight;
 
-    GuildRank(String title, int weight) {
-        this.title = title;
+    GuildRank(String titleKey, int weight) {
+        this.titleKey = titleKey;
         this.weight = weight;
     }
 
-    /** Название по-русски — для сообщений в чат и панели. */
-    public String title() {
-        return title;
+    /** Ключ названия — тот же, что знает панель. См. BonusType.titleKey. */
+    public String titleKey() {
+        return titleKey;
     }
 
     /** Старшинство: больше — старше. Сравнивать ранги напрямую по ordinal нельзя. */

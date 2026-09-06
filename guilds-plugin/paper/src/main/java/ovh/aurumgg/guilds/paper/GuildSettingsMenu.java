@@ -148,7 +148,7 @@ final class GuildSettingsMenu implements Listener {
 
             @Override
             public String title(StoredGuild guild) {
-                return "&fВступление: &e" + guild.settings().joinPolicy().title();
+                return "&fВступление: &e" + Msg.text(guild.settings().joinPolicy().titleKey());
             }
 
             @Override
@@ -198,7 +198,7 @@ final class GuildSettingsMenu implements Listener {
 
             @Override
             public String title(StoredGuild guild) {
-                return "&fСнимать из банка: &e" + guild.settings().bankAccess().title();
+                return "&fСнимать из банка: &e" + Msg.text(guild.settings().bankAccess().titleKey());
             }
 
             @Override

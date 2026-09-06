@@ -1,6 +1,7 @@
 package ovh.aurumgg.guilds.core;
 
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Проверка имени и тега гильдии.
@@ -32,13 +33,24 @@ import java.util.Locale;
  */
 public final class GuildNames {
 
-    /** Ответ проверки: либо всё хорошо, либо объяснение, что не так. */
-    public record Verdict(boolean ok, String message) {
+    /**
+     * Ответ проверки: либо всё хорошо, либо ключ объяснения, что не так.
+     *
+     * Ключ, а не фраза, по той же причине, что и в {@link
+     * ovh.aurumgg.guilds.api.GuildActionResult}: длину предела знает конфиг, а
+     * язык — слой Bukkit, и встречаются они только там, где текст выводится.
+     * {@code values} несёт как раз этот предел: «Имя длиннее {max} символов».
+     */
+    public record Verdict(boolean ok, String messageKey, Map<String, String> values) {
 
-        public static final Verdict OK = new Verdict(true, "");
+        public static final Verdict OK = new Verdict(true, "", Map.of());
 
-        public static Verdict bad(String message) {
-            return new Verdict(false, message);
+        public static Verdict bad(String messageKey) {
+            return new Verdict(false, messageKey, Map.of());
+        }
+
+        public static Verdict bad(String messageKey, int max) {
+            return new Verdict(false, messageKey, Map.of("max", String.valueOf(max)));
         }
     }
 
@@ -48,27 +60,27 @@ public final class GuildNames {
     private GuildNames() {}
 
     public static Verdict checkName(String name, int maxLength) {
-        if (name == null || name.isBlank()) return Verdict.bad("Имя гильдии не может быть пустым");
+        if (name == null || name.isBlank()) return Verdict.bad("guild.err.nameEmpty");
         if (!name.equals(name.trim())) {
-            return Verdict.bad("Имя не должно начинаться или заканчиваться пробелом");
+            return Verdict.bad("guild.err.nameSpaces");
         }
         if (name.length() < MIN_NAME_LENGTH) {
-            return Verdict.bad("Имя короче " + MIN_NAME_LENGTH + " символов");
+            return Verdict.bad("guild.err.nameShort", MIN_NAME_LENGTH);
         }
-        if (name.length() > maxLength) return Verdict.bad("Имя длиннее " + maxLength + " символов");
+        if (name.length() > maxLength) return Verdict.bad("guild.err.nameLong", maxLength);
         if (hasForbidden(name)) {
-            return Verdict.bad("В имени нельзя использовать § и & — это коды цвета");
+            return Verdict.bad("guild.err.nameColors");
         }
         return Verdict.OK;
     }
 
     public static Verdict checkTag(String tag, int maxLength) {
-        if (tag == null || tag.isBlank()) return Verdict.bad("Тег не может быть пустым");
-        if (!tag.equals(tag.trim())) return Verdict.bad("В теге не должно быть пробелов по краям");
-        if (tag.indexOf(' ') >= 0) return Verdict.bad("В теге не должно быть пробелов");
-        if (tag.length() > maxLength) return Verdict.bad("Тег длиннее " + maxLength + " символов");
+        if (tag == null || tag.isBlank()) return Verdict.bad("guild.err.tagEmpty");
+        if (!tag.equals(tag.trim())) return Verdict.bad("guild.err.tagEdgeSpaces");
+        if (tag.indexOf(' ') >= 0) return Verdict.bad("guild.err.tagSpaces");
+        if (tag.length() > maxLength) return Verdict.bad("guild.err.tagLong", maxLength);
         if (hasForbidden(tag)) {
-            return Verdict.bad("В теге нельзя использовать § и & — это коды цвета");
+            return Verdict.bad("guild.err.tagColors");
         }
         return Verdict.OK;
     }

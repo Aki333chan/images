@@ -1,0 +1,191 @@
+# Komunikaty widziane przez gracza. Polski.
+#
+# Plik można edytować ręcznie: zmiany wczytuje /guild admin reload, przebudowa
+# pluginu nie jest potrzebna. Zostaw {podstawienia} — bez nich z komunikatu
+# znika imię, dla którego go napisano. Nieznane podstawienie zostaje na czacie
+# takie, jakie jest, więc literówkę widać od razu.
+#
+# Nie usuwaj wierszy: brakujący klucz jest brany z wbudowanego rosyjskiego.
+
+# Podpis, od którego zaczyna się każda wiadomość pluginu. Kody kolorów: &.
+prefix: "&6[&eGildie&6]&r "
+
+# --------------------------------------------------- rangi i rodzaje bonusów
+#
+# PANEL ZNA TE SAME NAZWY KLUCZY. Plugin podstawia je w języku serwera, panel
+# w języku tego, kto patrzy. Dodać bonus znaczy dopisać wiersz w dwóch
+# miejscach, a nie prowadzić drugą tablicę odpowiedników.
+mc:
+  rank:
+    leader: "lider"
+    officer: "oficer"
+    member: "członek"
+  bonus:
+    miningSpeed: "Szybkość kopania"
+    movementSpeed: "Szybkość poruszania"
+    blockDrops: "Łup z bloków"
+    mobDrops: "Łup z mobów"
+    experience: "Doświadczenie"
+    # Wielkość bonusu-efektu słowami.
+    level: "poziom {n}"
+    # Krótkie do sidebara: pełna nazwa się nie mieści, a pierwsze ucieka
+    # właśnie pozostałe czasu, dla którego wiersz istnieje.
+    short:
+      miningSpeed: "Pośpiech"
+      movementSpeed: "Szybkość"
+      blockDrops: "Bloki"
+      mobDrops: "Moby"
+      experience: "PD"
+
+# --------------------------------------------------------------- sidebar
+hud:
+  party: "Party"
+  guild: "Gildia"
+  rank: "Ranga"
+  online: "W sieci"
+  bank: "Bank"
+  bonuses: "Bonusy"
+  more: "… i jeszcze {count}"
+  d: "d"
+  h: "g"
+  m: "m"
+  lessThanMinute: "<1m"
+
+# ----------------------------------------------------------------- gildia
+guild:
+  created: "Gildia „{guild}” [{tag}] utworzona"
+  invited: "{player} zaproszony do gildii"
+  joined: "Dołączyłeś do gildii „{guild}”"
+  left: "Opuściłeś gildię"
+  leftAndDisbanded: "Opuściłeś gildię i została ona rozwiązana — nikt w niej nie został"
+  kicked: "{player} wyrzucony z gildii"
+  rankSet: "{player} jest teraz {rank}"
+  transferred: "{player} jest teraz liderem gildii"
+  disbanded: "Gildia „{guild}” rozwiązana"
+  settingsSaved: "Ustawienia zapisane"
+  tagSet: "Tag gildii to teraz [{tag}]"
+
+  policy:
+    open: "otwarta"
+    invite: "na zaproszenie"
+    closed: "zamknięta"
+
+  bankAccess:
+    leader: "tylko lider"
+    leaderAndOfficers: "lider i oficerowie"
+
+  bank:
+    deposited: "Do banku gildii wpłacono {amount}, jest tam teraz {total}"
+    withdrawn: "Wypłacono {amount}, w banku zostało {left}"
+
+  bonus:
+    granted: "Gildii „{guild}” przyznano bonus „{bonus}” {value} na {duration}"
+    grantedForever: "Gildii „{guild}” przyznano bonus „{bonus}” {value} na stałe"
+    revoked: "Bonus „{bonus}” zdjęty"
+
+  admin:
+    wasNotInGuild: "Gracz nie należał do gildii"
+    leaderSet: "{player} został liderem gildii „{guild}”"
+    removed: "{player} usunięty z gildii „{guild}”"
+
+  err:
+    leaveFirst: "Najpierw opuść obecną gildię: /guild leave"
+    nameTaken: "Taka nazwa jest już zajęta"
+    tagTaken: "Taki tag jest już zajęty"
+    createRace: "Nie udało się utworzyć gildii: nazwa albo tag są już zajęte"
+    inviteSelf: "Siebie nie ma gdzie zapraszać"
+    notInGuild: "Nie należysz do gildii"
+    inviteRank: "Zapraszać mogą lider i oficerowie"
+    closed: "Gildia jest zamknięta — zmień to najpierw w /guild settings"
+    targetInGuild: "{player} należy już do gildii"
+    full: "Gildia ma już {max} członków — więcej się nie mieści"
+    alreadyInvited: "{player} jest już zaproszony"
+    alreadyInGuild: "Należysz już do gildii"
+    noSuchName: "Nie ma gildii o takiej nazwie"
+    inviteOnly: "Do tej gildii wchodzi się na zaproszenie"
+    noInvite: "Nikt cię nie zapraszał do gildii"
+    gone: "Tej gildii już nie ma"
+    noSlots: "W gildii nie ma miejsc"
+    leaderMustTransfer: "Najpierw przekaż przywództwo (/guild transfer <nick>) albo rozwiąż gildię (/guild disband)"
+    kickSelf: "Żeby odejść samemu, jest /guild leave"
+    kickRank: "Wyrzucać mogą lider i oficerowie"
+    notYourMember: "{player} nie jest w twojej gildii"
+    kickLower: "Wyrzucić można tylko kogoś niższego rangą"
+    rankLeaderOnly: "Rangi może zmieniać tylko lider"
+    rankLeadership: "Przywództwo przekazuje się osobno: /guild transfer <nick>"
+    rankSelf: "Swojej rangi nie można zmieniać"
+    rankSame: "{player} i tak jest {rank}"
+    transferLeaderOnly: "Przekazać przywództwo może tylko lider"
+    alreadyLeader: "I tak jesteś liderem"
+    disbandLeaderOnly: "Rozwiązać gildię może tylko lider"
+    settingsLeaderOnly: "Ustawienia gildii może zmieniać tylko lider"
+    tagLeaderOnly: "Tag może zmieniać tylko lider"
+    bankOff: "Bank gildii jest na tym serwerze niedostępny"
+    amountPositive: "Kwota musi być większa od zera"
+    notEnoughMoney: "Za mało środków"
+    bankAccess: "Wypłacać może {who}"
+    bankHasOnly: "W banku gildii jest tylko {amount}"
+    economyRefused: "Plugin ekonomii odmówił, pieniądze zostały w banku"
+    noSuchGuild: "Nie ma takiej gildii"
+    noMemberNamed: "W gildii „{guild}” nie ma gracza {player}"
+    targetAlreadyLeader: "{player} i tak jest liderem"
+    targetNoGuild: "{player} nie należy do gildii"
+    noBonusType: "Nie podano rodzaju bonusu"
+    noSuchBonus: "Gildia nie ma takiego bonusu"
+    internal: "Błąd wewnętrzny, spróbuj później"
+    nameEmpty: "Nazwa gildii nie może być pusta"
+    nameSpaces: "Nazwa nie może zaczynać się ani kończyć spacją"
+    nameShort: "Nazwa jest krótsza niż {max} znaków"
+    nameLong: "Nazwa jest dłuższa niż {max} znaków"
+    nameColors: "W nazwie nie można używać § ani & — to kody kolorów"
+    tagEmpty: "Tag nie może być pusty"
+    tagEdgeSpaces: "Tag nie może zaczynać się ani kończyć spacją"
+    tagSpaces: "Tag nie może zawierać spacji"
+    tagLong: "Tag jest dłuższy niż {max} znaków"
+    tagColors: "W tagu nie można używać § ani & — to kody kolorów"
+
+# ------------------------------------------------------------------ pomoc
+help:
+  next: "&8Dalej: &e{command} {page}"
+  counter: "&7(str. {page} z {total})"
+
+# ------------------------------------------------------------ czas trwania
+#
+# Jednostki skrótami i to nie jest oszczędność miejsca: pełne słowa trzeba by
+# odmieniać przez liczbę («2 godziny», «5 godzin»), a skróty się nie odmieniają.
+# {n} — liczba, {m} — minuty w «2 godz. 30 min», {h} — godziny w «3 dn. 4 godz.».
+time:
+  forever: "na zawsze"
+  s: "{n} s"
+  min: "{n} min"
+  h: "{n} godz."
+  hMin: "{n} godz. {m} min"
+  d: "{n} dn."
+  dH: "{n} dn. {h} godz."
+
+# ---------------------------------------------------------------- drużyna
+party:
+  created: "Drużyna utworzona. Zapraszaj: /party invite <nick>"
+  invited: "{player} zaproszony. Zaproszenie ważne {duration}"
+  joined: "Dołączyłeś do drużyny gracza {leader}"
+  left: "Opuściłeś drużynę"
+  kicked: "{player} został wyrzucony z drużyny"
+  promoted: "{player} jest teraz liderem drużyny"
+
+  err:
+    already: "Już jesteś w drużynie"
+    inviteSelf: "Siebie nie ma dokąd zapraszać"
+    createFirst: "Najpierw utwórz drużynę: /party create"
+    targetInParty: "{player} jest już w drużynie"
+    full: "W drużynie jest już {max} osób — więcej się nie zmieści"
+    alreadyInvited: "{player} został już zaproszony"
+    noInvite: "Nikt cię nie zapraszał do drużyny"
+    notInvitedBy: "{player} nie zapraszał cię do drużyny"
+    gone: "Tej drużyny już nie ma"
+    noSlots: "W drużynie nie ma już miejsca"
+    notInParty: "Nie jesteś w drużynie"
+    kickLeaderOnly: "Wyrzucać może tylko lider drużyny"
+    kickSelf: "Aby wyjść samemu, użyj /party leave"
+    notYourMember: "{player} nie jest w twojej drużynie"
+    promoteLeaderOnly: "Przekazać przywództwo może tylko lider drużyny"
+    alreadyLeader: "I tak jesteś liderem"
