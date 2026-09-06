@@ -241,7 +241,7 @@ public final class AuthService implements AutoCloseable {
                 sessions.remember(uuid, ip, now);
                 history(uuid, username, LoginRecord.Result.SUCCESS, ip, now);
                 setStatus(uuid, AuthStatus.AUTHENTICATED);
-                return AuthOutcome.ok("Вы вошли");
+                return AuthOutcome.ok("auth.loggedIn");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка входа игрока " + username, e);
                 return AuthOutcome.error();
@@ -262,8 +262,8 @@ public final class AuthService implements AutoCloseable {
                 if (!java.util.Arrays.equals(password, confirmation)) {
                     return AuthOutcome.mismatch();
                 }
-                String problem = config.validatePassword(asString);
-                if (problem != null) return AuthOutcome.badPassword(problem);
+                AuthConfig.PasswordProblem problem = config.validatePassword(asString);
+                if (problem != null) return AuthOutcome.badPassword(problem.key(), problem.values());
 
                 // Ник проверяется отдельно от UUID: на смешанном сервере один
                 // ник даёт разные UUID у лицензионного и пиратского клиента, и
@@ -281,7 +281,7 @@ public final class AuthService implements AutoCloseable {
                 throttle.recordSuccess(username);
                 history(uuid, username, LoginRecord.Result.SUCCESS, ip, now);
                 setStatus(uuid, AuthStatus.AUTHENTICATED, true);
-                return AuthOutcome.ok("Регистрация завершена, вы вошли");
+                return AuthOutcome.ok("auth.registered");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка регистрации игрока " + username, e);
                 return AuthOutcome.error();
@@ -376,8 +376,8 @@ public final class AuthService implements AutoCloseable {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 if (!java.util.Arrays.equals(password, confirmation)) return AuthOutcome.mismatch();
-                String problem = config.validatePassword(new String(password));
-                if (problem != null) return AuthOutcome.badPassword(problem);
+                AuthConfig.PasswordProblem problem = config.validatePassword(new String(password));
+                if (problem != null) return AuthOutcome.badPassword(problem.key(), problem.values());
 
                 Instant now = clock.get();
                 repository.updatePasswordHash(uuid, hasher.hash(password.clone()));
@@ -386,7 +386,7 @@ public final class AuthService implements AutoCloseable {
                 throttle.recordSuccess(username);
                 history(uuid, username, LoginRecord.Result.RESET, ip, now);
                 setStatus(uuid, AuthStatus.AUTHENTICATED);
-                return AuthOutcome.ok("Пароль изменён, вы вошли");
+                return AuthOutcome.ok("auth.passwordChanged");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка смены пароля игрока " + username, e);
                 return AuthOutcome.error();
@@ -471,7 +471,7 @@ public final class AuthService implements AutoCloseable {
 
                 repository.setTotp(uuid, account.get().totpSecret(), true);
                 repository.setTotpCounter(uuid, matched.getAsLong());
-                return AuthOutcome.ok("Двухфакторка включена. Код будет спрашиваться при каждом входе");
+                return AuthOutcome.ok("auth.totpEnabled");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка подтверждения двухфакторки", e);
                 return AuthOutcome.error();
@@ -514,7 +514,7 @@ public final class AuthService implements AutoCloseable {
                 throttle.recordSuccess(username);
                 history(uuid, username, LoginRecord.Result.SUCCESS, ip, now);
                 setStatus(uuid, AuthStatus.AUTHENTICATED);
-                return AuthOutcome.ok("Вы вошли");
+                return AuthOutcome.ok("auth.loggedIn");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка проверки кода двухфакторки", e);
                 return AuthOutcome.error();
@@ -528,7 +528,7 @@ public final class AuthService implements AutoCloseable {
             try {
                 Optional<AuthAccount> account = repository.findByUuid(uuid);
                 if (account.isEmpty() || !account.get().hasTotp()) {
-                    return AuthOutcome.badPassword("Двухфакторка и так выключена");
+                    return AuthOutcome.badPassword("auth.totpAlreadyOff", Map.of());
                 }
                 // Код обязателен: иначе выключить её мог бы любой, кто на
                 // минуту сел за чужой компьютер с уже вошедшим игроком.
@@ -536,7 +536,7 @@ public final class AuthService implements AutoCloseable {
                     return AuthOutcome.totpInvalid();
                 }
                 repository.setTotp(uuid, null, false);
-                return AuthOutcome.ok("Двухфакторка выключена");
+                return AuthOutcome.ok("auth.totpDisabled");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка выключения двухфакторки", e);
                 return AuthOutcome.error();
@@ -596,7 +596,7 @@ public final class AuthService implements AutoCloseable {
                 setStatus(uuid, AuthStatus.AWAITING_REGISTRATION);
                 logger.info("Игрок " + username + " удалил свою регистрацию");
                 notifyDeleted(uuid, username, false);
-                return AuthOutcome.ok("Регистрация удалена");
+                return AuthOutcome.ok("auth.unregistered");
             } catch (Exception e) {
                 logger.log(Level.SEVERE, "Ошибка удаления регистрации " + username, e);
                 return AuthOutcome.error();

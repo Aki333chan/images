@@ -77,13 +77,13 @@ describe('CompanionTokenGuard', () => {
     const guard = makeGuard(TOKEN);
     await expect(
       guard.canActivate(makeContext({ ip: '8.8.8.8', auth: `Bearer ${TOKEN}` })),
-    ).rejects.toThrow('только из внутренней сети');
+    ).rejects.toThrow('mc.err.internalOnly');
   });
 
   it('отклоняет сервер без настроенного плагина', async () => {
     const guard = makeGuard(null);
     await expect(guard.canActivate(makeContext({ auth: `Bearer ${TOKEN}` }))).rejects.toThrow(
-      'не настроен companion-плагин',
+      'mc.err.companionNotConfigured',
     );
   });
 });

@@ -1,4 +1,5 @@
 import { MAX_GIVE_COUNT, MAX_GIVE_ENTRIES, parseGiveList } from './give-list';
+import ru from '../../i18n/catalogs/ru.json';
 
 describe('разбор списка выдачи', () => {
   it('понимает все три способа написать количество', () => {
@@ -42,13 +43,15 @@ describe('разбор списка выдачи', () => {
     const { items, errors } = parseGiveList('дай мне алмазов\nstone 1');
     expect(items).toEqual([{ id: 'stone', count: 1 }]);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain('дай мне алмазов');
+    expect(errors[0]?.key).toBe('mc.give.err.shape');
+    expect(errors[0]?.values.line).toBe('дай мне алмазов');
   });
 
   it('количество за пределом отклоняется до отправки', () => {
     const { items, errors } = parseGiveList(`stone ${MAX_GIVE_COUNT + 1}`);
     expect(items).toEqual([]);
-    expect(errors[0]).toContain(String(MAX_GIVE_COUNT));
+    expect(errors[0]?.key).toBe('mc.give.err.tooMany');
+    expect(errors[0]?.values.max).toBe(MAX_GIVE_COUNT);
 
     expect(parseGiveList('stone 0').items).toEqual([]);
   });
@@ -59,6 +62,23 @@ describe('разбор списка выдачи', () => {
     const text = Array.from({ length: MAX_GIVE_ENTRIES + 1 }, () => 'stone').join('\n');
     const { items, errors } = parseGiveList(text);
     expect(items).toEqual([]);
-    expect(errors[0]).toContain(String(MAX_GIVE_ENTRIES));
+    expect(errors[0]?.key).toBe('mc.give.err.tooLong');
+    expect(errors[0]?.values.max).toBe(MAX_GIVE_ENTRIES);
+  });
+
+  it('каждый ключ ошибки есть в каталоге — иначе на экране окажется он сам', () => {
+    // Разбор возвращает ключи, а не фразы, и опечатка в ключе тихо доживёт
+    // до экрана: переводчик показывает несуществующий ключ как есть.
+    const catalog = ru as Record<string, unknown>;
+    const cases = [
+      'мусор',
+      `stone ${MAX_GIVE_COUNT + 1}`,
+      Array.from({ length: MAX_GIVE_ENTRIES + 1 }, () => 'stone').join('\n'),
+    ];
+    for (const text of cases) {
+      for (const error of parseGiveList(text).errors) {
+        expect(catalog[error.key]).toBeDefined();
+      }
+    }
   });
 });

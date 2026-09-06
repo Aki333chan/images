@@ -1,7 +1,9 @@
 package ovh.aurumgg.auth.core;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import ovh.aurumgg.auth.api.AuthStatus;
@@ -164,7 +166,36 @@ public record PromptSettings(
         return Map.copyOf(map);
     }
 
+    /**
+     * Ключи текстов подсказок, которые остались в config.yml от старых версий.
+     *
+     * Тексты переехали в lang/messages_*.yml — в одно место со всеми
+     * остальными. Но у кого-то они уже поправлены прямо в конфиге, и молча
+     * перестать их читать значило бы откатить чужую работу без единого следа.
+     * Поэтому конфиг по-прежнему главнее файла языка, а плагин при старте
+     * говорит, что именно стоит перенести.
+     */
+    public static List<String> legacyTextKeys(Map<String, Object> raw) {
+        List<String> found = new ArrayList<>();
+        if (raw.containsKey("prompt.prefix")) found.add("prompt.prefix");
+        for (Stage stage : Stage.values()) {
+            String base = "prompt." + stage.key() + ".";
+            for (String part : List.of("title", "subtitle", "action-bar", "chat")) {
+                if (raw.containsKey(base + part)) found.add(base + part);
+            }
+        }
+        return found;
+    }
+
     public static PromptSettings fromMap(Map<String, Object> raw) {
+        return fromMap(raw, null);
+    }
+
+    /**
+     * @param texts тексты языка сервера; null — только встроенные умолчания
+     *   (так зовут тесты и {@link #defaultSettings()}).
+     */
+    public static PromptSettings fromMap(Map<String, Object> raw, Messages texts) {
         Duration fadeIn = millis(clamp(integer(raw, "prompt.title.fade-in-ms", 200), 0, 5_000));
         Duration fadeOut = millis(clamp(integer(raw, "prompt.title.fade-out-ms", 400), 0, 5_000));
         Duration stay = millis(clamp(integer(raw, "prompt.title.stay-ms", 6_000), 500, 60_000));
@@ -187,14 +218,14 @@ public record PromptSettings(
             Prompt fallback = DEFAULTS.get(stage);
             String base = "prompt." + stage.key() + ".";
             prompts.put(stage, new Prompt(
-                    text(raw, base + "title", fallback.title()),
-                    text(raw, base + "subtitle", fallback.subtitle()),
-                    text(raw, base + "action-bar", fallback.actionBar()),
-                    text(raw, base + "chat", fallback.chat())));
+                    text(raw, base + "title", said(texts, base + "title", fallback.title())),
+                    text(raw, base + "subtitle", said(texts, base + "subtitle", fallback.subtitle())),
+                    text(raw, base + "action-bar", said(texts, base + "action-bar", fallback.actionBar())),
+                    text(raw, base + "chat", said(texts, base + "chat", fallback.chat()))));
         }
 
         return new PromptSettings(
-                text(raw, "prompt.prefix", DEFAULT_PREFIX),
+                text(raw, "prompt.prefix", said(texts, "prompt.prefix", DEFAULT_PREFIX)),
                 colorCode(text(raw, "prompt.text-color", DEFAULT_TEXT_COLOR)),
                 bool(raw, "prompt.title.enabled", true),
                 fadeIn,
@@ -205,6 +236,18 @@ public record PromptSettings(
                 repeat,
                 chatReminder,
                 Map.copyOf(prompts));
+    }
+
+    /**
+     * Текст из файла языка, а если его там нет — встроенное умолчание.
+     *
+     * Ключ, которого нет в файле, Messages возвращает сам собой; на экране
+     * подсказки это выглядело бы как «prompt.login.title» вместо надписи, и
+     * здесь такое значение отбрасывается в пользу русского умолчания.
+     */
+    private static String said(Messages texts, String key, String fallback) {
+        if (texts == null || !texts.has(key)) return fallback;
+        return texts.get(key);
     }
 
     /** Настройки по умолчанию — для тестов и на случай пустого конфига. */

@@ -128,15 +128,23 @@ export class MessagesService {
     input: { nickname: string; text: string },
   ): Promise<StaffMessageDto> {
     const text = input.text.trim();
-    if (!text) throw new BadRequestException('Пустое сообщение отправить нельзя');
+    if (!text) throw new BadRequestException('msg.err.empty');
     if (text.length > MAX_TEXT_LENGTH) {
-      throw new BadRequestException(`Сообщение длиннее ${MAX_TEXT_LENGTH} символов`);
+      throw new BadRequestException({
+        message: 'msg.err.tooLong',
+        i18nValues: { max: MAX_TEXT_LENGTH },
+      });
     }
 
     const peer = await this.findByNickname(input.nickname);
-    if (!peer) throw new NotFoundException(`Сотрудник с ником «${input.nickname}» не найден`);
+    if (!peer) {
+      throw new NotFoundException({
+        message: 'msg.err.noPeer',
+        i18nValues: { nickname: input.nickname },
+      });
+    }
     if (peer.id === currentUserId) {
-      throw new BadRequestException('Нельзя написать самому себе');
+      throw new BadRequestException('msg.err.self');
     }
 
     const message = await this.prisma.staffMessage.create({

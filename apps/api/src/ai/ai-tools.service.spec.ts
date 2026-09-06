@@ -10,6 +10,7 @@ import type { TicketsService } from '../tickets/tickets.service';
 import type { MinecraftService } from '../modules/minecraft/minecraft.service';
 import type { CompanionService } from '../modules/minecraft/companion.service';
 import type { MessagesService } from '../messages/messages.service';
+import { I18nService } from '../i18n/i18n.service';
 
 /**
  * Инструменты ассистента.
@@ -100,10 +101,16 @@ function setup(options: {
         calls.push(`command:${JSON.stringify(args)}`);
         return Promise.resolve('ok');
       },
-      requirePlayerUuid: (_serverId: string, player: string) =>
-        player === 'Steve'
-          ? Promise.resolve('8667ba71-b85a-4004-af54-457a9734eed7')
-          : Promise.reject(new Error(`Не удалось определить UUID игрока ${player}`)),
+      // UUID есть у всех, кого знает сервер. Отсев несуществующих ников
+      // теперь идёт раньше — в поиске по нику, а не здесь.
+      requirePlayerUuid: (_serverId: string, player: string) => {
+        // Пишем в calls: по этой записи видно, какой ИМЕННО ник доехал до
+        // сервиса после поиска по части — ради этого поиск и делался.
+        calls.push(`uuid:${player}`);
+        return player === 'Ghost'
+          ? Promise.reject(new Error(`Не удалось определить UUID игрока ${player}`))
+          : Promise.resolve(`uuid-${player}`);
+      },
       getBalance: () => Promise.resolve({ available: true, balance: 250, formatted: '250 монет' }),
       getEconomy: () => Promise.resolve({ available: true, total: 1250, top: [] }),
       getInventory: () => Promise.resolve({ available: true, items: [] }),
@@ -122,6 +129,19 @@ function setup(options: {
       ...options.minecraft,
     } as unknown as MinecraftService,
     {
+      // История заходов: по ней ассистент ищет офлайн-игроков по части ника.
+      getKnownPlayers: (_serverId: string, opts: { query?: string } = {}) => {
+        const all = ['Steve', 'Steve_Old', 'Alex', 'Griefer', 'Griefer99'];
+        const query = (opts.query ?? '').toLowerCase();
+        return Promise.resolve({
+          available: true,
+          total: all.length,
+          authAvailable: false,
+          players: all
+            .filter((n) => n.toLowerCase().includes(query))
+            .map((name) => ({ name, uuid: `uuid-${name}` })),
+        });
+      },
       getPermissions: () => Promise.resolve({ available: true, primaryGroup: 'default', groups: ['default'] }),
       changePermission: (...args: unknown[]) => {
         calls.push(`perm:${JSON.stringify(args)}`);
@@ -137,6 +157,9 @@ function setup(options: {
       },
       ...options.messages,
     } as unknown as MessagesService,
+    // Настоящий: подписи быстрых команд лежат ключами, и модели они уезжают
+    // уже текстом — подменять переводчик заглушкой значит проверять не то.
+    new I18nService(),
   );
 
   return { service, effective, audited, calls };
@@ -387,7 +410,7 @@ describe('закрытие тикета', () => {
 describe('контракт возможностей в промпте', () => {
   it('перечисляет ровно доступные инструменты', () => {
     const { service, effective } = setup({ permissions: ['tickets.view', 'tickets.respond'] });
-    const prompt = service.contractPrompt(effective);
+    const prompt = service.contractPrompt(effective, 'ru');
 
     expect(prompt).toContain('list_tickets');
     expect(prompt).toContain('respond_ticket');
@@ -398,7 +421,7 @@ describe('контракт возможностей в промпте', () => {
 
   it('прямо запрещает обещать недоступное и сокращать id', () => {
     const { service, effective } = setup({ permissions: ['tickets.view'] });
-    const prompt = service.contractPrompt(effective);
+    const prompt = service.contractPrompt(effective, 'ru');
 
     expect(prompt).toContain('Не предлагай и не обещай того, чего нет в списке');
     expect(prompt).toContain('без многоточий и сокращений');
@@ -407,9 +430,53 @@ describe('контракт возможностей в промпте', () => {
 
   it('разрушительные помечены как требующие подтверждения', () => {
     const { service, effective } = setup({ permissions: [MINECRAFT_PERMISSIONS.ban] });
-    const prompt = service.contractPrompt(effective);
+    const prompt = service.contractPrompt(effective, 'ru');
 
     expect(prompt).toContain('ban_player (требует подтверждения человеком)');
+  });
+
+  it('разрешает частичные имена и требует переспрашивать при нескольких совпадениях', () => {
+    const { service, effective } = setup({ permissions: [MINECRAFT_PERMISSIONS.ban] });
+    const prompt = service.contractPrompt(effective, 'ru');
+
+    expect(prompt).toContain('можно передавать частью');
+    expect(prompt).toContain('спроси, кто из них имеется в виду');
+    // Полное имя в ответе — чтобы человек видел, над кем действие.
+    expect(prompt).toContain('полным именем, которое');
+  });
+});
+
+describe('справка «где что в панели»', () => {
+  it('рассказывает только про экраны, доступные собеседнику', () => {
+    const { service, effective } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.playersView, 'tickets.view'],
+    });
+    const prompt = service.contractPrompt(effective, 'ru');
+
+    expect(prompt).toContain('ГДЕ ЧТО В ПАНЕЛИ');
+    expect(prompt).toContain('«Известные игроки»');
+    expect(prompt).toContain('«Тикеты»');
+    // Права на дневник событий нет — и рассказывать про него нельзя:
+    // человек пойдёт искать пункт меню, которого у него не будет.
+    expect(prompt).not.toContain('«Дневник событий»');
+  });
+
+  it('запрещает выдумывать экраны вне списка', () => {
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+    const prompt = service.contractPrompt(effective, 'ru');
+
+    expect(prompt).toContain('придумывать экран нельзя');
+  });
+
+  it('без прав остаётся только то, что есть у всякого вошедшего', () => {
+    const { service, effective } = setup({ permissions: [] });
+    const prompt = service.contractPrompt(effective, 'ru');
+
+    // Свои настройки и переписка с коллегами есть у любого сотрудника.
+    expect(prompt).toContain('«Сообщения»');
+    // А серверов и тикетов у него нет — значит, и рассказа о них быть не должно.
+    expect(prompt).not.toContain('«Серверы»');
+    expect(prompt).not.toContain('«Тикеты»');
   });
 });
 
@@ -433,9 +500,38 @@ describe('инструменты по игроку', () => {
       servers: ['s1'],
     });
 
+    // Отвечает теперь поиск по нику, а не запрос UUID: до UUID дело просто
+    // не доходит, и сообщение прямо говорит, где искали.
     await expect(
       service.execute('user-1', 'player_balance', { ...server, player: 'Ghost' }),
-    ).rejects.toThrow(/UUID игрока Ghost/);
+    ).rejects.toThrow(/похожим на «Ghost».*не найден/);
+  });
+
+  it('часть ника достаточно: игрок находится и в сети, и в истории', async () => {
+    const { service, calls } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyView],
+      servers: ['s1'],
+    });
+
+    // «Alex» есть только в истории заходов — значит офлайн-игрок ищется тоже.
+    await service.execute('user-1', 'player_balance', { ...server, player: 'ale' });
+    expect(calls).toContain('uuid:Alex');
+  });
+
+  it('несколько похожих ников — не догадка, а вопрос со списком', async () => {
+    const { service } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyView],
+      servers: ['s1'],
+    });
+
+    // Цена ошибки тут несимметрична: «не нашли» — это переспросить, а
+    // «взяли первого похожего» — это действие над не тем человеком.
+    await expect(
+      service.execute('user-1', 'player_balance', { ...server, player: 'Steve_' }),
+    ).resolves.toBeDefined();
+    await expect(
+      service.execute('user-1', 'player_balance', { ...server, player: 'Grief' }),
+    ).rejects.toThrow(/несколько игроков: Griefer, Griefer99/);
   });
 
   it('начисление идёт через тот же сервис, что и блок «Валюта», с причиной', async () => {
@@ -488,10 +584,10 @@ describe('инструменты по игроку', () => {
         amount: 100,
         reason: 'штраф',
       }),
-    ).toBe('Списать 100 игроку Steve — «штраф»');
+    ).toBe('Списать 100 у игрока Steve — «штраф»');
     expect(
       service.summarize('change_player_permission', { player: 'Steve', kind: 'group', key: 'vip', remove: true }),
-    ).toBe('Снять группу «vip» игроку Steve');
+    ).toBe('Снять группу «vip» у игрока Steve');
   });
 
   it('менять баланс и права без права нельзя даже через ассистента', async () => {
@@ -634,5 +730,36 @@ describe('ASCII-арт', () => {
     const result = await service.execute('user-1', 'list_staff', {});
 
     expect(JSON.parse(result.content)).toEqual(['Коллега']);
+  });
+});
+
+describe('язык ответа ассистента', () => {
+  it('правило про язык лежит в технических правилах, а не в настраиваемом промпте', () => {
+    // Настраиваемый промпт правит ГМ, и его правка не должна отменять
+    // правило: ответ на языке собеседника — условие того, что человека
+    // вообще поймут, а не настройка оформления.
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+    const prompt = service.contractPrompt(effective, 'pl');
+
+    expect(prompt).toContain('ЯЗЫК ОТВЕТА');
+    expect(prompt).toContain('ПОСЛЕДНЕГО сообщения');
+    expect(prompt).toContain('Polski');
+  });
+
+  it('запасной язык — тот, что передали, а не всегда русский', () => {
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+
+    expect(service.contractPrompt(effective, 'en')).toContain('English');
+    expect(service.contractPrompt(effective, 'ru')).toContain('Русский');
+  });
+
+  it('перечисляет, что переводить нельзя', () => {
+    // Ники, названия серверов, команды и вывод консоли ассистент обязан
+    // приводить как есть: переведённый ник — это другой ник.
+    const { service, effective } = setup({ permissions: ['tickets.view'] });
+    const prompt = service.contractPrompt(effective, 'en');
+
+    expect(prompt).toContain('ники');
+    expect(prompt).toContain('вывод');
   });
 });

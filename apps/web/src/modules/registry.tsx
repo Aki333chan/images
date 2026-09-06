@@ -44,7 +44,14 @@ export interface ModuleTabProps {
 }
 
 export interface CapabilityTab {
-  label: string;
+  /**
+   * Ключ словаря, а не подпись.
+   *
+   * Реестр собирается один раз при загрузке модуля, а язык у каждого свой и
+   * меняется на ходу; готовая подпись здесь застыла бы на языке того, кто
+   * открыл вкладку первым.
+   */
+  labelKey: string;
   /** Право, необходимое для показа вкладки (null — достаточно servers.view). */
   permission: string | null;
   component: ComponentType<ModuleTabProps>;
@@ -59,7 +66,7 @@ export interface ModuleFrontend {
    * capability из манифеста, а свойство самого модуля, и показываются они
    * по праву настройки, а не по праву просмотра данных.
    */
-  settings?: { label: string; permission: string; component: ComponentType<ModuleTabProps> };
+  settings?: { labelKey: string; permission: string; component: ComponentType<ModuleTabProps> };
 }
 
 /**
@@ -68,7 +75,7 @@ export interface ModuleFrontend {
  * через WebSocket Pterodactyl, а не через RCON модуля).
  */
 const CORE_TABS: Partial<Record<ModuleCapability, CapabilityTab>> = {
-  console: { label: 'Консоль', permission: 'servers.view', component: ConsoleTab },
+  console: { labelKey: 'tab.console', permission: 'servers.view', component: ConsoleTab },
 };
 
 /**
@@ -80,20 +87,20 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
   minecraft: {
     tabs: {
       playerList: {
-        label: 'Игроки',
+        labelKey: 'tab.players',
         permission: 'minecraft.players.view',
         component: MinecraftPlayersTab,
       },
-      banKick: { label: 'Баны', permission: 'minecraft.ban', component: MinecraftBansTab },
+      banKick: { labelKey: 'tab.bans', permission: 'minecraft.ban', component: MinecraftBansTab },
       whitelist: {
-        label: 'Whitelist',
+        labelKey: 'tab.whitelist',
         permission: 'minecraft.whitelist',
         component: MinecraftWhitelistTab,
       },
       // Только у Paper: гильдии даёт плагин Bukkit, которого на загрузчиках
       // модов не существует — там эта capability в манифесте не объявлена.
       guilds: {
-        label: 'Гильдии',
+        labelKey: 'tab.guilds',
         permission: 'minecraft.guilds.view',
         component: MinecraftGuildsTab,
       },
@@ -103,7 +110,7 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       component: MinecraftQuickCommandsWidget,
     },
     settings: {
-      label: 'Настройки',
+      labelKey: 'tab.settings',
       permission: MINECRAFT_PERMISSIONS.configure,
       component: MinecraftSettingsTab,
     },
@@ -128,17 +135,17 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
   'minecraft-forge': {
     tabs: {
       playerList: {
-        label: 'Игроки',
+        labelKey: 'tab.players',
         permission: MINECRAFT_FORGE_PERMISSIONS.playersView,
         component: MinecraftPlayersTab,
       },
       banKick: {
-        label: 'Баны',
+        labelKey: 'tab.bans',
         permission: MINECRAFT_FORGE_PERMISSIONS.ban,
         component: MinecraftBansTab,
       },
       whitelist: {
-        label: 'Whitelist',
+        labelKey: 'tab.whitelist',
         permission: MINECRAFT_FORGE_PERMISSIONS.whitelist,
         component: MinecraftWhitelistTab,
       },
@@ -148,7 +155,7 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       component: MinecraftQuickCommandsWidget,
     },
     settings: {
-      label: 'Настройки',
+      labelKey: 'tab.settings',
       permission: MINECRAFT_FORGE_PERMISSIONS.configure,
       component: MinecraftSettingsTab,
     },
@@ -156,17 +163,17 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
   'minecraft-neoforge': {
     tabs: {
       playerList: {
-        label: 'Игроки',
+        labelKey: 'tab.players',
         permission: MINECRAFT_NEOFORGE_PERMISSIONS.playersView,
         component: MinecraftPlayersTab,
       },
       banKick: {
-        label: 'Баны',
+        labelKey: 'tab.bans',
         permission: MINECRAFT_NEOFORGE_PERMISSIONS.ban,
         component: MinecraftBansTab,
       },
       whitelist: {
-        label: 'Whitelist',
+        labelKey: 'tab.whitelist',
         permission: MINECRAFT_NEOFORGE_PERMISSIONS.whitelist,
         component: MinecraftWhitelistTab,
       },
@@ -176,7 +183,7 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       component: MinecraftQuickCommandsWidget,
     },
     settings: {
-      label: 'Настройки',
+      labelKey: 'tab.settings',
       permission: MINECRAFT_NEOFORGE_PERMISSIONS.configure,
       component: MinecraftSettingsTab,
     },
@@ -189,11 +196,11 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
   palworld: {
     tabs: {
       playerList: {
-        label: 'Игроки',
+        labelKey: 'tab.players',
         permission: PALWORLD_PERMISSIONS.playersView,
         component: PalworldPlayersTab,
       },
-      banKick: { label: 'Баны', permission: PALWORLD_PERMISSIONS.ban, component: PalworldBansTab },
+      banKick: { labelKey: 'tab.bans', permission: PALWORLD_PERMISSIONS.ban, component: PalworldBansTab },
     },
     dashboard: {
       // Право проверяет сам виджет: действия под разными правами, и одного
@@ -202,7 +209,7 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       component: PalworldQuickActionsWidget,
     },
     settings: {
-      label: 'Настройки',
+      labelKey: 'tab.settings',
       permission: PALWORLD_PERMISSIONS.configure,
       component: PalworldSettingsTab,
     },
@@ -215,17 +222,17 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
   sevendays: {
     tabs: {
       playerList: {
-        label: 'Игроки',
+        labelKey: 'tab.players',
         permission: SEVENDAYS_PERMISSIONS.playersView,
         component: SevenDaysPlayersTab,
       },
       banKick: {
-        label: 'Баны',
+        labelKey: 'tab.bans',
         permission: SEVENDAYS_PERMISSIONS.ban,
         component: SevenDaysBansTab,
       },
       whitelist: {
-        label: 'Whitelist',
+        labelKey: 'tab.whitelist',
         permission: SEVENDAYS_PERMISSIONS.whitelist,
         component: SevenDaysWhitelistTab,
       },
@@ -237,20 +244,20 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
       component: SevenDaysQuickActionsWidget,
     },
     settings: {
-      label: 'Настройки',
+      labelKey: 'tab.settings',
       permission: SEVENDAYS_PERMISSIONS.configure,
       component: SevenDaysSettingsTab,
     },
   },
   'test-dummy': {
     tabs: {
-      playerList: { label: 'Игроки', permission: 'test-dummy.players', component: DummyPlayersTab },
+      playerList: { labelKey: 'tab.players', permission: 'test-dummy.players', component: DummyPlayersTab },
       quickCommands: {
-        label: 'Быстрые команды',
+        labelKey: 'tab.quick',
         permission: 'test-dummy.quick-commands',
         component: DummyQuickCommandsTab,
       },
-      tickets: { label: 'Тикеты', permission: 'tickets.view', component: DummyTicketsTab },
+      tickets: { labelKey: 'tab.tickets', permission: 'tickets.view', component: DummyTicketsTab },
     },
   },
 };

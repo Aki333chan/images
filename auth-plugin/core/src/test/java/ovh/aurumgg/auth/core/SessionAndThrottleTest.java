@@ -212,7 +212,12 @@ class SessionAndThrottleTest {
     void проверкаДлиныПароля() {
         AuthConfig config = AuthConfig.fromMap(Map.of("login.min-password-length", 8));
         assertEquals(null, config.validatePassword("достаточнодлинный"));
-        assertTrue(config.validatePassword("корот").contains("короче"));
+
+        AuthConfig.PasswordProblem problem = config.validatePassword("корот");
+        assertEquals("auth.passwordShort", problem.key());
+        // Минимум едет подстановкой: без него из сообщения пропадает число,
+        // ради которого оно и написано.
+        assertEquals("8", problem.values().get("min"));
     }
 
     // ---------------------------------------------------- свои тексты

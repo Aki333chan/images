@@ -1,12 +1,15 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { DEFAULT_LOCALE } from '@aurum/shared';
 import type {
   AiChatMessage,
   AiPendingActionDto,
   AiStreamEvent,
   AiUsageDto,
+  Locale,
 } from '@aurum/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
+import { I18nService } from '../i18n/i18n.service';
 import { AiSettingsService } from './ai-settings.service';
 import { AiToolsService } from './ai-tools.service';
 import { DeepseekClient, type DeepseekMessage } from './deepseek.client';
@@ -35,6 +38,9 @@ export class AiService {
     private readonly tools: AiToolsService,
     private readonly deepseek: DeepseekClient,
     private readonly permissions: PermissionsService,
+    // Ответ ассистента уезжает потоком, а не исключением: фильтр ошибок его
+    // не увидит, и собрать фразу на языке собеседника можно только здесь.
+    private readonly i18n: I18nService,
   ) {}
 
   /** Расход и остаток лимита — показывается в интерфейсе. */
@@ -75,12 +81,14 @@ export class AiService {
     userId: string,
     history: AiChatMessage[],
     emit: (event: AiStreamEvent) => void,
+    /** Язык панели у собеседника — запасной вариант, если язык сообщения не определить. */
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<void> {
     const config = await this.settings.getRuntime();
     if (!config) {
       emit({
         type: 'error',
-        message: 'Ассистент выключен или не настроен — ГМ может включить его в настройках панели.',
+        message: this.i18n.t(locale, 'ai.err.disabled'),
       });
       return;
     }
@@ -90,14 +98,14 @@ export class AiService {
     if (spent.requests >= config.requestsPerHour) {
       emit({
         type: 'error',
-        message: `Достигнут лимит обращений: ${config.requestsPerHour} в час. Попробуйте позже.`,
+        message: this.i18n.t(locale, 'ai.err.rateLimit', { limit: config.requestsPerHour }),
       });
       return;
     }
     if (spent.tokens >= config.tokensPerDay) {
       emit({
         type: 'error',
-        message: `Достигнут дневной лимит расхода (${config.tokensPerDay} токенов). Лимит сбросится завтра.`,
+        message: this.i18n.t(locale, 'ai.err.tokenLimit', { limit: config.tokensPerDay }),
       });
       return;
     }
@@ -110,7 +118,7 @@ export class AiService {
       // Второе системное сообщение — контракт с панелью: что модель реально
       // умеет и как обращаться с идентификаторами. Отдельно от настраиваемого
       // промпта, чтобы правка текста в интерфейсе его не отменяла.
-      { role: 'system', content: this.tools.contractPrompt(permissions) },
+      { role: 'system', content: this.tools.contractPrompt(permissions, locale) },
       ...history
         .slice(-MAX_HISTORY_MESSAGES)
         .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_LENGTH) })),
@@ -156,7 +164,28 @@ export class AiService {
           // независимо от того, что ей написали в контексте, — в том числе
           // если её пытались переубедить текстом из игры.
           if (tool.kind === 'destructive') {
-            const action = await this.propose(userId, call.function.name, args, sawUntrusted);
+            // Ник и сервер приводим к точным ДО карточки: человек должен
+            // видеть в подтверждении настоящее имя игрока, а не «Ste»,
+            // которое он набрал. Не нашлось или нашлось несколько — это
+            // исключение, и модель переспросит вместо того, чтобы гадать.
+            let exact: Record<string, unknown>;
+            try {
+              exact = await this.tools.normalizeArgs(userId, call.function.name, args);
+            } catch (e) {
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: `Не удалось: ${(e as Error).message}`,
+              });
+              continue;
+            }
+            const action = await this.propose(
+              userId,
+              call.function.name,
+              exact,
+              sawUntrusted,
+              locale,
+            );
             emit({ type: 'action', action });
             messages.push({
               role: 'tool',
@@ -175,7 +204,7 @@ export class AiService {
             emit({
               type: 'tool',
               name: call.function.name,
-              summary: this.tools.summarize(call.function.name, args),
+              summary: this.tools.summarize(call.function.name, args, locale),
             });
             messages.push({ role: 'tool', tool_call_id: call.id, content: output.content });
           } catch (e) {
@@ -229,6 +258,7 @@ export class AiService {
     tool: string,
     args: Record<string, unknown>,
     fromUntrustedInput: boolean,
+    locale: Locale,
   ): Promise<AiPendingActionDto> {
     const created = await this.prisma.aiPendingAction.create({
       data: { userId, tool, args: args as object, fromUntrustedInput },
@@ -236,7 +266,7 @@ export class AiService {
     return {
       id: created.id,
       tool,
-      summary: this.tools.summarize(tool, args),
+      summary: this.tools.summarize(tool, args, locale),
       args,
       fromUntrustedInput,
       status: 'pending',
@@ -253,22 +283,23 @@ export class AiService {
     userId: string,
     actionId: string,
     approve: boolean,
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<AiPendingActionDto> {
     const action = await this.prisma.aiPendingAction.findUnique({ where: { id: actionId } });
-    if (!action) throw new BadRequestException('Предложение не найдено');
+    if (!action) throw new BadRequestException('ai.err.actionNotFound');
     // Подтвердить может только тот, кто вёл диалог: карточка адресована ему.
     if (action.userId !== userId) {
-      throw new ForbiddenException('Это предложение адресовано другому сотруднику');
+      throw new ForbiddenException('ai.err.actionNotYours');
     }
     if (action.status !== 'pending') {
-      throw new BadRequestException('По этому предложению решение уже принято');
+      throw new BadRequestException('ai.err.actionDecided');
     }
 
     const args = (action.args ?? {}) as Record<string, unknown>;
     const base = {
       id: action.id,
       tool: action.tool,
-      summary: this.tools.summarize(action.tool, args),
+      summary: this.tools.summarize(action.tool, args, locale),
       args,
       fromUntrustedInput: action.fromUntrustedInput,
     };
@@ -279,7 +310,7 @@ export class AiService {
         where: { id: action.id },
         data: { status: 'expired', resolvedAt: new Date() },
       });
-      return { ...base, status: 'expired', result: 'Предложение устарело — попросите ассистента заново' };
+      return { ...base, status: 'expired', result: 'ai.err.actionExpired' };
     }
 
     if (!approve) {

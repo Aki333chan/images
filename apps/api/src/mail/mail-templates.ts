@@ -1,3 +1,5 @@
+import { LOCALE_TAGS, type Locale } from '@aurum/shared';
+
 /**
  * HTML-шаблоны писем.
  *
@@ -8,6 +10,11 @@
  *
  * Логотип — текстовый: картинку пришлось бы где-то хостить и она всё равно
  * не показалась бы, пока получатель не разрешит загрузку изображений.
+ *
+ * ЯЗЫК ПИСЬМА — ЯЗЫК ПОЛУЧАТЕЛЯ, а не того, кто его вызвал. Письмо читают в
+ * почте, вне панели, и никакого Accept-Language там нет: если не выбрать
+ * язык здесь, его не выберет никто. Поэтому переводчик приходит аргументом
+ * уже привязанным к нужному языку, а сам шаблон о языках ничего не знает.
  */
 
 const BRAND = 'Aurum Panel';
@@ -17,6 +24,9 @@ const BORDER = '#2a2a33';
 const TEXT = '#e8e8ee';
 const MUTED = '#9a9aa8';
 const ACCENT = '#c026d3';
+
+/** Переводчик, привязанный к языку получателя. */
+export type MailTranslate = (key: string, values?: Record<string, string | number>) => string;
 
 /** Экранирование: значения приходят от людей и попадают в HTML. */
 export function escapeHtml(value: string): string {
@@ -28,9 +38,15 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function layout(title: string, inner: string): string {
+/**
+ * Каркас письма.
+ *
+ * lang в <html> — не украшение: по нему почтовый клиент выбирает правила
+ * переноса слов и решает, предлагать ли перевод письма.
+ */
+export function mailLayout(locale: Locale, t: MailTranslate, title: string, inner: string): string {
   return `<!doctype html>
-<html lang="ru">
+<html lang="${LOCALE_TAGS[locale]}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -56,7 +72,7 @@ function layout(title: string, inner: string): string {
           </tr>
         </table>
         <div style="max-width:520px;padding:16px 8px;font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:${MUTED};">
-          Письмо отправлено автоматически, отвечать на него не нужно.
+          ${escapeHtml(t('mail.auto'))}
         </div>
       </td>
     </tr>
@@ -78,27 +94,29 @@ export interface WelcomeMailInput {
    * что его сбросил ГМ.
    */
   reset?: boolean;
+  /** Язык получателя. Определяет и текст, и атрибут lang. */
+  locale: Locale;
 }
 
 /** Письмо с одноразовым паролем — единственное место, где он виден текстом. */
-export function welcomeMail(input: WelcomeMailInput): { subject: string; html: string; text: string } {
-  const login = escapeHtml(input.login);
+export function welcomeMail(
+  input: WelcomeMailInput,
+  t: MailTranslate,
+): { subject: string; html: string; text: string } {
   const password = escapeHtml(input.oneTimePassword);
   const url = escapeHtml(input.panelUrl);
-  const intro = input.reset
-    ? 'Ваш пароль в панели администрирования сброшен. Войдите по временному паролю ниже — ' +
-      'сразу после входа панель попросит задать новый постоянный пароль.'
-    : 'Для вас создана учётная запись в панели администрирования. Войти можно по ' +
-      'временному паролю ниже — при первом входе панель попросит задать свой ' +
-      'пароль и выбрать никнейм.';
+  const intro = t(input.reset ? 'mail.welcome.introReset' : 'mail.welcome.introNew');
+  const validity = t('mail.welcome.validity', { count: input.expiresInHours });
 
-  const html = layout(
-    input.reset ? `Новый пароль к ${BRAND}` : `Доступ к ${BRAND}`,
+  const html = mailLayout(
+    input.locale,
+    t,
+    t(input.reset ? 'mail.welcome.titleReset' : 'mail.welcome.titleNew', { brand: BRAND }),
     `
-    <p style="margin:0 0 16px 0;">Здравствуйте!</p>
+    <p style="margin:0 0 16px 0;">${escapeHtml(t('mail.hello'))}</p>
     <p style="margin:0 0 16px 0;">${escapeHtml(intro)}</p>
     <p style="margin:0 0 16px 0;color:${MUTED};font-size:13px;">
-      Логин — этот адрес: ${login}
+      ${escapeHtml(t('mail.welcome.loginIs', { login: input.login }))}
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
@@ -106,7 +124,7 @@ export function welcomeMail(input: WelcomeMailInput): { subject: string; html: s
       <tr>
         <td style="padding:16px 18px;">
           <div style="font:400 12px/1.4 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:${MUTED};padding-bottom:6px;">
-            Временный пароль
+            ${escapeHtml(t('mail.welcome.tempPassword'))}
           </div>
           <div style="font:700 20px/1.3 SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace;color:${TEXT};letter-spacing:1px;word-break:break-all;">
             ${password}
@@ -119,18 +137,17 @@ export function welcomeMail(input: WelcomeMailInput): { subject: string; html: s
       <tr>
         <td style="background:${ACCENT};border-radius:8px;">
           <a href="${url}" style="display:inline-block;padding:11px 22px;font:600 14px/1 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#ffffff;text-decoration:none;">
-            Войти в панель
+            ${escapeHtml(t('mail.welcome.enter'))}
           </a>
         </td>
       </tr>
     </table>
 
     <p style="margin:0 0 8px 0;color:${MUTED};font-size:13px;">
-      Пароль действует ${input.expiresInHours} часа и работает один раз.
-      Если не успеете — попросите выдать новый.
+      ${escapeHtml(validity)}
     </p>
     <p style="margin:0;color:${MUTED};font-size:13px;">
-      Если вы не ожидали это письмо, просто удалите его: без пароля войти нельзя.
+      ${escapeHtml(t('mail.welcome.unexpected'))}
     </p>
     `,
   );
@@ -138,21 +155,23 @@ export function welcomeMail(input: WelcomeMailInput): { subject: string; html: s
   // Текстовая версия обязательна: без неё письмо заметно чаще уходит в спам,
   // а часть клиентов HTML не показывает вовсе.
   const text = [
-    'Здравствуйте!',
+    t('mail.hello'),
     '',
     intro,
     '',
-    `Логин: ${input.login}`,
-    `Временный пароль: ${input.oneTimePassword}`,
-    `Адрес панели: ${input.panelUrl}`,
+    t('mail.welcome.loginIs', { login: input.login }),
+    t('mail.welcome.passwordIs', { password: input.oneTimePassword }),
+    t('mail.welcome.panelIs', { url: input.panelUrl }),
     '',
-    `Пароль действует ${input.expiresInHours} часа и работает один раз.`,
+    validity,
     '',
-    'Если вы не ожидали это письмо, просто удалите его.',
+    t('mail.welcome.unexpectedShort'),
   ].join('\n');
 
   return {
-    subject: input.reset ? `${BRAND}: новый пароль` : `${BRAND}: доступ к панели`,
+    subject: t(input.reset ? 'mail.welcome.subjectReset' : 'mail.welcome.subjectNew', {
+      brand: BRAND,
+    }),
     html,
     text,
   };

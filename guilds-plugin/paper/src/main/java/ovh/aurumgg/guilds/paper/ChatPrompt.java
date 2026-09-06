@@ -55,7 +55,8 @@ final class ChatPrompt implements Listener {
         // Инвентарь закрываем сами: чат за открытым меню игроку не виден.
         player.closeInventory();
         Msg.send(player, hint);
-        Msg.send(player, "Напишите в чат новое значение или «отмена», чтобы передумать.");
+        Msg.send(player, Msg.text("prompt.howTo",
+                java.util.Map.of("cancel", Msg.text("prompt.cancelWord"))));
     }
 
     boolean isWaiting(UUID player) {
@@ -71,8 +72,11 @@ final class ChatPrompt implements Listener {
         String text = PLAIN.serialize(event.message()).trim();
         Player player = event.getPlayer();
 
-        if (text.equalsIgnoreCase("отмена") || text.equalsIgnoreCase("cancel")) {
-            sync(() -> Msg.send(player, "Отменено"));
+        // «cancel» принимается всегда, на каком бы языке ни шёл сервер: это
+        // слово знает и тот, кто читает подсказку на польском.
+        if (text.equalsIgnoreCase("cancel")
+                || text.equalsIgnoreCase(Msg.text("prompt.cancelWord"))) {
+            sync(() -> Msg.send(player, Msg.text("prompt.cancelled")));
             return;
         }
         // Обработчик получает управление в ГЛАВНОМ потоке: событие чата

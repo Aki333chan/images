@@ -59,12 +59,16 @@ final class TwoFactorCommand extends AuthCommandBase implements TabCompleter {
         }
 
         switch (first) {
+            // Слова команды — ввод, а не сообщение, и с языком сервера не
+            // меняются: английские работают везде, а русские остались ради
+            // тех, кто их уже выучил. Переводить их на польский значило бы
+            // сделать так, что подсказка из чужого гайда не работает.
             case "enable", "on", "включить" -> begin(player);
             case "confirm", "подтвердить" -> {
                 if (args.length < 2) {
                     player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
-                            "/2fa confirm <код>",
-                            "подтвердить подключение первым кодом из приложения")));
+                            plugin.text("help.2fa.confirm.use"),
+                            plugin.text("help.2fa.confirm.what"))));
                     return;
                 }
                 service.confirmTotp(player.getUniqueId(), args[1])
@@ -75,7 +79,8 @@ final class TwoFactorCommand extends AuthCommandBase implements TabCompleter {
                     // Код обязателен: иначе двухфакторку снял бы любой, кто на
                     // минуту сел за компьютер с уже вошедшим игроком.
                     player.sendMessage(AurumAuthPlugin.colored(HelpBook.line(
-                            "/2fa disable <код>", "выключить двухфакторку")));
+                            plugin.text("help.2fa.disable.use"),
+                            plugin.text("help.2fa.disable.what"))));
                     return;
                 }
                 service.disableTotp(player.getUniqueId(), args[1])
@@ -92,7 +97,7 @@ final class TwoFactorCommand extends AuthCommandBase implements TabCompleter {
                 .isPresent();
         if (!awaiting) {
             player.sendMessage(AurumAuthPlugin.prefixed(
-                    "Код сейчас не нужен. Сначала /login <пароль>"));
+                    plugin.text("totp.notNeeded")));
             return;
         }
         service.submitTotp(player.getUniqueId(), code, addressOf(player))
@@ -108,27 +113,27 @@ final class TwoFactorCommand extends AuthCommandBase implements TabCompleter {
      */
     private void begin(Player player) {
         if (!service.isAuthenticated(player.getUniqueId())) {
-            player.sendMessage(AurumAuthPlugin.prefixed("Сначала войдите: /login <пароль>"));
+            player.sendMessage(AurumAuthPlugin.prefixed(plugin.text("guard.needLogin")));
             return;
         }
         service.beginTotpSetup(player.getUniqueId(), config.totpIssuer()).thenAccept(setup ->
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     if (!player.isOnline()) return;
                     if (setup.isEmpty()) {
-                        player.sendMessage(AurumAuthPlugin.prefixed("Не удалось начать настройку"));
+                        player.sendMessage(AurumAuthPlugin.prefixed(plugin.text("totp.setupFailed")));
                         return;
                     }
                     player.sendMessage(AurumAuthPlugin.prefixed(
-                            "Добавьте в Google Authenticator (или любое другое приложение):"));
+                            plugin.text("totp.addToApp")));
                     player.sendMessage(Component.text("  " + Totp.readable(setup.get().secret()))
                             .color(NamedTextColor.AQUA));
-                    player.sendMessage(Component.text("  [открыть в приложении]")
+                    player.sendMessage(Component.text("  " + plugin.text("totp.openInApp"))
                             .color(NamedTextColor.GRAY)
                             .clickEvent(ClickEvent.openUrl(setup.get().otpauthUri())));
                     player.sendMessage(AurumAuthPlugin.prefixed(
-                            "Затем подтвердите: /2fa confirm <код из приложения>"));
+                            plugin.text("totp.thenConfirm")));
                     player.sendMessage(AurumAuthPlugin.prefixed(
-                            "Пока не подтвердите — вход остаётся по одному паролю."));
+                            plugin.text("totp.untilConfirmed")));
                 }));
     }
 
@@ -151,11 +156,12 @@ final class TwoFactorCommand extends AuthCommandBase implements TabCompleter {
 
     /** Справка: строка на команду, чтобы порядок шагов читался сверху вниз. */
     private void usage(Player player) {
-        List<String> lines = HelpBook.titled("Двухфакторная авторизация", "/2fa help")
-                .add("/2fa <код>", "ввести код при входе — то, что нужно каждый день")
-                .add("/2fa enable", "начать подключение: покажет секрет для приложения")
-                .add("/2fa confirm <код>", "подтвердить подключение первым кодом")
-                .add("/2fa disable <код>", "выключить двухфакторку")
+        List<String> lines = HelpBook.titled(
+                        plugin.text("help.2fa.title"), "/2fa help", plugin.helpLabels())
+                .add(plugin.text("help.2fa.code.use"), plugin.text("help.2fa.code.what"))
+                .add(plugin.text("help.2fa.enable.use"), plugin.text("help.2fa.enable.what"))
+                .add(plugin.text("help.2fa.confirm.use"), plugin.text("help.2fa.confirm.what"))
+                .add(plugin.text("help.2fa.disable.use"), plugin.text("help.2fa.disable.what"))
                 .build()
                 .page(1);
         AurumAuthPlugin.sendLines(player, lines);

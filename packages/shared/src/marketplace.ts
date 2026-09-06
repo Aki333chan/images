@@ -75,11 +75,18 @@ export function loadersFor(type: MarketProjectType): readonly string[] {
 export const MARKET_SORTS = ['relevance', 'downloads', 'updated', 'name'] as const;
 export type MarketSort = (typeof MARKET_SORTS)[number];
 
-export const MARKET_SORT_LABELS: Record<MarketSort, string> = {
-  relevance: 'По совпадению',
-  downloads: 'По загрузкам',
-  updated: 'По дате обновления',
-  name: 'По алфавиту',
+/**
+ * Ключи подписей сортировки, а не сами подписи.
+ *
+ * Список общий для панели и писем, а язык у каждого читателя свой; готовая
+ * фраза здесь означала бы русский «По загрузкам» в польском выпадающем
+ * списке.
+ */
+export const MARKET_SORT_KEYS: Record<MarketSort, string> = {
+  relevance: 'market.sort.relevance',
+  downloads: 'market.sort.downloads',
+  updated: 'market.sort.updated',
+  name: 'market.sort.name',
 };
 
 /**
@@ -249,7 +256,10 @@ export interface PluginInstallResultDto {
   sizeBytes: number;
   /** true — сервер сейчас запущен, плагин подхватится только после рестарта. */
   restartRequired: boolean;
+  /** Ключ словаря панели: фразу собирает браузер, на языке того, кто ставил. */
   message: string;
+  /** Подстановки к нему — имена и пути, которые не переводятся. */
+  messageValues?: Record<string, string>;
 }
 
 // ------------------------------------------------- Установленные плагины
@@ -274,8 +284,13 @@ export interface InstalledPluginDto {
    * KNOWN_PLUGINS. Выключение, отключение файлом и удаление для него закрыты.
    */
   protected: boolean;
-  /** Почему закрыто — текст для человека, а не код ошибки. */
-  protectedReason?: string;
+  /**
+   * Почему закрыто — ключ словаря панели, а не готовая фраза.
+   *
+   * Подстановка в нём одна, `{name}`, и берётся она из поля `name` рядом:
+   * имя плагина не переводится, а вот всё остальное в объяснении — да.
+   */
+  protectedReasonKey?: string;
 }
 
 export interface InstalledPluginsResponseDto {

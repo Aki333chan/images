@@ -1,3 +1,4 @@
+import { useT } from '../../i18n';
 /**
  * Имя игрока так, как оно показывается везде в панели.
  *
@@ -24,10 +25,11 @@ export function PlayerName({
   op?: boolean;
   className?: string;
 }) {
+  const t = useT();
   return (
     <span className={className}>
       {op && (
-        <span className="mr-1 text-amber-400" title="Оператор сервера" aria-label="оператор">
+        <span className="mr-1 text-amber-400" title={t('mc.op')} aria-label={t('mc.op.short')}>
           ★
         </span>
       )}

@@ -1,0 +1,31 @@
+# Teksty, które widzi gracz. Polski.
+#
+# Nie ma ich wiele: companion jest przede wszystkim mostem między panelem a
+# serwerem, a nie pluginem z interfejsem. Wszystko tutaj należy do /ticket
+# i /webtoken.
+#
+# Plik można poprawiać ręcznie; zmiany wchodzą po restarcie serwera.
+# Podstawienia w nawiasach klamrowych ({code}, {seconds}) trzeba zostawić: bez
+# nich z wiadomości znika to, dla czego ją napisano.
+#
+# Nie usuwaj wierszy: brakujący bierze się z wbudowanego rosyjskiego, więc
+# poprawka po prostu się nie zastosuje.
+
+# --------------------------------------------------------------- /ticket
+ticket:
+  playersOnly: "Komenda dostępna tylko dla graczy."
+  notConfigured: "Zgłoszenia nie są skonfigurowane na tym serwerze."
+  # Podpowiedź mówi i jak wpisać, i co się stanie: inaczej połowa graczy pisze
+  # drugie zgłoszenie, pewna, że pierwsze nigdzie nie poszło.
+  usage: "/{command} <wiadomość> — napisz do administracji; odpowiedź przyjdzie tu, na czat"
+  cooldown: "Odczekaj jeszcze {seconds} s przed kolejną wiadomością."
+  created: "Zgłoszenie utworzone. Administracja odpowie tutaj, na czacie."
+  appended: "Wiadomość została dopisana do twojego zgłoszenia."
+  failed: "Nie udało się wysłać — spróbuj później."
+
+# ------------------------------------------------------------- /webtoken
+webtoken:
+  playersOnly: "Komenda tylko dla graczy"
+  loginFirst: "Najpierw się zaloguj: /login <hasło>"
+  code: "Kod logowania do panelu: {code}"
+  codeHint: "Jest jednorazowy i działa kilka minut."

@@ -2,6 +2,7 @@ package ovh.aurumgg.auth.core;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Справка по командам: строка на команду и короткое описание рядом.
@@ -46,6 +47,22 @@ public final class HelpBook {
     public record Entry(String usage, String description) {}
 
     /**
+     * Служебные подписи книги: «дальше» и счётчик страниц.
+     *
+     * Отдельным типом, а не строками внутри: язык сервера знает только слой
+     * Bukkit, который читает config.yml, а разбиение на страницы живёт здесь,
+     * где ни конфига, ни игрока нет. Умолчание русское — на него опираются
+     * тесты и вызовы, до которых перевод ещё не дошёл.
+     *
+     * Подстановки: {command} — чем листать, {page} — номер, {total} — всего.
+     */
+    public record Labels(String next, String counter) {
+        public static final Labels DEFAULT = new Labels(
+                "&8Дальше: &e{command} {page}",
+                "&7(стр. {page} из {total})");
+    }
+
+    /**
      * Одна строка справки — тем же видом, что и в книге.
      *
      * Публичный и используется не только книгой: тем же форматом отвечают
@@ -63,15 +80,21 @@ public final class HelpBook {
     private final List<Entry> entries;
     /** Команда, которой листают: «/auth help». */
     private final String pageCommand;
+    private final Labels labels;
 
-    private HelpBook(String title, String pageCommand, List<Entry> entries) {
+    private HelpBook(String title, String pageCommand, List<Entry> entries, Labels labels) {
         this.title = title;
         this.pageCommand = pageCommand;
         this.entries = List.copyOf(entries);
+        this.labels = labels;
     }
 
     public static Builder titled(String title, String pageCommand) {
-        return new Builder(title, pageCommand);
+        return titled(title, pageCommand, Labels.DEFAULT);
+    }
+
+    public static Builder titled(String title, String pageCommand, Labels labels) {
+        return new Builder(title, pageCommand, labels);
     }
 
     public int pages() {
@@ -102,13 +125,19 @@ public final class HelpBook {
         // Подпись только когда есть куда листать: на однностраничной справке
         // она была бы просто лишней строкой.
         if (shown < total) {
-            lines.add("&8Дальше: &e" + pageCommand + " " + (shown + 1));
+            lines.add(MessageSettings.apply(labels.next(), Map.of(
+                    "command", pageCommand,
+                    "page", String.valueOf(shown + 1))));
         }
         return lines;
     }
 
     private String header(int page, int total) {
-        String counter = total > 1 ? " &7(стр. " + page + " из " + total + ")" : "";
+        String counter = total > 1
+                ? " " + MessageSettings.apply(labels.counter(), Map.of(
+                        "page", String.valueOf(page),
+                        "total", String.valueOf(total)))
+                : "";
         return header(title + counter);
     }
 
@@ -127,11 +156,13 @@ public final class HelpBook {
     public static final class Builder {
         private final String title;
         private final String pageCommand;
+        private final Labels labels;
         private final List<Entry> entries = new ArrayList<>();
 
-        private Builder(String title, String pageCommand) {
+        private Builder(String title, String pageCommand, Labels labels) {
             this.title = title;
             this.pageCommand = pageCommand;
+            this.labels = labels;
         }
 
         public Builder add(String usage, String description) {
@@ -153,7 +184,7 @@ public final class HelpBook {
         }
 
         public HelpBook build() {
-            return new HelpBook(title, pageCommand, entries);
+            return new HelpBook(title, pageCommand, entries, labels);
         }
     }
 }

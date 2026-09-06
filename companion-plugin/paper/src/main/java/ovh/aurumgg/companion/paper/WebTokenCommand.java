@@ -22,27 +22,30 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  */
 final class WebTokenCommand implements CommandExecutor {
 
+    private final AurumCompanionPlugin plugin;
     private final WebTokenStore tokens;
 
-    WebTokenCommand(WebTokenStore tokens) {
+    WebTokenCommand(AurumCompanionPlugin plugin, WebTokenStore tokens) {
+        this.plugin = plugin;
         this.tokens = tokens;
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Команда только для игроков");
+            sender.sendMessage(plugin.text("webtoken.playersOnly"));
             return true;
         }
 
         if (!AuthIntegration.isAuthenticated(player.getUniqueId())) {
-            player.sendMessage(Component.text("Сначала войдите: /login <пароль>"));
+            player.sendMessage(Component.text(plugin.text("webtoken.loginFirst")));
             return true;
         }
 
         String code = tokens.issue(player.getUniqueId(), player.getName(), Instant.now());
-        player.sendMessage(Component.text("Код для входа в панель: " + code));
-        player.sendMessage(Component.text("Он одноразовый и действует несколько минут."));
+        player.sendMessage(Component.text(
+                plugin.text("webtoken.code", java.util.Map.of("code", code))));
+        player.sendMessage(Component.text(plugin.text("webtoken.codeHint")));
         return true;
     }
 }

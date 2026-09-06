@@ -3,6 +3,7 @@ import type { PteroStartupDto } from '@aurum/shared';
 import { api } from '../lib/api';
 import { Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
 import type { ServerTabProps } from './registry';
+import { useT } from '../i18n';
 
 const base = (serverId: string) => `/api/servers/${serverId}/startup`;
 
@@ -19,6 +20,7 @@ const base = (serverId: string) => `/api/servers/${serverId}/startup`;
  * складываются переменные.
  */
 export function StartupTab({ serverId }: ServerTabProps) {
+  const t = useT();
   const [data, setData] = useState<PteroStartupDto | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
@@ -49,7 +51,7 @@ export function StartupTab({ serverId }: ServerTabProps) {
         body: JSON.stringify({ key, value: values[key] ?? '' }),
       });
       setData(updated);
-      setSaved(`Сохранено: ${key}`);
+      setSaved(t('startup.saved', { name: key }));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -67,7 +69,7 @@ export function StartupTab({ serverId }: ServerTabProps) {
         body: JSON.stringify({ image }),
       });
       setData(updated);
-      setSaved('Образ изменён — он применится при следующем запуске сервера');
+      setSaved(t('startup.image.changed'));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -85,11 +87,9 @@ export function StartupTab({ serverId }: ServerTabProps) {
   return (
     <div className="space-y-4">
       <Card className="space-y-3">
-        <h2 className="font-semibold">Команда запуска</h2>
+        <h2 className="font-semibold">{t('startup.command')}</h2>
         <p className="text-xs text-muted">
-          Менять её из панели нельзя — так устроен Pterodactyl: команда правится
-          администратором самой панели. Здесь она видна, чтобы понимать, во что
-          складываются переменные ниже.
+          {t('startup.command.hint')}
         </p>
         <pre className="overflow-x-auto rounded-md border border-border bg-surface p-3 font-mono text-[11.5px] leading-relaxed">
           {data?.startupCommand || '—'}
@@ -98,10 +98,9 @@ export function StartupTab({ serverId }: ServerTabProps) {
 
       {imageOptions.length > 0 && (
         <Card className="space-y-3">
-          <h2 className="font-semibold">Докер-образ</h2>
+          <h2 className="font-semibold">{t('startup.image')}</h2>
           <p className="text-xs text-muted">
-            Список задан egg сервера. Смена образа — обычный способ поменять версию Java:
-            применится при следующем запуске.
+            {t('startup.image.hint')}
           </p>
           <Select
             value={data?.currentDockerImage ?? ''}
@@ -111,7 +110,7 @@ export function StartupTab({ serverId }: ServerTabProps) {
               !imageOptions.some((o) => o.value === data.currentDockerImage)
                 ? // Текущий образ вне списка egg — так бывает после ручной
                   // правки в панели. Показываем как есть, а не прячем.
-                  [{ value: data.currentDockerImage, label: `${data.currentDockerImage} (не из списка egg)` }, ...imageOptions]
+                  [{ value: data.currentDockerImage, label: t('startup.image.notInEgg', { image: data.currentDockerImage }) }, ...imageOptions]
                 : imageOptions
             }
           />
@@ -119,12 +118,12 @@ export function StartupTab({ serverId }: ServerTabProps) {
       )}
 
       <Card className="space-y-3">
-        <h2 className="font-semibold">Переменные</h2>
+        <h2 className="font-semibold">{t('startup.variables')}</h2>
         {error && <ErrorText>{error}</ErrorText>}
         {saved && <p className="text-xs text-emerald-400">{saved}</p>}
 
         {data?.variables.length === 0 ? (
-          <p className="text-muted">Egg этого сервера не отдаёт ни одной переменной.</p>
+          <p className="text-muted">{t('startup.variables.empty')}</p>
         ) : (
           <ul className="space-y-4">
             {data?.variables.map((v) => (
@@ -148,13 +147,13 @@ export function StartupTab({ serverId }: ServerTabProps) {
                       disabled={busy !== '' || (values[v.envVariable] ?? '') === v.serverValue}
                       onClick={() => void saveVariable(v.envVariable)}
                     >
-                      {busy === v.envVariable ? 'Сохраняем…' : 'Сохранить'}
+                      {t(busy === v.envVariable ? 'common.saving' : 'common.save')}
                     </Button>
                   )}
                 </div>
                 <p className="mt-1 font-mono text-[10.5px] text-muted">
                   {v.envVariable}
-                  {!v.isEditable && ' · egg не разрешает менять'}
+                  {!v.isEditable && t('startup.notEditable')}
                   {v.rules && ` · ${v.rules}`}
                 </p>
               </li>

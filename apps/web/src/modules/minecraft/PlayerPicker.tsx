@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MinecraftPlayersResponse } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Input } from '../../components/ui';
+import { useT } from '../../i18n';
 
 /**
  * Ники тех, кто сейчас в сети, — для подсказок при вводе.
@@ -65,6 +66,7 @@ export function PlayerPicker({
   autoFocus?: boolean;
   className?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -149,8 +151,7 @@ export function PlayerPicker({
           ник принимается как есть, строка лишь помогает заметить опечатку. */}
       {!exact && query.length > 0 && players.length > 0 && matches.length === 0 && (
         <p className="mt-1 text-xs text-muted">
-          Среди тех, кто в сети, такого ника нет — команда всё равно уйдёт с
-          тем, что введено.
+          {t('mc.picker.notOnline')}
         </p>
       )}
     </div>

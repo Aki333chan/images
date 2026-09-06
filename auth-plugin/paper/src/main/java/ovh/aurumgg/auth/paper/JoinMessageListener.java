@@ -91,6 +91,8 @@ final class JoinMessageListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
+        // Сообщение о входе NPC — не событие для игроков. См. Npcs.
+        if (Npcs.isNpc(event.getPlayer())) return;
         UUID uuid = event.getPlayer().getUniqueId();
         MessageSettings texts = messages;
 
@@ -135,6 +137,7 @@ final class JoinMessageListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
+        if (Npcs.isNpc(event.getPlayer())) return;
         UUID uuid = event.getPlayer().getUniqueId();
         boolean wasAuthenticated = service.onQuit(uuid);
         joins.drop(uuid);

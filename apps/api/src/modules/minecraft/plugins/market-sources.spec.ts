@@ -152,7 +152,7 @@ describe('падение одного источника не роняет ма�
     expect(res.sources.find((s) => s.source === 'spiget')).toEqual({
       source: 'spiget',
       ok: false,
-      error: 'источник не ответил',
+      error: 'market.err.sourceSilent',
       total: 0,
     });
     expect(res.sources.filter((s) => s.ok).map((s) => s.source).sort()).toEqual([
@@ -203,7 +203,9 @@ describe('падение одного источника не роняет ма�
     // этот источник молчит.
     state.spiget = () => ({ status: 500, body: { error: 'http://10.0.0.2:8085 refused' } });
     const res = await new MarketService().search('x', 20, 0, options());
-    expect(res.sources.find((s) => s.source === 'spiget')?.error).toBe('источник не ответил');
+    // Наружу уезжает ключ словаря, а не текст: важно, что в нём нет ни
+    // адреса, ни куска чужого ответа.
+    expect(res.sources.find((s) => s.source === 'spiget')?.error).toBe('market.err.sourceSilent');
   });
 });
 

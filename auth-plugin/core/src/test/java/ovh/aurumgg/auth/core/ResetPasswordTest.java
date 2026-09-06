@@ -118,7 +118,7 @@ class ResetPasswordTest {
         // Вторая ступень: новый пароль.
         AuthOutcome done = service.setNewPassword(
                 STEVE, "новыйпароль".toCharArray(), "новыйпароль".toCharArray(), IP).join();
-        assertTrue(done.isSuccess(), done.message());
+        assertTrue(done.isSuccess(), done.messageKey());
         assertTrue(service.isAuthenticated(STEVE));
 
         // И он действительно работает при следующем входе.

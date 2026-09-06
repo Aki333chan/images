@@ -30,7 +30,7 @@ final class ResetCommand extends AuthCommandBase {
     protected void run(Player player, String[] args) {
         if (service.isAuthenticated(player.getUniqueId())) {
             player.sendMessage(AurumAuthPlugin.prefixed(
-                    "Вы уже вошли. Сброс нужен только тем, кто не помнит пароль."));
+                    plugin.text("cmd.reset.alreadyIn")));
             return;
         }
 
@@ -40,8 +40,7 @@ final class ResetCommand extends AuthCommandBase {
                 // сюда попадают, набрав пароль вместо токена, и путать
                 // человека ещё сильнее незачем.
                 player.sendMessage(AurumAuthPlugin.prefixed(
-                        "Токен — это 8 знаков, его выдаёт администратор. "
-                                + "Если он у вас уже принят, введите: /reset <пароль> <пароль ещё раз>"));
+                        plugin.text("cmd.reset.tokenHint")));
                 return;
             }
             service.redeemResetToken(player.getUniqueId(), args[0])
@@ -59,9 +58,10 @@ final class ResetCommand extends AuthCommandBase {
             return;
         }
 
-        AurumAuthPlugin.sendLines(player, HelpBook.titled("Смена пароля", "/reset")
-                .add("/reset <токен>", "начать смену: токен выдаёт администратор")
-                .add("/reset <пароль> <пароль ещё раз>", "задать новый пароль после токена")
-                .build().page(1));
+        AurumAuthPlugin.sendLines(player,
+                HelpBook.titled(plugin.text("help.reset.title"), "/reset", plugin.helpLabels())
+                        .add(plugin.text("help.reset.token.use"), plugin.text("help.reset.token.what"))
+                        .add(plugin.text("help.reset.new.use"), plugin.text("help.reset.new.what"))
+                        .build().page(1));
     }
 }

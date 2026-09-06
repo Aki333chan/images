@@ -27,6 +27,15 @@ import ovh.aurumgg.guilds.core.PartyService;
  */
 final class BukkitGuildsApi implements AurumGuildsApi {
 
+    /**
+     * Текст результата для чужого плагина: он получил ключ, а показать надо
+     * фразу. Рендер здесь, потому что файлы языка загружает AurumGuilds.
+     */
+    @Override
+    public String render(ovh.aurumgg.guilds.api.GuildActionResult result) {
+        return Msg.render(result);
+    }
+
     private final GuildService guilds;
     private final PartyService parties;
     private final boolean suffixes;

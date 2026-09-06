@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createTransport, type Transporter } from 'nodemailer';
 import { SettingsService, type SmtpConfig } from '../settings/settings.service';
+import { I18nService } from '../i18n/i18n.service';
 import { welcomeMail, type WelcomeMailInput } from './mail-templates';
 
 export interface SendResult {
@@ -21,7 +22,10 @@ export interface SendResult {
 export class MailService {
   private readonly logger = new Logger(MailService.name);
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly i18n: I18nService,
+  ) {}
 
   async isConfigured(): Promise<boolean> {
     const config = await this.settings.getSmtpConfig();
@@ -50,7 +54,7 @@ export class MailService {
   /** Проверка настроек без отправки письма. */
   async verify(): Promise<SendResult> {
     const config = await this.settings.getSmtpConfig();
-    if (!config?.host) return { sent: false, error: 'SMTP не настроен' };
+    if (!config?.host) return { sent: false, error: 'set.smtp.err.notConfigured' };
     const transport = this.transport(config);
     try {
       await transport.verify();
@@ -70,7 +74,9 @@ export class MailService {
    * интерфейс об этом прямо говорит.
    */
   async sendWelcome(to: string, input: WelcomeMailInput): Promise<SendResult> {
-    return this.send(to, welcomeMail(input), 'письмо с доступом');
+    const t = (key: string, values?: Record<string, string | number>) =>
+      this.i18n.t(input.locale, key, values);
+    return this.send(to, welcomeMail(input, t), 'письмо с доступом');
   }
 
   /**
@@ -95,7 +101,7 @@ export class MailService {
   ): Promise<SendResult> {
     const config = await this.settings.getSmtpConfig();
     if (!config?.host || !config.from) {
-      return { sent: false, error: 'SMTP не настроен — письмо не отправлено' };
+      return { sent: false, error: 'set.smtp.err.notConfiguredSend' };
     }
 
     const transport = this.transport(config);
@@ -118,10 +124,12 @@ export class MailService {
 /** Сообщение об ошибке SMTP без стека и без учётных данных. */
 function describe(e: unknown): string {
   const error = e as { code?: string; responseCode?: number; message?: string };
-  if (error.code === 'EAUTH') return 'SMTP отверг логин или пароль';
+  if (error.code === 'EAUTH') return 'set.smtp.err.auth';
   if (error.code === 'ECONNECTION' || error.code === 'ESOCKET') {
-    return 'Не удалось соединиться с SMTP-сервером — проверьте host, port и TLS';
+    return 'set.smtp.err.connect';
   }
-  if (error.code === 'ETIMEDOUT') return 'SMTP-сервер не ответил вовремя';
-  return error.message ?? 'Неизвестная ошибка SMTP';
+  if (error.code === 'ETIMEDOUT') return 'set.smtp.err.timeout';
+  // Текст от библиотеки — не наш и не переводится: он приходит от SMTP-
+  // сервера и в нём бывает то, чего мы не предвидели.
+  return error.message ?? 'set.smtp.err.unknown';
 }

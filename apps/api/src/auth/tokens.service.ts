@@ -53,7 +53,7 @@ export class TokensService {
 
   async rotate(refreshToken: string): Promise<IssuedTokens & { userId: string }> {
     const dot = refreshToken.indexOf('.');
-    if (dot <= 0) throw new UnauthorizedException('Некорректный refresh-токен');
+    if (dot <= 0) throw new UnauthorizedException('auth.err.badRefresh');
     const sessionId = refreshToken.slice(0, dot);
     const secret = refreshToken.slice(dot + 1);
 
@@ -72,11 +72,11 @@ export class TokensService {
           data: { revokedAt: new Date() },
         });
       }
-      throw new UnauthorizedException('Refresh-токен недействителен');
+      throw new UnauthorizedException('auth.err.refreshInvalid');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
-    if (!user || !user.isActive) throw new UnauthorizedException('Пользователь деактивирован');
+    if (!user || !user.isActive) throw new UnauthorizedException('auth.err.userDeactivated');
 
     const newSecret = randomBytes(32).toString('base64url');
     await this.prisma.session.update({

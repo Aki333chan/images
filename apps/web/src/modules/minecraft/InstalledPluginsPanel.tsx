@@ -4,6 +4,13 @@ import { DISABLED_PLUGINS_DIR, type InstalledPluginDto, type InstalledPluginsRes
 import { api } from '../../lib/api';
 import { Badge, Button, Card, ErrorText, Spinner } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { useApiText, useT } from '../../i18n';
+
+/** Ответ действия над плагином: ключ фразы и подстановки к ней. */
+interface PluginActionOutcome {
+  message: string;
+  messageValues?: Record<string, string>;
+}
 
 /**
  * Управление установленными плагинами прямо из карточки сервера.
@@ -28,9 +35,15 @@ export function InstalledPluginsPanel({
   /** Перезапуск сервера — рядом с горячим переключением он нужен под рукой. */
   onRestart?: () => void;
 }) {
+  const t = useT();
+  const apiText = useApiText();
   const [data, setData] = useState<InstalledPluginsResponseDto | null>(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  // Сообщение приходит ключом и подстановками: имена плагина и файла в нём
+  // не переводятся, а всё вокруг — да.
+  const [notice, setNotice] = useState<{ key: string; values?: Record<string, string> } | null>(
+    null,
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [removing, setRemoving] = useState<InstalledPluginDto | null>(null);
   const navigate = useNavigate();
@@ -46,12 +59,16 @@ export function InstalledPluginsPanel({
 
   useEffect(load, [load]);
 
-  async function act(key: string, run: () => Promise<{ message: string }>) {
+  async function act(
+    key: string,
+    run: () => Promise<{ message: string; messageValues?: Record<string, string> }>,
+  ) {
     setBusy(key);
     setError('');
-    setNotice('');
+    setNotice(null);
     try {
-      setNotice((await run()).message);
+      const done = await run();
+      setNotice({ key: done.message, values: done.messageValues });
       load();
     } catch (e) {
       setError((e as Error).message);
@@ -62,7 +79,7 @@ export function InstalledPluginsPanel({
 
   const toggleRuntime = (plugin: InstalledPluginDto, enabled: boolean) =>
     act(plugin.name, () =>
-      api<{ message: string }>(`${base}/${encodeURIComponent(plugin.name)}/enabled`, {
+      api<PluginActionOutcome>(`${base}/${encodeURIComponent(plugin.name)}/enabled`, {
         method: 'POST',
         body: JSON.stringify({ enabled }),
       }),
@@ -70,7 +87,7 @@ export function InstalledPluginsPanel({
 
   const toggleFile = (plugin: InstalledPluginDto, disabled: boolean) =>
     act(plugin.name, () =>
-      api<{ message: string }>(`${base}/file-state`, {
+      api<PluginActionOutcome>(`${base}/file-state`, {
         method: 'POST',
         body: JSON.stringify({ fileName: plugin.fileName, disabled }),
       }),
@@ -82,43 +99,39 @@ export function InstalledPluginsPanel({
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">Установленные плагины</h2>
+        <h2 className="font-semibold">{t('mc.ip.title')}</h2>
         <div className="flex gap-2">
           {/* serverId в адресе не косметика: маркет по нему открывает нужную
               вкладку (плагины или моды — по ядру этого сервера) и заранее
               отмечает его в мастере установки. */}
           <Button size="sm" variant="outline" onClick={() => navigate(`/market?serverId=${serverId}`)}>
-            Маркет
+            {t('mc.ip.market')}
           </Button>
           <Button size="sm" variant="outline" onClick={load}>
-            Обновить
+            {t('common.refresh')}
           </Button>
           {onRestart && (
             <Button size="sm" variant="outline" onClick={onRestart}>
-              Перезапустить сервер
+              {t('mc.ip.restart')}
             </Button>
           )}
         </div>
       </div>
 
-      {!data.companionAvailable && <p className="text-xs text-amber-400">{data.reason}</p>}
+      {!data.companionAvailable && (
+        <p className="text-xs text-amber-400">{apiText(data.reason)}</p>
+      )}
       {!data.filesAvailable && (
-        <p className="text-xs text-amber-400">
-          Файлы сервера недоступны через Pterodactyl — отключение файлом и удаление работать не
-          будут.
-        </p>
+        <p className="text-xs text-amber-400">{t('mc.ip.filesUnavailable')}</p>
       )}
 
       <p className="text-xs text-muted">
-        «Выключить» действует сразу, без перезапуска, но это best-effort: не все плагины Bukkit
-        аккуратно переживают горячее отключение — по той же причине команда <code>/reload</code>{' '}
-        считается рискованной. Если после переключения сервер повёл себя странно, перезапустите
-        его. «Отключить файлом» переносит .jar в <code>plugins/{DISABLED_PLUGINS_DIR}/</code> — это
-        переживёт перезапуск, но подействует только после него.
+        {t('mc.ip.hintA')} <code>/reload</code> {t('mc.ip.hintB')}{' '}
+        <code>plugins/{DISABLED_PLUGINS_DIR}/</code> {t('mc.ip.hintC')}
       </p>
 
       {data.plugins.length === 0 ? (
-        <p className="text-xs text-muted">Плагинов не найдено.</p>
+        <p className="text-xs text-muted">{t('mc.ip.none')}</p>
       ) : (
         <ul className="space-y-2">
           {data.plugins.map((plugin) => (
@@ -132,16 +145,24 @@ export function InstalledPluginsPanel({
                   {plugin.version && <span className="text-xs text-muted">{plugin.version}</span>}
                   <StateBadge state={plugin.state} />
                   {plugin.protected && (
-                    <span title={plugin.protectedReason}>
-                      <Badge variant="outline">нужен панели</Badge>
+                    <span
+                      title={
+                        plugin.protectedReasonKey
+                          ? t(plugin.protectedReasonKey, { name: plugin.name })
+                          : undefined
+                      }
+                    >
+                      <Badge variant="outline">{t('mc.ip.neededByPanel')}</Badge>
                     </span>
                   )}
                 </div>
                 {plugin.fileName && (
                   <div className="truncate font-mono text-[11px] text-muted">{plugin.fileName}</div>
                 )}
-                {plugin.protected && plugin.protectedReason && (
-                  <div className="mt-1 text-[11px] text-muted">{plugin.protectedReason}</div>
+                {plugin.protected && plugin.protectedReasonKey && (
+                  <div className="mt-1 text-[11px] text-muted">
+                    {t(plugin.protectedReasonKey, { name: plugin.name })}
+                  </div>
                 )}
               </div>
 
@@ -158,10 +179,10 @@ export function InstalledPluginsPanel({
                       size="sm"
                       variant="outline"
                       disabled={busy === plugin.name}
-                      title="Горячее переключение через PluginManager, без перезапуска"
+                      title={t('mc.ip.toggleHint')}
                       onClick={() => void toggleRuntime(plugin, plugin.state !== 'enabled')}
                     >
-                      {plugin.state === 'enabled' ? 'Выключить' : 'Включить'}
+                      {plugin.state === 'enabled' ? t('mc.ip.disable') : t('mc.ip.enable')}
                     </Button>
                   )}
 
@@ -174,7 +195,9 @@ export function InstalledPluginsPanel({
                       disabled={busy === plugin.name}
                       onClick={() => void toggleFile(plugin, plugin.state !== 'disabled-file')}
                     >
-                      {plugin.state === 'disabled-file' ? 'Вернуть файл' : 'Отключить файлом'}
+                      {plugin.state === 'disabled-file'
+                        ? t('mc.ip.fileRestore')
+                        : t('mc.ip.fileDisable')}
                     </Button>
                   )}
 
@@ -185,7 +208,7 @@ export function InstalledPluginsPanel({
                     disabled={busy === plugin.name}
                     onClick={() => setRemoving(plugin)}
                   >
-                    Удалить
+                    {t('common.delete')}
                   </Button>
                 )}
               </div>
@@ -195,7 +218,9 @@ export function InstalledPluginsPanel({
       )}
 
       {error && <ErrorText>{error}</ErrorText>}
-      {notice && <p className="text-xs text-emerald-400">{notice}</p>}
+      {notice && (
+        <p className="text-xs text-emerald-400">{apiText(notice.key, notice.values)}</p>
+      )}
 
       {removing && (
         <RemoveDialog
@@ -205,7 +230,7 @@ export function InstalledPluginsPanel({
             const plugin = removing;
             setRemoving(null);
             void act(plugin.name, () =>
-              api<{ message: string }>(`${base}/remove`, {
+              api<PluginActionOutcome>(`${base}/remove`, {
                 method: 'POST',
                 body: JSON.stringify({
                   fileName: plugin.fileName,
@@ -222,9 +247,10 @@ export function InstalledPluginsPanel({
 }
 
 function StateBadge({ state }: { state: InstalledPluginDto['state'] }) {
-  if (state === 'enabled') return <Badge variant="success">включён</Badge>;
-  if (state === 'disabled-runtime') return <Badge variant="outline">выключен</Badge>;
-  return <Badge variant="destructive">отключён файлом</Badge>;
+  const t = useT();
+  if (state === 'enabled') return <Badge variant="success">{t('mc.ip.stateEnabled')}</Badge>;
+  if (state === 'disabled-runtime') return <Badge variant="outline">{t('mc.ip.stateDisabled')}</Badge>;
+  return <Badge variant="destructive">{t('mc.ip.stateDisabledFile')}</Badge>;
 }
 
 /**
@@ -243,14 +269,15 @@ function RemoveDialog({
   onClose: () => void;
   onConfirm: (withData: boolean) => void;
 }) {
+  const t = useT();
   const [withData, setWithData] = useState(false);
 
   return (
-    <Modal title={`Удалить плагин ${plugin.name}?`} onClose={onClose}>
+    <Modal title={t('mc.ip.removeTitle', { name: plugin.name })} onClose={onClose}>
       <div className="space-y-3">
         <p className="text-sm">
-          Файл <span className="font-mono text-xs">{plugin.fileName}</span> будет удалён с сервера.
-          Плагин перестанет загружаться после перезапуска.
+          {t('mc.ip.removeFileA')}{' '}
+          <span className="font-mono text-xs">{plugin.fileName}</span> {t('mc.ip.removeFileB')}
         </p>
 
         <label className="-mx-2 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-white/5">
@@ -261,20 +288,18 @@ function RemoveDialog({
             onChange={(e) => setWithData(e.target.checked)}
           />
           <span className="text-sm">
-            Удалить и папку данных <span className="font-mono text-xs">plugins/{plugin.name}/</span>
-            <span className="mt-1 block text-xs text-muted">
-              Там лежат конфиги и данные плагина — права, экономика, настройки. Восстановить их
-              будет неоткуда. По умолчанию не трогаем.
-            </span>
+            {t('mc.ip.removeData')}{' '}
+            <span className="font-mono text-xs">plugins/{plugin.name}/</span>
+            <span className="mt-1 block text-xs text-muted">{t('mc.ip.removeDataHint')}</span>
           </span>
         </label>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button variant="destructive" onClick={() => onConfirm(withData)}>
-            {withData ? 'Удалить с данными' : 'Удалить'}
+            {withData ? t('mc.ip.removeWithData') : t('common.delete')}
           </Button>
         </div>
       </div>

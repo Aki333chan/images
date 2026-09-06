@@ -50,7 +50,7 @@ export class ApplicationApiService {
     const key = await this.secrets.get(SECRET_KEYS.APP_KEY);
     if (!key) {
       throw new ServiceUnavailableException(
-        'Application API key Pterodactyl не настроен (PTERO_APP_API_KEY)',
+        'ptero.err.noAppKey',
       );
     }
     return key;

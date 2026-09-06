@@ -118,14 +118,14 @@ public final class FakeGameBridge implements GameBridge {
         for (ItemSpec spec : items) {
             gives.add(spec.id() + "x" + spec.count());
             if (!spec.id().startsWith("minecraft:")) {
-                results.add(GiveResult.failed(spec.id(), spec.count(), "Неизвестный предмет"));
+                results.add(GiveResult.failed(spec.id(), spec.count(), "mc.give.err.unknownItem"));
                 continue;
             }
             int given = Math.min(spec.count(), freeSpace);
             results.add(
                     given == spec.count()
                             ? GiveResult.ok(spec.id(), spec.count())
-                            : new GiveResult(spec.id(), spec.count(), given, "Инвентарь заполнен"));
+                            : new GiveResult(spec.id(), spec.count(), given, "mc.give.err.full"));
         }
         return Optional.of(results);
     }
@@ -187,12 +187,12 @@ public final class FakeGameBridge implements GameBridge {
             PluginInfo p = plugins.get(i);
             if (!p.name().equals(pluginName)) continue;
             if (stubborn.contains(pluginName)) {
-                return PluginToggle.failed("Плагин отказался переключиться: IllegalStateException");
+                return PluginToggle.failed("mc.plug.err.refused");
             }
             plugins.set(i, new PluginInfo(p.name(), p.version(), enabled));
             return PluginToggle.ok(enabled);
         }
-        return PluginToggle.failed("Плагин «" + pluginName + "» на сервере не найден");
+        return PluginToggle.failed("mc.plug.err.notFound");
     }
 
     private boolean has(String name) {
@@ -212,7 +212,7 @@ public final class FakeGameBridge implements GameBridge {
     public Optional<PermissionChange.Result> applyPermission(UUID playerUuid, PermissionChange change) {
         if (!has("LuckPerms")) return Optional.empty();
         if (change.kind() == PermissionChange.Kind.GROUP && !knownGroups.contains(change.key())) {
-            return Optional.of(PermissionChange.Result.rejected("Группа «" + change.key() + "» не существует"));
+            return Optional.of(PermissionChange.Result.rejected("mc.perm.err.noGroup"));
         }
         permissionWrites.add(
                 (change.remove() ? "remove:" : "add:") + change.kind() + ":" + change.key() + "=" + change.value());
@@ -263,7 +263,7 @@ public final class FakeGameBridge implements GameBridge {
             results.add(
                     spec.id().startsWith("minecraft:")
                             ? GiveResult.ok(spec.id(), spec.count())
-                            : GiveResult.failed(spec.id(), spec.count(), "Неизвестный предмет"));
+                            : GiveResult.failed(spec.id(), spec.count(), "mc.give.err.unknownItem"));
         }
         return Optional.of(results);
     }
@@ -431,7 +431,7 @@ public final class FakeGameBridge implements GameBridge {
         bonusCalls.add("grant " + guildId + " " + type + " " + magnitude + " " + seconds);
         if (!type.equals("experience")) {
             return Optional.of(new ovh.aurumgg.companion.core.model.GuildActionOutcome(
-                    false, "Неизвестный вид бонуса: " + type));
+                    false, "mc.g.err.noSuchBonusType", java.util.Map.of("type", type)));
         }
         return Optional.of(new ovh.aurumgg.companion.core.model.GuildActionOutcome(true, "Выдан"));
     }

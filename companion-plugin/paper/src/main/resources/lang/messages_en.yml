@@ -1,0 +1,31 @@
+# Text players see. English.
+#
+# There is not much of it: companion is mostly a bridge between the panel and
+# the server, not a plugin with an interface. Everything here belongs to
+# /ticket and /webtoken.
+#
+# The file can be edited by hand; changes are picked up on server restart.
+# Keep the placeholders in braces ({code}, {seconds}): without them the message
+# loses the very thing it was written for.
+#
+# Do not delete lines: a missing one falls back to the built-in Russian, so the
+# edit simply will not apply.
+
+# --------------------------------------------------------------- /ticket
+ticket:
+  playersOnly: "This command is for players only."
+  notConfigured: "Tickets are not set up on this server."
+  # The hint says both how to type it and what will happen: otherwise half the
+  # players write a second ticket, sure the first one went nowhere.
+  usage: "/{command} <message> — write to the staff; the answer comes back here, in chat"
+  cooldown: "Wait another {seconds} s before your next message."
+  created: "Ticket created. The staff will answer right here, in chat."
+  appended: "Your message was added to your ticket."
+  failed: "Could not send it — try again later."
+
+# ------------------------------------------------------------- /webtoken
+webtoken:
+  playersOnly: "This command is for players only"
+  loginFirst: "Log in first: /login <password>"
+  code: "Panel sign-in code: {code}"
+  codeHint: "It is single-use and lasts a few minutes."

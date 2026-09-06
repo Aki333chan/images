@@ -58,7 +58,7 @@ export class PteroFilesService {
 
   async readFile(serverId: string, rawPath: string): Promise<PteroFileContentDto> {
     const path = normalizePath(rawPath);
-    if (path === '/') throw new BadRequestException('Это каталог, а не файл');
+    if (path === '/') throw new BadRequestException('files.err.isDir');
 
     const { content, truncated } = await this.client.readFile(
       await this.identifier(serverId),
@@ -70,11 +70,11 @@ export class PteroFilesService {
 
   async writeFile(serverId: string, rawPath: string, content: string): Promise<{ path: string }> {
     const path = normalizePath(rawPath);
-    if (path === '/') throw new BadRequestException('Это каталог, а не файл');
+    if (path === '/') throw new BadRequestException('files.err.isDir');
 
     const buffer = Buffer.from(content, 'utf8');
     if (buffer.length > PteroFilesService.MAX_READ_BYTES) {
-      throw new BadRequestException('Файл больше разрешённого размера для правки');
+      throw new BadRequestException('files.err.tooBigToEdit');
     }
     await this.client.writeFile(await this.identifier(serverId), path, buffer);
     return { path };
@@ -88,7 +88,7 @@ export class PteroFilesService {
   ): Promise<{ path: string }> {
     if (content.length > PteroFilesService.MAX_UPLOAD_BYTES) {
       throw new BadRequestException(
-        `Файл больше ${formatTransferLimit()} — такой размер панель не пропускает. Загрузите его по SFTP.`,
+        { message: 'files.err.tooBigUpload', i18nValues: { limit: formatTransferLimit() } },
       );
     }
     const path = joinPath(rawDirectory, normalizeName(fileName));
@@ -101,7 +101,7 @@ export class PteroFilesService {
     rawPath: string,
   ): Promise<{ name: string; content: Buffer; truncated: boolean; contentType: string }> {
     const path = normalizePath(rawPath);
-    if (path === '/') throw new BadRequestException('Это каталог, а не файл');
+    if (path === '/') throw new BadRequestException('files.err.isDir');
 
     const res = await this.client.downloadFile(
       await this.identifier(serverId),
@@ -112,7 +112,7 @@ export class PteroFilesService {
       // Отдать обрезанный файл под видом целого — худшее, что можно сделать:
       // человек не заметит, а конфиг окажется битым.
       throw new BadRequestException(
-        `Файл больше ${formatTransferLimit()} — скачайте его бэкапом или по SFTP.`,
+        { message: 'files.err.tooBigDownload', i18nValues: { limit: formatTransferLimit() } },
       );
     }
     return { name: baseName(path), content: res.content, truncated: false, contentType: res.contentType };
@@ -135,8 +135,8 @@ export class PteroFilesService {
   async move(serverId: string, rawFrom: string, rawTo: string): Promise<{ path: string }> {
     const from = normalizePath(rawFrom);
     const to = normalizePath(rawTo);
-    if (from === '/' || to === '/') throw new BadRequestException('Нельзя трогать корень');
-    if (from === to) throw new BadRequestException('Пути совпадают');
+    if (from === '/' || to === '/') throw new BadRequestException('files.err.root');
+    if (from === to) throw new BadRequestException('files.err.samePath');
 
     // Общий корень для обоих путей — панель ждёт root плюс относительные
     // имена. Проще всего взять корень «/» и передать полные пути: так
@@ -146,7 +146,7 @@ export class PteroFilesService {
   }
 
   async remove(serverId: string, rawDirectory: string, names: string[]): Promise<{ removed: number }> {
-    if (names.length === 0) throw new BadRequestException('Не выбрано ни одного файла');
+    if (names.length === 0) throw new BadRequestException('files.err.noneSelected');
     const directory = normalizePath(rawDirectory);
     const safe = names.map((n) => normalizeName(n));
     await this.client.deleteFiles(await this.identifier(serverId), directory, safe);
@@ -154,7 +154,7 @@ export class PteroFilesService {
   }
 
   async compress(serverId: string, rawDirectory: string, names: string[]): Promise<PteroFileDto> {
-    if (names.length === 0) throw new BadRequestException('Не выбрано ни одного файла');
+    if (names.length === 0) throw new BadRequestException('files.err.noneSelected');
     const directory = normalizePath(rawDirectory);
     const safe = names.map((n) => normalizeName(n));
     const archive = await this.client.compressFiles(await this.identifier(serverId), directory, safe);
@@ -163,7 +163,7 @@ export class PteroFilesService {
 
   async decompress(serverId: string, rawPath: string): Promise<{ path: string }> {
     const path = normalizePath(rawPath);
-    if (path === '/') throw new BadRequestException('Это каталог, а не архив');
+    if (path === '/') throw new BadRequestException('files.err.notArchive');
     await this.client.decompressFile(await this.identifier(serverId), parentOf(path), baseName(path));
     return { path: parentOf(path) };
   }

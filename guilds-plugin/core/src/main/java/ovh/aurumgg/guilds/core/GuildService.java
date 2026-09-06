@@ -109,6 +109,20 @@ public final class GuildService implements AutoCloseable {
     /** Приглашённый → зовущие его гильдии. */
     private final Map<UUID, List<Invite>> invites = new ConcurrentHashMap<>();
 
+    /**
+     * Язык сервера — для тех немногих значений, что собираются здесь целиком.
+     *
+     * Почти всё, что видит игрок, уезжает отсюда ключом и переводится в слое
+     * Bukkit. Но срок бонуса («2 ч 30 мин») и его величина («уровень 2») —
+     * это НЕ ключи, а собранные из числа строки, и собрать их можно только
+     * там, где число известно. Отсюда единственная ниточка в словарь.
+     *
+     * volatile: /guild admin reload меняет тексты на живом сервере, а читают
+     * их из потока команд. Умолчание — встроенный русский, чтобы core
+     * оставался самостоятельным и в тестах, и до onEnable.
+     */
+    private volatile HudLines.Labels labels = HudLines.RU;
+
     public GuildService(
             GuildsConfig config,
             GuildRepository repository,
@@ -132,6 +146,11 @@ public final class GuildService implements AutoCloseable {
             return thread;
         };
         this.worker = Executors.newFixedThreadPool(Math.max(2, config.poolSize()), factory);
+    }
+
+    /** Подключить словарь сервера. См. поле labels. */
+    public void useLabels(HudLines.Labels labels) {
+        this.labels = labels == null ? HudLines.RU : labels;
     }
 
     /** Применить перечитанный config.yml. См. поле config. */
@@ -279,16 +298,20 @@ public final class GuildService implements AutoCloseable {
     public CompletableFuture<GuildActionResult> create(UUID player, String name, String tag) {
         return async(() -> {
             if (memberOf.containsKey(player)) {
-                return GuildActionResult.fail("Сначала выйдите из текущей гильдии: /guild leave");
+                return GuildActionResult.fail("guild.err.leaveFirst");
             }
 
             GuildNames.Verdict nameCheck = GuildNames.checkName(name, config.maxNameLength());
-            if (!nameCheck.ok()) return GuildActionResult.fail(nameCheck.message());
+            if (!nameCheck.ok()) {
+                return GuildActionResult.fail(nameCheck.messageKey(), nameCheck.values());
+            }
             GuildNames.Verdict tagCheck = GuildNames.checkTag(tag, config.maxTagLength());
-            if (!tagCheck.ok()) return GuildActionResult.fail(tagCheck.message());
+            if (!tagCheck.ok()) {
+                return GuildActionResult.fail(tagCheck.messageKey(), tagCheck.values());
+            }
 
-            if (byName(name).isPresent()) return GuildActionResult.fail("Такое имя уже занято");
-            if (byTag(tag).isPresent()) return GuildActionResult.fail("Такой тег уже занят");
+            if (byName(name).isPresent()) return GuildActionResult.fail("guild.err.nameTaken");
+            if (byTag(tag).isPresent()) return GuildActionResult.fail("guild.err.tagTaken");
 
             Instant now = clock.get();
             String leaderName = names.nameOf(player);
@@ -300,7 +323,7 @@ public final class GuildService implements AutoCloseable {
                 // Уникальные ключи в базе ловят гонку двух одновременных
                 // созданий, которую проверка выше пропустила бы.
                 logger.log(Level.WARNING, "Не создать гильдию «" + name + "»", e);
-                return GuildActionResult.fail("Не удалось создать гильдию: имя или тег уже заняты");
+                return GuildActionResult.fail("guild.err.createRace");
             }
 
             StoredGuild guild = new StoredGuild(id, name, tag, player, 0, now, settings,
@@ -313,39 +336,39 @@ public final class GuildService implements AutoCloseable {
             hooks.memberJoined(id, player);
 
             logger.info("Гильдия «" + name + "» [" + tag + "] создана игроком " + leaderName);
-            return GuildActionResult.ok("Гильдия «" + name + "» [" + tag + "] создана");
+            return GuildActionResult.ok("guild.created", Map.of("guild", name, "tag", tag));
         });
     }
 
     public CompletableFuture<GuildActionResult> invite(UUID actor, UUID target) {
         return async(() -> {
-            if (actor.equals(target)) return GuildActionResult.fail("Себя звать некуда");
+            if (actor.equals(target)) return GuildActionResult.fail("guild.err.inviteSelf");
 
             StoredGuild guild = guilds.get(memberOf.get(actor));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!rankOf(guild, actor).canManageMembers()) {
-                return GuildActionResult.fail("Приглашать могут лидер и офицеры");
+                return GuildActionResult.fail("guild.err.inviteRank");
             }
             if (guild.settings().joinPolicy() == JoinPolicy.CLOSED) {
-                return GuildActionResult.fail("Гильдия закрыта — сначала поменяйте это в /guild settings");
+                return GuildActionResult.fail("guild.err.closed");
             }
             if (memberOf.containsKey(target)) {
-                return GuildActionResult.fail(names.nameOf(target) + " уже состоит в гильдии");
+                return GuildActionResult.fail("guild.err.targetInGuild", Map.of("player", names.nameOf(target)));
             }
             if (guild.members().size() >= config.maxGuildMembers()) {
-                return GuildActionResult.fail("В гильдии уже " + config.maxGuildMembers()
-                        + " человек — больше не помещается");
+                return GuildActionResult.fail("guild.err.full",
+                        Map.of("max", String.valueOf(config.maxGuildMembers())));
             }
 
             Instant now = clock.get();
             List<Invite> pending = new ArrayList<>(activeInvites(target, now));
             if (pending.stream().anyMatch(invite -> invite.guildId() == guild.id())) {
-                return GuildActionResult.fail(names.nameOf(target) + " уже приглашён");
+                return GuildActionResult.fail("guild.err.alreadyInvited", Map.of("player", names.nameOf(target)));
             }
             pending.add(new Invite(guild.id(), actor, now.plus(config.guildInviteTtl())));
             invites.put(target, pending);
 
-            return GuildActionResult.ok(names.nameOf(target) + " приглашён в гильдию");
+            return GuildActionResult.ok("guild.invited", Map.of("player", names.nameOf(target)));
         });
     }
 
@@ -362,32 +385,32 @@ public final class GuildService implements AutoCloseable {
     public CompletableFuture<GuildActionResult> join(UUID player, String guildName) {
         return async(() -> {
             if (memberOf.containsKey(player)) {
-                return GuildActionResult.fail("Вы уже состоите в гильдии");
+                return GuildActionResult.fail("guild.err.alreadyInGuild");
             }
 
             Instant now = clock.get();
             StoredGuild guild;
             if (guildName != null && !guildName.isBlank()) {
                 Optional<StoredGuild> found = byName(guildName);
-                if (found.isEmpty()) return GuildActionResult.fail("Гильдии с таким именем нет");
+                if (found.isEmpty()) return GuildActionResult.fail("guild.err.noSuchName");
                 guild = found.get();
                 boolean invited = activeInvites(player, now).stream()
                         .anyMatch(invite -> invite.guildId() == guild.id());
                 if (guild.settings().joinPolicy() != JoinPolicy.OPEN && !invited) {
                     // Один и тот же текст на «закрыта» и «нужно приглашение»:
                     // разница ничего не даёт тому, кого не позвали.
-                    return GuildActionResult.fail("В эту гильдию вступают по приглашению");
+                    return GuildActionResult.fail("guild.err.inviteOnly");
                 }
             } else {
                 List<Invite> pending = activeInvites(player, now);
-                if (pending.isEmpty()) return GuildActionResult.fail("Вас никто не звал в гильдию");
+                if (pending.isEmpty()) return GuildActionResult.fail("guild.err.noInvite");
                 StoredGuild invited = guilds.get(pending.get(pending.size() - 1).guildId());
-                if (invited == null) return GuildActionResult.fail("Этой гильдии больше нет");
+                if (invited == null) return GuildActionResult.fail("guild.err.gone");
                 guild = invited;
             }
 
             if (guild.members().size() >= config.maxGuildMembers()) {
-                return GuildActionResult.fail("В гильдии нет мест");
+                return GuildActionResult.fail("guild.err.noSlots");
             }
 
             String username = names.nameOf(player);
@@ -402,73 +425,74 @@ public final class GuildService implements AutoCloseable {
             invites.remove(player);
 
             hooks.memberJoined(guild.id(), player);
-            return GuildActionResult.ok("Вы вступили в гильдию «" + guild.name() + "»");
+            return GuildActionResult.ok("guild.joined", Map.of("guild", guild.name()));
         });
     }
 
     public CompletableFuture<GuildActionResult> leave(UUID player) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(player));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (guild.leader().equals(player)) {
                 if (guild.members().size() > 1) {
                     // Лидер не уходит, бросив гильдию: у неё остался бы
                     // указатель на человека, которого в ней нет. Выбор между
                     // «передать» и «распустить» — его решение, а не наше.
-                    return GuildActionResult.fail("Сначала передайте лидерство "
-                            + "(/guild transfer <ник>) или распустите гильдию (/guild disband)");
+                    return GuildActionResult.fail("guild.err.leaderMustTransfer");
                 }
                 // Последний участник он же лидер: гильдия из нуля человек
                 // существовать не может, и просить его отдельно её распустить
                 // значит требовать лишнюю команду ради очевидного.
                 deleteGuild(guild, "последний участник вышел");
-                return GuildActionResult.ok("Вы вышли, и гильдия распущена — в ней не осталось никого");
+                return GuildActionResult.ok("guild.leftAndDisbanded");
             }
 
             removeMember(guild, player, "вышел из гильдии");
-            return GuildActionResult.ok("Вы вышли из гильдии");
+            return GuildActionResult.ok("guild.left");
         });
     }
 
     public CompletableFuture<GuildActionResult> kick(UUID actor, UUID target) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
-            if (actor.equals(target)) return GuildActionResult.fail("Чтобы уйти самому, есть /guild leave");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (actor.equals(target)) return GuildActionResult.fail("guild.err.kickSelf");
             if (!rankOf(guild, actor).canManageMembers()) {
-                return GuildActionResult.fail("Выгонять могут лидер и офицеры");
+                return GuildActionResult.fail("guild.err.kickRank");
             }
             if (memberOf(guild, target).isEmpty()) {
-                return GuildActionResult.fail(names.nameOf(target) + " не в вашей гильдии");
+                return GuildActionResult.fail("guild.err.notYourMember", Map.of("player", names.nameOf(target)));
             }
             // Строго выше по рангу, а не «не ниже»: офицер не выгоняет
             // офицера и тем более лидера. Иначе один поссорившийся офицер за
             // минуту разбирает гильдию по кускам.
             if (rankOf(guild, actor).weight() <= rankOf(guild, target).weight()) {
-                return GuildActionResult.fail("Выгнать можно только того, кто ниже вас по рангу");
+                return GuildActionResult.fail("guild.err.kickLower");
             }
 
             removeMember(guild, target, "исключён из гильдии");
-            return GuildActionResult.ok(names.nameOf(target) + " исключён из гильдии");
+            return GuildActionResult.ok("guild.kicked", Map.of("player", names.nameOf(target)));
         });
     }
 
     public CompletableFuture<GuildActionResult> setRank(UUID actor, UUID target, GuildRank rank) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!guild.leader().equals(actor)) {
-                return GuildActionResult.fail("Менять ранги может только лидер");
+                return GuildActionResult.fail("guild.err.rankLeaderOnly");
             }
             if (rank == GuildRank.LEADER) {
-                return GuildActionResult.fail("Лидерство передаётся отдельно: /guild transfer <ник>");
+                return GuildActionResult.fail("guild.err.rankLeadership");
             }
-            if (actor.equals(target)) return GuildActionResult.fail("Свой ранг менять нельзя");
+            if (actor.equals(target)) return GuildActionResult.fail("guild.err.rankSelf");
             if (memberOf(guild, target).isEmpty()) {
-                return GuildActionResult.fail(names.nameOf(target) + " не в вашей гильдии");
+                return GuildActionResult.fail("guild.err.notYourMember", Map.of("player", names.nameOf(target)));
             }
             if (rankOf(guild, target) == rank) {
-                return GuildActionResult.fail(names.nameOf(target) + " и так " + rank.title());
+                return GuildActionResult.fail("guild.err.rankSame",
+                        Map.of("player", names.nameOf(target)),
+                        Map.of("rank", rank.titleKey()));
             }
 
             write(() -> repository.updateRank(guild.id(), target, rank),
@@ -476,37 +500,39 @@ public final class GuildService implements AutoCloseable {
             replace(guild, withMembers(guild, guild.members().stream()
                     .map(member -> member.uuid().equals(target) ? member.withRank(rank) : member)
                     .toList()));
-            return GuildActionResult.ok(names.nameOf(target) + " теперь " + rank.title());
+            return GuildActionResult.ok("guild.rankSet",
+                    Map.of("player", names.nameOf(target)),
+                    Map.of("rank", rank.titleKey()));
         });
     }
 
     public CompletableFuture<GuildActionResult> transfer(UUID actor, UUID target) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!guild.leader().equals(actor)) {
-                return GuildActionResult.fail("Передавать лидерство может только лидер");
+                return GuildActionResult.fail("guild.err.transferLeaderOnly");
             }
-            if (actor.equals(target)) return GuildActionResult.fail("Вы и так лидер");
+            if (actor.equals(target)) return GuildActionResult.fail("guild.err.alreadyLeader");
             if (memberOf(guild, target).isEmpty()) {
-                return GuildActionResult.fail(names.nameOf(target) + " не в вашей гильдии");
+                return GuildActionResult.fail("guild.err.notYourMember", Map.of("player", names.nameOf(target)));
             }
 
             applyLeader(guild, target);
-            return GuildActionResult.ok(names.nameOf(target) + " теперь лидер гильдии");
+            return GuildActionResult.ok("guild.transferred", Map.of("player", names.nameOf(target)));
         });
     }
 
     public CompletableFuture<GuildActionResult> disband(UUID actor) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!rankOf(guild, actor).canDisband()) {
-                return GuildActionResult.fail("Распустить гильдию может только лидер");
+                return GuildActionResult.fail("guild.err.disbandLeaderOnly");
             }
 
             deleteGuild(guild, "распущена лидером " + names.nameOf(actor));
-            return GuildActionResult.ok("Гильдия «" + guild.name() + "» распущена");
+            return GuildActionResult.ok("guild.disbanded", Map.of("guild", guild.name()));
         });
     }
 
@@ -516,9 +542,9 @@ public final class GuildService implements AutoCloseable {
             UUID actor, java.util.function.UnaryOperator<GuildSettings> change) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!guild.leader().equals(actor)) {
-                return GuildActionResult.fail("Менять настройки гильдии может только лидер");
+                return GuildActionResult.fail("guild.err.settingsLeaderOnly");
             }
 
             GuildSettings updated = change.apply(guild.settings());
@@ -526,7 +552,7 @@ public final class GuildService implements AutoCloseable {
                     "сохранить настройки гильдии " + guild.name());
             replace(guild, new StoredGuild(guild.id(), guild.name(), guild.tag(), guild.leader(),
                     guild.bank(), guild.createdAt(), updated, guild.members()));
-            return GuildActionResult.ok("Настройки сохранены");
+            return GuildActionResult.ok("guild.settingsSaved");
         });
     }
 
@@ -541,23 +567,23 @@ public final class GuildService implements AutoCloseable {
     public CompletableFuture<GuildActionResult> changeTag(UUID actor, String tag) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!guild.leader().equals(actor)) {
-                return GuildActionResult.fail("Менять тег может только лидер");
+                return GuildActionResult.fail("guild.err.tagLeaderOnly");
             }
 
             GuildNames.Verdict check = GuildNames.checkTag(tag, config.maxTagLength());
-            if (!check.ok()) return GuildActionResult.fail(check.message());
+            if (!check.ok()) return GuildActionResult.fail(check.messageKey(), check.values());
             Optional<StoredGuild> owner = byTag(tag);
             if (owner.isPresent() && owner.get().id() != guild.id()) {
-                return GuildActionResult.fail("Такой тег уже занят");
+                return GuildActionResult.fail("guild.err.tagTaken");
             }
 
             write(() -> repository.updateTag(guild.id(), tag), "сменить тег гильдии " + guild.name());
             replace(guild, new StoredGuild(guild.id(), guild.name(), tag, guild.leader(),
                     guild.bank(), guild.createdAt(), guild.settings(), guild.members()));
             hooks.tagChanged(guild.id(), tag);
-            return GuildActionResult.ok("Тег гильдии теперь [" + tag + "]");
+            return GuildActionResult.ok("guild.tagSet", Map.of("tag", tag));
         });
     }
 
@@ -565,37 +591,39 @@ public final class GuildService implements AutoCloseable {
 
     public CompletableFuture<GuildActionResult> deposit(UUID player, double amount) {
         return async(() -> {
-            if (!bankAvailable()) return GuildActionResult.fail("Банк гильдий на сервере недоступен");
-            if (!(amount > 0)) return GuildActionResult.fail("Сумма должна быть больше нуля");
+            if (!bankAvailable()) return GuildActionResult.fail("guild.err.bankOff");
+            if (!(amount > 0)) return GuildActionResult.fail("guild.err.amountPositive");
 
             StoredGuild guild = guilds.get(memberOf.get(player));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
 
             // Вкладывать может любой участник: это его собственные деньги.
             if (!economy.withdraw(player, amount)) {
-                return GuildActionResult.fail("Недостаточно средств");
+                return GuildActionResult.fail("guild.err.notEnoughMoney");
             }
 
             double balance = guild.bank() + amount;
             applyBank(guild, balance, player, true, amount);
-            return GuildActionResult.ok("В банк гильдии внесено " + economy.format(amount)
-                    + ", теперь там " + economy.format(balance));
+            return GuildActionResult.ok("guild.bank.deposited", Map.of(
+                    "amount", economy.format(amount), "total", economy.format(balance)));
         });
     }
 
     public CompletableFuture<GuildActionResult> withdraw(UUID player, double amount) {
         return async(() -> {
-            if (!bankAvailable()) return GuildActionResult.fail("Банк гильдий на сервере недоступен");
-            if (!(amount > 0)) return GuildActionResult.fail("Сумма должна быть больше нуля");
+            if (!bankAvailable()) return GuildActionResult.fail("guild.err.bankOff");
+            if (!(amount > 0)) return GuildActionResult.fail("guild.err.amountPositive");
 
             StoredGuild guild = guilds.get(memberOf.get(player));
-            if (guild == null) return GuildActionResult.fail("Вы не состоите в гильдии");
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!guild.settings().bankAccess().allows(rankOf(guild, player))) {
-                return GuildActionResult.fail("Снимать из банка может "
-                        + guild.settings().bankAccess().title());
+                return GuildActionResult.fail("guild.err.bankAccess",
+                        Map.of(),
+                        Map.of("who", guild.settings().bankAccess().titleKey()));
             }
             if (guild.bank() < amount) {
-                return GuildActionResult.fail("В банке гильдии только " + economy.format(guild.bank()));
+                return GuildActionResult.fail("guild.err.bankHasOnly",
+                        Map.of("amount", economy.format(guild.bank())));
             }
 
             // Сначала списываем с банка и только потом выдаём: обратный порядок
@@ -608,10 +636,10 @@ public final class GuildService implements AutoCloseable {
                 // движения: «снял» и «вернулось», иначе разбор через неделю
                 // упрётся в снятие, которого на самом деле не было.
                 applyBank(guilds.get(guild.id()), guild.bank(), player, true, amount);
-                return GuildActionResult.fail("Плагин экономики отказал, деньги остались в банке");
+                return GuildActionResult.fail("guild.err.economyRefused");
             }
-            return GuildActionResult.ok("Снято " + economy.format(amount)
-                    + ", в банке осталось " + economy.format(balance));
+            return GuildActionResult.ok("guild.bank.withdrawn", Map.of(
+                    "amount", economy.format(amount), "left", economy.format(balance)));
         });
     }
 
@@ -620,9 +648,9 @@ public final class GuildService implements AutoCloseable {
     public CompletableFuture<GuildActionResult> adminDisband(long guildId, String actor) {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
-            if (guild == null) return GuildActionResult.fail("Такой гильдии нет");
+            if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
             deleteGuild(guild, "распущена администратором " + actor);
-            return GuildActionResult.ok("Гильдия «" + guild.name() + "» распущена");
+            return GuildActionResult.ok("guild.disbanded", Map.of("guild", guild.name()));
         });
     }
 
@@ -630,20 +658,21 @@ public final class GuildService implements AutoCloseable {
             long guildId, String targetName, String actor) {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
-            if (guild == null) return GuildActionResult.fail("Такой гильдии нет");
+            if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
             Optional<GuildMember> target = byUsername(guild, targetName);
             if (target.isEmpty()) {
-                return GuildActionResult.fail("В гильдии «" + guild.name() + "» нет игрока " + targetName);
+                return GuildActionResult.fail("guild.err.noMemberNamed",
+                        Map.of("guild", guild.name(), "player", targetName));
             }
             if (guild.leader().equals(target.get().uuid())) {
-                return GuildActionResult.fail(targetName + " и так лидер");
+                return GuildActionResult.fail("guild.err.targetAlreadyLeader", Map.of("player", targetName));
             }
 
             applyLeader(guild, target.get().uuid());
             logger.info("Лидерство в гильдии «" + guild.name() + "» передано игроку "
                     + target.get().username() + " администратором " + actor);
-            return GuildActionResult.ok(target.get().username() + " назначен лидером гильдии «"
-                    + guild.name() + "»");
+            return GuildActionResult.ok("guild.admin.leaderSet", Map.of(
+                    "player", target.get().username(), "guild", guild.name()));
         });
     }
 
@@ -652,13 +681,14 @@ public final class GuildService implements AutoCloseable {
             Optional<StoredGuild> found = guilds.values().stream()
                     .filter(guild -> byUsername(guild, targetName).isPresent())
                     .findFirst();
-            if (found.isEmpty()) return GuildActionResult.fail(targetName + " не состоит в гильдии");
+            if (found.isEmpty()) return GuildActionResult.fail("guild.err.targetNoGuild", Map.of("player", targetName));
 
             StoredGuild guild = found.get();
             UUID target = byUsername(guild, targetName).orElseThrow().uuid();
             String guildName = guild.name();
             forceRemove(guild, target, "исключён администратором " + actor);
-            return GuildActionResult.ok(targetName + " исключён из гильдии «" + guildName + "»");
+            return GuildActionResult.ok("guild.admin.removed", Map.of(
+                    "player", targetName, "guild", guildName));
         });
     }
 
@@ -676,10 +706,11 @@ public final class GuildService implements AutoCloseable {
     public CompletableFuture<GuildActionResult> onAccountDeleted(UUID player, String username) {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(player));
-            if (guild == null) return GuildActionResult.ok("Игрок не состоял в гильдии");
+            if (guild == null) return GuildActionResult.ok("guild.admin.wasNotInGuild");
             String guildName = guild.name();
             forceRemove(guild, player, "аккаунт " + username + " удалён");
-            return GuildActionResult.ok(username + " убран из гильдии «" + guildName + "»");
+            return GuildActionResult.ok("guild.admin.removed", Map.of(
+                    "player", username, "guild", guildName));
         });
     }
 
@@ -850,8 +881,8 @@ public final class GuildService implements AutoCloseable {
             long guildId, BonusType type, double magnitude, Duration duration, String actor) {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
-            if (guild == null) return GuildActionResult.fail("Такой гильдии нет");
-            if (type == null) return GuildActionResult.fail("Не указан вид бонуса");
+            if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
+            if (type == null) return GuildActionResult.fail("guild.err.noBonusType");
 
             double value = Math.max(type.min(), Math.min(type.max(), magnitude));
             Instant now = clock.get();
@@ -870,9 +901,14 @@ public final class GuildService implements AutoCloseable {
                     + (expires == null ? " (постоянно)" : " до " + expires)
                     + " гильдии «" + guild.name() + "» — выдал " + actor);
 
-            return GuildActionResult.ok("Гильдии «" + guild.name() + "» выдан бонус «"
-                    + type.title() + "» " + describe(type, value)
-                    + (expires == null ? " навсегда" : " на " + humanDuration(duration)));
+            HudLines.Labels t = labels;
+            return GuildActionResult.ok(
+                    expires == null ? "guild.bonus.grantedForever" : "guild.bonus.granted",
+                    Map.of(
+                            "guild", guild.name(),
+                            "value", describe(type, value, t),
+                            "duration", expires == null ? "" : humanDuration(duration, t)),
+                    Map.of("bonus", type.titleKey()));
         });
     }
 
@@ -881,10 +917,10 @@ public final class GuildService implements AutoCloseable {
             long guildId, BonusType type, String actor) {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
-            if (guild == null) return GuildActionResult.fail("Такой гильдии нет");
-            if (type == null) return GuildActionResult.fail("Не указан вид бонуса");
+            if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
+            if (type == null) return GuildActionResult.fail("guild.err.noBonusType");
             if (bonuses(guildId).stream().noneMatch(bonus -> bonus.type() == type)) {
-                return GuildActionResult.fail("У гильдии нет такого бонуса");
+                return GuildActionResult.fail("guild.err.noSuchBonus");
             }
 
             write(() -> repository.deleteBonus(guildId, type), "снять бонус гильдии");
@@ -894,29 +930,61 @@ public final class GuildService implements AutoCloseable {
 
             logger.info("Бонус " + type.name() + " снят у гильдии «" + guild.name()
                     + "» — " + actor);
-            return GuildActionResult.ok("Бонус «" + type.title() + "» снят");
+            return GuildActionResult.ok("guild.bonus.revoked",
+                    Map.of(), Map.of("bonus", type.titleKey()));
         });
     }
 
     /** Величина словами — «×2», «уровень 2». */
     public static String describe(BonusType type, double magnitude) {
+        return describe(type, magnitude, HudLines.RU);
+    }
+
+    public static String describe(BonusType type, double magnitude, HudLines.Labels t) {
         if (type.kind() == BonusType.Kind.EFFECT_LEVEL) {
-            return "уровень " + (int) Math.round(magnitude);
+            return Messages.apply(
+                    t.get("mc.bonus.level"),
+                    Map.of("n", String.valueOf((int) Math.round(magnitude))));
         }
+        // Множитель одинаков на всех языках: «×1.5» — это число, а не слово.
         return "×" + HudLines.money(magnitude);
     }
 
-    /** Срок словами. Часы и минуты: секунды в таком сроке никому не нужны. */
+    /**
+     * Срок словами: «45 с», «5 мин», «2 ч 30 мин», «навсегда».
+     *
+     * Единицы — сокращениями, и это выбор в пользу переводимости: полные слова
+     * пришлось бы склонять по числу («2 godziny», «5 godzin»), а сокращения не
+     * склоняются ни в одном из трёх языков.
+     */
     public static String humanDuration(Duration duration) {
-        if (duration == null) return "навсегда";
-        long minutes = Math.max(1, duration.toMinutes());
-        if (minutes < 60) return minutes + " мин";
+        return humanDuration(duration, HudLines.RU);
+    }
+
+    public static String humanDuration(Duration duration, HudLines.Labels t) {
+        if (duration == null) return t.get("time.forever");
+        long seconds = Math.max(1, duration.toSeconds());
+        if (seconds < 60) return unit(t, "time.s", seconds);
+        long minutes = seconds / 60;
+        if (minutes < 60) return unit(t, "time.min", minutes);
         long hours = minutes / 60;
         long rest = minutes % 60;
-        if (hours < 24) return rest == 0 ? hours + " ч" : hours + " ч " + rest + " мин";
+        if (hours < 24) {
+            return rest == 0
+                    ? unit(t, "time.h", hours)
+                    : Messages.apply(t.get("time.hMin"),
+                            Map.of("n", String.valueOf(hours), "m", String.valueOf(rest)));
+        }
         long days = hours / 24;
         long restHours = hours % 24;
-        return restHours == 0 ? days + " д" : days + " д " + restHours + " ч";
+        return restHours == 0
+                ? unit(t, "time.d", days)
+                : Messages.apply(t.get("time.dH"),
+                        Map.of("n", String.valueOf(days), "h", String.valueOf(restHours)));
+    }
+
+    private static String unit(HudLines.Labels t, String key, long amount) {
+        return Messages.apply(t.get(key), Map.of("n", String.valueOf(amount)));
     }
 
     private void replaceBonus(long guildId, GuildBonus bonus) {
@@ -1167,7 +1235,7 @@ public final class GuildService implements AutoCloseable {
                     return action.get();
                 } catch (Exception e) {
                     logger.log(Level.SEVERE, "Ошибка в операции с гильдией", e);
-                    return GuildActionResult.fail("Внутренняя ошибка, попробуйте позже");
+                    return GuildActionResult.fail("guild.err.internal");
                 }
             }
         }, worker);

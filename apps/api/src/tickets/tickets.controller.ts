@@ -41,7 +41,7 @@ export class TicketsController {
     const eff = await this.eff(req);
     const ticket = await this.tickets.getById(ticketId);
     if (eff.allowedServerIds !== null && !eff.allowedServerIds.has(ticket.serverId)) {
-      throw new ForbiddenException('Нет доступа к серверу этого тикета');
+      throw new ForbiddenException('tickets.err.noServerAccess');
     }
     return eff;
   }

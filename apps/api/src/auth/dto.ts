@@ -1,4 +1,5 @@
-import { IsEmail, IsOptional, IsString, Length, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Length, MaxLength, MinLength } from 'class-validator';
+import { LOCALES, type Locale } from '@aurum/shared';
 
 export class LoginDto {
   @IsEmail()
@@ -75,4 +76,17 @@ export class ChangeNicknameDto {
   @MinLength(2)
   @MaxLength(31)
   nickname!: string;
+}
+
+/**
+ * Смена языка панели.
+ *
+ * null — «как в браузере»: сохранённый выбор стирается, и панель снова
+ * следует за системным языком. Это не то же самое, что выбрать русский, и
+ * поэтому поле не обязательное, а именно допускающее null.
+ */
+export class ChangeLocaleDto {
+  @IsOptional()
+  @IsIn([...LOCALES])
+  locale?: Locale | null;
 }

@@ -44,8 +44,27 @@ import ovh.aurumgg.guilds.core.StoredGuild;
  */
 final class GuildSettingsMenu implements Listener {
 
-    /** Заголовок — по нему же узнаём своё меню среди чужих. */
-    private static final Component TITLE = Msg.colored("&8Настройки гильдии");
+    /**
+     * Метка «это наше меню».
+     *
+     * Раньше своё меню узнавали по совпадению ЗАГОЛОВКА, и с переводом это
+     * стало ловушкой: /guild admin reload меняет язык, заголовок открытого
+     * меню остаётся прежним — и клики по нему перестали бы гаситься, то есть
+     * игрок вынес бы оттуда алмазный меч. Держатель инвентаря заголовка не
+     * знает и переживает любую смену языка.
+     */
+    private static final class Holder implements org.bukkit.inventory.InventoryHolder {
+        private Inventory inventory;
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
+    }
+
+    private static boolean ours(org.bukkit.inventory.InventoryView view) {
+        return view.getTopInventory().getHolder() instanceof Holder;
+    }
 
     /** Один пункт меню. */
     private interface Item {
@@ -76,11 +95,11 @@ final class GuildSettingsMenu implements Listener {
     void open(Player player) {
         StoredGuild guild = guilds.guildOf(player.getUniqueId()).orElse(null);
         if (guild == null) {
-            Msg.send(player, "Вы не состоите в гильдии");
+            Msg.send(player, Msg.text("guild.err.notInGuild"));
             return;
         }
         if (!guild.leader().equals(player.getUniqueId())) {
-            Msg.send(player, "Настройки гильдии меняет лидер");
+            Msg.send(player, Msg.text("guild.err.settingsLeaderOnly"));
             return;
         }
 
@@ -88,7 +107,10 @@ final class GuildSettingsMenu implements Listener {
         // Размер кратен девяти и подбирается под число пунктов: пустая вторая
         // строка в меню из трёх иконок выглядит как «тут что-то не загрузилось».
         int size = Math.max(9, ((visible.size() - 1) / 9 + 1) * 9);
-        Inventory inventory = Bukkit.createInventory(null, size, TITLE);
+        Holder holder = new Holder();
+        Inventory inventory =
+                Bukkit.createInventory(holder, size, Msg.colored(Msg.text("menu.title")));
+        holder.inventory = inventory;
 
         for (int i = 0; i < visible.size(); i++) {
             inventory.setItem(i, render(visible.get(i), guild));
@@ -109,14 +131,15 @@ final class GuildSettingsMenu implements Listener {
 
             @Override
             public String title(StoredGuild guild) {
-                return "&fДружественный огонь: "
-                        + (guild.settings().friendlyFire() ? "&cразрешён" : "&aвыключен");
+                return Msg.text("menu.friendlyFire.title", java.util.Map.of("value",
+                        guild.settings().friendlyFire()
+                                ? "&c" + Msg.text("menu.enabled")
+                                : "&a" + Msg.text("menu.disabled")));
             }
 
             @Override
             public List<String> lore(StoredGuild guild) {
-                return List.of("&7Могут ли участники гильдии", "&7бить друг друга.",
-                        "", "&eНажмите, чтобы переключить");
+                return hint("menu.friendlyFire.lore", "menu.clickToggle");
             }
 
             @Override
@@ -148,15 +171,13 @@ final class GuildSettingsMenu implements Listener {
 
             @Override
             public String title(StoredGuild guild) {
-                return "&fВступление: &e" + guild.settings().joinPolicy().title();
+                return Msg.text("menu.joinPolicy.title", java.util.Map.of(
+                        "value", "&e" + Msg.text(guild.settings().joinPolicy().titleKey())));
             }
 
             @Override
             public List<String> lore(StoredGuild guild) {
-                return List.of("&7Открыта — входят без приглашения.",
-                        "&7По приглашению — только позванные.",
-                        "&7Закрыта — не принимает никого.",
-                        "", "&eНажмите, чтобы переключить");
+                return hint("menu.joinPolicy.lore", "menu.clickToggle");
             }
 
             @Override
@@ -173,19 +194,19 @@ final class GuildSettingsMenu implements Listener {
 
             @Override
             public String title(StoredGuild guild) {
-                return "&fОписание гильдии";
+                return Msg.text("menu.motd.title");
             }
 
             @Override
             public List<String> lore(StoredGuild guild) {
                 String motd = guild.settings().motd();
-                return List.of("&7" + (motd.isBlank() ? "не задано" : motd),
-                        "", "&eНажмите, чтобы изменить");
+                return List.of("&7" + (motd.isBlank() ? Msg.text("menu.notSet") : motd),
+                        "", "&e" + Msg.text("menu.clickChange"));
             }
 
             @Override
             public void click(Player player, StoredGuild guild) {
-                prompts.ask(player, "Новое описание гильдии:", (who, text) ->
+                prompts.ask(player, Msg.text("menu.motd.ask"), (who, text) ->
                         apply(who, settings -> settings.withMotd(text)));
             }
         });
@@ -198,13 +219,13 @@ final class GuildSettingsMenu implements Listener {
 
             @Override
             public String title(StoredGuild guild) {
-                return "&fСнимать из банка: &e" + guild.settings().bankAccess().title();
+                return Msg.text("menu.bankAccess.title", java.util.Map.of(
+                        "value", "&e" + Msg.text(guild.settings().bankAccess().titleKey())));
             }
 
             @Override
             public List<String> lore(StoredGuild guild) {
-                return List.of("&7Вкладывать может любой участник —", "&7это его собственные деньги.",
-                        "&7Настраивается только расход.", "", "&eНажмите, чтобы переключить");
+                return hint("menu.bankAccess.lore", "menu.clickToggle");
             }
 
             @Override
@@ -227,19 +248,19 @@ final class GuildSettingsMenu implements Listener {
 
             @Override
             public String title(StoredGuild guild) {
-                return "&fТег гильдии: &b[" + guild.tag() + "]";
+                return Msg.text("menu.tag.title", java.util.Map.of("tag", guild.tag()));
             }
 
             @Override
             public List<String> lore(StoredGuild guild) {
-                return List.of("&7Виден рядом с ником у всех участников.",
-                        "&7До " + guilds.config().maxTagLength() + " символов, должен быть свободен.",
-                        "", "&eНажмите, чтобы изменить");
+                return hint(Msg.lines("menu.tag.lore", java.util.Map.of(
+                        "max", String.valueOf(guilds.config().maxTagLength()))),
+                        "menu.clickChange");
             }
 
             @Override
             public void click(Player player, StoredGuild guild) {
-                prompts.ask(player, "Новый тег гильдии:", (who, text) ->
+                prompts.ask(player, Msg.text("menu.tag.ask"), (who, text) ->
                         guilds.changeTag(who.getUniqueId(), text).thenAccept(result -> sync(() -> {
                             Msg.result(who, result);
                             if (result.ok()) open(who);
@@ -261,7 +282,7 @@ final class GuildSettingsMenu implements Listener {
      */
     @EventHandler
     public void onClick(InventoryClickEvent event) {
-        if (!TITLE.equals(event.getView().title())) return;
+        if (!ours(event.getView())) return;
         event.setCancelled(true);
 
         if (!(event.getWhoClicked() instanceof Player player)) return;
@@ -287,10 +308,29 @@ final class GuildSettingsMenu implements Listener {
     /** Перетаскивание — отдельное событие, одним кликом оно не покрывается. */
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
-        if (TITLE.equals(event.getView().title())) event.setCancelled(true);
+        if (ours(event.getView())) event.setCancelled(true);
     }
 
     // --------------------------------------------------------- внутреннее
+
+    /**
+     * Пояснение к пункту: описание, пустая строка, подсказка «нажмите».
+     *
+     * Строки описания приходят списком из файла языка: где переносить строку,
+     * решает перевод, а не код — по-польски та же мысль занимает на строку
+     * больше, и жёсткая разбивка обрезала бы её.
+     */
+    private static List<String> hint(String descriptionKey, String actionKey) {
+        return hint(Msg.lines(descriptionKey, java.util.Map.of()), actionKey);
+    }
+
+    private static List<String> hint(List<String> description, String actionKey) {
+        List<String> lines = new ArrayList<>();
+        for (String line : description) lines.add("&7" + line);
+        lines.add("");
+        lines.add("&e" + Msg.text(actionKey));
+        return List.copyOf(lines);
+    }
 
     private List<Item> visibleItems(StoredGuild guild) {
         return items().stream().filter(item -> item.visible(guild, guilds)).toList();

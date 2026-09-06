@@ -40,7 +40,7 @@ export class UsersService {
       where: { id: userId },
       select: { id: true, email: true },
     });
-    if (!user) throw new NotFoundException('Пользователь не найден');
+    if (!user) throw new NotFoundException('users.err.notFound');
     return user;
   }
 
@@ -58,14 +58,14 @@ export class UsersService {
     patch: { role?: Role; isActive?: boolean; nicknameChangeAllowed?: boolean },
   ): Promise<UserAdminDto> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('Пользователь не найден');
+    if (!user) throw new NotFoundException('users.err.notFound');
 
     // Защита от самоблокировки: нельзя понизить/деактивировать последнего OWNER.
     const demotingOwner =
       user.role === 'OWNER' && ((patch.role && patch.role !== 'OWNER') || patch.isActive === false);
     if (demotingOwner) {
       const owners = await this.prisma.user.count({ where: { role: 'OWNER', isActive: true } });
-      if (owners <= 1) throw new BadRequestException('Нельзя убрать последнего ГМ');
+      if (owners <= 1) throw new BadRequestException('users.err.lastOwner');
     }
 
     const updated = await this.prisma.user.update({
@@ -91,14 +91,14 @@ export class UsersService {
 
   async setServerAccess(userId: string, serverIds: string[]): Promise<UserAdminDto> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('Пользователь не найден');
+    if (!user) throw new NotFoundException('users.err.notFound');
 
     const servers = await this.prisma.server.findMany({
       where: { id: { in: serverIds } },
       select: { id: true },
     });
     if (servers.length !== new Set(serverIds).size) {
-      throw new BadRequestException('Список содержит несуществующие сервера');
+      throw new BadRequestException('users.err.unknownServers');
     }
 
     await this.prisma.$transaction([

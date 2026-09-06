@@ -21,6 +21,13 @@ dependencies {
     // Схема версий Paper (с 26.1 суффикс -R0.1-SNAPSHOT не используется):
     // {ВЕРСИЯ}.build.+ — последний билд ветки.
     compileOnly("io.papermc.paper:paper-api:26.2.build.+")
+
+    // Тесты этого модуля не поднимают Bukkit: они читают файлы языка и
+    // исходники. snakeyaml — тот же разбор, что и внутри Bukkit, но без
+    // сервера, поэтому проверка ключей идёт обычным JUnit.
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
+    testImplementation("org.yaml:snakeyaml:2.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 java {

@@ -289,7 +289,7 @@ export class PluginsController {
 
 function assertSource(raw: string): MarketSourceId {
   if ((SOURCE_IDS as string[]).includes(raw)) return raw as MarketSourceId;
-  throw new BadRequestException(`Неизвестный источник ${raw}`);
+  throw new BadRequestException({ message: 'market.err.unknownSource', i18nValues: { source: raw } });
 }
 
 /** Список через запятую -> массив без пустот и дублей, с разумным потолком. */

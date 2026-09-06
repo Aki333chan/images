@@ -7,7 +7,10 @@ import {
   memoryUsage,
   resourceTone,
 } from '@aurum/shared';
+import type { Locale } from '@aurum/shared';
 import { decideAlert } from './server-metrics.service';
+import { alertMail } from './alert-mail';
+import { I18nService } from '../../i18n/i18n.service';
 import { normalizeAlertSettings } from '../../settings/settings.service';
 
 /**
@@ -207,5 +210,61 @@ describe('настройки алертов', () => {
     expect(s.cpuThresholdPercent).toBeNull();
     // А вот отсутствующие поля берут дефолт.
     expect(s.sustainedMinutes).toBe(DEFAULT_ALERT_SETTINGS.sustainedMinutes);
+  });
+});
+
+describe('письмо об алерте', () => {
+  const i18n = new I18nService();
+  const say =
+    (locale: Locale) =>
+    (key: string, values?: Record<string, string | number>) =>
+      i18n.t(locale, key, values);
+
+  const input = {
+    serverName: 'Выживание',
+    type: 'cpu' as const,
+    percentOfLimit: 187,
+    thresholdPercent: 90,
+    heldMinutes: 12,
+    absolute: '187% из 200%',
+    panelUrl: 'https://manage.aurumgg.ovh',
+    serverId: 'srv-1',
+    cooldownMinutes: 60,
+    locale: 'ru' as const,
+  };
+
+  it('называет метрику, порог, длительность и абсолютные цифры', () => {
+    // Процент от лимита сам по себе непонятен, если не знать лимита, а
+    // письмо приходит не о всплеске, а о том, что так уже некоторое время.
+    const mail = alertMail(input, say('ru'));
+
+    expect(mail.text).toContain('Загрузка CPU');
+    expect(mail.text).toContain('187% из 200%');
+    expect(mail.text).toContain('90%');
+    expect(mail.text).toContain('12 минут');
+    expect(mail.html).toContain('https://manage.aurumgg.ovh/servers/srv-1');
+  });
+
+  it('язык письма — язык получателя', () => {
+    const pl = alertMail({ ...input, locale: 'pl' }, say('pl'));
+
+    expect(pl.html).toContain('lang="pl-PL"');
+    expect(pl.subject).toContain('przeciążenie');
+    // Подпись метрики тоже переводится: она приходит ключом из shared.
+    expect(pl.text).toContain('Obciążenie CPU');
+    // Название сервера — имя собственное, его переводить нельзя.
+    expect(pl.text).toContain('Выживание');
+  });
+
+  it('длительность и задержка склоняются по числу минут', () => {
+    const one = alertMail({ ...input, heldMinutes: 1, cooldownMinutes: 1 }, say('ru'));
+    expect(one.text).toContain('1 минуту');
+    expect(alertMail({ ...input, heldMinutes: 3 }, say('ru')).text).toContain('3 минуты');
+  });
+
+  it('вёрстка табличная: почтовые клиенты не знают flex', () => {
+    const mail = alertMail(input, say('ru'));
+    expect(mail.html).toContain('<table');
+    expect(mail.html).not.toContain('display:flex');
   });
 });

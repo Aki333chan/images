@@ -258,7 +258,20 @@ public final class PayloadWriter {
     public static String guildOutcome(GuildActionOutcome outcome) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("ok", outcome.ok() ? "true" : "false");
-        fields.put("message", Json.string(outcome.message()));
+        // message — КЛЮЧ, а не фраза: переводит его панель, на языке того, кто
+        // смотрит. Две карты подстановок рядом — см. GuildActionOutcome.
+        fields.put("message", Json.string(outcome.messageKey()));
+        fields.put("values", strings(outcome.values()));
+        fields.put("keys", strings(outcome.keys()));
+        return Json.object(fields);
+    }
+
+    /** Карта «имя → строка» как объект JSON. */
+    private static String strings(Map<String, String> map) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            fields.put(entry.getKey(), Json.string(entry.getValue()));
+        }
         return Json.object(fields);
     }
 

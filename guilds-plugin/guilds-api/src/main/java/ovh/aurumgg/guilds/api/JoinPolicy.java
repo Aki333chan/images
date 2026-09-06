@@ -6,22 +6,22 @@ import java.util.Locale;
 public enum JoinPolicy {
 
     /** Открыта: зайти может кто угодно командой, приглашение не нужно. */
-    OPEN("открыта для всех"),
+    OPEN("guild.policy.open"),
 
     /** По приглашению — поведение по умолчанию. */
-    INVITE("по приглашению"),
+    INVITE("guild.policy.invite"),
 
     /** Закрыта: не принимает никого, даже по приглашению. */
-    CLOSED("закрыта");
+    CLOSED("guild.policy.closed");
 
-    private final String title;
+    private final String titleKey;
 
-    JoinPolicy(String title) {
-        this.title = title;
+    JoinPolicy(String titleKey) {
+        this.titleKey = titleKey;
     }
 
-    public String title() {
-        return title;
+    public String titleKey() {
+        return titleKey;
     }
 
     /** Следующее значение по кругу — для клика по иконке в меню настроек. */

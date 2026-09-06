@@ -62,13 +62,13 @@ export class ServersService {
 
   async getById(id: string): Promise<ServerDto> {
     const server = await this.prisma.server.findUnique({ where: { id } });
-    if (!server) throw new NotFoundException('Сервер не найден');
+    if (!server) throw new NotFoundException('servers.err.notFound');
     return this.toDto(server);
   }
 
   async setModule(id: string, moduleId: string | null): Promise<ServerDto> {
     const server = await this.prisma.server.findUnique({ where: { id } });
-    if (!server) throw new NotFoundException('Сервер не найден');
+    if (!server) throw new NotFoundException('servers.err.notFound');
     const updated = await this.prisma.server.update({ where: { id }, data: { moduleId } });
     return this.toDto(updated);
   }

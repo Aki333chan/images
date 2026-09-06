@@ -85,7 +85,7 @@ final class LuckPermsIntegration {
 
         User user = loadUser(api, playerUuid);
         if (user == null) {
-            return Optional.of(PermissionChange.Result.rejected("Игрок не найден в базе LuckPerms"));
+            return Optional.of(PermissionChange.Result.rejected("mc.perm.err.noUser"));
         }
 
         Node node;
@@ -95,7 +95,7 @@ final class LuckPermsIntegration {
             Group group = api.getGroupManager().getGroup(change.key());
             if (group == null) {
                 return Optional.of(PermissionChange.Result.rejected(
-                        "Группа «" + change.key() + "» не существует в LuckPerms"));
+                        "mc.perm.err.noGroup"));
             }
             node = InheritanceNode.builder(group).value(change.value()).build();
         } else {
@@ -108,15 +108,18 @@ final class LuckPermsIntegration {
         if (!result.wasSuccessful()) {
             return Optional.of(PermissionChange.Result.rejected(
                     change.remove()
-                            ? "У игрока и так не было этой ноды"
-                            : "У игрока уже есть такая нода"));
+                            ? "mc.perm.err.alreadyAbsent"
+                            : "mc.perm.err.alreadyPresent"));
         }
 
         try {
             api.getUserManager().saveUser(user).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (Exception e) {
-            return Optional.of(PermissionChange.Result.rejected(
-                    "LuckPerms не сохранил изменение: " + e.getClass().getSimpleName()));
+            // Класс исключения — в журнал сервера: нужен он тому, кто чинит
+            // LuckPerms, а он читает консоль. В панель уезжает ключ.
+            org.bukkit.Bukkit.getLogger().warning(
+                    "LuckPerms не сохранил изменение прав: " + e);
+            return Optional.of(PermissionChange.Result.rejected("mc.perm.err.saveFailed"));
         }
         return Optional.of(PermissionChange.Result.ok());
     }

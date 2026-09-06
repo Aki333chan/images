@@ -36,8 +36,11 @@ final class HudTask implements Runnable {
     private final GuildService guilds;
     private final PartyService parties;
     private final SidebarKeeper sidebar;
+    /** Нужен ровно за подписями сайдбара: язык живёт в конфиге плагина. */
+    private final AurumGuildsPlugin plugin;
 
-    HudTask(GuildService guilds, PartyService parties, SidebarKeeper sidebar) {
+    HudTask(AurumGuildsPlugin plugin, GuildService guilds, PartyService parties, SidebarKeeper sidebar) {
+        this.plugin = plugin;
         this.guilds = guilds;
         this.parties = parties;
         this.sidebar = sidebar;
@@ -58,7 +61,7 @@ final class HudTask implements Runnable {
                 sidebar.hide(player);
                 continue;
             }
-            sidebar.show(player, HudLines.build(model));
+            sidebar.show(player, HudLines.build(model, plugin.hudLabels()));
         }
     }
 
@@ -128,7 +131,7 @@ final class HudTask implements Runnable {
                     ? null
                     : Math.max(0, Duration.between(now, bonus.expiresAt()).toSeconds());
             result.add(new HudModel.Bonus(
-                    bonus.type().shortTitle(),
+                    bonus.type().shortTitleKey(),
                     bonus.magnitude(),
                     bonus.type().kind() == BonusType.Kind.MULTIPLIER,
                     left));

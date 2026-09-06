@@ -1,0 +1,491 @@
+# Player-facing messages. English.
+#
+# Edit by hand: /guild admin reload picks the changes up, no rebuild needed.
+# Keep the {placeholders} — without them the name the message was written for
+# disappears. An unknown placeholder stays in chat as-is, so a typo shows up
+# immediately.
+#
+# Do not delete lines: a missing key falls back to the bundled Russian, so the
+# edit simply would not apply.
+
+# The tag every plugin message starts with. Colour codes use &.
+prefix: "&6[&eGuilds&6]&r "
+
+# ------------------------------------------------- ranks and bonus types
+#
+# THE PANEL KNOWS THE SAME KEY NAMES. The plugin renders them in the server
+# language, the panel in the language of whoever is looking. Adding a bonus
+# means writing one line in two places, not maintaining a second lookup table.
+mc:
+  rank:
+    leader: "leader"
+    officer: "officer"
+    member: "member"
+  bonus:
+    miningSpeed: "Mining speed"
+    movementSpeed: "Movement speed"
+    blockDrops: "Block drops"
+    mobDrops: "Mob drops"
+    experience: "Experience"
+    # The magnitude of an effect bonus, in words.
+    level: "level {n}"
+    # Short ones for the sidebar: the full name does not fit, and the first
+    # thing to be cut off is the remaining time the line exists for.
+    short:
+      miningSpeed: "Haste"
+      movementSpeed: "Speed"
+      blockDrops: "Blocks"
+      mobDrops: "Mobs"
+      experience: "XP"
+
+# --------------------------------------------------------------- sidebar
+hud:
+  party: "Party"
+  guild: "Guild"
+  rank: "Rank"
+  online: "Online"
+  bank: "Bank"
+  bonuses: "Bonuses"
+  more: "… and {count} more"
+  d: "d"
+  h: "h"
+  m: "m"
+  lessThanMinute: "<1m"
+
+# ----------------------------------------------------------------- guild
+guild:
+  created: "Guild “{guild}” [{tag}] created"
+  invited: "{player} has been invited to the guild"
+  joined: "You joined the guild “{guild}”"
+  left: "You left the guild"
+  leftAndDisbanded: "You left, and the guild was disbanded — nobody was left in it"
+  kicked: "{player} was removed from the guild"
+  rankSet: "{player} is now {rank}"
+  transferred: "{player} is now the guild leader"
+  disbanded: "Guild “{guild}” disbanded"
+  settingsSaved: "Settings saved"
+  tagSet: "The guild tag is now [{tag}]"
+
+  policy:
+    open: "open"
+    invite: "by invitation"
+    closed: "closed"
+
+  bankAccess:
+    leader: "the leader only"
+    leaderAndOfficers: "the leader and officers"
+
+  bank:
+    deposited: "{amount} deposited into the guild bank, it now holds {total}"
+    withdrawn: "{amount} withdrawn, {left} left in the bank"
+    usage: "/guild bank deposit <amount> — pay in, withdraw <amount> — take out"
+    usageFull: "/guild bank deposit <amount> | withdraw <amount> | log"
+    # {action} is the word the player already typed: deposit or withdraw.
+    amountUsage: "/guild bank {action} <amount>"
+    logEmpty: "No bank operations yet"
+    logTitle: "Recent bank operations:"
+
+  bonus:
+    granted: "Guild “{guild}” was granted the bonus “{bonus}” {value} for {duration}"
+    grantedForever: "Guild “{guild}” was granted the bonus “{bonus}” {value} permanently"
+    revoked: "The bonus “{bonus}” has been revoked"
+
+  admin:
+    wasNotInGuild: "The player was not in a guild"
+    leaderSet: "{player} has been made the leader of “{guild}”"
+    removed: "{player} was removed from the guild “{guild}”"
+    bank:
+      disabled: "The guild bank is off in config.yml (bank.enabled: false)."
+      noVault: "Vault is not installed — the guild bank is unavailable. Everything else in guilds works."
+      noProvider:
+        - "Vault is here, but there is no economy provider behind it yet — the bank does not work."
+        - "That may be fine: the provider is registered by an economy plugin (EssentialsX, CMI and the like), and it may not have started yet. The bank will switch itself on as soon as the provider appears — no restart needed."
+      ok: "Vault and an economy provider are in place: the guild bank works."
+    reload:
+      dbChanged: "Database settings changed — they apply only after a server restart."
+      done: "Settings reloaded."
+
+  err:
+    leaveFirst: "Leave your current guild first: /guild leave"
+    nameTaken: "That name is already taken"
+    tagTaken: "That tag is already taken"
+    createRace: "Could not create the guild: the name or the tag is already taken"
+    inviteSelf: "There is nowhere to invite yourself"
+    notInGuild: "You are not in a guild"
+    inviteRank: "Only the leader and officers can invite"
+    closed: "The guild is closed — change that in /guild settings first"
+    targetInGuild: "{player} is already in a guild"
+    full: "The guild already has {max} members — no more fit"
+    alreadyInvited: "{player} has already been invited"
+    alreadyInGuild: "You are already in a guild"
+    noSuchName: "There is no guild with that name"
+    inviteOnly: "This guild is joined by invitation"
+    noInvite: "Nobody invited you to a guild"
+    gone: "That guild no longer exists"
+    noSlots: "The guild has no free slots"
+    leaderMustTransfer: "Transfer the leadership first (/guild transfer <nickname>) or disband the guild (/guild disband)"
+    kickSelf: "To leave yourself there is /guild leave"
+    kickRank: "Only the leader and officers can kick"
+    notYourMember: "{player} is not in your guild"
+    kickLower: "You can only kick somebody below your rank"
+    rankLeaderOnly: "Only the leader can change ranks"
+    rankLeadership: "Leadership is transferred separately: /guild transfer <nickname>"
+    rankSelf: "You cannot change your own rank"
+    rankSame: "{player} is {rank} already"
+    transferLeaderOnly: "Only the leader can transfer leadership"
+    alreadyLeader: "You are the leader already"
+    disbandLeaderOnly: "Only the leader can disband the guild"
+    settingsLeaderOnly: "Only the leader can change guild settings"
+    tagLeaderOnly: "Only the leader can change the tag"
+    bankOff: "The guild bank is not available on this server"
+    amountPositive: "The amount must be greater than zero"
+    notEnoughMoney: "Not enough money"
+    bankAccess: "Withdrawals are for {who}"
+    bankHasOnly: "The guild bank only holds {amount}"
+    economyRefused: "The economy plugin refused, the money stayed in the bank"
+    noSuchGuild: "There is no such guild"
+    noMemberNamed: "The guild “{guild}” has no player {player}"
+    targetAlreadyLeader: "{player} is the leader already"
+    targetNoGuild: "{player} is not in a guild"
+    noBonusType: "No bonus type given"
+    noSuchBonus: "The guild has no such bonus"
+    internal: "Internal error, try again later"
+    nameEmpty: "A guild name cannot be empty"
+    nameSpaces: "The name must not start or end with a space"
+    nameShort: "The name is shorter than {max} characters"
+    nameLong: "The name is longer than {max} characters"
+    nameColors: "The name cannot contain § or & — those are colour codes"
+    tagEmpty: "A tag cannot be empty"
+    tagEdgeSpaces: "The tag must not start or end with a space"
+    tagSpaces: "The tag must not contain spaces"
+    tagLong: "The tag is longer than {max} characters"
+    tagColors: "The tag cannot contain § or & — those are colour codes"
+    consoleLimited: "From the console only /guild list and /guild admin are available"
+    noSuchCommand: "No such command: {command}"
+    noSuchAction: "No such action: {action}"
+    noPermission: "Not enough permissions"
+    createPermission: "Not everyone on this server may found a guild"
+    notFound: "Guild «{guild}» not found"
+    notAnAmount: "«{value}» is not an amount"
+    bankNoVault: "The guild bank is unavailable: this server has no economy plugin (Vault)"
+
+  inviteReceived: "{player} invites you to the guild «{guild}». Join with: /guild join {guild}"
+  tagHint: "The tag is up to {max} characters and will show next to your name."
+
+  # What the guild is told — as opposed to the person who pressed the button.
+  said:
+    joined: "{player} joined the guild"
+    kicked: "{player} was removed from the guild"
+    kickedYou: "You were removed from the guild"
+    newLeader: "{player} is now the guild leader"
+    disbandedByLeader: "The guild was disbanded by its leader"
+    disbandedByAdmin: "The guild was disbanded by an administrator"
+
+  disband:
+    warn: "The guild will be deleted along with its roster and bank. This cannot be undone."
+    confirm: "Type /guild disband again within {seconds} seconds to confirm"
+
+# ------------------------------------------------------------------ help
+help:
+  next: "&8Next: &e{command} {page}"
+  counter: "&7(page {page} of {total})"
+
+  party:
+    title: "Party"
+    create:
+      use: "/party create"
+      what: "start a party and become its leader"
+    invite:
+      use: "/party invite <name>"
+      what: "invite a player; the invite is short-lived, anyone may send it"
+    accept:
+      use: "/party accept [name]"
+      what: "accept an invite"
+    list:
+      use: "/party list"
+      what: "who is in the party and how much health they have"
+    kick:
+      use: "/party kick <name>"
+      what: "remove a member from the party (leader only)"
+    promote:
+      use: "/party promote <name>"
+      what: "hand over leadership; you stay in the party as a member"
+    leave:
+      use: "/party leave"
+      what: "leave the party; if the leader goes, the next one takes over"
+    chat:
+      use: "/p <message>"
+      what: "write to your party; outsiders will not see it"
+
+  claim:
+    title: "Guild home"
+
+  guild:
+    title: "Guilds"
+    create:
+      use: "/guild create <name> <tag>"
+      what: "found a guild; the tag is a short label by your name, 2-5 characters"
+    join:
+      use: "/guild join [name]"
+      what: "join — by invite, or straight into an open guild"
+    leave:
+      use: "/guild leave"
+      what: "leave your guild"
+    info:
+      use: "/guild info [name]"
+      what: "roster, ranks and bank — of your guild or someone else's"
+    list:
+      use: "/guild list [search]"
+      what: "every guild on the server"
+    invite:
+      use: "/guild invite <name>"
+      what: "invite a player; the leader and officers may invite"
+    kick:
+      use: "/guild kick <name>"
+      what: "remove a member; only someone below your own rank"
+    promote:
+      use: "/guild promote <name>"
+      what: "make an officer — they will be able to invite and remove (leader)"
+    demote:
+      use: "/guild demote <name>"
+      what: "put an officer back to member (leader)"
+    transfer:
+      use: "/guild transfer <name>"
+      what: "hand the guild over; you stay in it as an officer"
+    disband:
+      use: "/guild disband"
+      what: "disband the guild — it will ask for confirmation"
+    tag:
+      use: "/guild tag <new tag>"
+      what: "change the label by your name; 2-5 characters, no colour codes (leader)"
+    settings:
+      use: "/guild settings"
+      what: "settings menu: description, joining, friendly fire"
+    bank:
+      use: "/guild bank"
+      what: "what is in the bank; deposit and withdraw to pay in and take out"
+      deposit:
+        what: "move your own money into the bank — any member may"
+      withdraw:
+        what: "take from the bank; who may is decided in /guild settings"
+    bonuses:
+      use: "/guild bonuses"
+      what: "which bonuses are running on the guild and for how long"
+    claim:
+      use: "/guild claim <region>"
+      what: "let the whole guild into your region — the guild home"
+    claimRemove:
+      use: "/guild claim remove <region>"
+      what: "detach a region from the guild; we remove the members ourselves"
+    chat:
+      use: "/g <message>"
+      what: "write to your guild; outsiders will not see it"
+
+  admin:
+    title: "Guilds — administration"
+    remove:
+      use: "/guild admin remove <name>"
+      what: "remove a player from their guild"
+    transfer:
+      use: "/guild admin transfer <guild> <name>"
+      what: "make another member of that guild its leader"
+    disband:
+      use: "/guild admin disband <guild>"
+      what: "disband someone else's guild"
+    bonusList:
+      use: "/guild admin bonus list <guild>"
+      what: "what is running on that guild right now"
+    bonusGrant:
+      use: "/guild admin bonus grant <kind> <magnitude> [30m|2h|7d] <guild>"
+      what: "grant a bonus; with no duration it is permanent"
+    bonusRevoke:
+      use: "/guild admin bonus revoke <kind> <guild>"
+      what: "revoke a bonus"
+    friendlyFire:
+      use: "/guild admin friendlyfire [on|off]"
+      what: "friendly fire inside parties, server-wide"
+    reload:
+      use: "/guild admin reload"
+      what: "re-read config.yml without a restart"
+
+# ------------------------------------------------------------ durations
+#
+# Units are abbreviated on purpose: spelled-out words would have to agree with
+# the number, and abbreviations never do. {n} is the amount, {m} the minutes in
+# "2 h 30 min", {h} the hours in "3 d 4 h".
+time:
+  forever: "forever"
+  s: "{n} s"
+  min: "{n} min"
+  h: "{n} h"
+  hMin: "{n} h {m} min"
+  d: "{n} d"
+  dH: "{n} d {h} h"
+
+# ---------------------------------------------------------------- party
+party:
+  created: "Party created. Invite with: /party invite <name>"
+  invited: "{player} invited. The invite is good for {duration}"
+  joined: "You joined {leader}'s party"
+  left: "You left the party"
+  kicked: "{player} was kicked from the party"
+  promoted: "{player} is now the party leader"
+
+  err:
+    already: "You are already in a party"
+    inviteSelf: "There is nowhere to invite yourself to"
+    createFirst: "Create a party first: /party create"
+    targetInParty: "{player} is already in a party"
+    full: "The party is already {max} strong — no room left"
+    alreadyInvited: "{player} has already been invited"
+    noInvite: "Nobody has invited you to a party"
+    notInvitedBy: "{player} did not invite you to a party"
+    gone: "That party is gone"
+    noSlots: "The party has no room left"
+    notInParty: "You are not in a party"
+    kickLeaderOnly: "Only the party leader can kick"
+    kickSelf: "To leave yourself, use /party leave"
+    notYourMember: "{player} is not in your party"
+    promoteLeaderOnly: "Only the party leader can hand over leadership"
+    alreadyLeader: "You are the leader already"
+    consoleOnly: "Parties are formed in game; the console cannot do it"
+    noSuchCommand: "No such command: {command}"
+    notOnline: "{player} is not online"
+  inviteReceived: "{player} invites you to their party. Accept with: /party accept {player}"
+  youAreLeader: "You are the party leader now"
+
+  list:
+    title: "Party: {count} of {max}"
+    offline: "offline"
+
+  # What the rest of the party hears.
+  said:
+    joined: "{player} joined the party"
+    left: "{player} left the party"
+    kicked: "{player} was kicked from the party"
+    kickedYou: "You were kicked from the party"
+    promoted: "{player} is now the party leader"
+
+# --------------------------------------------------------- private channels
+chat:
+  party:
+    label: "&b[Party]"
+  guild:
+    label: "&a[Guild]"
+  err:
+    playersOnly: "This chat is for players in game"
+    aloneOnline: "Nobody else from the group is online right now"
+
+# ------------------------------------------------------------- chat prompt
+prompt:
+  howTo: "Type the new value in chat, or «{cancel}» to change your mind."
+  # The cancel word is TYPED, not read. «cancel» is always accepted; this key
+  # adds the word of the server's own language on top of it.
+  cancelWord: "cancel"
+  cancelled: "Cancelled"
+
+# ------------------------------------------------------------ settings menu
+menu:
+  title: "&8Guild settings"
+  enabled: "allowed"
+  disabled: "off"
+  notSet: "not set"
+  clickToggle: "Click to switch"
+  clickChange: "Click to change"
+  friendlyFire:
+    title: "&fFriendly fire: {value}"
+    # A list, because these are the lines under the icon: where to break them
+    # is the translation's call, not the code's.
+    lore:
+      - "Whether guild members"
+      - "can hit each other."
+  joinPolicy:
+    title: "&fJoining: {value}"
+    lore:
+      - "Open — anyone walks in."
+      - "By invite — only those asked."
+      - "Closed — nobody at all."
+  motd:
+    title: "&fGuild description"
+    ask: "New guild description:"
+  bankAccess:
+    title: "&fWithdraw from the bank: {value}"
+    lore:
+      - "Any member can pay in —"
+      - "it is their own money."
+      - "Only spending is configurable."
+  tag:
+    title: "&fGuild tag: &b[{tag}]"
+    ask: "New guild tag:"
+    lore:
+      - "Shown next to every member's name."
+      - "Up to {max} characters, must be free."
+
+# --------------------------------------------------------------- guild card
+info:
+  leader: "Leader"
+  members: "Members"
+  membersValue: "&f{total}&7, online &f{online}"
+  created: "Created"
+  joinPolicy: "Joining"
+  friendlyFire: "Friendly fire"
+  bank: "Bank"
+  bonuses: "Bonuses"
+  homes: "Homes"
+  roster: "Roster:"
+
+# -------------------------------------------------------------- guild list
+list:
+  empty: "No guilds yet"
+  nothingFound: "Nothing found"
+  title: "Guilds ({count}):"
+  row: "{members} members, leader {leader}"
+
+# -------------------------------------------------------------- guild home
+claim:
+  none: "No region is attached to the guild"
+  listTitle: "Guild regions:"
+  ownerOnlyHint: "You can only attach a region you own"
+  attached: "Region «{region}» is now the guild home. Everyone has been added, and new members will be added automatically"
+  detached: "Region «{region}» is no longer attached to the guild"
+  err:
+    noWorldGuard: "There is no WorldGuard on this server — nothing to attach"
+    leaderOnly: "Only the guild leader can attach regions"
+    notAttached: "Region «{region}» is not attached to your guild in this world"
+    otherGuild: "That region already belongs to another guild"
+    noManager: "WorldGuard regions are off in this world"
+    noRegion: "World «{world}» has no region «{region}»"
+    notOwner: "You do not own that region. A guild can only be given your own land"
+
+# ------------------------------------------------------------------ bonuses
+bonus:
+  title: "Guild bonuses"
+  titleGuild: "Bonuses: {guild}"
+  noneYours: "Your guild has no bonuses right now"
+  noneGuild: "Guild «{guild}» has no bonuses"
+  left: "{duration} left"
+  grantedBy: "granted by {actor}"
+  kinds: "Bonus kinds:"
+  playableHint: "Multipliers up to 3 and effect levels 1-2 are playable; higher is for testing"
+  range:
+    level: "effect level 1-{max}"
+    multiplier: "multiplier 1.0-{max}"
+  err:
+    # Kind names (miningspeed and the rest) are TYPED — they are not translated.
+    noSuchType: "No such kind. Available: {list}"
+    notANumber: "The magnitude must be a number. For «{bonus}» that is {range}"
+
+# ------------------------------------------------------------ administration
+admin:
+  reloadUnavailable: "Reloading is unavailable"
+  ff:
+    unavailable: "The setting is unavailable"
+    state: "Friendly fire inside parties is currently: &f{value}"
+    howTo: "Switch it with: /guild admin friendlyfire on|off"
+    expected: "Expected on or off"
+    saved: "Friendly fire inside parties is {value}&7. Written to config.yml."
+    guildsUnaffected: "Guilds are unaffected — each has its own switch in /guild settings."
+
+# ------------------------------------------------------------------ player
+player:
+  unknown: "unknown"

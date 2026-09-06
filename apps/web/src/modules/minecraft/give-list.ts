@@ -12,10 +12,23 @@ export const MAX_GIVE_COUNT = 36 * 64;
 /** Не больше строк за раз — столько же принимает и плагин. */
 export const MAX_GIVE_ENTRIES = 45;
 
+/**
+ * Строка, которую разобрать не удалось.
+ *
+ * Ключ и значения, а не готовая фраза: разбор — чистая функция без доступа к
+ * переводчику, а сообщение читает человек на своём языке. Собирать текст
+ * здесь значило бы либо тащить сюда язык интерфейса, либо навсегда оставить
+ * эти четыре строки русскими.
+ */
+export interface GiveListError {
+  key: string;
+  values: Record<string, string | number>;
+}
+
 export interface ParsedGiveList {
   items: MinecraftGiveItemDto[];
   /** Строки, которые разобрать не удалось, — с объяснением для человека. */
-  errors: string[];
+  errors: GiveListError[];
 }
 
 /**
@@ -34,7 +47,7 @@ export interface ParsedGiveList {
  */
 export function parseGiveList(text: string): ParsedGiveList {
   const items: MinecraftGiveItemDto[] = [];
-  const errors: string[] = [];
+  const errors: GiveListError[] = [];
 
   for (const raw of text.split(/[\n,;]/)) {
     const line = raw.trim();
@@ -42,17 +55,17 @@ export function parseGiveList(text: string): ParsedGiveList {
 
     const match = /^([A-Za-z0-9_.:/-]+)(?:\s*[x*×]?\s*(\d+))?$/.exec(line);
     if (!match || !match[1]) {
-      errors.push(`«${line}» — не похоже на предмет. Ожидается «minecraft:stone 64»`);
+      errors.push({ key: 'mc.give.err.shape', values: { line } });
       continue;
     }
 
     const count = match[2] === undefined ? 1 : Number(match[2]);
     if (count < 1) {
-      errors.push(`«${line}» — количество должно быть больше нуля`);
+      errors.push({ key: 'mc.give.err.zero', values: { line } });
       continue;
     }
     if (count > MAX_GIVE_COUNT) {
-      errors.push(`«${line}» — за раз можно выдать не больше ${MAX_GIVE_COUNT} штук`);
+      errors.push({ key: 'mc.give.err.tooMany', values: { line, max: MAX_GIVE_COUNT } });
       continue;
     }
 
@@ -60,7 +73,7 @@ export function parseGiveList(text: string): ParsedGiveList {
   }
 
   if (items.length > MAX_GIVE_ENTRIES) {
-    errors.push(`Строк больше ${MAX_GIVE_ENTRIES} — отправьте список по частям`);
+    errors.push({ key: 'mc.give.err.tooLong', values: { max: MAX_GIVE_ENTRIES } });
     return { items: [], errors };
   }
 

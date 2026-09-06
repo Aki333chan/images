@@ -20,6 +20,7 @@ import { AuthService } from './auth.service';
 import { TokensService } from './tokens.service';
 import { CurrentUser, Public, AuthUser } from './decorators';
 import {
+  ChangeLocaleDto,
   ChangeNicknameDto,
   ChangePasswordDto,
   LoginDto,
@@ -107,7 +108,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ accessToken: string }> {
     const token: string | undefined = req.cookies?.[REFRESH_COOKIE];
-    if (!token) throw new UnauthorizedException('Нет refresh-токена');
+    if (!token) throw new UnauthorizedException('auth.err.noRefreshToken');
     const rotated = await this.tokens.rotate(token);
     this.setRefreshCookie(res, rotated.refreshToken);
     return { accessToken: rotated.accessToken };
@@ -176,6 +177,30 @@ export class AuthController {
     return this.permissions.buildMeResponse(user.id);
   }
 
+  /**
+   * Смена языка панели.
+   *
+   * Здесь, рядом со сменой ника и пароля, а не в /users: это настройка
+   * СЕБЯ, и права на неё не нужны никакие — язык интерфейса ничего в панели
+   * не меняет, кроме того, что видит сам человек.
+   *
+   * Тело {"locale": null} возвращает к «как в браузере». Ответ — целиком
+   * MeResponse, тем же приёмом, что и смена ника: панели не нужен второй
+   * запрос, чтобы узнать, что получилось.
+   */
+  @Post('locale')
+  @HttpCode(200)
+  async changeLocale(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangeLocaleDto,
+  ): Promise<MeResponse> {
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { locale: dto.locale ?? null },
+    });
+    return this.permissions.buildMeResponse(user.id);
+  }
+
   /** Проверка ника на занятость — для подсказки прямо в форме. */
   @Get('onboarding/nickname-available')
   async nicknameAvailable(
@@ -207,7 +232,7 @@ export class AuthController {
     // Отзывать можно только собственные сессии.
     const session = await this.prisma.session.findUnique({ where: { id } });
     if (!session || session.userId !== user.id) {
-      throw new UnauthorizedException('Сессия не найдена');
+      throw new UnauthorizedException('auth.err.sessionNotFound');
     }
     await this.tokens.revoke(id);
     return { ok: true };

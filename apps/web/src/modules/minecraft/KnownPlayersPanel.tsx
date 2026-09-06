@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import { PlayerName } from './PlayerName';
 import { lastSeenText } from './player-name';
+import { useApiText, useI18n } from '../../i18n';
 
 const base = (moduleId: string, serverId: string) => `/api/modules/${moduleId}/servers/${serverId}`;
 
@@ -40,6 +41,8 @@ export function KnownPlayersPanel({
    */
   onLoaded?: (players: MinecraftKnownPlayerDto[]) => void;
 }) {
+  const { t, formatDate } = useI18n();
+  const apiText = useApiText();
   const [data, setData] = useState<MinecraftKnownPlayersResponse | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -88,7 +91,7 @@ export function KnownPlayersPanel({
       <Card>
         <ErrorText>{error}</ErrorText>
         <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
-          Повторить
+          {t('common.retry')}
         </Button>
       </Card>
     );
@@ -97,7 +100,7 @@ export function KnownPlayersPanel({
   if (data && !data.available) {
     return (
       <Card>
-        <p className="text-sm text-muted">{data.reason ?? 'Список недоступен.'}</p>
+        <p className="text-sm text-muted">{apiText(data.reason) || t('mc.known.unavailable')}</p>
         {data.docsUrl && (
           <a
             href={data.docsUrl}
@@ -105,7 +108,7 @@ export function KnownPlayersPanel({
             rel="noreferrer"
             className="mt-2 inline-block text-sm underline"
           >
-            Как поставить плагин
+            {t('mc.known.docs')}
           </a>
         )}
       </Card>
@@ -120,8 +123,8 @@ export function KnownPlayersPanel({
   // приходит null у всех, и любая группировка была бы выдуманной.
   const groups: [string, MinecraftKnownPlayerDto[]][] = authAvailable
     ? [
-        ['Зарегистрированные', players.filter((p) => p.registered === true)],
-        ['Без регистрации', players.filter((p) => p.registered !== true)],
+        [t('mc.known.registered'), players.filter((p) => p.registered === true)],
+        [t('mc.known.unregistered'), players.filter((p) => p.registered !== true)],
       ]
     : [['', players]];
 
@@ -129,22 +132,22 @@ export function KnownPlayersPanel({
     <Card>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <Label>Поиск по нику</Label>
+          <Label>{t('mc.known.search')}</Label>
           <Input
-            aria-label="Поиск по нику"
+            aria-label={t('mc.known.search')}
             value={search}
             placeholder="Steve"
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <div className="text-sm text-muted">
-          Всего: {total}
+          {t('mc.known.total', { count: total })}
           {!authAvailable && (
             <span
               className="ml-2 text-xs"
-              title="Разделить список на зарегистрированных и остальных может только плагин авторизации"
+              title={t('mc.known.noAuthHint')}
             >
-              (без плагина авторизации список общий)
+              {t('mc.known.noAuth')}
             </span>
           )}
         </div>
@@ -154,7 +157,7 @@ export function KnownPlayersPanel({
 
       {!loading && players.length === 0 && (
         <p className="text-muted">
-          {query ? 'Никого не нашлось по этому нику.' : 'Сервер пока никого не помнит.'}
+          {t(query ? 'mc.known.notFound' : 'mc.known.empty')}
         </p>
       )}
 
@@ -182,10 +185,10 @@ export function KnownPlayersPanel({
                     >
                       <PlayerName name={p.name} alias={p.alias} op={p.op} className="min-w-0 truncate" />
                       {p.online && (
-                        <span className="shrink-0 text-xs text-emerald-400">в сети</span>
+                        <span className="shrink-0 text-xs text-emerald-400">{t('mc.known.online')}</span>
                       )}
                       <span className="ml-auto shrink-0 text-xs text-muted">
-                        {p.online ? '' : lastSeenText(p.lastSeen)}
+                        {p.online ? '' : lastSeenText(p.lastSeen, t, formatDate)}
                       </span>
                     </button>
                   </li>
@@ -203,10 +206,10 @@ export function KnownPlayersPanel({
             disabled={offset === 0 || loading}
             onClick={() => setOffset(Math.max(0, offset - PAGE))}
           >
-            ← Назад
+            {t('mc.known.prev')}
           </Button>
           <span className="text-xs text-muted">
-            {offset + 1}–{Math.min(offset + PAGE, total)} из {total}
+            {t('mc.known.range', { from: offset + 1, to: Math.min(offset + PAGE, total), total })}
           </span>
           <Button
             size="sm"
@@ -214,7 +217,7 @@ export function KnownPlayersPanel({
             disabled={offset + PAGE >= total || loading}
             onClick={() => setOffset(offset + PAGE)}
           >
-            Вперёд →
+            {t('mc.known.next')}
           </Button>
         </div>
       )}

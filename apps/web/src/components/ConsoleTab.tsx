@@ -12,13 +12,14 @@ import { useAuth } from '../lib/auth';
 import { cn } from '../lib/cn';
 import { Button, Card, Dot, Input } from './ui';
 import { IconSend } from './icons';
+import { useT } from '../i18n';
 
 /** Как называется состояние соединения в шапке журнала. */
 const CONNECTION_LABEL: Record<string, string> = {
-  connecting: 'подключение',
-  online: 'на связи',
-  reconnecting: 'переподключение',
-  error: 'нет связи',
+  connecting: 'console.state.connecting',
+  online: 'console.state.online',
+  reconnecting: 'console.state.reconnecting',
+  error: 'console.state.error',
 };
 
 /** Цвет той же строки: зелёный — идёт, жёлтый — чинится, красный — стоит. */
@@ -91,6 +92,17 @@ const STICK_TO_BOTTOM_PX = 24;
  */
 export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId: string }) {
   const { hasPermission } = useAuth();
+  const t = useT();
+  /**
+   * Переводчик для строк, которые панель дописывает в журнал из сокета.
+   *
+   * Через ref, а не напрямую: положить `t` в зависимости эффекта значило бы
+   * пересобирать соединение с Wings при каждой смене языка — журнал бы
+   * обнулился, а строки, уже показанные, всё равно остались бы на прежнем
+   * языке.
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
   const [lines, setLines] = useState<LogLine[]>([]);
   const lineIdRef = useRef(0);
   const [state, setState] = useState<'connecting' | 'online' | 'reconnecting' | 'error'>(
@@ -263,7 +275,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
               // показанных строк — человек читал бы одно и то же дважды.
               lineIdRef.current += 1;
               setLines([
-                { id: lineIdRef.current, text: '— соединение восстановлено, журнал перечитан —' },
+                { id: lineIdRef.current, text: tRef.current('console.reconnected') },
               ]);
             }
             everOnline = true;
@@ -275,7 +287,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
             for (const line of payload.args ?? []) push(line);
             break;
           case 'status':
-            push(`— статус сервера: ${payload.args?.[0] ?? '?'}`);
+            push(tRef.current('console.status', { status: payload.args?.[0] ?? '?' }));
             break;
           case 'token expiring':
           case 'token expired': {
@@ -289,7 +301,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
           }
           case 'jwt error':
             setState('error');
-            setError(payload.args?.[0] ?? 'Ошибка авторизации консоли');
+            setError(payload.args?.[0] ?? tRef.current('console.authError'));
             break;
         }
       };
@@ -302,7 +314,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
       active.onclose = () => {
         if (socket !== active) return;
         socketRef.current = null;
-        dropped('Не удалось подключиться к консоли Wings');
+        dropped(tRef.current('console.connectFailed'));
       };
     }
 
@@ -467,31 +479,24 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
     <div className="space-y-3">
       {state === 'error' && (
         <Card className="border-destructive/50">
-          <p className="text-sm text-red-400">{error || 'Консоль недоступна'}</p>
+          <p className="text-sm text-red-400">{error || t('console.unavailable')}</p>
           <div className="mt-1 space-y-1 text-xs text-muted">
             <p>
-              Точную причину показывает консоль браузера (<b>F12</b> → Console). Что искать, по
-              порядку:
+              {t('console.diag.intro')}
             </p>
             <ol className="ml-4 list-decimal space-y-1">
               <li>
-                <b>«Refused to connect… violates… connect-src»</b> — соединение запретил браузер по
-                Content-Security-Policy. Консоль идёт напрямую к узлу Wings, а это другой домен, и
-                его нужно перечислить в <code>connect-src</code> на стороне nginx.
+                <b>«Refused to connect… violates… connect-src»</b> {t('console.diag.csp')}
               </li>
               <li>
-                <b>«WebSocket connection… failed»</b> без упоминания CSP — рукопожатие отклонил сам
-                Wings. Он сверяет заголовок <code>Origin</code> и по умолчанию пускает только
-                Pterodactyl; адрес этой панели нужно добавить в <code>allowed_origins</code> в{' '}
-                <code>config.yml</code> Wings и перезапустить его. Отказ выглядит как HTTP 403 и в
-                логах панели не виден — она в этом обмене не участвует.
+                <b>«WebSocket connection… failed»</b> {t('console.diag.origin')}
               </li>
-              <li>Узел Wings выключен или недоступен — проверьте его в Pterodactyl.</li>
-              <li>У служебного пользователя Pterodactyl нет доступа к этому серверу.</li>
+              <li>{t('console.diag.nodeDown')}</li>
+              <li>{t('console.diag.noAccess')}</li>
             </ol>
             {socketUrl && (
               <p>
-                Адрес узла: <code className="break-all">{socketUrl}</code>
+                {t('console.diag.nodeUrl')} <code className="break-all">{socketUrl}</code>
               </p>
             )}
           </div>
@@ -499,7 +504,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
       )}
       {state === 'reconnecting' && (
         <p className="text-xs text-warn">
-          Соединение с консолью прервалось — переподключаемся. Перезагружать страницу не нужно.
+          {t('console.reconnecting')}
         </p>
       )}
 
@@ -515,7 +520,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
               }
             />
           </span>
-          <span className="text-muted">Консоль Pterodactyl · WebSocket</span>
+          <span className="text-muted">{t('console.source')}</span>
           {/* Переключатель рядом с источником строк, а не в настройках: он про
               то, что человек видит прямо сейчас, и искать его в другом месте
               никто не станет. */}
@@ -529,19 +534,23 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
             onClick={() => setHideNoise((on) => !on)}
             title={
               hideNoise
-                ? 'Показать строки о том, как панель опрашивает список игроков'
-                : 'Скрыть строки о том, как панель опрашивает список игроков'
+                ? t('console.noise.show')
+                : t('console.noise.hide')
             }
             className={cn(
               'ml-auto rounded px-1.5 py-0.5 transition-colors',
               hideNoise ? 'text-muted hover:text-neutral-200' : 'text-primary',
             )}
           >
-            {hideNoise ? `Служебные скрыты${hidden > 0 ? ` (${hidden})` : ''}` : 'Служебные видны'}
+            {hideNoise
+              ? hidden > 0
+                ? t('console.noise.hiddenCount', { count: hidden })
+                : t('console.noise.hidden')
+              : t('console.noise.shown')}
           </button>
           )}
           <span className={cn('ml-auto font-mono uppercase tracking-wide', CONNECTION_TONE[state])}>
-            {CONNECTION_LABEL[state]}
+            {t(CONNECTION_LABEL[state] ?? 'console.state.connecting')}
           </span>
         </div>
 
@@ -559,10 +568,10 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
           {visible.length === 0 && (
             <p className="text-muted">
               {state === 'connecting'
-                ? 'Подключение к консоли…'
+                ? t('console.connecting')
                 : hidden > 0
-                  ? `Пока только служебные строки — скрыто ${hidden}`
-                  : 'Вывода пока нет'}
+                  ? t('console.onlyNoise', { count: hidden })
+                  : t('console.noOutput')}
             </p>
           )}
           {visible.map((line) => (
@@ -597,10 +606,14 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
                 </button>
               ))}
               {suggestions.length > VISIBLE_SUGGESTIONS && (
-                <span className="text-muted">…ещё {suggestions.length - VISIBLE_SUGGESTIONS}</span>
+                <span className="text-muted">
+                  {t('console.moreSuggestions', { count: suggestions.length - VISIBLE_SUGGESTIONS })}
+                </span>
               )}
               <span className="ml-1 text-[11px] text-muted">
-                {suggestionSource === 'companion' ? 'подсказал сервер' : 'по списку команд'}
+                {suggestionSource === 'companion'
+                  ? t('console.fromServer')
+                  : t('console.fromList')}
               </span>
             </div>
           )}
@@ -630,7 +643,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
                   cycleRef.current = null;
                 }
               }}
-              placeholder="Команда в консоль сервера…"
+              placeholder={t('console.placeholder')}
               disabled={state !== 'online'}
               /* ПОЧЕМУ ЭТИ ЧЕТЫРЕ АТРИБУТА ЗДЕСЬ ОБЯЗАТЕЛЬНЫ.
                  Консоль сервера ждёт команду без ведущего слэша: «lp editor»,
@@ -649,7 +662,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
               spellCheck={false}
             />
             <Button onClick={sendCommand} disabled={state !== 'online' || !command.trim()}>
-              Отправить
+              {t('console.send')}
               <IconSend size={13} />
             </Button>
           </div>
@@ -657,7 +670,7 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
               На телефоне варианты выбирают, нажимая на них. */}
           {completionEnabled && (
             <p className="hidden text-[11px] text-muted sm:block">
-              Tab — автодополнение, повторный Tab перебирает варианты
+              {t('console.tabHint')}
             </p>
           )}
         </div>

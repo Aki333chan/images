@@ -4,8 +4,10 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, ErrorText, Input, Label } from '../components/ui';
 import { AuthCard } from '../components/AuthCard';
+import { useT } from '../i18n';
 
 export function LoginPage() {
+  const t = useT();
   const { loginDone } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -48,7 +50,7 @@ export function LoginPage() {
           {!twoFactorToken ? (
             <>
               <div>
-                <Label>Email</Label>
+                <Label>{t('login.email')}</Label>
                 <Input
                   type="email"
                   value={email}
@@ -58,7 +60,7 @@ export function LoginPage() {
                 />
               </div>
               <div>
-                <Label>Пароль</Label>
+                <Label>{t('login.password')}</Label>
                 <Input
                   type="password"
                   value={password}
@@ -70,7 +72,7 @@ export function LoginPage() {
             </>
           ) : (
             <div>
-              <Label>Код из приложения-аутентификатора</Label>
+              <Label>{t('login.code')}</Label>
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -84,7 +86,7 @@ export function LoginPage() {
           )}
           <ErrorText>{error}</ErrorText>
           <Button className="w-full" disabled={busy}>
-            {twoFactorToken ? 'Подтвердить' : 'Войти'}
+            {t(twoFactorToken ? 'login.confirm' : 'login.submit')}
           </Button>
         {twoFactorToken && (
           <Button
@@ -96,7 +98,7 @@ export function LoginPage() {
               setCode('');
             }}
           >
-            Назад
+            {t('login.back')}
           </Button>
         )}
       </form>

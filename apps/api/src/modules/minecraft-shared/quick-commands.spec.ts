@@ -1,6 +1,7 @@
 process.env.NODE_ENV = 'test';
 
 import { KNOWN_PLUGINS } from '@aurum/shared';
+import { I18nService } from '../../i18n/i18n.service';
 import { MINECRAFT_QUICK_COMMANDS, NICKNAME_ARG_NAMES } from './quick-commands.config';
 
 /**
@@ -93,7 +94,7 @@ describe('каталог быстрых действий', () => {
   it('подписи кнопок не повторяются', () => {
     // Одинаковая команда под разными подписями — уже проверено выше; здесь
     // обратный случай: разные команды под одной подписью так же непонятны.
-    const labels = MINECRAFT_QUICK_COMMANDS.map((c) => c.label);
+    const labels = MINECRAFT_QUICK_COMMANDS.map((c) => c.labelKey);
     expect(new Set(labels).size).toBe(labels.length);
   });
 
@@ -102,7 +103,7 @@ describe('каталог быстрых действий', () => {
     // и в RCON-команду уедет что угодно.
     for (const command of MINECRAFT_QUICK_COMMANDS) {
       for (const arg of command.args) {
-        if (!/ник|игрок/i.test(arg.label)) continue;
+        if (!/player|who|nick/i.test(arg.labelKey)) continue;
         expect({ id: command.id, arg: arg.name }).toEqual({
           id: command.id,
           arg: expect.stringMatching(new RegExp(`^(${[...NICKNAME_ARG_NAMES].join('|')})$`)),
@@ -129,9 +130,12 @@ describe('каталог быстрых действий', () => {
     const mode = MINECRAFT_QUICK_COMMANDS.find((c) => c.id === 'vanilla-gamemode')!.args.find(
       (a) => a.name === 'mode',
     )!;
+    // Подпись — ключ словаря; проверяем, что он есть и что это не сам
+    // машинный value, выданный за название.
+    const i18n = new I18nService();
     for (const option of mode.options ?? []) {
-      expect(option.label).not.toBe(option.value);
-      expect(option.label.length).toBeGreaterThan(0);
+      expect(option.labelKey).not.toBe(option.value);
+      expect(i18n.known(option.labelKey)).toBe(true);
     }
   });
 

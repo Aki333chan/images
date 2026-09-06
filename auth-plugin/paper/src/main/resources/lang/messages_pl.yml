@@ -1,0 +1,241 @@
+# Komunikaty widziane przez gracza. Polski.
+#
+# Ten plik można edytować ręcznie: zmiany wczytuje /auth reload, przebudowa
+# pluginu nie jest potrzebna. Zostaw {podstawienia} w klamrach — bez nich z
+# komunikatu znika liczba, dla której go napisano. Nieznane podstawienie
+# zostaje na czacie takie, jakie jest, więc literówkę widać od razu.
+#
+# Nie usuwaj wierszy: brakujący klucz jest brany z wbudowanego rosyjskiego, a
+# zmiana po prostu się nie zastosuje. Do całkowitego wyciszenia komunikatu są
+# osobne przełączniki w config.yml.
+
+auth:
+  # -------------------------------------------------------------- logowanie
+  loggedIn: "Zalogowano"
+  registered: "Rejestracja zakończona, jesteś zalogowany"
+  wrongPassword: "Błędne hasło"
+  notRegistered: "Nie jesteś jeszcze zarejestrowany: /register <hasło> <hasło>"
+  alreadyRegistered: "Ten nick jest już zarejestrowany: /login <hasło>"
+  mismatch: "Hasła nie są zgodne"
+  serviceDown: "Usługa logowania jest niedostępna, spróbuj później"
+
+  # ------------------------------------------------------------------ hasło
+  passwordShort: "Hasło jest krótsze niż {min} znaków"
+  passwordLong: "Hasło jest dłuższe niż {max} znaków"
+  passwordChanged: "Hasło zmienione, jesteś zalogowany"
+
+  # ------------------------------------------------------ ochrona przed atakiem
+  throttled: "Za często. Spróbuj za {seconds} s"
+  locked: "Zbyt wiele nieudanych prób. Logowanie zamknięte na {minutes} min"
+
+  # ------------------------------------------------------ dwuskładnikowe
+  totpRequired: "Wpisz kod z aplikacji: /2fa <kod>"
+  totpInvalid: "Kod się nie zgadza. Sprawdź zegar w telefonie"
+  totpEnabled: "Weryfikacja dwuskładnikowa włączona. Kod będzie pytany przy każdym logowaniu"
+  totpDisabled: "Weryfikacja dwuskładnikowa wyłączona"
+  totpAlreadyOff: "Weryfikacja dwuskładnikowa i tak jest wyłączona"
+
+  # ------------------------------------------------------- reset hasła
+  resetTokenInvalid: "Token się nie zgadza albo wygasł"
+  resetReady: "Token przyjęty. Wymyśl nowe hasło: /reset <hasło> <hasło jeszcze raz>"
+
+  # -------------------------------------------------------- rejestracja
+  unregistered: "Rejestracja usunięta"
+
+# --------------------------------------------------------- prośba o zalogowanie
+#
+# Duży napis na cały ekran, wiersz pod nim, wiersz nad paskiem szybkiego
+# dostępu i wiersz na czacie. Widoczność to tutaj cały sens: podpowiedź, którą
+# widać, różni się od tej, której nie widać, dokładnie o liczbę ludzi, którzy
+# wyszli z serwera niczego nie zrozumiawszy.
+#
+# Czy pokazywać title, jak często powtarzać i jak długo wisi — w config.yml.
+# Tutaj są tylko słowa.
+prompt:
+  prefix: "&6[&eLogowanie&6]&r "
+
+  # Nick jest już zarejestrowany — potrzebne hasło.
+  login:
+    title: "&c&lZALOGUJ SIĘ"
+    subtitle: "&fnapisz na czacie &e/login <hasło>"
+    action-bar: "&e» &fnapisz &e/login <hasło> &7({seconds} s) &e«"
+    chat: "&7Ten nick jest już zarejestrowany. &aZaloguj się: &f/login <hasło>"
+
+  # Nick widziany po raz pierwszy.
+  register:
+    title: "&a&lREJESTRACJA"
+    subtitle: "&fnapisz na czacie &e/register <hasło> <hasło>"
+    action-bar: "&e» &fnapisz &e/register <hasło> <hasło> &7({seconds} s) &e«"
+    chat: "&aWitaj, &f{player}&a! Zarejestruj się: &f/register <hasło> <hasło jeszcze raz>"
+
+  # Hasło przyjęte, została weryfikacja dwuskładnikowa.
+  totp:
+    title: "&6&lKOD Z APLIKACJI"
+    subtitle: "&fnapisz na czacie &e/2fa <kod>"
+    action-bar: "&e» &fnapisz &e/2fa <kod> &7({seconds} s) &e«"
+    chat: "&6Został kod dwuskładnikowy: &f/2fa <kod>"
+
+  # Token resetu przyjęty, czekamy na nowe hasło.
+  new-password:
+    title: "&b&lNOWE HASŁO"
+    subtitle: "&fnapisz na czacie &e/reset <hasło> <hasło>"
+    action-bar: "&e» &fnapisz &e/reset <hasło> <hasło> &7({seconds} s) &e«"
+    chat: "&bWymyśl nowe hasło: &f/reset <hasło> <hasło jeszcze raz>"
+
+# ------------------------- własne komunikaty o wejściu i powitanie
+#
+# Czy w ogóle je pokazywać — w config.yml: na serwerze z EssentialsX wyłącza
+# się je, żeby nie było dwóch komunikatów pod rząd.
+messages:
+  join:
+    text: "&e{player} dołączył"
+    # Pokazywane zamiast zwykłego temu, kto właśnie się zarejestrował.
+    first-time: "&6Poznajcie nowego gracza: &e{player}&6!"
+  quit:
+    text: "&e{player} wyszedł"
+  motd:
+    lines:
+      - "&aWitaj, &f{player}&a!"
+      - "&7Na serwerze jest: &f{online}&7/&f{max}"
+
+# ----------------------------------------------------------- polecenia
+cmd:
+  playersOnly: "Polecenie tylko dla graczy"
+  alreadyIn: "Jesteś już zalogowany"
+  reset:
+    alreadyIn: "Jesteś już zalogowany. Reset jest tylko dla tych, którzy nie pamiętają hasła."
+    tokenHint: "Token to 8 znaków, wydaje go administrator. Jeśli twój został już przyjęty, wpisz: /reset <hasło> <hasło jeszcze raz>"
+  unregister:
+    warn: "Konto zostanie usunięte, a nick zwolniony. Nie da się tego cofnąć."
+    done: "Rejestracja usunięta. Wejdź ponownie, aby zarejestrować się od nowa."
+
+# ------------------------------------------------------ przed zalogowaniem
+guard:
+  bypass: "Wejście bez hasła na podstawie uprawnienia administratora"
+  welcomeBack: "Witaj z powrotem, hasło niepotrzebne"
+  timeoutKick: "Nie zalogowałeś się w wyznaczonym czasie"
+  loginFirst: "Najpierw się zaloguj"
+  needLogin: "Najpierw się zaloguj: /login <hasło>"
+  needCode: "Najpierw wpisz kod: /2fa <kod>"
+  needNewPassword: "Najpierw ustaw nowe hasło: /reset <hasło> <hasło jeszcze raz>"
+
+# ------------------------------------------------------ dwuskładnikowe
+totp:
+  notNeeded: "Kod nie jest teraz potrzebny. Najpierw /login <hasło>"
+  setupFailed: "Nie udało się rozpocząć konfiguracji"
+  addToApp: "Dodaj do Google Authenticator (albo dowolnej innej aplikacji):"
+  openInApp: "[otwórz w aplikacji]"
+  thenConfirm: "Następnie potwierdź: /2fa confirm <kod z aplikacji>"
+  untilConfirmed: "Dopóki nie potwierdzisz, logowanie zostaje na samym haśle."
+
+# --------------------------------------------------- polecenia administratora
+admin:
+  reloaded: "Teksty komunikatów i podpowiedzi wczytane ponownie"
+  noAccount: "Nie znaleziono konta „{name}”"
+  noPermission: "Za mało uprawnień: {permission}"
+  notOnline: "Gracza „{name}” nie ma w sieci"
+  unlocked: "Blokada za próby logowania dla „{name}” zdjęta"
+  loggedOutPlayer: "Administrator zresetował twoje logowanie: /login <hasło>"
+  reset:
+    token: "Token resetu dla {player}: {token}"
+    valid: "Ważny {minutes} min. Gracz wpisuje: /reset {token}"
+  logout:
+    was: "Gracz „{name}” wylogowany, sesja wygaszona"
+    wasNot: "Gracz „{name}” i tak nie był zalogowany; sesja wygaszona"
+  info:
+    title: "Konto {player}"
+    registered: "Zarejestrowany: {value}"
+    lastLogin: "Ostatnie logowanie: {value}"
+    lastIp: "Ostatni adres: {value}"
+    totp: "Dwuskładnikowe: {value}"
+    now: "Teraz: {value}"
+    never: "nigdy"
+    noData: "brak danych"
+    totpOn: "włączone"
+    totpOff: "wyłączone"
+    offline: "poza siecią"
+  history:
+    periods: "Okres: {list}"
+    empty: "Przez {period} gracz „{name}” się nie logował"
+    title: "Logowania „{name}” przez {period} ({count}):"
+    trimmed: "Pokazano ostatnie {limit} — wybierz krótszy okres"
+    success: "zalogował się"
+    wrongPassword: "błędne hasło"
+    wrongCode: "błędny kod 2FA"
+    session: "po sesji"
+    bypass: "bez hasła"
+    reset: "reset hasła"
+  unregister:
+    warn: "Konto „{name}” zostanie usunięte bez możliwości przywrócenia."
+    freed: "Nick przy tym się zwolni: zarejestrować go będzie mógł każdy. Jeśli trzeba zamknąć nick — zbanuj go osobno."
+    confirm: "Potwierdź: /auth unregister {name} confirm"
+    done: "Rejestracja „{name}” zdjęta"
+    kick: "Administrator zdjął twoją rejestrację"
+  totpOff:
+    done: "Dwuskładnikowe dla „{name}” wyłączone"
+    nothing: "„{name}” nie ma włączonego dwuskładnikowego albo nie ma takiego konta"
+
+# ----------------------------------------------------------- pomoc
+#
+# Po lewej jak wpisać polecenie, po prawej co ono robi. Słowa samego polecenia
+# (login, register, confirm) nie są tłumaczone: się je wpisuje, a nie czyta.
+help:
+  next: "&8Dalej: &e{command} {page}"
+  counter: "&7(str. {page} z {total})"
+  login:
+    use: "/login <hasło>"
+    what: "zaloguj się na swoje konto"
+  register:
+    use: "/register <hasło> <hasło jeszcze raz>"
+    what: "załóż konto; hasło wpisuje się dwa razy, żeby nie zrobić literówki"
+  unregister:
+    use: "/unregister <twoje hasło>"
+    what: "usuń swoje konto; potem wejście tylko od nowa przez /register"
+  reset:
+    title: "Zmiana hasła"
+    token:
+      use: "/reset <token>"
+      what: "rozpocznij zmianę: token wydaje administrator"
+    new:
+      use: "/reset <hasło> <hasło jeszcze raz>"
+      what: "ustaw nowe hasło po tokenie"
+  2fa:
+    title: "Uwierzytelnianie dwuskładnikowe"
+    code:
+      use: "/2fa <kod>"
+      what: "wpisz kod przy logowaniu — to, co potrzebne codziennie"
+    enable:
+      use: "/2fa enable"
+      what: "rozpocznij podłączanie: pokaże sekret dla aplikacji"
+    confirm:
+      use: "/2fa confirm <kod>"
+      what: "potwierdź podłączenie pierwszym kodem z aplikacji"
+    disable:
+      use: "/2fa disable <kod>"
+      what: "wyłącz dwuskładnikowe"
+  admin:
+    title: "Logowanie — administrowanie"
+    info:
+      use: "/auth info <nick>"
+      what: "co wiadomo o koncie: kiedy i skąd wchodził"
+    reset:
+      use: "/auth reset <nick>"
+      what: "wydaj jednorazowy token zmiany hasła"
+    unlock:
+      use: "/auth unlock <nick>"
+      what: "zdejmij blokadę po nieudanych próbach logowania"
+    logout:
+      use: "/auth logout <nick>"
+      what: "wyrzuć na ekran logowania i wygaś sesję"
+    history:
+      use: "/auth history <nick> [24h|3d|7d|30d]"
+      what: "historia logowań za okres"
+    totpOff:
+      use: "/auth 2fa-off <nick>"
+      what: "wyłącz dwuskładnikowe komuś, kto zgubił telefon"
+    unregister:
+      use: "/auth unregister <nick> confirm"
+      what: "zdejmij rejestrację — wymaga confirm"
+    reload:
+      use: "/auth reload"
+      what: "wczytaj teksty komunikatów bez restartu"

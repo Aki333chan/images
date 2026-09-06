@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { Badge, Button, Card, ErrorText, Input, Spinner } from '../components/ui';
 import { IconPlus, IconTrash } from '../components/icons';
 import type { ServerTabProps } from './registry';
+import { useT } from '../i18n';
 
 const base = (serverId: string) => `/api/servers/${serverId}/allocations`;
 
@@ -13,6 +14,7 @@ const base = (serverId: string) => `/api/servers/${serverId}/allocations`;
  * Возможность самого Pterodactyl, к игровому модулю отношения не имеет.
  */
 export function NetworkTab({ serverId }: ServerTabProps) {
+  const t = useT();
   const [list, setList] = useState<PteroAllocationDto[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -50,13 +52,13 @@ export function NetworkTab({ serverId }: ServerTabProps) {
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">Адреса сервера</h2>
+        <h2 className="font-semibold">{t('network.title')}</h2>
         <Button
           size="sm"
           disabled={busy}
           onClick={() => void run(() => api(base(serverId), { method: 'POST' }))}
         >
-          <IconPlus size={14} /> Добавить порт
+          <IconPlus size={14} /> {t('network.add')}
         </Button>
       </div>
 
@@ -64,14 +66,13 @@ export function NetworkTab({ serverId }: ServerTabProps) {
           Сказать об этом заранее честнее, чем дать поле, которое ни на что
           не влияет. */}
       <p className="text-xs text-muted">
-        Порт назначается автоматически из свободного пула ноды — выбрать конкретный
-        Pterodactyl не позволяет. Основная аллокация та, которую сервер сообщает игрокам.
+        {t('network.hint')}
       </p>
 
       <ErrorText>{error}</ErrorText>
 
       {list && list.length === 0 ? (
-        <p className="text-muted">У сервера нет ни одной аллокации.</p>
+        <p className="text-muted">{t('network.empty')}</p>
       ) : (
         <ul className="space-y-2">
           {list?.map((a) => (
@@ -90,7 +91,7 @@ export function NetworkTab({ serverId }: ServerTabProps) {
                   )}
                 </div>
                 {a.isDefault ? (
-                  <Badge variant="success">основная</Badge>
+                  <Badge variant="success">{t('network.primary')}</Badge>
                 ) : (
                   <div className="flex gap-2">
                     <Button
@@ -103,14 +104,14 @@ export function NetworkTab({ serverId }: ServerTabProps) {
                         )
                       }
                     >
-                      Сделать основной
+                      {t('network.makePrimary')}
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
                       disabled={busy}
                       onClick={() => {
-                        if (!confirm(`Удалить ${a.ip}:${a.port}?`)) return;
+                        if (!confirm(t('network.confirmDelete', { address: `${a.ip}:${a.port}` }))) return;
                         void run(() => api(`${base(serverId)}/${a.id}`, { method: 'DELETE' }));
                       }}
                     >
@@ -124,7 +125,7 @@ export function NetworkTab({ serverId }: ServerTabProps) {
                 <Input
                   value={notes[a.id] ?? ''}
                   onChange={(e) => setNotes((prev) => ({ ...prev, [a.id]: e.target.value }))}
-                  placeholder="Зачем этот порт: Dynmap, RCON, запасной…"
+                  placeholder={t('network.notePlaceholder')}
                 />
                 <Button
                   size="sm"
@@ -140,7 +141,7 @@ export function NetworkTab({ serverId }: ServerTabProps) {
                     )
                   }
                 >
-                  Сохранить
+                  {t('common.save')}
                 </Button>
               </div>
             </li>

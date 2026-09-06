@@ -32,12 +32,17 @@ export interface CronParts {
   dayOfWeek: string;
 }
 
-const LABELS: Record<CronField, string> = {
-  minute: 'минуты',
-  hour: 'часа',
-  dayOfMonth: 'дня месяца',
-  month: 'месяца',
-  dayOfWeek: 'дня недели',
+/**
+ * Ключи названий полей — в родительном падеже: они подставляются в «Пустое
+ * поле …». Отдельные ключи, а не заголовки формы, именно поэтому: «минута» и
+ * «минуты» в русском разные слова, и переиспользовать подпись поля нельзя.
+ */
+const LABEL_KEYS: Record<CronField, string> = {
+  minute: 'cron.of.minute',
+  hour: 'cron.of.hour',
+  dayOfMonth: 'cron.of.dayOfMonth',
+  month: 'cron.of.month',
+  dayOfWeek: 'cron.of.dayOfWeek',
 };
 
 /**
@@ -49,12 +54,26 @@ const LABELS: Record<CronField, string> = {
  */
 export function validateCronField(field: CronField, raw: string): string {
   const value = (raw ?? '').trim();
-  if (value === '') throw new BadRequestException(`Пустое поле ${LABELS[field]}`);
-  if (value.length > 64) throw new BadRequestException(`Слишком длинное поле ${LABELS[field]}`);
+  if (value === '') {
+    throw new BadRequestException({
+      message: 'cron.err.empty',
+      i18nKeys: { field: LABEL_KEYS[field] },
+    });
+  }
+  if (value.length > 64) {
+    throw new BadRequestException({
+      message: 'cron.err.tooLong',
+      i18nKeys: { field: LABEL_KEYS[field] },
+    });
+  }
 
   for (const part of value.split(',')) {
     if (!isValidPart(field, part.trim())) {
-      throw new BadRequestException(`Некорректное значение ${LABELS[field]}: «${part.trim()}»`);
+      throw new BadRequestException({
+        message: 'cron.err.bad',
+        i18nKeys: { field: LABEL_KEYS[field] },
+        i18nValues: { value: part.trim() },
+      });
     }
   }
   return value;

@@ -1,5 +1,9 @@
+import { useCallback } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import type { Locale } from '@aurum/shared';
+import { api } from './lib/api';
 import { AuthProvider, useAuth } from './lib/auth';
+import { I18nProvider } from './i18n';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { ServersPage } from './pages/ServersPage';
@@ -98,9 +102,42 @@ function Shell() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Shell />
-      </BrowserRouter>
+      <Localized>
+        <BrowserRouter>
+          <Shell />
+        </BrowserRouter>
+      </Localized>
     </AuthProvider>
+  );
+}
+
+/**
+ * Язык панели с учётом профиля сотрудника.
+ *
+ * Внутри AuthProvider, а не снаружи: выбранный язык хранится у пользователя,
+ * и узнать его можно только после загрузки профиля. Пока профиль едет,
+ * работает сохранённый в браузере выбор — экран входа успевает отрисоваться
+ * на нужном языке ещё до того, как станет известно, кто вошёл.
+ */
+function Localized({ children }: { children: JSX.Element }) {
+  const { me, refreshMe } = useAuth();
+
+  // Стабильная ссылка: она в зависимостях эффекта провайдера, и
+  // пересоздание на каждый рендер зациклило бы сохранение.
+  const adopt = useCallback(
+    (locale: Locale) => {
+      void api('/api/auth/locale', { method: 'POST', body: JSON.stringify({ locale }) })
+        .then(() => refreshMe())
+        // Не вышло — язык на экране всё равно тот, что выбрали; молчим, а не
+        // пугаем ошибкой то, чего человек не запрашивал.
+        .catch(() => undefined);
+    },
+    [refreshMe],
+  );
+
+  return (
+    <I18nProvider userLocale={me?.user.locale} onAdopt={me ? adopt : undefined}>
+      {children}
+    </I18nProvider>
   );
 }

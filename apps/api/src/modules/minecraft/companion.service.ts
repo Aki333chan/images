@@ -131,7 +131,33 @@ interface RawGuildMembership {
 
 interface RawGuildOutcome {
   ok?: boolean;
+  /** Ключ сообщения. Плагин присылает именно ключ — см. GuildOutcome. */
   message?: string;
+  values?: Record<string, string>;
+  keys?: Record<string, string>;
+}
+
+/**
+ * Ответ плагина гильдий, разобранный.
+ *
+ * Ключ и подстановки едут дальше врозь: переводит их либо фильтр ошибок (при
+ * отказе), либо сам браузер (при успехе), и оба знают язык читателя. Панель
+ * тут ничего не собирает — она бы собрала не на том языке.
+ */
+export interface GuildOutcome {
+  ok: boolean;
+  message: string;
+  values: Record<string, string>;
+  keys: Record<string, string>;
+}
+
+function outcome(
+  ok: boolean,
+  message: string,
+  values: Record<string, string> = {},
+  keys: Record<string, string> = {},
+): GuildOutcome {
+  return { ok, message, values, keys };
 }
 
 /**
@@ -169,10 +195,20 @@ export class CompanionService {
     init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; timeoutMs?: number },
   ): Promise<
     | { ok: true; body: T }
-    | { ok: false; status: number | null; code: string | null; error: string | null }
+    | {
+        ok: false;
+        status: number | null;
+        code: string | null;
+        error: string | null;
+        // Разобранное тело отказа целиком. Нужно там, где плагин объясняет
+        // отказ не кодом, а полями: гильдии отвечают на 409 тем же ключом и
+        // подстановками, что и на успех, и терять их здесь значило бы
+        // показать «сервер промолчал» вместо «такой гильдии нет».
+        body: Record<string, unknown> | null;
+      }
   > {
     const creds = await this.config.read(serverId);
-    if (!creds.companion) return { ok: false, status: null, code: null, error: null };
+    if (!creds.companion) return { ok: false, status: null, code: null, error: null, body: null };
     try {
       const res = await request(`${creds.companion.baseUrl}${path}`, {
         method: init?.method ?? 'GET',
@@ -195,12 +231,13 @@ export class CompanionService {
           status: res.statusCode,
           code: typeof parsed?.code === 'string' ? parsed.code : null,
           error: typeof parsed?.error === 'string' ? parsed.error : null,
+          body: parsed ?? null,
         };
       }
       return { ok: true, body: (text ? JSON.parse(text) : {}) as T };
     } catch (e) {
       this.logger.warn(`Companion-плагин сервера ${serverId} недоступен: ${(e as Error).message}`);
-      return { ok: false, status: null, code: null, error: null };
+      return { ok: false, status: null, code: null, error: null, body: null };
     }
   }
 
@@ -234,9 +271,7 @@ export class CompanionService {
     if (!(await this.isConfigured(serverId))) {
       return {
         ok: false,
-        error:
-          'Горячее переключение требует companion-плагина на игровом сервере. ' +
-          'Без него плагин можно отключить только переносом файла.',
+        error: 'mc.err.toggleNeedsCompanion',
       };
     }
     const result = await this.callRaw<{ ok?: boolean; enabled?: boolean }>(
@@ -247,9 +282,7 @@ export class CompanionService {
     if (!result.ok) {
       return {
         ok: false,
-        error:
-          result.error ??
-          'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+        error: result.error ?? 'mc.err.companionSilent',
       };
     }
     return { ok: true, enabled: result.body.enabled !== false };
@@ -278,7 +311,7 @@ export class CompanionService {
       return {
         available: false,
         code: 'no-companion',
-        reason: 'Для работы с правами нужен companion-плагин на игровом сервере',
+        reason: 'mc.err.permsNeedCompanion',
       };
     }
     const result = await this.callRaw<RawPermissions>(serverId, `/players/${uuid}/permissions`);
@@ -303,7 +336,7 @@ export class CompanionService {
       return {
         available: false,
         code: 'no-companion',
-        reason: 'Для работы с правами нужен companion-плагин на игровом сервере',
+        reason: 'mc.err.permsNeedCompanion',
       };
     }
     const result = await this.callRaw<RawPermissions>(serverId, `/players/${uuid}/permissions`, {
@@ -359,7 +392,7 @@ export class CompanionService {
         ...empty,
         available: false,
         code: 'no-companion',
-        reason: 'Список всех игроков даёт companion-плагин — без него виден только онлайн',
+        reason: 'mc.err.knownNeedsCompanion',
         docsUrl: COMPANION_DOCS_URL,
       };
     }
@@ -376,7 +409,7 @@ export class CompanionService {
         ...empty,
         available: false,
         code: 'plugin-unreachable',
-        reason: 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+        reason: 'mc.err.companionSilent',
         docsUrl: COMPANION_DOCS_URL,
       };
     }
@@ -406,7 +439,7 @@ export class CompanionService {
         available: false,
         addresses: [],
         code: 'no-companion',
-        reason: 'Известные адреса приходят через companion-плагин',
+        reason: 'mc.err.ipsNeedCompanion',
         docsUrl: COMPANION_DOCS_URL,
       };
     }
@@ -417,7 +450,7 @@ export class CompanionService {
         available: false,
         addresses: [],
         code: 'plugin-unreachable',
-        reason: 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+        reason: 'mc.err.companionSilent',
         docsUrl: COMPANION_DOCS_URL,
       };
     }
@@ -439,7 +472,7 @@ export class CompanionService {
       return {
         available: false,
         code: 'no-plugin',
-        reason: 'Для просмотра инвентаря нужен companion-плагин на игровом сервере',
+        reason: 'mc.err.invNeedCompanion',
         docsUrl: COMPANION_DOCS_URL,
       };
     }
@@ -449,7 +482,7 @@ export class CompanionService {
       return {
         available: false,
         code: 'player-offline',
-        reason: `Игрок ${player} сейчас не в сети — инвентарь доступен только для онлайн-игроков`,
+        reason: 'mc.err.invOnlineOnly',
       };
     }
 
@@ -465,8 +498,7 @@ export class CompanionService {
           available: false,
           code: 'player-offline',
           reason:
-            `Игрок ${player} не в сети. Чтобы смотреть инвентари офлайн-игроков, ` +
-            'установите на сервер плагин InvSee++',
+            'mc.err.invOfflineNeedsInvsee',
           docsUrl: COMPANION_DOCS_URL,
         };
       }
@@ -474,13 +506,13 @@ export class CompanionService {
         return {
           available: false,
           code: 'player-offline',
-          reason: `Игрок ${player} не в сети, и InvSee++ не нашёл сохранённых данных о нём`,
+          reason: 'mc.err.invOfflineNoData',
         };
       }
       return {
         available: false,
         code: 'plugin-unreachable',
-        reason: 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+        reason: 'mc.err.companionSilent',
         docsUrl: COMPANION_DOCS_URL,
       };
     }
@@ -557,13 +589,14 @@ export class CompanionService {
    */
   private async resolveTarget(serverId: string, player: string): Promise<string> {
     if (!(await this.isConfigured(serverId))) {
-      throw new ServiceUnavailableException(
-        'Для правки инвентаря нужен companion-плагин на игровом сервере',
-      );
+      throw new ServiceUnavailableException('mc.err.invEditNeedCompanion');
     }
     const uuid = await this.resolveUuid(serverId, player);
     if (!uuid) {
-      throw new NotFoundException(`Игрок ${player} серверу неизвестен — он ни разу не заходил`);
+      throw new NotFoundException({
+        message: 'mc.err.playerUnknown',
+        i18nValues: { player },
+      });
     }
     return uuid;
   }
@@ -574,26 +607,28 @@ export class CompanionService {
     player: string,
   ): Error {
     if (result.code === 'offline-requires-invsee') {
-      return new NotFoundException(
-        `Игрок ${player} не в сети. Чтобы менять инвентари офлайн-игроков, ` +
-          'установите на сервер плагин InvSee++',
-      );
+      return new NotFoundException({
+        message: 'mc.err.editOfflineNeedsInvsee',
+        i18nValues: { player },
+      });
     }
     if (result.code === 'offline-no-data') {
-      return new NotFoundException(
-        `Игрок ${player} не в сети, и InvSee++ не нашёл сохранённых данных о нём`,
-      );
+      return new NotFoundException({
+        message: 'mc.err.editOfflineNoData',
+        i18nValues: { player },
+      });
     }
     if (result.code === 'unknown-item') {
-      return new NotFoundException('Игровой сервер не знает такого предмета');
+      return new NotFoundException('mc.err.unknownItem');
     }
     if (result.code === 'player-offline') {
-      return new NotFoundException(`Игрок ${player} вышел из сети — изменения не применены`);
+      return new NotFoundException({
+        message: 'mc.err.playerLeft',
+        i18nValues: { player },
+      });
     }
     if (result.error) return new ServiceUnavailableException(result.error);
-    return new ServiceUnavailableException(
-      'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
-    );
+    return new ServiceUnavailableException('mc.err.companionSilent');
   }
 
   // ---------------------------------------------------------- Экономика
@@ -752,16 +787,29 @@ export class CompanionService {
     path: string,
     method: 'POST' | 'DELETE',
     body: Record<string, unknown>,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<GuildOutcome> {
     if (!(await this.isConfigured(serverId))) {
-      return { ok: false, message: 'Companion-плагин на игровом сервере не настроен' };
+      return outcome(false, 'mc.err.companionNotConfigured');
     }
     const result = await this.callRaw<RawGuildOutcome>(serverId, path, { method, body });
-    if (result.ok) return { ok: true, message: result.body.message ?? 'Готово' };
-    if (result.code === 'guilds-unavailable') {
-      return { ok: false, message: 'На игровом сервере не установлен плагин гильдий' };
+    if (result.ok) {
+      return outcome(
+        true,
+        result.body.message ?? 'common.done',
+        result.body.values,
+        result.body.keys,
+      );
     }
-    return { ok: false, message: result.error ?? 'Игровой сервер не ответил' };
+    if (result.code === 'guilds-unavailable') return outcome(false, 'mc.err.noGuildsPlugin');
+    // 409 от плагина приносит ту же тройку: ключ и обе карты. Отказ «такой
+    // гильдии нет» переводится ровно так же, как успех.
+    const refusal = result.body as RawGuildOutcome | null;
+    return outcome(
+      false,
+      refusal?.message ?? result.error ?? 'mc.err.serverSilent',
+      refusal?.values,
+      refusal?.keys,
+    );
   }
 
   /**
@@ -775,19 +823,30 @@ export class CompanionService {
     serverId: string,
     path: string,
     body: Record<string, unknown>,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<GuildOutcome> {
     if (!(await this.isConfigured(serverId))) {
-      return { ok: false, message: 'Companion-плагин на игровом сервере не настроен' };
+      return outcome(false, 'mc.err.companionNotConfigured');
     }
     const result = await this.callRaw<RawGuildOutcome>(serverId, path, {
       method: 'POST',
       body,
     });
-    if (result.ok) return { ok: true, message: result.body.message ?? 'Готово' };
-    if (result.code === 'guilds-unavailable') {
-      return { ok: false, message: 'На игровом сервере не установлен плагин гильдий' };
+    if (result.ok) {
+      return outcome(
+        true,
+        result.body.message ?? 'common.done',
+        result.body.values,
+        result.body.keys,
+      );
     }
-    return { ok: false, message: result.error ?? 'Игровой сервер не ответил' };
+    if (result.code === 'guilds-unavailable') return outcome(false, 'mc.err.noGuildsPlugin');
+    const refusal = result.body as RawGuildOutcome | null;
+    return outcome(
+      false,
+      refusal?.message ?? result.error ?? 'mc.err.serverSilent',
+      refusal?.values,
+      refusal?.keys,
+    );
   }
 
   /**
@@ -858,7 +917,7 @@ function numberOrNull(value: unknown): number | null {
 function toBonus(raw: RawGuildBonus): MinecraftGuildBonusDto {
   return {
     type: raw.type ?? 'unknown',
-    title: raw.title ?? raw.type ?? 'Бонус',
+    title: raw.title ?? raw.type ?? 'mc.g.bonusFallback',
     magnitude: numberOr(raw.magnitude, 1),
     multiplier: raw.multiplier !== false,
     expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
@@ -935,13 +994,13 @@ function permissionsFailure(code: string | null, error: string | null): Minecraf
     return {
       available: false,
       code: 'requires-luckperms',
-      reason: 'Работа с правами требует плагина LuckPerms на игровом сервере',
+      reason: 'mc.err.permsNeedLuckPerms',
     };
   }
   return {
     available: false,
     code: 'error',
-    reason: error ?? 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+    reason: error ?? 'mc.err.companionSilent',
   };
 }
 
@@ -998,27 +1057,27 @@ function economyFailure(
     return {
       available: false,
       code: 'no-companion',
-      reason: 'Для работы с валютой нужен companion-плагин на игровом сервере',
+      reason: 'mc.err.ecoNeedCompanion',
     };
   }
   if (code === 'requires-vault') {
     return {
       available: false,
       code: 'requires-vault',
-      reason: 'Работа с валютой требует плагина Vault и плагина экономики на игровом сервере',
+      reason: 'mc.err.ecoNeedVault',
     };
   }
   if (code === 'no-provider') {
     return {
       available: false,
       code: 'no-provider',
-      reason: 'Vault установлен, но ни один плагин экономики не зарегистрировал провайдера',
+      reason: 'mc.err.ecoNoProvider',
     };
   }
   return {
     available: false,
     code: 'error',
-    reason: error ?? 'Companion-плагин не ответил — проверьте, что сервер запущен и плагин активен',
+    reason: error ?? 'mc.err.companionSilent',
   };
 }
 

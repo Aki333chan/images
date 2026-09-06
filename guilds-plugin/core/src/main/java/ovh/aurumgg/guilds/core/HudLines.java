@@ -37,6 +37,52 @@ import java.util.List;
  */
 public final class HudLines {
 
+    /**
+     * Переводчик подписей сайдбара.
+     *
+     * Аргументом, а не полем: сборка строк — чистая функция, её проверяют
+     * тестом, а язык сервера живёт в конфиге, до которого core не достаёт.
+     * Умолчание {@link #RU} оставляет прежний вид тем вызовам, до которых
+     * перевод ещё не дошёл, — и на нём же держатся старые тесты.
+     */
+    public interface Labels {
+        String get(String key);
+    }
+
+    /** Встроенные русские подписи: запасной вариант и основа тестов. */
+    public static final Labels RU = key -> switch (key) {
+        case "hud.party" -> "Пати";
+        case "hud.guild" -> "Гильдия";
+        case "hud.rank" -> "Ранг";
+        case "hud.online" -> "В сети";
+        case "hud.bank" -> "Банк";
+        case "hud.bonuses" -> "Бонусы";
+        case "hud.more" -> "… и ещё {count}";
+        case "hud.d" -> "д";
+        case "hud.h" -> "ч";
+        case "hud.m" -> "м";
+        case "hud.lessThanMinute" -> "<1м";
+        case "mc.bonus.short.miningSpeed" -> "Спешка";
+        case "mc.bonus.short.movementSpeed" -> "Скорость";
+        case "mc.bonus.short.blockDrops" -> "Блоки";
+        case "mc.bonus.short.mobDrops" -> "Мобы";
+        case "mc.bonus.short.experience" -> "Опыт";
+        // Строчными, как и в словаре панели: одно и то же имя ключа должно
+        // означать одно и то же слово по обе стороны.
+        case "mc.rank.leader" -> "лидер";
+        case "mc.rank.officer" -> "офицер";
+        case "mc.rank.member" -> "участник";
+        case "time.forever" -> "навсегда";
+        case "time.s" -> "{n} с";
+        case "time.min" -> "{n} мин";
+        case "time.h" -> "{n} ч";
+        case "time.hMin" -> "{n} ч {m} мин";
+        case "time.d" -> "{n} д";
+        case "time.dH" -> "{n} д {h} ч";
+        case "mc.bonus.level" -> "уровень {n}";
+        default -> key;
+    };
+
     /** Сколько строк влезает в сайдбар. */
     public static final int MAX_LINES = 15;
 
@@ -52,14 +98,19 @@ public final class HudLines {
     private HudLines() {}
 
     public static List<String> build(HudModel model) {
+        return build(model, RU);
+    }
+
+    public static List<String> build(HudModel model, Labels t) {
         List<String> lines = new ArrayList<>();
         if (model == null || model.isEmpty()) return lines;
 
         if (model.hasParty()) {
-            lines.add("&7Пати &8(&f" + model.partyMembers().size() + "&8/&f" + model.partyLimit() + "&8)");
+            lines.add("&7" + t.get("hud.party") + " &8(&f" + model.partyMembers().size()
+                    + "&8/&f" + model.partyLimit() + "&8)");
             // Сколько строк можно отдать под участников: всё, что останется
             // после блока гильдии и разделителя между блоками.
-            int reserved = model.hasGuild() ? guildBlock(model).size() + 1 : 0;
+            int reserved = model.hasGuild() ? guildBlock(model, t).size() + 1 : 0;
             int room = MAX_LINES - lines.size() - reserved;
             List<HudModel.Member> members = model.partyMembers();
 
@@ -71,29 +122,32 @@ public final class HudLines {
             for (int i = 0; i < shown; i++) {
                 lines.add(memberLine(members.get(i)));
             }
-            if (truncated) lines.add("&8… и ещё " + (members.size() - shown));
+            if (truncated) lines.add("&8" + more(t, members.size() - shown));
         }
 
         if (model.hasGuild()) {
             if (!lines.isEmpty()) lines.add("");
-            lines.addAll(guildBlock(model));
+            lines.addAll(guildBlock(model, t));
         }
 
         return lines.size() > MAX_LINES ? List.copyOf(lines.subList(0, MAX_LINES)) : lines;
     }
 
-    private static List<String> guildBlock(HudModel model) {
+    private static List<String> guildBlock(HudModel model, Labels t) {
         List<String> block = new ArrayList<>();
-        block.add("&7Гильдия");
+        block.add("&7" + t.get("hud.guild"));
         block.add("&b[" + model.guildTag() + "] &f" + model.guildName());
-        if (model.rank() != null) block.add("&7Ранг: &f" + model.rank().title());
-        block.add("&7В сети: &f" + model.guildOnline() + "&7/&f" + model.guildTotal());
+        if (model.rank() != null) {
+            block.add("&7" + t.get("hud.rank") + ": &f" + t.get(model.rank().titleKey()));
+        }
+        block.add("&7" + t.get("hud.online") + ": &f" + model.guildOnline()
+                + "&7/&f" + model.guildTotal());
         // Баланс показывается, только если банк вообще работает: строка
         // «Банк: 0» на сервере без Vault выглядит как пропавшие деньги.
         if (model.bankBalance() != null) {
-            block.add("&7Банк: &6" + money(model.bankBalance()));
+            block.add("&7" + t.get("hud.bank") + ": &6" + money(model.bankBalance()));
         }
-        block.addAll(bonusLines(model));
+        block.addAll(bonusLines(model, t));
         return block;
     }
 
@@ -104,7 +158,7 @@ public final class HudLines {
      * сайдбара, который сообщает не факты о составе, а что игроку сейчас
      * ХОРОШО, и цветом он отделяется от остального с одного взгляда.
      */
-    private static List<String> bonusLines(HudModel model) {
+    private static List<String> bonusLines(HudModel model, Labels t) {
         List<String> lines = new ArrayList<>();
         if (!model.hasBonuses()) return lines;
 
@@ -112,20 +166,32 @@ public final class HudLines {
         boolean truncated = bonuses.size() > MAX_BONUS_LINES;
         int shown = truncated ? MAX_BONUS_LINES - 1 : bonuses.size();
 
-        lines.add("&7Бонусы");
+        lines.add("&7" + t.get("hud.bonuses"));
         for (int i = 0; i < shown; i++) {
-            lines.add(bonusLine(bonuses.get(i)));
+            lines.add(bonusLine(bonuses.get(i), t));
         }
-        if (truncated) lines.add("&8… и ещё " + (bonuses.size() - shown));
+        if (truncated) lines.add("&8" + more(t, bonuses.size() - shown));
         return lines;
     }
 
-    private static String bonusLine(HudModel.Bonus bonus) {
+    /**
+     * «… и ещё 3».
+     *
+     * Число подстановкой, а не приклеенное сзади: по-английски оно стоит в
+     * середине («… and 3 more»), и приклеивание молча ломало бы фразу.
+     */
+    private static String more(Labels t, int count) {
+        return Messages.apply(t.get("hud.more"), java.util.Map.of("count", String.valueOf(count)));
+    }
+
+    private static String bonusLine(HudModel.Bonus bonus, Labels t) {
         String value = bonus.multiplier()
                 ? "\u00D7" + multiplierText(bonus.magnitude())
                 : String.valueOf(Math.round(bonus.magnitude()));
-        String left = bonus.secondsLeft() == null ? "" : " &8" + shortDurationText(bonus.secondsLeft());
-        return "&a" + bonus.title() + " " + value + left;
+        String left = bonus.secondsLeft() == null
+                ? ""
+                : " &8" + shortDurationText(bonus.secondsLeft(), t);
+        return "&a" + t.get(bonus.title()) + " " + value + left;
     }
 
     /**
@@ -159,11 +225,15 @@ public final class HudLines {
      * бонус ещё действует.
      */
     public static String shortDurationText(long seconds) {
-        if (seconds <= 0) return "0м";
-        if (seconds < 60) return "<1м";
-        if (seconds < 3600) return (seconds + 59) / 60 + "м";
-        if (seconds < 86_400) return (seconds + 3599) / 3600 + "ч";
-        return (seconds + 86_399) / 86_400 + "д";
+        return shortDurationText(seconds, RU);
+    }
+
+    public static String shortDurationText(long seconds, Labels t) {
+        if (seconds <= 0) return "0" + t.get("hud.m");
+        if (seconds < 60) return t.get("hud.lessThanMinute");
+        if (seconds < 3600) return (seconds + 59) / 60 + t.get("hud.m");
+        if (seconds < 86_400) return (seconds + 3599) / 3600 + t.get("hud.h");
+        return (seconds + 86_399) / 86_400 + t.get("hud.d");
     }
 
     private static String memberLine(HudModel.Member member) {

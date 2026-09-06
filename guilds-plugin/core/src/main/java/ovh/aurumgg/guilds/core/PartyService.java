@@ -66,6 +66,12 @@ public final class PartyService {
 
     private final Supplier<Instant> clock;
     private final NameResolver names;
+    /**
+     * Язык сервера — ради единственной строки: срока жизни приглашения
+     * («действует 90 с»). Он собирается из числа, а значит, ключом наружу не
+     * уедет. Умолчание — встроенный русский, см. {@link HudLines#RU}.
+     */
+    private volatile HudLines.Labels labels = HudLines.RU;
     // Не final: /guild admin reload их меняет. volatile — читаются из потока
     // команд, а меняются из потока перезагрузки.
     private volatile int maxMembers;
@@ -155,16 +161,21 @@ public final class PartyService {
         return maxMembers;
     }
 
+    /** Подключить словарь сервера. См. поле labels. */
+    public void useLabels(HudLines.Labels labels) {
+        this.labels = labels == null ? HudLines.RU : labels;
+    }
+
     // ------------------------------------------------------------ команды
 
     public synchronized GuildActionResult create(UUID player) {
-        if (partyOf(player) != null) return GuildActionResult.fail("Вы уже в пати");
+        if (partyOf(player) != null) return GuildActionResult.fail("party.err.already");
         Party party = new Party(nextId.getAndIncrement(), player, clock.get());
         parties.put(party.id, party);
         partyOf.put(player, party.id);
         // Приглашения, которые игрок не принял, теряют смысл: он уже в пати.
         invites.remove(player);
-        return GuildActionResult.ok("Пати создана. Зовите: /party invite <ник>");
+        return GuildActionResult.ok("party.created");
     }
 
     /**
@@ -176,29 +187,33 @@ public final class PartyService {
      * может только лидер: выгнать — решение, которое кто-то оспорит.
      */
     public synchronized GuildActionResult invite(UUID inviter, UUID target) {
-        if (inviter.equals(target)) return GuildActionResult.fail("Себя звать некуда");
+        if (inviter.equals(target)) return GuildActionResult.fail("party.err.inviteSelf");
 
         Party party = partyOf(inviter);
         if (party == null) {
-            return GuildActionResult.fail("Сначала создайте пати: /party create");
+            return GuildActionResult.fail("party.err.createFirst");
         }
         if (partyOf(target) != null) {
-            return GuildActionResult.fail(names.nameOf(target) + " уже в пати");
+            return GuildActionResult.fail("party.err.targetInParty",
+                    Map.of("player", names.nameOf(target)));
         }
         if (party.members.size() >= maxMembers) {
-            return GuildActionResult.fail("В пати уже " + maxMembers + " человек — больше не помещается");
+            return GuildActionResult.fail("party.err.full",
+                    Map.of("max", String.valueOf(maxMembers)));
         }
 
         Instant now = clock.get();
         List<Invite> pending = new ArrayList<>(active(target, now));
         if (pending.stream().anyMatch(invite -> invite.partyId() == party.id)) {
-            return GuildActionResult.fail(names.nameOf(target) + " уже приглашён");
+            return GuildActionResult.fail("party.err.alreadyInvited",
+                    Map.of("player", names.nameOf(target)));
         }
         pending.add(new Invite(party.id, inviter, now.plus(inviteTtl)));
         invites.put(target, pending);
 
-        return GuildActionResult.ok(names.nameOf(target) + " приглашён. Приглашение действует "
-                + minutes(inviteTtl));
+        return GuildActionResult.ok("party.invited", Map.of(
+                "player", names.nameOf(target),
+                "duration", GuildService.humanDuration(inviteTtl, labels)));
     }
 
     /**
@@ -207,7 +222,7 @@ public final class PartyService {
      * @param from от кого именно; null — самое свежее из действующих
      */
     public synchronized GuildActionResult accept(UUID player, UUID from) {
-        if (partyOf(player) != null) return GuildActionResult.fail("Вы уже в пати");
+        if (partyOf(player) != null) return GuildActionResult.fail("party.err.already");
 
         Instant now = clock.get();
         List<Invite> pending = active(player, now);
@@ -215,7 +230,7 @@ public final class PartyService {
             // Отдельный текст про истечение здесь не нужен: с точки зрения
             // игрока «протухло» и «не звали» — одно и то же состояние, а
             // разница в формулировке ничего ему не даёт.
-            return GuildActionResult.fail("Вас никто не звал в пати");
+            return GuildActionResult.fail("party.err.noInvite");
         }
 
         Invite chosen = null;
@@ -228,7 +243,8 @@ public final class PartyService {
                 if (invite.inviter().equals(from)) chosen = invite;
             }
             if (chosen == null) {
-                return GuildActionResult.fail(names.nameOf(from) + " вас в пати не звал");
+                return GuildActionResult.fail("party.err.notInvitedBy",
+                        Map.of("player", names.nameOf(from)));
             }
         }
 
@@ -236,17 +252,18 @@ public final class PartyService {
         if (party == null) {
             // Пати успела распасться между приглашением и ответом.
             invites.remove(player);
-            return GuildActionResult.fail("Этой пати больше нет");
+            return GuildActionResult.fail("party.err.gone");
         }
         if (party.members.size() >= maxMembers) {
-            return GuildActionResult.fail("В пати уже нет места");
+            return GuildActionResult.fail("party.err.noSlots");
         }
 
         party.members.put(player, now);
         party.lastSeenOnline = now;
         partyOf.put(player, party.id);
         invites.remove(player);
-        return GuildActionResult.ok("Вы в пати " + names.nameOf(party.leader));
+        return GuildActionResult.ok("party.joined",
+                Map.of("leader", names.nameOf(party.leader)));
     }
 
     /**
@@ -258,42 +275,44 @@ public final class PartyService {
      */
     public synchronized GuildActionResult leave(UUID player) {
         Party party = partyOf(player);
-        if (party == null) return GuildActionResult.fail("Вы не в пати");
+        if (party == null) return GuildActionResult.fail("party.err.notInParty");
 
         removeFrom(party, player);
-        return GuildActionResult.ok("Вы вышли из пати");
+        return GuildActionResult.ok("party.left");
     }
 
     /** Выгнать. Только лидер. */
     public synchronized GuildActionResult kick(UUID actor, UUID target) {
         Party party = partyOf(actor);
-        if (party == null) return GuildActionResult.fail("Вы не в пати");
-        if (!party.leader.equals(actor)) return GuildActionResult.fail("Выгонять может только лидер пати");
+        if (party == null) return GuildActionResult.fail("party.err.notInParty");
+        if (!party.leader.equals(actor)) return GuildActionResult.fail("party.err.kickLeaderOnly");
         if (actor.equals(target)) {
-            return GuildActionResult.fail("Чтобы уйти самому, есть /party leave");
+            return GuildActionResult.fail("party.err.kickSelf");
         }
         if (!party.members.containsKey(target)) {
-            return GuildActionResult.fail(names.nameOf(target) + " не в вашей пати");
+            return GuildActionResult.fail("party.err.notYourMember",
+                    Map.of("player", names.nameOf(target)));
         }
 
         removeFrom(party, target);
-        return GuildActionResult.ok(names.nameOf(target) + " выгнан из пати");
+        return GuildActionResult.ok("party.kicked", Map.of("player", names.nameOf(target)));
     }
 
     /** Передать лидерство. Только лидер. */
     public synchronized GuildActionResult promote(UUID actor, UUID target) {
         Party party = partyOf(actor);
-        if (party == null) return GuildActionResult.fail("Вы не в пати");
+        if (party == null) return GuildActionResult.fail("party.err.notInParty");
         if (!party.leader.equals(actor)) {
-            return GuildActionResult.fail("Передавать лидерство может только лидер пати");
+            return GuildActionResult.fail("party.err.promoteLeaderOnly");
         }
-        if (actor.equals(target)) return GuildActionResult.fail("Вы и так лидер");
+        if (actor.equals(target)) return GuildActionResult.fail("party.err.alreadyLeader");
         if (!party.members.containsKey(target)) {
-            return GuildActionResult.fail(names.nameOf(target) + " не в вашей пати");
+            return GuildActionResult.fail("party.err.notYourMember",
+                    Map.of("player", names.nameOf(target)));
         }
 
         party.leader = target;
-        return GuildActionResult.ok(names.nameOf(target) + " теперь лидер пати");
+        return GuildActionResult.ok("party.promoted", Map.of("player", names.nameOf(target)));
     }
 
     // ------------------------------------------------------------ уборка
@@ -382,8 +401,4 @@ public final class PartyService {
         return new PartyView(party.id, party.leader, List.copyOf(ordered));
     }
 
-    private static String minutes(Duration duration) {
-        long seconds = Math.max(1, duration.toSeconds());
-        return seconds < 60 ? seconds + " с" : (seconds / 60) + " мин";
-    }
 }

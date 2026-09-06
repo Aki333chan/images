@@ -67,7 +67,7 @@ describe('AuthService', () => {
 
   it('отклоняет несуществующего пользователя тем же сообщением', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
-    await expect(auth.login('nobody@example.com', 'x')).rejects.toThrow('Неверный email или пароль');
+    await expect(auth.login('nobody@example.com', 'x')).rejects.toThrow('auth.err.badCredentials');
   });
 
   it('отклоняет деактивированного пользователя', async () => {
@@ -105,7 +105,7 @@ describe('AuthService', () => {
     if (!login.twoFactorRequired) throw new Error('ожидался шаг 2FA');
 
     await expect(auth.loginTwoFactor(login.twoFactorToken, '000000')).rejects.toThrow(
-      'Неверный код 2FA',
+      'auth.err.badTwoFaCode',
     );
 
     const code = authenticator.generate(secret);
@@ -119,7 +119,7 @@ describe('AuthService', () => {
       ...baseUser,
       totpSecretEnc: totp.encryptSecret(secret),
     });
-    await expect(auth.totpEnable('u1', '000000')).rejects.toThrow('Неверный код');
+    await expect(auth.totpEnable('u1', '000000')).rejects.toThrow('auth.err.badCode');
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
 });

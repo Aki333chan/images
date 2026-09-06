@@ -49,11 +49,11 @@ export class PluginTargetsService {
    */
   async forUser(eff: EffectivePermissions, serverId: string): Promise<ServerTargetDto> {
     if (eff.allowedServerIds !== null && !eff.allowedServerIds.has(serverId)) {
-      throw new ForbiddenException('Нет доступа к этому серверу');
+      throw new ForbiddenException('mc.err.noServerAccess');
     }
 
     const server = await this.prisma.server.findUnique({ where: { id: serverId } });
-    if (!server) throw new ForbiddenException('Сервер не найден');
+    if (!server) throw new ForbiddenException('mc.err.serverNotFound');
     return this.describe(server.id, server.name, server.pteroIdentifier);
   }
 

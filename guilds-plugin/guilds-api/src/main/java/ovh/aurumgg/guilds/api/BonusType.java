@@ -32,7 +32,7 @@ public enum BonusType {
      *
      * Величина — уровень эффекта (1, 2, 3…), а не множитель.
      */
-    MINING_SPEED("Скорость добычи", "Спешка", Kind.EFFECT_LEVEL, 30),
+    MINING_SPEED("mc.bonus.miningSpeed", "mc.bonus.short.miningSpeed", Kind.EFFECT_LEVEL, 30),
 
     /**
      * Скорость передвижения — эффект «Скорость».
@@ -42,7 +42,7 @@ public enum BonusType {
      * игрока назад собственной проверкой «moved too quickly». Потолок при этом
      * высокий — см. {@link #max()}, там же объяснено, почему.
      */
-    MOVEMENT_SPEED("Скорость передвижения", "Скорость", Kind.EFFECT_LEVEL, 20),
+    MOVEMENT_SPEED("mc.bonus.movementSpeed", "mc.bonus.short.movementSpeed", Kind.EFFECT_LEVEL, 20),
 
     /**
      * Множитель выпадения из блоков.
@@ -50,13 +50,13 @@ public enum BonusType {
      * Считается от того, что выпало бы и так, то есть уже с учётом удачи и
      * зачарований. 1.0 — без изменений, 2.0 — вдвое больше.
      */
-    BLOCK_DROPS("Добыча из блоков", "Блоки", Kind.MULTIPLIER, 30.0),
+    BLOCK_DROPS("mc.bonus.blockDrops", "mc.bonus.short.blockDrops", Kind.MULTIPLIER, 30.0),
 
     /** Множитель выпадения из мобов. Считается так же, как из блоков. */
-    MOB_DROPS("Добыча с мобов", "Мобы", Kind.MULTIPLIER, 30.0),
+    MOB_DROPS("mc.bonus.mobDrops", "mc.bonus.short.mobDrops", Kind.MULTIPLIER, 30.0),
 
     /** Множитель получаемого опыта. */
-    EXPERIENCE("Опыт", "Опыт", Kind.MULTIPLIER, 30.0);
+    EXPERIENCE("mc.bonus.experience", "mc.bonus.short.experience", Kind.MULTIPLIER, 30.0);
 
     /** Как читать величину бонуса. */
     public enum Kind {
@@ -66,21 +66,29 @@ public enum BonusType {
         MULTIPLIER
     }
 
-    private final String title;
-    private final String shortTitle;
+    private final String titleKey;
+    private final String shortTitleKey;
     private final Kind kind;
     private final double max;
 
-    BonusType(String title, String shortTitle, Kind kind, double max) {
-        this.title = title;
-        this.shortTitle = shortTitle;
+    BonusType(String titleKey, String shortTitleKey, Kind kind, double max) {
+        this.titleKey = titleKey;
+        this.shortTitleKey = shortTitleKey;
         this.kind = kind;
         this.max = max;
     }
 
-    /** Название для игрока и для панели. */
-    public String title() {
-        return title;
+    /**
+     * Ключ названия — для игрока и для панели.
+     *
+     * ОДИН И ТОТ ЖЕ КЛЮЧ НА ОБЕ СТОРОНЫ, и это не совпадение. Плагин
+     * подставляет его из своих lang/messages_*.yml на языке сервера, панель —
+     * из своего словаря на языке того, кто смотрит. Имена ключей одинаковые,
+     * поэтому добавить бонус — значит дописать строку в двух местах, а не
+     * заводить вторую таблицу соответствий.
+     */
+    public String titleKey() {
+        return titleKey;
     }
 
     /**
@@ -91,8 +99,8 @@ public enum BonusType {
      * ради которого строка и показывается. Полное название остаётся там, где
      * место есть, — в {@code /guild bonuses} и в панели.
      */
-    public String shortTitle() {
-        return shortTitle;
+    public String shortTitleKey() {
+        return shortTitleKey;
     }
 
     public Kind kind() {

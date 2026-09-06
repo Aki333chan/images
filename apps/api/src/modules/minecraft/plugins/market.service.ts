@@ -323,7 +323,7 @@ export class MarketService {
         // кусок чужого ответа. Человеку важно одно — этот источник сейчас
         // молчит, остальные работают.
         this.logger.warn(`Источник ${source} не ответил: ${message}`);
-        sources.push({ source, ok: false, error: 'источник не ответил', total: 0 });
+        sources.push({ source, ok: false, error: 'market.err.sourceSilent', total: 0 });
         return;
       }
       collected.push(...result.hits);
@@ -543,7 +543,7 @@ export class MarketService {
 
     const { body, headers } = await this.fetchJsonWithHeaders<unknown>(url, SPIGET_TIMEOUT_MS);
     if (!Array.isArray(body)) {
-      throw new Error('SpiGet вернул не список ресурсов');
+      throw new Error('SpiGet returned something other than a resource list');
     }
 
     const hits = body
@@ -615,7 +615,7 @@ export class MarketService {
     const p = await this.fetchJson<ModrinthProject>(
       `${MODRINTH_API}/project/${encodeURIComponent(id)}`,
     ).catch(() => null);
-    if (!p) throw new NotFoundException('Проект не найден на Modrinth');
+    if (!p) throw new NotFoundException('market.err.notOnModrinth');
 
     const loaders = (p.loaders ?? []).map((l) => l.toLowerCase());
     const projectType = projectTypeOf(loaders);
@@ -646,7 +646,7 @@ export class MarketService {
     const p = await this.fetchJson<HangarProject>(`${HANGAR_API}/projects/${hangarPath(id)}`).catch(
       () => null,
     );
-    if (!p) throw new NotFoundException('Плагин не найден на Hangar');
+    if (!p) throw new NotFoundException('market.err.notOnHangar');
 
     const platforms = p.supportedPlatforms ?? {};
     const settings = (p.settings ?? {}) as Record<string, string | undefined>;
@@ -681,7 +681,7 @@ export class MarketService {
       `${SPIGET_API}/resources/${resourceId}`,
       SPIGET_TIMEOUT_MS,
     ).catch(() => null);
-    if (!p) throw new NotFoundException('Ресурс не найден на SpigotMC');
+    if (!p) throw new NotFoundException('market.err.notOnSpigot');
 
     const hit = spigetHit(p);
     return {
@@ -689,7 +689,9 @@ export class MarketService {
       projectType: 'plugin',
       id: String(resourceId),
       slug: String(resourceId),
-      title: hit?.title ?? `Ресурс ${resourceId}`,
+      // Запасное имя без слов: оно попадает в заголовок карточки и в
+      // название файла, а перевести его там уже некому.
+      title: hit?.title ?? `SpigotMC #${resourceId}`,
       description: hit?.description ?? '',
       // Описание SpigotMC — это HTML в base64, а не markdown. Показать его как
       // markdown значит либо вывалить человеку разметку, либо вставить чужой
@@ -803,7 +805,7 @@ export class MarketService {
       ).catch(() => null),
     ]);
 
-    if (!Array.isArray(list)) throw new NotFoundException('SpiGet вернул не список версий');
+    if (!Array.isArray(list)) throw new NotFoundException('market.err.spigetBadVersions');
     const gameVersions = Array.isArray(resource?.testedVersions)
       ? resource.testedVersions.map(String)
       : [];
@@ -852,7 +854,7 @@ export class MarketService {
       `${MODRINTH_API}/version/${encodeURIComponent(versionId)}`,
     ).catch(() => null);
     const file = v && pickPrimary(v.files ?? []);
-    if (!v || !file) throw new NotFoundException('У этой версии нет файла для скачивания');
+    if (!v || !file) throw new NotFoundException('market.err.noFile');
     const sha512 = file.hashes?.sha512;
     const sha1 = file.hashes?.sha1;
 
@@ -877,13 +879,13 @@ export class MarketService {
     const v = await this.fetchJson<HangarVersion>(
       `${HANGAR_API}/projects/${hangarPath(id)}/versions/${encodeURIComponent(versionId)}`,
     ).catch(() => null);
-    if (!v) throw new NotFoundException('Версия не найдена на Hangar');
+    if (!v) throw new NotFoundException('market.err.versionNotOnHangar');
 
     // Платформ у версии может быть несколько; берём ту, у которой есть файл.
     const entry = Object.entries(v.downloads ?? {}).find(
       ([, d]) => d?.downloadUrl || d?.externalUrl,
     );
-    if (!entry) throw new NotFoundException('У этой версии нет файла для скачивания');
+    if (!entry) throw new NotFoundException('market.err.noFile');
     const [platform, download] = entry;
 
     const external = !download.downloadUrl && !!download.externalUrl;
@@ -928,7 +930,7 @@ export class MarketService {
   private async getSpigetFile(id: string, versionId: string): Promise<MarketVersionFile> {
     const resourceId = spigetId(id);
     const version = String(versionId).replace(/[^0-9a-zA-Z-]/g, '');
-    if (!version) throw new NotFoundException('Не указана версия ресурса');
+    if (!version) throw new NotFoundException('market.err.noVersionGiven');
 
     const [resource, versionInfo] = await Promise.all([
       this.fetchJson<SpigetResource>(
@@ -940,19 +942,18 @@ export class MarketService {
         SPIGET_TIMEOUT_MS,
       ).catch(() => null),
     ]);
-    if (!resource) throw new NotFoundException('Ресурс не найден на SpigotMC');
+    if (!resource) throw new NotFoundException('market.err.notOnSpigot');
 
     if (resource.premium === true) {
-      throw new BadRequestException(
-        'Это платный ресурс SpigotMC — скачать его может только покупатель на сайте источника',
-      );
+      throw new BadRequestException('market.err.premium');
     }
 
     const fileType = (resource.file?.type ?? '').toLowerCase();
     if (fileType && fileType !== '.jar' && fileType !== 'external') {
-      throw new BadRequestException(
-        `Файл ресурса имеет тип ${fileType}, а не .jar — установить его панель не может`,
-      );
+      throw new BadRequestException({
+        message: 'market.err.badFileType',
+        i18nValues: { type: fileType },
+      });
     }
 
     const fileName = `${slugForFile(resource.name ?? `resource-${resourceId}`)}-${slugForFile(
@@ -962,9 +963,7 @@ export class MarketService {
     if (resource.external === true) {
       const externalUrl = resource.file?.externalUrl;
       if (!externalUrl) {
-        throw new BadRequestException(
-          'Ресурс размещён вне SpigotMC, но ссылка на файл не указана — установите его вручную',
-        );
+        throw new BadRequestException('market.err.externalNoUrl');
       }
       assertSafeDownloadUrl(externalUrl);
       return {
@@ -1004,7 +1003,7 @@ export class MarketService {
    */
   async getIcon(rawUrl: string): Promise<ProxiedIcon> {
     if (!isAllowedIconUrl(rawUrl)) {
-      throw new NotFoundException('Иконка с этого адреса не отдаётся');
+      throw new NotFoundException('market.err.iconRefused');
     }
 
     const res = await request(rawUrl, {
@@ -1016,7 +1015,7 @@ export class MarketService {
     }).catch(() => null);
 
     if (!res || res.statusCode >= 400) {
-      throw new NotFoundException('Источник не отдал иконку');
+      throw new NotFoundException('market.err.iconMissing');
     }
 
     const contentType = String(res.headers['content-type'] ?? '')
@@ -1024,7 +1023,7 @@ export class MarketService {
       .trim()
       .toLowerCase();
     if (!ICON_TYPES.has(contentType)) {
-      throw new NotFoundException('По этому адресу не картинка');
+      throw new NotFoundException('market.err.iconNotImage');
     }
 
     const chunks: Buffer[] = [];
@@ -1032,7 +1031,7 @@ export class MarketService {
     for await (const chunk of res.body) {
       const buf = Buffer.from(chunk);
       total += buf.length;
-      if (total > MAX_ICON_BYTES) throw new NotFoundException('Иконка слишком большая');
+      if (total > MAX_ICON_BYTES) throw new NotFoundException('market.err.iconTooBig');
       chunks.push(buf);
     }
 
@@ -1092,7 +1091,7 @@ function hangarPath(id: string): string {
 function spigetId(raw: string): number {
   const value = Number.parseInt(String(raw).trim(), 10);
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new NotFoundException('Неверный идентификатор ресурса SpigotMC');
+    throw new NotFoundException('market.err.badSpigetId');
   }
   return value;
 }
@@ -1275,8 +1274,6 @@ export function isSafeDownloadUrl(raw: string): boolean {
 
 export function assertSafeDownloadUrl(raw: string): void {
   if (!isSafeDownloadUrl(raw)) {
-    throw new BadRequestException(
-      'Файл размещён по адресу, по которому панель не пойдёт: разрешены только внешние https-ссылки',
-    );
+    throw new BadRequestException('market.err.unsafeUrl');
   }
 }

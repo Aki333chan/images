@@ -20,9 +20,11 @@ import { SettingsModule } from './settings/settings.module';
 import { MessagesModule } from './messages/messages.module';
 import { HealthModule } from './health/health.module';
 import { GameModulesModule } from './modules/game-modules.module';
+import { I18nModule } from './i18n/i18n.module';
 
 @Module({
   imports: [
+    I18nModule,
     PrismaModule,
     CryptoModule,
     BullModule.forRoot({ connection: { url: env.REDIS_URL } }),

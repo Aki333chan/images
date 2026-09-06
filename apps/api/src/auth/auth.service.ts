@@ -29,17 +29,17 @@ export class AuthService {
     // Хешируем даже при отсутствии пользователя — не раскрываем существование email по таймингу.
     if (!user) {
       await argon2.hash(password);
-      throw new UnauthorizedException('Неверный email или пароль');
+      throw new UnauthorizedException('auth.err.badCredentials');
     }
-    if (!user.isActive) throw new UnauthorizedException('Учётная запись деактивирована');
+    if (!user.isActive) throw new UnauthorizedException('auth.err.deactivated');
     if (user.status === 'pending_approval') {
-      throw new UnauthorizedException('Учётная запись ещё не подтверждена ГМ');
+      throw new UnauthorizedException('auth.err.notApproved');
     }
     if (user.status === 'rejected') {
-      throw new UnauthorizedException('Учётная запись деактивирована');
+      throw new UnauthorizedException('auth.err.deactivated');
     }
     const ok = await argon2.verify(user.passwordHash, password);
-    if (!ok) throw new UnauthorizedException('Неверный email или пароль');
+    if (!ok) throw new UnauthorizedException('auth.err.badCredentials');
 
     // Одноразовый пароль протух: пускать нельзя, но и молчать нельзя —
     // иначе человек будет думать, что ошибся при вводе.
@@ -49,7 +49,7 @@ export class AuthService {
       user.passwordExpiresAt.getTime() < Date.now()
     ) {
       throw new UnauthorizedException(
-        'Срок действия временного пароля истёк — попросите выдать новый',
+        'auth.err.tempExpired',
       );
     }
 
@@ -77,16 +77,16 @@ export class AuthService {
         secret: env.JWT_ACCESS_SECRET,
       });
     } catch {
-      throw new UnauthorizedException('Сессия 2FA истекла, войдите заново');
+      throw new UnauthorizedException('auth.err.twoFaExpired');
     }
-    if (payload.purpose !== '2fa') throw new UnauthorizedException('Неверный тип токена');
+    if (payload.purpose !== '2fa') throw new UnauthorizedException('auth.err.badTokenType');
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.isActive || !user.totpEnabled || !user.totpSecretEnc) {
-      throw new UnauthorizedException('2FA недоступна');
+      throw new UnauthorizedException('auth.err.twoFaUnavailable');
     }
     if (!this.totp.verify(code, this.totp.decryptSecret(user.totpSecretEnc))) {
-      throw new UnauthorizedException('Неверный код 2FA');
+      throw new UnauthorizedException('auth.err.badTwoFaCode');
     }
     const issued = await this.tokens.createSession(user.id, userAgent, ip);
     return { ...issued, userId: user.id };
@@ -95,7 +95,7 @@ export class AuthService {
   /** Шаг 1 включения 2FA: генерируем секрет, сохраняем зашифрованным, но не включаем. */
   async totpSetup(userId: string): Promise<{ secret: string; otpauthUrl: string }> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    if (user.totpEnabled) throw new BadRequestException('2FA уже включена');
+    if (user.totpEnabled) throw new BadRequestException('auth.err.twoFaAlready');
     const secret = this.totp.generateSecret();
     await this.prisma.user.update({
       where: { id: userId },
@@ -107,10 +107,10 @@ export class AuthService {
   /** Шаг 2: подтверждение кодом из приложения. */
   async totpEnable(userId: string, code: string): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    if (user.totpEnabled) throw new BadRequestException('2FA уже включена');
-    if (!user.totpSecretEnc) throw new BadRequestException('Сначала вызовите /auth/totp/setup');
+    if (user.totpEnabled) throw new BadRequestException('auth.err.twoFaAlready');
+    if (!user.totpSecretEnc) throw new BadRequestException('auth.err.setupFirst');
     if (!this.totp.verify(code, this.totp.decryptSecret(user.totpSecretEnc))) {
-      throw new BadRequestException('Неверный код');
+      throw new BadRequestException('auth.err.badCode');
     }
     await this.prisma.user.update({ where: { id: userId }, data: { totpEnabled: true } });
   }
@@ -118,7 +118,7 @@ export class AuthService {
   async totpDisable(userId: string, password: string): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!(await argon2.verify(user.passwordHash, password))) {
-      throw new UnauthorizedException('Неверный пароль');
+      throw new UnauthorizedException('auth.err.badPassword');
     }
     await this.prisma.user.update({
       where: { id: userId },

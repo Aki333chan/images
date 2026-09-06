@@ -257,7 +257,7 @@ class CompanionHttpServerTest {
         // 200, а не 400: запрос исполнен, просто одна строка не легла — и это
         // видно построчно, иначе человек не поймёт, какая именно.
         assertEquals(200, response.statusCode());
-        assertTrue(response.body().contains("Неизвестный предмет"), response.body());
+        assertTrue(response.body().contains("mc.give.err.unknownItem"), response.body());
         assertEquals(List.of("made_upx1", "minecraft:stonex1"), bridge.gives);
     }
 
@@ -269,7 +269,7 @@ class CompanionHttpServerTest {
                 post(givePath(), TOKEN, "{\"items\":[{\"id\":\"minecraft:stone\",\"count\":64}]}");
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("\"given\":0"), response.body());
-        assertTrue(response.body().contains("Инвентарь заполнен"), response.body());
+        assertTrue(response.body().contains("mc.give.err.full"), response.body());
     }
 
     @Test
@@ -412,7 +412,7 @@ class CompanionHttpServerTest {
         HttpResponse<String> response = post("/guilds/7/bonuses", TOKEN,
                 "{\"type\":\"вечнаяжизнь\",\"magnitude\":9,\"actor\":\"ГМ\"}");
         assertEquals(409, response.statusCode(), response.body());
-        assertTrue(response.body().contains("Неизвестный вид"), response.body());
+        assertTrue(response.body().contains("mc.g.err.noSuchBonusType"), response.body());
     }
 
     @Test
@@ -583,7 +583,8 @@ class CompanionHttpServerTest {
         assertEquals(409, response.statusCode());
         Map<String, Object> body = JsonParser.parseObject(response.body());
         assertEquals("rejected", body.get("code"));
-        assertTrue(((String) body.get("error")).contains("nosuchgroup"));
+        // Ключ, а не фраза: имя группы панель и так знает — она его и прислала.
+        assertEquals("mc.perm.err.noGroup", body.get("error"));
         assertTrue(bridge.permissionWrites.isEmpty());
     }
 
@@ -845,7 +846,7 @@ class CompanionHttpServerTest {
         HttpResponse<String> response = post("/plugins/Broken/enabled", TOKEN, "{\"enabled\":false}");
 
         assertEquals(409, response.statusCode());
-        assertTrue(response.body().contains("отказался переключиться"));
+        assertTrue(response.body().contains("mc.plug.err.refused"));
     }
 
     @Test

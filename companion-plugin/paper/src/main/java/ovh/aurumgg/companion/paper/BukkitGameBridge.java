@@ -317,7 +317,9 @@ public final class BukkitGameBridge implements GameBridge {
     private static GiveResult giveOne(Inventory inventory, ItemSpec spec) {
         Material material = Material.matchMaterial(spec.id());
         if (material == null || material == Material.AIR || !material.isItem()) {
-            return GiveResult.failed(spec.id(), spec.count(), "Неизвестный предмет");
+            // Ключ словаря панели, а не фраза: строку читает сотрудник в
+            // панели, и на каком языке он её читает, игровой сервер не знает.
+            return GiveResult.failed(spec.id(), spec.count(), "mc.give.err.unknownItem");
         }
         int perStack = Math.max(1, material.getMaxStackSize());
 
@@ -333,11 +335,9 @@ public final class BukkitGameBridge implements GameBridge {
 
         int given = spec.count() - notPlaced;
         if (notPlaced == 0) return GiveResult.ok(spec.id(), spec.count());
-        return new GiveResult(
-                spec.id(),
-                spec.count(),
-                given,
-                given == 0 ? "Инвентарь заполнен" : "Инвентарь заполнен: не поместилось " + notPlaced);
+        // Ключ один на оба случая: сколько именно легло, панель показывает
+        // отдельной строкой — у неё есть и requested, и given.
+        return new GiveResult(spec.id(), spec.count(), given, "mc.give.err.full");
     }
 
     @Override
@@ -553,13 +553,13 @@ public final class BukkitGameBridge implements GameBridge {
                 () -> {
                     Plugin target = Bukkit.getPluginManager().getPlugin(pluginName);
                     if (target == null) {
-                        return PluginToggle.failed("Плагин «" + pluginName + "» на сервере не найден");
+                        return PluginToggle.failed("mc.plug.err.notFound");
                     }
                     // Себя выключать нельзя: вместе с плагином остановится и
                     // HTTP-сервер, через который пришёл этот самый запрос, —
                     // включить обратно будет уже нечем.
                     if (target.getName().equals(SELF_NAME)) {
-                        return PluginToggle.failed("Нельзя выключить companion-плагин: панель потеряет связь с сервером");
+                        return PluginToggle.failed("mc.plug.err.selfDisable");
                     }
                     if (target.isEnabled() == enabled) {
                         return PluginToggle.ok(enabled);
@@ -575,14 +575,17 @@ public final class BukkitGameBridge implements GameBridge {
                         // Ловим Throwable, а не Exception: плагин при старте
                         // вполне может уронить NoClassDefFoundError, и уронить
                         // вместе с собой основной поток сервера мы не имеем права.
-                        return PluginToggle.failed(
-                                "Плагин отказался переключиться: " + t.getClass().getSimpleName()
-                                        + (t.getMessage() == null ? "" : " — " + t.getMessage()));
+                        // Подробности — в лог сервера, а не в панель: класс
+                        // исключения нужен тому, кто чинит плагин, и читает
+                        // он консоль.
+                        plugin.getLogger().warning("Плагин «" + pluginName
+                                + "» отказался переключиться: " + t);
+                        return PluginToggle.failed("mc.plug.err.refused");
                     }
 
                     return PluginToggle.ok(target.isEnabled());
                 },
-                PluginToggle.failed("Сервер не ответил вовремя"));
+                PluginToggle.failed("mc.plug.err.timeout"));
     }
 
     // ---------- Экономика (Vault) ----------

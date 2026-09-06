@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { useT } from '../i18n';
 import { createPortal } from 'react-dom';
 import { cn } from '../lib/cn';
 import { IconClose } from './icons';
@@ -43,6 +44,8 @@ export function Modal({
    */
   wide?: boolean;
 }) {
+  const t = useT();
+
   // Фон под модалкой не прокручиваем — иначе на телефоне при прокрутке
   // внутри окна «уезжает» страница за ним.
   useEffect(() => {
@@ -85,7 +88,7 @@ export function Modal({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Закрыть"
+              aria-label={t('common.close')}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
             >
               <IconClose size={16} />

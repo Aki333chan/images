@@ -13,7 +13,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ClientApiService } from '../../../pterodactyl/client-api.service';
 import { CompanionService } from '../companion.service';
 import { MarketService } from './market.service';
-import { fileProtectionReason, protectionReason } from './plugin-protection';
+import { fileProtectionReasonKey, protectionReasonKey } from './plugin-protection';
 
 /**
  * Установка, включение/выключение и удаление плагинов на игровом сервере.
@@ -62,7 +62,7 @@ export class PluginFilesService {
       where: { id: serverId },
       select: { pteroIdentifier: true },
     });
-    if (!server) throw new BadRequestException('Сервер не найден');
+    if (!server) throw new BadRequestException('mc.err.serverNotFound');
     return server.pteroIdentifier;
   }
 
@@ -100,14 +100,20 @@ export class PluginFilesService {
       jar = await this.download(file.url);
     } catch (e) {
       await log(false, { error: (e as Error).message });
-      throw new BadRequestException(`Не удалось скачать файл плагина: ${(e as Error).message}`);
+      // Своя причина — своим ключом; чужая (обрыв связи, отказ TLS) приходит
+      // строкой от undici и остаётся как есть: переводить её панель не может
+      // и врать про причину не должна.
+      throw e instanceof DownloadFailure
+        ? new BadRequestException({ message: e.key, i18nValues: e.values })
+        : new BadRequestException({
+            message: 'mc.err.downloadFailed',
+            i18nValues: { error: (e as Error).message },
+          });
     }
 
     if (file.hash && !verifyHash(jar, file.hash)) {
       await log(false, { error: 'хэш не совпал' });
-      throw new BadRequestException(
-        'Скачанный файл не совпал с контрольной суммой источника — установка отменена',
-      );
+      throw new BadRequestException('mc.err.hashMismatch');
     }
 
     // Часть источников (SpigotMC) хэшей не отдаёт вовсе, и тогда единственная
@@ -116,9 +122,7 @@ export class PluginFilesService {
     // бы в plugins/ под именем плагина, и сервер молча не загрузил бы его.
     if (!looksLikeJar(jar)) {
       await log(false, { error: 'приехал не jar' });
-      throw new BadRequestException(
-        'Источник вернул не jar-файл — вероятно, вместо файла отдана страница сайта. Установка отменена.',
-      );
+      throw new BadRequestException('mc.err.notAJar');
     }
 
     const safeName = sanitizeJarName(file.fileName);
@@ -135,15 +139,23 @@ export class PluginFilesService {
       dir: targetDir,
     });
 
-    const what = file.projectType === 'mod' ? 'Мод' : 'Плагин';
     return {
       ok: true,
       fileName: safeName,
       sizeBytes: jar.length,
       restartRequired: running,
-      message: running
-        ? `${what} загружен в ${targetDir.slice(1)}/. Сервер сейчас запущен — он заработает после перезапуска.`
-        : `${what} загружен в ${targetDir.slice(1)}/. Он подхватится при следующем запуске сервера.`,
+      // Четыре ключа вместо подстановки «Мод»/«Плагин»: слово это часть
+      // фразы и склоняется вместе с ней, а подставленное готовым оно бы
+      // застряло в именительном падеже посреди чужого языка.
+      message:
+        file.projectType === 'mod'
+          ? running
+            ? 'mc.err.installedModRunning'
+            : 'mc.err.installedModStopped'
+          : running
+            ? 'mc.err.installedPluginRunning'
+            : 'mc.err.installedPluginStopped',
+      messageValues: { dir: targetDir.slice(1) },
     };
   }
 
@@ -155,17 +167,19 @@ export class PluginFilesService {
       headersTimeout: 30_000,
       bodyTimeout: 120_000,
     });
-    if (res.statusCode >= 400) throw new Error(`источник ответил ${res.statusCode}`);
+    if (res.statusCode >= 400) {
+      throw new DownloadFailure('mc.err.dl.status', { status: res.statusCode });
+    }
 
     const chunks: Buffer[] = [];
     let total = 0;
     for await (const chunk of res.body) {
       const buf = Buffer.from(chunk);
       total += buf.length;
-      if (total > MAX_JAR_BYTES) throw new Error('файл больше 150 МБ');
+      if (total > MAX_JAR_BYTES) throw new DownloadFailure('mc.err.dl.tooBig');
       chunks.push(buf);
     }
-    if (total === 0) throw new Error('источник вернул пустой файл');
+    if (total === 0) throw new DownloadFailure('mc.err.dl.empty');
     return Buffer.concat(chunks);
   }
 
@@ -208,28 +222,28 @@ export class PluginFilesService {
     }
 
     const plugins: InstalledPluginDto[] = (live ?? []).map((p) => {
-      const reason = protectionReason(p.name);
+      const reasonKey = protectionReasonKey(p.name);
       return {
         name: p.name,
         version: p.version,
         state: p.enabled ? 'enabled' : 'disabled-runtime',
         fileName: guessFile(files, p.name),
-        protected: reason !== null,
-        ...(reason ? { protectedReason: reason } : {}),
+        protected: reasonKey !== null,
+        ...(reasonKey ? { protectedReasonKey: reasonKey } : {}),
       };
     });
 
     // Отключённые переносом сервер не видит вовсе — они есть только на диске.
     for (const fileName of disabled) {
       // Тут имени из Bukkit нет, есть только файл: сверяемся по нему.
-      const reason = fileProtectionReason(fileName);
+      const reasonKey = fileProtectionReasonKey(fileName);
       plugins.push({
         name: nameFromJar(fileName),
         version: null,
         state: 'disabled-file',
         fileName,
-        protected: reason !== null,
-        ...(reason ? { protectedReason: reason } : {}),
+        protected: reasonKey !== null,
+        ...(reasonKey ? { protectedReasonKey: reasonKey } : {}),
       });
     }
 
@@ -237,7 +251,7 @@ export class PluginFilesService {
       companionAvailable: live !== null,
       filesAvailable,
       ...(live === null
-        ? { reason: 'Companion-плагин не настроен — видно только файлы, без живого состояния' }
+        ? { reason: 'mc.err.filesOnly' }
         : {}),
       plugins: plugins.sort(byProtectedThenName),
     };
@@ -269,7 +283,7 @@ export class PluginFilesService {
     pluginName: string,
     enabled: boolean,
     actorId: string,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<PluginActionResult> {
     // Запрет односторонний: выключать защищённый плагин нельзя, а включать —
     // можно и нужно. Если LuckPerms оказался выключен, кнопка «Включить» это
     // единственное, чем панель ещё способна помочь.
@@ -285,13 +299,12 @@ export class PluginFilesService {
     });
 
     if (!result.ok) {
-      throw new BadRequestException(result.error ?? 'Не удалось переключить плагин');
+      throw new BadRequestException(result.error ?? 'mc.err.toggleFailed');
     }
     return {
       ok: true,
-      message: enabled
-        ? `Плагин ${pluginName} включён без перезапуска`
-        : `Плагин ${pluginName} выключен без перезапуска`,
+      message: enabled ? 'mc.err.pluginEnabled' : 'mc.err.pluginDisabled',
+      messageValues: { plugin: pluginName },
     };
   }
 
@@ -308,7 +321,7 @@ export class PluginFilesService {
     fileName: string,
     disabled: boolean,
     actorId: string,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<PluginActionResult> {
     const safeName = sanitizeJarName(fileName);
     // Как и с горячим выключением: унести файл защищённого плагина нельзя,
     // вернуть его из .disabled/ обратно — можно.
@@ -343,9 +356,8 @@ export class PluginFilesService {
 
     return {
       ok: true,
-      message: disabled
-        ? `Файл ${safeName} перенесён в ${DISABLED_PLUGINS_DIR}/ — после перезапуска плагин не загрузится`
-        : `Файл ${safeName} возвращён в plugins/ — плагин загрузится при следующем запуске`,
+      message: disabled ? 'mc.err.fileDisabled' : 'mc.err.fileRestored',
+      messageValues: { file: safeName, dir: DISABLED_PLUGINS_DIR },
     };
   }
 
@@ -359,7 +371,7 @@ export class PluginFilesService {
     serverId: string,
     input: { fileName: string; pluginName?: string; withData: boolean },
     actorId: string,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<PluginActionResult> {
     if (input.pluginName) this.assertNotProtected(input.pluginName);
     const safeName = sanitizeJarName(input.fileName);
     this.assertFileNotProtected(safeName);
@@ -384,8 +396,8 @@ export class PluginFilesService {
       });
       throw new BadRequestException(
         failure?.error
-          ? `Не удалось удалить файл: ${failure.error}`
-          : `Файл ${safeName} не найден ни в plugins/, ни в ${DISABLED_PLUGINS_DIR}/`,
+          ? { message: 'mc.err.removeFailed', i18nValues: { error: failure.error } }
+          : { message: 'mc.err.fileNotFound', i18nValues: { file: safeName, dir: DISABLED_PLUGINS_DIR } },
       );
     }
 
@@ -412,8 +424,10 @@ export class PluginFilesService {
     return {
       ok: true,
       message: dataRemoved
-        ? `Плагин и его папка данных удалены. Изменения вступят в силу после перезапуска.`
-        : `Файл плагина удалён${input.withData ? ' (папку данных найти не удалось)' : ''}. Изменения вступят в силу после перезапуска.`,
+        ? 'mc.err.removedWithData'
+        : input.withData
+          ? 'mc.err.removedNoDataFolder'
+          : 'mc.err.removed',
     };
   }
 
@@ -441,13 +455,17 @@ export class PluginFilesService {
   }
 
   private assertNotProtected(pluginName: string): void {
-    const reason = protectionReason(pluginName);
-    if (reason) throw new BadRequestException(reason);
+    const key = protectionReasonKey(pluginName);
+    // Ключ и подстановка к нему, а не готовая фраза: язык того, кто нажал
+    // кнопку, известен только на краю — там фильтр ошибок и соберёт текст.
+    if (key) throw new BadRequestException({ message: key, i18nValues: { name: pluginName } });
   }
 
   private assertFileNotProtected(fileName: string): void {
-    const reason = fileProtectionReason(fileName);
-    if (reason) throw new BadRequestException(reason);
+    const key = fileProtectionReasonKey(fileName);
+    if (key) {
+      throw new BadRequestException({ message: key, i18nValues: { name: nameFromJar(fileName) } });
+    }
   }
 }
 
@@ -483,10 +501,10 @@ function sanitizeJarName(raw: string): string {
   const base = (raw ?? '').split(/[\\/]/).pop() ?? '';
   const cleaned = base.replace(/[^A-Za-z0-9._+-]/g, '_');
   if (!cleaned.toLowerCase().endsWith('.jar')) {
-    throw new BadRequestException('Файл плагина должен быть .jar');
+    throw new BadRequestException('mc.err.mustBeJar');
   }
   if (cleaned.startsWith('.') || cleaned.length > 200) {
-    throw new BadRequestException('Недопустимое имя файла плагина');
+    throw new BadRequestException('mc.err.badFileName');
   }
   return cleaned;
 }
@@ -495,7 +513,7 @@ function sanitizeJarName(raw: string): string {
 function sanitizeFolderName(raw: string): string {
   const cleaned = (raw ?? '').replace(/[^A-Za-z0-9._+-]/g, '_');
   if (!cleaned || cleaned.startsWith('.') || cleaned.length > 200) {
-    throw new BadRequestException('Недопустимое имя папки плагина');
+    throw new BadRequestException('mc.err.badFolderName');
   }
   return cleaned;
 }
@@ -529,4 +547,28 @@ function nameFromJar(fileName: string): string {
 export function byProtectedThenName(a: InstalledPluginDto, b: InstalledPluginDto): number {
   if (a.protected !== b.protected) return a.protected ? -1 : 1;
   return a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
+}
+
+/** Ответ действия над плагином: ключ сообщения и подстановки к нему. */
+export interface PluginActionResult {
+  ok: boolean;
+  /** Ключ словаря панели — текст собирает браузер, на языке того, кто смотрит. */
+  message: string;
+  messageValues?: Record<string, string>;
+}
+
+/**
+ * Отказ скачивания, причину которого назвала сама панель.
+ *
+ * Отдельный класс нужен, чтобы отличить свою причину («файл больше 150 МБ»)
+ * от чужой строки из сетевой библиотеки: первую можно перевести по ключу,
+ * вторую — только показать как есть.
+ */
+class DownloadFailure extends Error {
+  constructor(
+    readonly key: string,
+    readonly values?: Record<string, string | number>,
+  ) {
+    super(key);
+  }
 }

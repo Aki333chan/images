@@ -97,9 +97,9 @@ export class PteroOpsService {
     // сервера: файлов в нём нет, а текущие при truncate уже стёрты.
     const backups = await this.client.listBackups(identifier);
     const target = backups.find((b) => b.uuid === backupUuid);
-    if (!target) throw new BadRequestException('Бэкап не найден');
+    if (!target) throw new BadRequestException('backups.err.notFound');
     if (!target.is_successful) {
-      throw new BadRequestException('Этот бэкап не завершился успешно — восстанавливать нечего');
+      throw new BadRequestException('backups.err.notSuccessful');
     }
 
     await this.client.restoreBackup(identifier, backupUuid, truncate);
@@ -159,7 +159,7 @@ export class PteroOpsService {
   ): Promise<PteroScheduleDto> {
     const identifier = await this.identifier(serverId);
     const current = (await this.client.listSchedules(identifier)).find((s) => s.id === scheduleId);
-    if (!current) throw new BadRequestException('Расписание не найдено');
+    if (!current) throw new BadRequestException('schedules.err.notFound');
 
     const updated = await this.client.updateSchedule(identifier, scheduleId, {
       name: current.name,
@@ -204,7 +204,7 @@ export class PteroOpsService {
 function toScheduleBody(input: ScheduleInput) {
   const cron = validateCron(input.cron);
   const name = input.name.trim();
-  if (name === '') throw new BadRequestException('У расписания должно быть название');
+  if (name === '') throw new BadRequestException('schedules.err.noName');
   return {
     name: name.slice(0, 191),
     is_active: input.isActive,
@@ -235,15 +235,18 @@ function validatePayload(action: ScheduleAction, raw: string): string {
   if (action === 'power') {
     if (!(SCHEDULE_POWER_ACTIONS as readonly string[]).includes(payload)) {
       throw new BadRequestException(
-        `Для шага питания нужен один из сигналов: ${SCHEDULE_POWER_ACTIONS.join(', ')}`,
+        {
+          message: 'schedules.err.badPower',
+          i18nValues: { actions: SCHEDULE_POWER_ACTIONS.join(', ') },
+        },
       );
     }
     return payload;
   }
-  if (payload === '') throw new BadRequestException('Не указана команда');
+  if (payload === '') throw new BadRequestException('schedules.err.noCommand');
   // Перевод строки внутри команды — это вторая команда для игрового сервера.
   if (/[\r\n]/.test(payload)) {
-    throw new BadRequestException('Команда не может содержать перевод строки');
+    throw new BadRequestException('schedules.err.commandNewline');
   }
   return payload.slice(0, 2048);
 }
@@ -251,7 +254,10 @@ function validatePayload(action: ScheduleAction, raw: string): string {
 function validateOffset(raw: number): number {
   if (!Number.isInteger(raw) || raw < 0 || raw > PteroOpsService.MAX_TIME_OFFSET) {
     throw new BadRequestException(
-      `Задержка перед шагом — целое число секунд от 0 до ${PteroOpsService.MAX_TIME_OFFSET}`,
+      {
+        message: 'schedules.err.offset',
+        i18nValues: { max: PteroOpsService.MAX_TIME_OFFSET },
+      },
     );
   }
   return raw;

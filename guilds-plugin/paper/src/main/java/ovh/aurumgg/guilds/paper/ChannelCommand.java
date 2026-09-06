@@ -27,17 +27,28 @@ import ovh.aurumgg.guilds.core.PartyService;
  */
 final class ChannelCommand implements CommandExecutor {
 
-    /** Какой это канал. */
+    /**
+     * Какой это канал.
+     *
+     * Метка канала («[Пати]») — ключ, а не готовая строка: она уходит в чат
+     * перед каждым сообщением и на английском сервере обязана быть «[Party]».
+     */
     enum Channel {
-        PARTY("&b[Пати]", "&bПати"),
-        GUILD("&a[Гильдия]", "&aГильдия");
+        PARTY("chat.party.label", "party.err.notInParty",
+                "help.party.chat.use", "help.party.chat.what"),
+        GUILD("chat.guild.label", "guild.err.notInGuild",
+                "help.guild.chat.use", "help.guild.chat.what");
 
-        private final String prefix;
-        private final String name;
+        private final String labelKey;
+        private final String notInKey;
+        private final String useKey;
+        private final String whatKey;
 
-        Channel(String prefix, String name) {
-            this.prefix = prefix;
-            this.name = name;
+        Channel(String labelKey, String notInKey, String useKey, String whatKey) {
+            this.labelKey = labelKey;
+            this.notInKey = notInKey;
+            this.useKey = useKey;
+            this.whatKey = whatKey;
         }
     }
 
@@ -54,21 +65,17 @@ final class ChannelCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
-            Msg.send(sender, "Этот чат — для игроков в игре");
+            Msg.send(sender, Msg.text("chat.err.playersOnly"));
             return true;
         }
         if (args.length == 0) {
-            Msg.usage(player, "/" + label + " <сообщение>",
-                    channel == Channel.PARTY
-                            ? "написать своей пати; посторонние этого не увидят"
-                            : "написать своей гильдии; посторонние этого не увидят");
+            Msg.usage(player, Msg.text(channel.useKey), Msg.text(channel.whatKey));
             return true;
         }
 
         List<UUID> recipients = recipients(player);
         if (recipients.isEmpty()) {
-            Msg.send(player, channel == Channel.PARTY
-                    ? "Вы не в пати" : "Вы не состоите в гильдии");
+            Msg.send(player, Msg.text(channel.notInKey));
             return true;
         }
 
@@ -76,7 +83,7 @@ final class ChannelCommand implements CommandExecutor {
         // Цветные коды из пользовательского текста НЕ разбираются: иначе любой
         // участник смог бы подделать сообщение под системное или сделать его
         // невидимым цветом фона.
-        var message = Msg.colored(channel.prefix + " &f" + player.getName() + "&7: &f")
+        var message = Msg.colored(Msg.text(channel.labelKey) + " &f" + player.getName() + "&7: &f")
                 .append(net.kyori.adventure.text.Component.text(text));
 
         int delivered = 0;
@@ -89,7 +96,7 @@ final class ChannelCommand implements CommandExecutor {
         if (delivered <= 1) {
             // Иначе человек пишет в пустоту и не понимает, почему ему не
             // отвечают.
-            Msg.send(player, "Кроме вас, из группы сейчас никого нет в сети");
+            Msg.send(player, Msg.text("chat.err.aloneOnline"));
         }
         return true;
     }

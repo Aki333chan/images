@@ -14,7 +14,8 @@ export interface ServerTabProps {
 
 export interface ServerTab {
   id: string;
-  label: string;
+  /** Ключ подписи: реестр строится до того, как известен язык. */
+  labelKey: string;
   /** Право, без которого вкладка не показывается. */
   permission: PermissionKey;
   icon: ComponentType<{ size?: number }>;
@@ -34,38 +35,38 @@ export interface ServerTab {
  * расписания заводят однажды и забывают.
  */
 export const SERVER_TABS: ServerTab[] = [
-  { id: 'files', label: 'Файлы', permission: 'files.view', icon: IconFolder, component: FilesTab },
+  { id: 'files', labelKey: 'tab.files', permission: 'files.view', icon: IconFolder, component: FilesTab },
   {
     id: 'backups',
-    label: 'Бэкапы',
+    labelKey: 'tab.backups',
     permission: 'backups.view',
     icon: IconArchive,
     component: BackupsTab,
   },
   {
     id: 'network',
-    label: 'Сеть',
+    labelKey: 'tab.network',
     permission: 'allocations.manage',
     icon: IconNetwork,
     component: NetworkTab,
   },
   {
     id: 'startup',
-    label: 'Запуск',
+    labelKey: 'tab.startup',
     permission: 'startup.manage',
     icon: IconRocket,
     component: StartupTab,
   },
   {
     id: 'databases',
-    label: 'Базы',
+    labelKey: 'tab.databases',
     permission: 'databases.manage',
     icon: IconDatabase,
     component: DatabasesTab,
   },
   {
     id: 'schedules',
-    label: 'Расписания',
+    labelKey: 'tab.schedules',
     permission: 'schedules.manage',
     icon: IconClock,
     component: SchedulesTab,

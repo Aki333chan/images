@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/c
 import {
   CORE_PERMISSIONS,
   CORE_ROLE_PERMISSIONS,
+  isLocale,
   MeResponse,
   PermissionKey,
   Role,
@@ -50,7 +51,7 @@ export class PermissionsService {
       include: { serverAccess: { select: { serverId: true } } },
     });
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Пользователь не найден или деактивирован');
+      throw new UnauthorizedException('users.err.inactive');
     }
     const isOwner = user.role === 'OWNER';
     return {
@@ -67,7 +68,7 @@ export class PermissionsService {
   async assertServerAccess(eff: EffectivePermissions, serverId: string): Promise<void> {
     if (eff.allowedServerIds === null) return;
     if (!eff.allowedServerIds.has(serverId)) {
-      throw new ForbiddenException('Нет доступа к этому серверу');
+      throw new ForbiddenException('servers.err.noAccess');
     }
   }
 
@@ -83,6 +84,10 @@ export class PermissionsService {
         role: user.role,
         totpEnabled: user.totpEnabled,
         mustChangePassword: user.mustChangePassword,
+        // Не выбирал язык — null, и панель пойдёт за браузером. Подставлять
+        // здесь DEFAULT_LOCALE нельзя: тогда переключатель показывал бы
+        // «Русский» человеку, который русский не выбирал.
+        locale: isLocale(user.locale) ? user.locale : null,
       },
       permissions: [...eff.permissions].sort(),
       allowedServerIds: eff.allowedServerIds === null ? null : [...eff.allowedServerIds],

@@ -1,3 +1,5 @@
+export * from './locales';
+export * from './translate';
 export * from './roles';
 export * from './permissions';
 export * from './pterodactyl';

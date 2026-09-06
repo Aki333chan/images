@@ -18,6 +18,9 @@ import ovh.aurumgg.guilds.core.EconomyBridge;
 import ovh.aurumgg.guilds.core.GuildHooks;
 import ovh.aurumgg.guilds.core.GuildService;
 import ovh.aurumgg.guilds.core.GuildsConfig;
+import ovh.aurumgg.guilds.core.HelpBook;
+import ovh.aurumgg.guilds.core.HudLines;
+import ovh.aurumgg.guilds.core.Messages;
 import ovh.aurumgg.guilds.core.MariaDbGuildRepository;
 import ovh.aurumgg.guilds.core.PartyService;
 
@@ -62,10 +65,57 @@ public final class AurumGuildsPlugin extends JavaPlugin {
     /** Настройки на момент последней загрузки — с ними сверяется перезагрузка. */
     private GuildsConfig config;
 
+    /**
+     * Тексты для игроков. volatile: /guild admin reload меняет их на живом
+     * сервере, а читают их и из планировщика сайдбара.
+     */
+    private volatile Messages messages;
+
+    /**
+     * Язык сервера как локаль Java — для дат и чисел.
+     *
+     * volatile рядом с messages и меняется вместе с ними: /guild admin reload
+     * может сменить язык, и дата в /guild info обязана поехать за ним.
+     */
+    private volatile java.util.Locale locale = java.util.Locale.forLanguageTag("ru");
+
+    java.util.Locale locale() {
+        return locale;
+    }
+
+    /** Текст на языке сервера. */
+    String text(String key) {
+        return messages.get(key);
+    }
+
+    String text(String key, Map<String, String> values) {
+        return messages.get(key, values);
+    }
+
+    java.util.List<String> lines(String key, Map<String, String> values) {
+        return messages.list(key, values);
+    }
+
+    /** Подписи справки: «дальше» и счётчик страниц. */
+    HelpBook.Labels helpLabels() {
+        return new HelpBook.Labels(text("help.next"), text("help.counter"));
+    }
+
+    /** Подписи сайдбара — тем же способом, что и всё остальное. */
+    HudLines.Labels hudLabels() {
+        Messages current = messages;
+        return current::get;
+    }
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
         Map<String, Object> raw = new HashMap<>(getConfig().getValues(true));
+        String language = Messages.normalizeLanguage(
+                String.valueOf(raw.getOrDefault("language", Messages.DEFAULT_LANGUAGE)));
+        messages = LanguageFiles.load(this, language);
+        locale = java.util.Locale.forLanguageTag(language);
+        Msg.use(this);
         GuildsConfig config = GuildsConfig.fromMap(raw);
         this.config = config;
 
@@ -143,6 +193,11 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         }
         parties = new PartyService(
                 Instant::now, names, config.maxPartyMembers(), config.partyInviteTtl());
+
+        // Словарь сервера — обоим сервисам. Не снимок, а ссылка на text():
+        // /guild admin reload меняет messages, и оба должны увидеть новое сами.
+        guilds.useLabels(this::text);
+        parties.useLabels(this::text);
 
         // ------------------------------- команды, слушатели, задачи --------
         ChatPrompt prompts = new ChatPrompt(this);
@@ -232,21 +287,16 @@ public final class AurumGuildsPlugin extends JavaPlugin {
      */
     private List<String> bankStatus() {
         if (!config.bankEnabled()) {
-            return List.of("Банк гильдии выключен в config.yml (bank.enabled: false).");
+            return List.of(text("guild.admin.bank.disabled"));
         }
         if (Bukkit.getPluginManager().getPlugin(VaultBridge.PLUGIN_NAME) == null) {
-            return List.of("Vault не установлен — банк гильдии недоступен. "
-                    + "Всё остальное в гильдиях работает.");
+            return List.of(text("guild.admin.bank.noVault"));
         }
         if (!guilds.bankAvailable()) {
-            return List.of(
-                    "Vault есть, но провайдера экономики за ним пока нет — банк не работает.",
-                    "Это может быть нормально: провайдера регистрирует плагин экономики "
-                            + "(EssentialsX, CMI и т. п.), и он мог ещё не запуститься. "
-                            + "Банк включится сам, как только провайдер появится — "
-                            + "перезапуск не нужен.");
+            // Две строки, поэтому список: одной строкой это не читается.
+            return lines("guild.admin.bank.noProvider", java.util.Map.of());
         }
-        return List.of("Vault и провайдер экономики на месте: банк гильдии работает.");
+        return List.of(text("guild.admin.bank.ok"));
     }
 
     /**
@@ -269,7 +319,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         }
         long period = Math.max(1, config.hudRefresh().toMillis() / 50);
         hudTask = getServer().getScheduler().runTaskTimer(
-                this, new HudTask(guilds, parties, sidebar), period, period);
+                this, new HudTask(this, guilds, parties, sidebar), period, period);
     }
 
     /** Разрешён ли сейчас урон по своим внутри пати. */
@@ -306,6 +356,11 @@ public final class AurumGuildsPlugin extends JavaPlugin {
      */
     List<String> reloadSettings() {
         reloadConfig();
+        String language = Messages.normalizeLanguage(
+                String.valueOf(getConfig().getValues(true)
+                        .getOrDefault("language", Messages.DEFAULT_LANGUAGE)));
+        messages = LanguageFiles.load(this, language);
+        locale = java.util.Locale.forLanguageTag(language);
         GuildsConfig fresh = GuildsConfig.fromMap(new HashMap<>(getConfig().getValues(true)));
 
         List<String> report = new ArrayList<>();
@@ -315,7 +370,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         if (!fresh.jdbcUrl().equals(config.jdbcUrl())
                 || !fresh.tablePrefix().equals(config.tablePrefix())
                 || fresh.poolSize() != config.poolSize()) {
-            report.add("Настройки базы изменены — они применятся только после перезапуска сервера.");
+            report.add(text("guild.admin.reload.dbChanged"));
         }
 
         this.config = fresh;
@@ -327,7 +382,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         }
         restartHudTask();
 
-        report.add("Настройки перечитаны.");
+        report.add(text("guild.admin.reload.done"));
         report.addAll(bankStatus());
         return report;
     }

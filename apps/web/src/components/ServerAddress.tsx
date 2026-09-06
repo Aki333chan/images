@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../i18n';
 
 /**
  * Адрес сервера с копированием в один тап.
@@ -8,6 +9,7 @@ import { useEffect, useState } from 'react';
  * выделить «ip:port» пальцем, не захватив соседний текст, почти невозможно.
  */
 export function ServerAddress({ address }: { address: string | null }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export function ServerAddress({ address }: { address: string | null }) {
   if (!address) {
     return (
       <p className="text-xs text-muted">
-        Адрес неизвестен — синхронизируйте список серверов с Pterodactyl.
+        {t('address.unknown')}
       </p>
     );
   }
@@ -40,13 +42,13 @@ export function ServerAddress({ address }: { address: string | null }) {
     <button
       type="button"
       onClick={() => void copy()}
-      title="Скопировать адрес"
+      title={t('server.copyAddress')}
       className="-mx-2 flex min-h-11 items-center gap-2 rounded px-2 text-left hover:bg-white/5 sm:mx-0 sm:min-h-0 sm:px-0 sm:hover:bg-transparent"
     >
       <span className="select-all break-all font-mono text-base font-semibold text-neutral-100">
         {address}
       </span>
-      <span className="shrink-0 text-[11px] text-muted">{copied ? 'скопировано' : 'копировать'}</span>
+      <span className="shrink-0 text-[11px] text-muted">{t(copied ? 'server.copied' : 'server.copy')}</span>
     </button>
   );
 }

@@ -5,12 +5,15 @@ import type {
   PendingUserDto,
   SmtpSettingsDto,
   SmtpTestResultDto,
+  Locale,
 } from '@aurum/shared';
-import { ALERT_SETTINGS_LIMITS, DEFAULT_ALERT_SETTINGS, ROLE_LABELS } from '@aurum/shared';
+import { ALERT_SETTINGS_LIMITS, DEFAULT_ALERT_SETTINGS, ROLE_KEYS } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { AiSettingsCard } from './AiSettingsCard';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
+import { LanguagePicker } from '../components/LanguagePicker';
+import { useApiText, useT } from '../i18n';
 
 /**
  * Настройки.
@@ -21,12 +24,14 @@ import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '.
  * переключатель и очередь, которую он порождает, читаются вместе.
  */
 export function SettingsPage() {
+  const t = useT();
   const { hasPermission } = useAuth();
   const isGm = hasPermission('users.manage');
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">Настройки</h1>
+      <h1 className="text-xl font-bold">{t('nav.settings')}</h1>
+      <MyLanguage />
       <MyNickname />
       <MyPassword />
       {isGm && (
@@ -43,6 +48,49 @@ export function SettingsPage() {
 }
 
 /**
+ * Язык панели.
+ *
+ * Первым блоком настроек намеренно: человек, открывший их, чтобы уйти с
+ * непонятного языка, не должен искать переключатель под смены пароля и
+ * настройки почты.
+ *
+ * Выбор сохраняется у пользователя, а не только в браузере: он должен
+ * переезжать с рабочего компьютера на домашний. До ответа сервера панель
+ * уже переключена — переключатель обновляет контекст сразу, и ожидание
+ * запроса не выглядит как «нажал, и ничего не произошло».
+ */
+function MyLanguage() {
+  const t = useT();
+  const { refreshMe } = useAuth();
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  async function save(locale: Locale | null) {
+    setError('');
+    setSaved(false);
+    try {
+      await api('/api/auth/locale', { method: 'POST', body: JSON.stringify({ locale }) });
+      await refreshMe();
+      setSaved(true);
+    } catch (e) {
+      // Язык на экране уже сменился — сообщаем именно о том, что он не
+      // запомнится на другом устройстве, а не о том, что ничего не вышло.
+      setError((e as Error).message || t('language.saveFailed'));
+    }
+  }
+
+  return (
+    <Card>
+      <h2 className="mb-1 font-semibold">{t('language.title')}</h2>
+      <p className="mb-3 text-sm text-muted">{t('language.description')}</p>
+      <LanguagePicker onChange={(locale) => void save(locale)} />
+      {saved && <p className="mt-2 text-sm text-emerald-400">{t('language.saved')}</p>}
+      <ErrorText>{error}</ErrorText>
+    </Card>
+  );
+}
+
+/**
  * Свой ник.
  *
  * Менять его можно, только когда ГМ разрешил, и разрешение разовое: ник —
@@ -50,6 +98,7 @@ export function SettingsPage() {
  * журнале. У ГМ разрешение постоянное — просить его не у кого.
  */
 function MyNickname() {
+  const t = useT();
   const { me, hasPermission, refreshMe } = useAuth();
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -71,7 +120,7 @@ function MyNickname() {
         body: JSON.stringify({ nickname: value.trim() }),
       });
       await refreshMe();
-      setSaved('Ник изменён.');
+      setSaved(t('set.nick.saved'));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -81,18 +130,15 @@ function MyNickname() {
 
   return (
     <Card className="space-y-3">
-      <h2 className="font-semibold">Ник</h2>
-      <p className="text-xs text-muted">
-        Под этим ником вас видят коллеги в сообщениях и журнале аудита. Другого имени в панели
-        нет.
-      </p>
+      <h2 className="font-semibold">{t('set.nick.title')}</h2>
+      <p className="text-xs text-muted">{t('set.nick.hint')}</p>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Input
           value={value}
           disabled={!allowed || busy}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Ник"
+          placeholder={t('set.nick.title')}
           maxLength={31}
           className="sm:max-w-[260px]"
         />
@@ -101,18 +147,18 @@ function MyNickname() {
           disabled={!allowed || busy || !value.trim() || value.trim() === current}
           onClick={() => void save()}
         >
-          Сохранить ник
+          {t('set.nick.save')}
         </Button>
       </div>
 
       {!allowed && (
         <p className="text-xs text-muted">
-          Смену ника открывает ГМ — попросите его. Разрешение действует на один раз.
+          {t('set.nick.locked')}
         </p>
       )}
       {allowed && me?.user.nicknameChangeAllowed && (
         <p className="text-xs text-amber-400">
-          ГМ разрешил вам сменить ник. Разрешение сгорит после сохранения.
+          {t('set.nick.allowed')}
         </p>
       )}
       {error && <ErrorText>{error}</ErrorText>}
@@ -123,6 +169,7 @@ function MyNickname() {
 
 /** Свой пароль. Доступно всем и всегда — это действие над собой. */
 function MyPassword() {
+  const t = useT();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [repeat, setRepeat] = useState('');
@@ -146,7 +193,7 @@ function MyPassword() {
       setCurrentPassword('');
       setNewPassword('');
       setRepeat('');
-      setSaved('Пароль изменён. Остальные ваши входы завершены.');
+      setSaved(t('set.pwd.saved'));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -156,10 +203,10 @@ function MyPassword() {
 
   return (
     <Card className="space-y-3">
-      <h2 className="font-semibold">Пароль</h2>
+      <h2 className="font-semibold">{t('set.pwd.title')}</h2>
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
-          <Label>Текущий пароль</Label>
+          <Label>{t('set.pwd.current')}</Label>
           <Input
             type="password"
             autoComplete="current-password"
@@ -168,7 +215,7 @@ function MyPassword() {
           />
         </div>
         <div>
-          <Label>Новый пароль</Label>
+          <Label>{t('set.pwd.new')}</Label>
           <Input
             type="password"
             autoComplete="new-password"
@@ -177,7 +224,7 @@ function MyPassword() {
           />
         </div>
         <div>
-          <Label>Ещё раз</Label>
+          <Label>{t('set.pwd.again')}</Label>
           <Input
             type="password"
             autoComplete="new-password"
@@ -187,12 +234,11 @@ function MyPassword() {
         </div>
       </div>
       <p className="text-xs text-muted">
-        Не короче 10 символов. После смены все остальные ваши входы завершатся — текущий
-        останется.
+        {t('set.pwd.hint')}
       </p>
-      {mismatch && <ErrorText>Пароли не совпадают</ErrorText>}
+      {mismatch && <ErrorText>{t('set.pwd.mismatch')}</ErrorText>}
       <Button size="sm" disabled={!canSubmit} onClick={() => void save()}>
-        Сменить пароль
+        {t('set.pwd.change')}
       </Button>
       {error && <ErrorText>{error}</ErrorText>}
       {saved && <p className="text-xs text-emerald-400">{saved}</p>}
@@ -201,6 +247,7 @@ function MyPassword() {
 }
 
 function AccountRules() {
+  const t = useT();
   const [settings, setSettings] = useState<AppSettingsDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -233,7 +280,7 @@ function AccountRules() {
   const on = settings.requireGmApprovalForAdminCreatedAccounts;
   return (
     <Card className="space-y-3">
-      <h2 className="font-semibold">Создание учётных записей</h2>
+      <h2 className="font-semibold">{t('set.rules.title')}</h2>
       {/* Вся строка — цель нажатия: нажать в текст так же надёжно, как
           в саму галочку (13×13 пальцем не берётся). */}
       <label className="-mx-2 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-white/5">
@@ -245,16 +292,14 @@ function AccountRules() {
           onChange={(e) => void toggle(e.target.checked)}
         />
         <span className="text-sm">
-          Подтверждать аккаунты, созданные Админами
+          {t('set.rules.toggle')}
           <span className="mt-1 block text-xs text-muted">
-            {on
-              ? 'Аккаунт, заведённый Админом, ждёт вашего решения: он неактивен, письмо с паролем не отправляется, пока вы не подтвердите.'
-              : 'Аккаунты Админов активируются сразу — так же, как если бы их создали вы. Письмо с паролем уходит немедленно.'}
+            {t(on ? 'set.rules.on' : 'set.rules.off')}
           </span>
         </span>
       </label>
       <p className="text-xs text-muted">
-        Админ в любом случае может создавать только Модераторов. Роли выше выдаёте вы.
+        {t('set.rules.note')}
       </p>
       {error && <ErrorText>{error}</ErrorText>}
     </Card>
@@ -262,6 +307,8 @@ function AccountRules() {
 }
 
 function PendingApprovals() {
+  const t = useT();
+  const apiText = useApiText();
   const [pending, setPending] = useState<PendingUserDto[] | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -287,8 +334,10 @@ function PendingApprovals() {
       if (action === 'approve') {
         setNotice(
           res.emailSent
-            ? 'Аккаунт активирован, письмо с временным паролем отправлено.'
-            : `Аккаунт активирован, но письмо не ушло: ${res.emailError ?? 'проверьте настройки почты'}. Передайте пароль лично — для этого выдайте новый на экране «Доступы».`,
+            ? t('set.pend.mailSent')
+            : t('set.pend.mailFailed', {
+                error: apiText(res.emailError) || t('set.pend.checkSmtp'),
+              }),
         );
       }
       load();
@@ -304,12 +353,12 @@ function PendingApprovals() {
   return (
     <Card className="space-y-3">
       <div className="flex items-center gap-2">
-        <h2 className="font-semibold">Ожидают подтверждения</h2>
+        <h2 className="font-semibold">{t('set.pend.title')}</h2>
         {pending.length > 0 && <Badge variant="destructive">{pending.length}</Badge>}
       </div>
 
       {pending.length === 0 ? (
-        <p className="text-xs text-muted">Заявок нет.</p>
+        <p className="text-xs text-muted">{t('set.pend.empty')}</p>
       ) : (
         <ul className="space-y-2">
           {pending.map((p) => (
@@ -319,11 +368,11 @@ function PendingApprovals() {
             >
               <div>
                 <div className="text-sm font-medium">
-                  {p.email} <Badge variant="outline">{ROLE_LABELS[p.role]}</Badge>
+                  {p.email} <Badge variant="outline">{t(ROLE_KEYS[p.role])}</Badge>
                 </div>
                 {p.createdBy && (
                   <div className="text-xs text-muted">
-                    заявку подал {p.createdBy.nickname ?? 'без ника'}
+                    {t('set.pend.by', { name: p.createdBy.nickname ?? t('set.pend.noNick') })}
                   </div>
                 )}
               </div>
@@ -333,7 +382,7 @@ function PendingApprovals() {
                   disabled={busy === p.id}
                   onClick={() => void decide(p.id, 'approve')}
                 >
-                  Подтвердить
+                  {t('set.pend.approve')}
                 </Button>
                 <Button
                   size="sm"
@@ -341,7 +390,7 @@ function PendingApprovals() {
                   disabled={busy === p.id}
                   onClick={() => void decide(p.id, 'reject')}
                 >
-                  Отклонить
+                  {t('set.pend.reject')}
                 </Button>
               </div>
             </li>
@@ -356,6 +405,8 @@ function PendingApprovals() {
 }
 
 function SmtpSettings() {
+  const t = useT();
+  const apiText = useApiText();
   const [settings, setSettings] = useState<SmtpSettingsDto | null>(null);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -423,19 +474,18 @@ function SmtpSettings() {
   return (
     <Card className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Почта (SMTP)</h2>
+        <h2 className="font-semibold">{t('set.smtp.title')}</h2>
         <Badge variant={settings.configured ? 'success' : 'outline'}>
-          {settings.configured ? 'настроена' : 'не настроена'}
+          {t(settings.configured ? 'set.smtp.on' : 'set.smtp.off')}
         </Badge>
       </div>
       <p className="text-xs text-muted">
-        Через этот ящик уходят письма с временными паролями. Используйте обычный почтовый ящик на
-        своём домене — сторонние сервисы рассылок не нужны.
+        {t('set.smtp.hint')}
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <Label>Сервер (host)</Label>
+          <Label>{t('set.smtp.host')}</Label>
           <Input
             value={settings.host}
             onChange={(e) => patch({ host: e.target.value })}
@@ -443,7 +493,7 @@ function SmtpSettings() {
           />
         </div>
         <div>
-          <Label>Порт</Label>
+          <Label>{t('set.smtp.port')}</Label>
           <Select
             value={String(settings.port)}
             onChange={(v) =>
@@ -452,14 +502,14 @@ function SmtpSettings() {
               patch({ port: Number(v), secure: Number(v) === 465 })
             }
             options={[
-              { value: '587', label: '587 — STARTTLS (обычно этот)' },
-              { value: '465', label: '465 — SSL/TLS' },
-              { value: '25', label: '25 — без шифрования' },
+              { value: '587', label: t('set.smtp.port587') },
+              { value: '465', label: t('set.smtp.port465') },
+              { value: '25', label: t('set.smtp.port25') },
             ]}
           />
         </div>
         <div>
-          <Label>Логин</Label>
+          <Label>{t('set.smtp.user')}</Label>
           <Input
             value={settings.user}
             onChange={(e) => patch({ user: e.target.value })}
@@ -468,17 +518,17 @@ function SmtpSettings() {
           />
         </div>
         <div>
-          <Label>Пароль</Label>
+          <Label>{t('set.smtp.password')}</Label>
           <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
-            placeholder={settings.hasPassword ? 'сохранён — введите, чтобы заменить' : 'пароль ящика'}
+            placeholder={t(settings.hasPassword ? 'set.smtp.pwdSaved' : 'set.smtp.pwdNew')}
           />
         </div>
         <div className="sm:col-span-2">
-          <Label>Адрес отправителя (from)</Label>
+          <Label>{t('set.smtp.from')}</Label>
           <Input
             value={settings.from}
             onChange={(e) => patch({ from: e.target.value })}
@@ -490,7 +540,7 @@ function SmtpSettings() {
       {error && <ErrorText>{error}</ErrorText>}
       {test && (
         <p className={`text-xs ${test.ok ? 'text-emerald-400' : 'text-red-400'}`}>
-          {test.ok ? 'Соединение с SMTP установлено.' : `Не удалось: ${test.error}`}
+          {test.ok ? t('set.smtp.testOk') : t('set.smtp.testFail', { error: apiText(test.error) })}
         </p>
       )}
 
@@ -499,13 +549,13 @@ function SmtpSettings() {
           у самого края. Пояснение уводим на свою строку — basis-full. */}
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => void save()} disabled={busy}>
-          {busy ? 'Сохраняем…' : 'Сохранить'}
+          {busy ? t('common.saving') : t('common.save')}
         </Button>
         <Button variant="outline" onClick={() => void runTest()} disabled={busy}>
-          Проверить соединение
+          {t('set.smtp.test')}
         </Button>
         <span className="basis-full text-xs text-muted sm:basis-auto">
-          Проверка не отправляет письмо.
+          {t('set.smtp.testNote')}
         </span>
       </div>
     </Card>
@@ -525,6 +575,7 @@ function SmtpSettings() {
  * нечитаемой за неделю, и тогда пропущенным окажется настоящий инцидент.
  */
 function AlertSettings() {
+  const t = useT();
   const [value, setValue] = useState<AlertSettingsDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -547,7 +598,7 @@ function AlertSettings() {
           body: JSON.stringify(next),
         }),
       );
-      setSaved('Сохранено');
+      setSaved(t('set.alerts.saved'));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -563,16 +614,14 @@ function AlertSettings() {
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">Алерты о перегрузке</h2>
+        <h2 className="font-semibold">{t('set.alerts.title')}</h2>
         <Badge variant={value.enabled ? 'success' : 'outline'}>
-          {value.enabled ? 'включены' : 'выключены'}
+          {t(value.enabled ? 'set.alerts.on' : 'set.alerts.off')}
         </Badge>
       </div>
 
       <p className="text-xs text-muted">
-        Письмо уходит тем, у кого есть доступ к этому серверу. ГМ получает письма по всем
-        серверам — у него доступ ко всем по определению роли. Отправка идёт через тот же SMTP,
-        что и письма с паролями: пока он не настроен, алерты никуда не уйдут.
+        {t('set.alerts.hint')}
       </p>
 
       <label className="flex cursor-pointer items-start gap-2 text-sm">
@@ -582,22 +631,22 @@ function AlertSettings() {
           checked={value.enabled}
           onChange={(e) => patch({ enabled: e.target.checked })}
         />
-        <span>Присылать письма при перегрузке</span>
+        <span>{t('set.alerts.enable')}</span>
       </label>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <ThresholdField
-          label="Порог ЦПУ, % от лимита"
+          label={t('set.alerts.cpu')}
           value={value.cpuThresholdPercent}
           onChange={(v) => patch({ cpuThresholdPercent: v })}
         />
         <ThresholdField
-          label="Порог памяти, % от лимита"
+          label={t('set.alerts.memory')}
           value={value.memoryThresholdPercent}
           onChange={(v) => patch({ memoryThresholdPercent: v })}
         />
         <div>
-          <Label>Держится дольше, мин</Label>
+          <Label>{t('set.alerts.sustained')}</Label>
           <Input
             type="number"
             min={L.minSustainedMinutes}
@@ -606,11 +655,11 @@ function AlertSettings() {
             onChange={(e) => patch({ sustainedMinutes: Number(e.target.value) })}
           />
           <p className="mt-1 text-[11px] text-muted">
-            Короткие всплески при запуске сервера — это норма, а не авария.
+            {t('set.alerts.sustainedHint')}
           </p>
         </div>
         <div>
-          <Label>Не чаще одного письма в, мин</Label>
+          <Label>{t('set.alerts.cooldown')}</Label>
           <Input
             type="number"
             min={L.minCooldownMinutes}
@@ -619,7 +668,7 @@ function AlertSettings() {
             onChange={(e) => patch({ cooldownMinutes: Number(e.target.value) })}
           />
           <p className="mt-1 text-[11px] text-muted">
-            Затянувшаяся перегрузка — одна проблема, а не письмо каждую минуту.
+            {t('set.alerts.cooldownHint')}
           </p>
         </div>
       </div>
@@ -629,7 +678,7 @@ function AlertSettings() {
 
       <div className="flex justify-end">
         <Button disabled={busy} onClick={() => void save(value)}>
-          {busy ? 'Сохраняем…' : 'Сохранить'}
+          {busy ? t('common.saving') : t('common.save')}
         </Button>
       </div>
     </Card>
@@ -649,6 +698,7 @@ function ThresholdField({
   value: number | null;
   onChange: (value: number | null) => void;
 }) {
+  const t = useT();
   const L = ALERT_SETTINGS_LIMITS;
   return (
     <div>
@@ -658,7 +708,7 @@ function ThresholdField({
         min={L.minThreshold}
         max={L.maxThreshold}
         value={value ?? ''}
-        placeholder="не следить"
+        placeholder={t('set.alerts.off.threshold')}
         onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
       />
     </div>

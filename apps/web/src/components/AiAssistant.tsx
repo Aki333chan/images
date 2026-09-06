@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AiChatMessage, AiPendingActionDto, AiStreamEvent, AiUsageDto } from '@aurum/shared';
+import { useI18n } from '../i18n';
+import { LOCALE_TAGS } from '@aurum/shared';
+import type {
+  AiChatMessage,
+  AiPendingActionDto,
+  AiStreamEvent,
+  AiUsageDto,
+  Locale,
+} from '@aurum/shared';
 import { api, getAccessToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, Card, ErrorText, Input } from './ui';
@@ -16,6 +24,17 @@ import { IconClose, IconEraser, IconSparkle } from './icons';
  * всё, что он может, человек может и сам, теми же кнопками.
  */
 
+/**
+ * Токены счётом, а не числом: «12 000/200 000 токенов сегодня» по-русски в
+ * шапку помещается, а по-английски и по-польски строка длиннее и обрезается
+ * ровно на самом важном — на лимите. «12K/200K» читается так же и влезает.
+ */
+const compact = (value: number, locale: Locale): string =>
+  new Intl.NumberFormat(LOCALE_TAGS[locale], {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+
 /** Сообщение в ленте: реплики и следы работы ассистента. */
 type FeedItem =
   | { kind: 'message'; role: 'user' | 'assistant'; text: string }
@@ -23,6 +42,7 @@ type FeedItem =
   | { kind: 'action'; action: AiPendingActionDto };
 
 export function AiAssistant() {
+  const { t, locale } = useI18n();
   const { hasPermission } = useAuth();
   const [open, setOpen] = useState(false);
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -104,7 +124,7 @@ export function AiAssistant() {
         body: JSON.stringify({ messages: historyFor(next) }),
       });
       if (!res.ok || !res.body) {
-        throw new Error(res.status === 403 ? 'Нет доступа к ассистенту' : 'Ассистент недоступен');
+        throw new Error(t(res.status === 403 ? 'ai.noAccess' : 'ai.unavailable'));
       }
 
       const reader = res.body.getReader();
@@ -175,14 +195,14 @@ export function AiAssistant() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Открыть AI-ассистента"
+          aria-label={t('ai.open')}
           // Таблетка с подписью, а не безымянный кружок: у ассистента нет
           // пункта в меню, и по одной иконке в углу непонятно, что это.
           className="fixed bottom-4 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-primary-foreground shadow-md transition-[filter,transform] duration-200 ease-panel hover:-translate-y-0.5 hover:brightness-110"
           style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           <IconSparkle size={17} />
-          Ассистент
+          {t('ai.title')}
         </button>
       )}
 
@@ -190,7 +210,7 @@ export function AiAssistant() {
         <div
           className="fixed inset-0 z-50 flex sm:inset-auto sm:bottom-4 sm:right-4 sm:h-[600px] sm:max-h-[85vh] sm:w-[420px]"
           role="dialog"
-          aria-label="AI-ассистент"
+          aria-label={t('ai.titleFull')}
         >
           <Card className="flex min-h-0 w-full flex-col gap-0 rounded-none p-0 sm:rounded-lg">
             <header
@@ -200,12 +220,25 @@ export function AiAssistant() {
               <div className="flex min-w-0 items-center gap-2">
                 <IconSparkle size={16} className="shrink-0 text-primary" />
                 <div className="min-w-0">
-                  <div className="truncate font-semibold">Ассистент</div>
+                  <div className="truncate font-semibold">{t('ai.title')}</div>
                   {usage && (
-                    <div className="truncate text-[11px] text-muted">
-                      {usage.requestsLastHour}/{usage.requestsPerHour} обращений за час ·{' '}
-                      {usage.tokensToday.toLocaleString('ru-RU')}/
-                      {usage.tokensPerDay.toLocaleString('ru-RU')} токенов сегодня
+                    // Полная фраза — в подсказке: в шапке она помещается
+                    // только по-русски, а обрезается ровно на лимите.
+                    <div
+                      className="truncate text-[11px] text-muted"
+                      title={t('ai.usageFull', {
+                        requests: usage.requestsLastHour,
+                        requestsLimit: usage.requestsPerHour,
+                        tokens: usage.tokensToday,
+                        tokensLimit: usage.tokensPerDay,
+                      })}
+                    >
+                      {t('ai.usage', {
+                        requests: usage.requestsLastHour,
+                        requestsLimit: usage.requestsPerHour,
+                        tokens: compact(usage.tokensToday, locale),
+                        tokensLimit: compact(usage.tokensPerDay, locale),
+                      })}
                     </div>
                   )}
                 </div>
@@ -215,8 +248,8 @@ export function AiAssistant() {
                   <button
                     type="button"
                     onClick={() => setFeed([])}
-                    title="Очистить переписку"
-                    aria-label="Очистить переписку"
+                    title={t('ai.clear')}
+                    aria-label={t('ai.clear')}
                     className="flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
                   >
                     <IconEraser size={16} />
@@ -225,7 +258,7 @@ export function AiAssistant() {
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  aria-label="Закрыть"
+                  aria-label={t('common.close')}
                   className="flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
                 >
                   <IconClose size={16} />
@@ -236,11 +269,9 @@ export function AiAssistant() {
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
               {feed.length === 0 && (
                 <div className="space-y-2 text-sm text-muted">
-                  <p>Спросите про серверы, игроков или тикеты.</p>
+                  <p>{t('ai.hello')}</p>
                   <p className="text-xs">
-                    Ассистент сам ничего не меняет: действия вроде кика или бана он предлагает
-                    карточкой, а выполняются они только после вашего подтверждения. Работает с
-                    вашими правами — того, чего вы не можете сами, он тоже не сможет.
+                    {t('ai.helloHint')}
                   </p>
                 </div>
               )}
@@ -280,7 +311,7 @@ export function AiAssistant() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void send()}
-                  placeholder={busy ? 'Ассистент печатает…' : 'Спросить…'}
+                  placeholder={t(busy ? 'ai.typing' : 'ai.ask')}
                   disabled={busy}
                 />
                 <Button onClick={() => void send()} disabled={busy || !input.trim()}>
@@ -310,6 +341,7 @@ function ActionCard({
   action: AiPendingActionDto;
   onResolve: (action: AiPendingActionDto, approve: boolean) => void;
 }) {
+  const { t } = useI18n();
   const settled = action.status !== 'pending';
   return (
     <div
@@ -321,7 +353,7 @@ function ActionCard({
             : 'border-border'
       }`}
     >
-      <div className="text-xs font-semibold text-amber-400">AI предлагает действие</div>
+      <div className="text-xs font-semibold text-amber-400">{t('ai.suggests')}</div>
       <p className="mt-1 break-words text-sm">{action.summary}</p>
 
       <dl className="mt-2 space-y-0.5 text-[11px] text-muted">
@@ -356,18 +388,17 @@ function ActionCard({
 
       {action.fromUntrustedInput && (
         <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-300">
-          Предложено после чтения данных из игры (ники, тикеты, вывод консоли). В таком тексте может
-          быть попытка подсказать ассистенту команду — проверьте особенно внимательно.
+          {t('ai.untrustedHint')}
         </p>
       )}
 
       {!settled ? (
         <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row">
           <Button size="sm" variant="ghost" onClick={() => onResolve(action, false)}>
-            Отклонить
+            {t('ai.reject')}
           </Button>
           <Button size="sm" variant="destructive" onClick={() => onResolve(action, true)}>
-            Подтвердить
+            {t('ai.approve')}
           </Button>
         </div>
       ) : (
@@ -381,7 +412,7 @@ function ActionCard({
                   : 'text-red-400'
             }
           >
-            {STATUS_LABELS[action.status]}
+            {t(STATUS_KEYS[action.status])}
           </span>
           {action.result ? ` · ${action.result}` : ''}
         </p>
@@ -390,10 +421,10 @@ function ActionCard({
   );
 }
 
-const STATUS_LABELS: Record<AiPendingActionDto['status'], string> = {
-  pending: 'ждёт решения',
-  approved: 'выполнено',
-  rejected: 'отклонено',
-  failed: 'не удалось',
-  expired: 'предложение устарело',
+const STATUS_KEYS: Record<AiPendingActionDto['status'], string> = {
+  pending: 'ai.status.pending',
+  approved: 'ai.status.approved',
+  rejected: 'ai.status.rejected',
+  failed: 'ai.status.failed',
+  expired: 'ai.status.expired',
 };

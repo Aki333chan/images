@@ -14,9 +14,17 @@
 export const ALERT_TYPES = ['cpu', 'memory'] as const;
 export type AlertType = (typeof ALERT_TYPES)[number];
 
-export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
-  cpu: 'Загрузка CPU',
-  memory: 'Использование памяти',
+/**
+ * Ключи подписей, а не подписи.
+ *
+ * Сам список — константа контракта, а язык известен только на месте показа:
+ * письмо об алерте читает тот, кому оно адресовано, а запись в журнале
+ * читают потом и совсем другие люди. Держать здесь готовую фразу значило бы
+ * выбрать язык за обоих.
+ */
+export const ALERT_TYPE_KEYS: Record<AlertType, string> = {
+  cpu: 'alert.cpu',
+  memory: 'alert.memory',
 };
 
 /**
@@ -107,12 +115,13 @@ export interface ServerMetricsDto {
 export const SERVER_SORTS = ['status', 'players', 'name', 'game', 'manual'] as const;
 export type ServerSort = (typeof SERVER_SORTS)[number];
 
-export const SERVER_SORT_LABELS: Record<ServerSort, string> = {
-  status: 'Сначала онлайн',
-  players: 'По игрокам онлайн',
-  name: 'По имени',
-  game: 'По игре',
-  manual: 'Свой порядок',
+/** Ключи подписей: критерии — контракт, подписи читает человек на своём языке. */
+export const SERVER_SORT_KEYS: Record<ServerSort, string> = {
+  status: 'servers.sort.status',
+  players: 'servers.sort.players',
+  name: 'servers.sort.name',
+  game: 'servers.sort.game',
+  manual: 'servers.sort.manual',
 };
 
 /** Личные настройки списка серверов. Свои у каждого, не общие для панели. */
