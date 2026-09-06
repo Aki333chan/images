@@ -15,6 +15,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -221,4 +222,42 @@ export class GuildBonusGrantDto {
   @Min(0)
   @Max(365 * 24 * 3600)
   seconds?: number;
+}
+
+/**
+ * Посадить в тюрьму EssentialsX.
+ *
+ * Имя тюрьмы не проверяем шаблоном строже, чем на длину и отсутствие
+ * пробелов: список тюрем задаёт админ прямо в игре, и панель сверяет
+ * присланное с настоящим списком от сервера — это надёжнее любой догадки о
+ * том, какие имена бывают. Пробелы запрещены потому, что RCON-команда это
+ * одна строка: имя с пробелом стало бы двумя аргументами.
+ */
+export class JailDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(16)
+  @Matches(/^[A-Za-z0-9_]+$/, { message: 'mc.err.badNickname' })
+  player!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  @Matches(/^\S+$/, { message: 'mc.val.jailNameChars' })
+  jail!: string;
+
+  /**
+   * Срок в формате EssentialsX: «30m», «2h», «7d», «1mo», «1d12h».
+   * Пусто или без поля — до отмены.
+   *
+   * Разбирает его игровой сервер; здесь проверяется только форма, чтобы в
+   * команду не уехало ничего, кроме цифр и единиц.
+   */
+  // Именно ValidateIf, а не IsOptional: пустая строка от формы означает «до
+  // отмены» ровно так же, как отсутствие поля, и падать на ней незачем.
+  @ValidateIf((dto: JailDto) => !!dto.duration)
+  @IsString()
+  @MaxLength(32)
+  @Matches(/^(?:\d{1,4}(?:y|mo|w|d|h|m|s)){1,6}$/i, { message: 'mc.val.jailDuration' })
+  duration?: string;
 }

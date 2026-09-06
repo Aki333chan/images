@@ -129,6 +129,20 @@ interface RawGuildMembership {
   } | null;
 }
 
+interface RawJailedPlayer {
+  uuid?: string;
+  name?: string;
+  jail?: string;
+  /** Момент выхода, миллисекунды эпохи; 0 — до отмены. Момента посадки нет. */
+  releaseAt?: number;
+}
+
+interface RawJails {
+  available?: boolean;
+  jails?: string[];
+  jailed?: RawJailedPlayer[];
+}
+
 interface RawGuildOutcome {
   ok?: boolean;
   /** Ключ сообщения. Плагин присылает именно ключ — см. GuildOutcome. */
@@ -149,6 +163,13 @@ export interface GuildOutcome {
   message: string;
   values: Record<string, string>;
   keys: Record<string, string>;
+}
+
+/** Ответ companion про тюрьмы, разобранный. */
+export interface CompanionJails {
+  available: boolean;
+  jails: string[];
+  jailed: { uuid: string; name: string; jail: string; releaseAt: number }[];
 }
 
 function outcome(
@@ -875,6 +896,38 @@ export class CompanionService {
           uuid: e.uuid,
           balance: numberOr(e.balance, 0),
           formatted: e.formatted ?? '',
+        })),
+    };
+  }
+
+  // ------------------------------------------------------------- Тюрьмы
+
+  /**
+   * Тюрьмы EssentialsX и кто в них сидит; null — плагина панели нет или молчит.
+   *
+   * Читаем через companion, а сажаем и выпускаем командой по RCON. Так
+   * задумано: у EssentialsX посадка — это ещё и телепорт, событие для других
+   * плагинов, сообщение игроку и оповещение персонала. Дёрнув его внутренний
+   * метод, мы получили бы игрока в тюрьме, о котором никто не узнал.
+   *
+   * ВАЖНО про состав списка. Плагин отдаёт только тех, кто СЕЙЧАС в сети:
+   * узнать, кто сидит из офлайновых, можно лишь прочитав файл каждого игрока
+   * на диске, а их бывают десятки тысяч. Недостающих панель добирает из
+   * собственных записей — см. JailsService.
+   */
+  async getJails(serverId: string): Promise<CompanionJails | null> {
+    const data = await this.call<RawJails>(serverId, '/jails');
+    if (!data) return null;
+    return {
+      available: data.available === true,
+      jails: (data.jails ?? []).filter((name): name is string => typeof name === 'string'),
+      jailed: (data.jailed ?? [])
+        .filter((e): e is Required<RawJailedPlayer> => typeof e.uuid === 'string' && typeof e.name === 'string')
+        .map((e) => ({
+          uuid: e.uuid,
+          name: e.name,
+          jail: typeof e.jail === 'string' ? e.jail : '',
+          releaseAt: numberOr(e.releaseAt, 0),
         })),
     };
   }

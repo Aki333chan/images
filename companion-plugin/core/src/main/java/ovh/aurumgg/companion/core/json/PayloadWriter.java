@@ -15,6 +15,8 @@ import ovh.aurumgg.companion.core.model.GuildMembershipInfo;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
+import ovh.aurumgg.companion.core.model.JailedPlayer;
+import ovh.aurumgg.companion.core.model.JailsInfo;
 import ovh.aurumgg.companion.core.model.KnownPlayer;
 import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
@@ -264,6 +266,36 @@ public final class PayloadWriter {
         fields.put("values", strings(outcome.values()));
         fields.put("keys", strings(outcome.keys()));
         return Json.object(fields);
+    }
+
+    /**
+     * Тюрьмы и сидящие.
+     *
+     * {@code available: false} и пустые списки — EssentialsX нет либо его
+     * версия несовместима. Панель отличает это от «тюрем не создано»: в
+     * первом случае она даёт ввести имя руками, во втором говорить не о чем.
+     */
+    public static String jails(JailsInfo info) {
+        List<String> names = new ArrayList<>(info.jails().size());
+        for (String jail : info.jails()) names.add(Json.string(jail));
+
+        List<String> jailed = new ArrayList<>(info.jailed().size());
+        for (JailedPlayer player : info.jailed()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("uuid", Json.string(player.uuid().toString()));
+            fields.put("name", Json.string(player.name()));
+            fields.put("jail", Json.string(player.jail()));
+            // 0 — срок не назначен: сидит до отмены. Отдельного поля-флага для
+            // этого не нужно, ноль в прошлом не бывает.
+            fields.put("releaseAt", Json.number(player.releaseAt()));
+            jailed.add(Json.object(fields));
+        }
+
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("available", info.available() ? "true" : "false");
+        body.put("jails", Json.array(names));
+        body.put("jailed", Json.array(jailed));
+        return Json.object(body);
     }
 
     /** Карта «имя → строка» как объект JSON. */

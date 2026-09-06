@@ -29,6 +29,7 @@ import {
   type MinecraftPermissionsDto,
   type MinecraftPluginsDto,
   type MinecraftInventoryStatusDto,
+  type MinecraftJailsDto,
   type MinecraftKnownPlayersResponse,
   type MinecraftPasswordResetDto,
   type MinecraftPlayerIpsResponse,
@@ -39,6 +40,7 @@ import { AuditRedactBody } from '../../audit/audit.decorators';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
 import { COMPANION_DOCS_URL, CompanionService } from './companion.service';
 import { MinecraftConfigService } from '../minecraft-shared/minecraft-config.service';
+import { JailsService } from './jails.service';
 import { MinecraftService } from './minecraft.service';
 import {
   BalanceChangeDto,
@@ -49,6 +51,7 @@ import {
   GuildRemoveMemberDto,
   GuildTransferDto,
   InventoryClearDto,
+  JailDto,
   KickDto,
   PermissionChangeDto,
   QuickCommandRunDto,
@@ -71,6 +74,7 @@ export class MinecraftController {
     private readonly config: MinecraftConfigService,
     private readonly companion: CompanionService,
     private readonly prisma: PrismaService,
+    private readonly jailsService: JailsService,
   ) {}
 
   // ---------- Игроки ----------
@@ -593,6 +597,48 @@ export class MinecraftController {
     return {
       output: await this.minecraft.runQuickCommand(serverId, commandId, dto.args ?? {}),
     };
+  }
+
+  // ---------- Тюрьмы EssentialsX ----------
+  //
+  // Под тем же правом, что и остальные быстрые действия: для сотрудника это
+  // такая же кнопка наказания, как кик или мут, и заводить под неё отдельное
+  // право значило бы просить владельца настроить ещё одну галочку ради того
+  // же самого круга людей.
+
+  /**
+   * Настроенные тюрьмы и кто в них сидит.
+   *
+   * available:false означает «EssentialsX не отвечает» — это НЕ то же самое,
+   * что «тюрем не создано»: во втором случае список пуст, а флаг стоит.
+   */
+  @Get('jails')
+  @RequirePermission(MINECRAFT_PERMISSIONS.quickCommands)
+  @ServerScoped('serverId')
+  jails(@Param('serverId') serverId: string): Promise<MinecraftJailsDto> {
+    return this.jailsService.list(serverId);
+  }
+
+  @Post('jails')
+  @RequirePermission(MINECRAFT_PERMISSIONS.quickCommands)
+  @ServerScoped('serverId')
+  jail(
+    @Param('serverId') serverId: string,
+    @Body() dto: JailDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<MinecraftCommandResultDto> {
+    return this.jailsService.jail(serverId, dto, user.id);
+  }
+
+  /** Выпустить. Ник в пути — тело здесь было бы пустым объектом. */
+  @Delete('jails/:player')
+  @RequirePermission(MINECRAFT_PERMISSIONS.quickCommands)
+  @ServerScoped('serverId')
+  releaseFromJail(
+    @Param('serverId') serverId: string,
+    @Param('player') player: string,
+  ): Promise<MinecraftCommandResultDto> {
+    return this.jailsService.release(serverId, player);
   }
 
   // ---------- Инвентарь ----------

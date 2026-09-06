@@ -60,6 +60,7 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  *   POST /players/{uuid}/balance/deposit
  *   POST /players/{uuid}/balance/withdraw
  *   GET  /economy?top=...
+ *   GET  /jails
  *   POST /webtoken/{code}
  *   POST /auth/reset/{name}
  */
@@ -411,6 +412,17 @@ public final class CompanionHttpServer {
             }
 
             respondNoOfflineInventory(exchange);
+            return;
+        }
+
+        // GET /jails — тюрьмы EssentialsX и кто в них сидит.
+        //
+        // ТОЛЬКО ЧТЕНИЕ. Сажает и выпускает панель командой togglejail через
+        // RCON: у той есть события для чужих плагинов, телепорт, сообщение
+        // самому игроку и оповещение персонала. Повторить это здесь значило
+        // бы завести вторую, слегка другую тюрьму рядом с настоящей.
+        if (parts.length == 1 && parts[0].equals("jails") && method.equals("GET")) {
+            respond(exchange, 200, PayloadWriter.jails(bridge.jails()));
             return;
         }
 
