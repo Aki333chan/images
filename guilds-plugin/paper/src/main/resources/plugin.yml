@@ -24,7 +24,7 @@ author: Aurum
 # не может — мы не знаем, какой стоит на сервере, — значит, его onEnable
 # вполне может пройти позже нашего. Поэтому наличие провайдера спрашивается
 # при каждом обращении, а не один раз на старте (см. VaultBridge).
-softdepend: [LuckPerms, Vault, AurumAuth, WorldGuard]
+softdepend: [LuckPerms, Vault, AurumAuth, WorldGuard, AurumCompanion]
 
 commands:
   guild:
@@ -43,6 +43,12 @@ commands:
     usage: /g <сообщение>
 
 permissions:
+  aurumguilds.region-wand.use:
+    description: Контекстная палка — осмотр занятых регионов и выделение FAWE на свободной земле
+    default: true
+  aurumguilds.region-wand.bypass:
+    description: Shift-клик ставит точку FAWE даже внутри существующего региона
+    default: op
   aurumguilds.create:
     description: Создавать гильдии. Проверяется, только если включено в config.yml
     # true по умолчанию: гильдии — это возможность для игроков, а не привилегия.

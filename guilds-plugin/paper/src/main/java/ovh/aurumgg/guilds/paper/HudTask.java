@@ -4,11 +4,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
+import org.bukkit.metadata.FixedMetadataValue;
 import ovh.aurumgg.guilds.api.BonusType;
 import ovh.aurumgg.guilds.api.GuildBonus;
 import ovh.aurumgg.guilds.api.GuildMember;
@@ -59,10 +61,54 @@ final class HudTask implements Runnable {
                 // Ни пати, ни гильдии — показывать нечего, и пустая рамка на
                 // экране раздражала бы всех, кто ими не пользуется.
                 sidebar.hide(player);
+                clearEnhancedPanels(player);
                 continue;
             }
-            sidebar.show(player, HudLines.build(model, plugin.hudLabels()));
+            if (player.hasMetadata("aurumui.client")) {
+                // У клиента с AurumUI блоки независимы и складываются вдоль
+                // правого края. Vanilla SIDEBAR остаётся запасным вариантом
+                // только для игроков без мода.
+                sidebar.hide(player);
+                publishEnhancedPanels(player, model);
+            } else {
+                clearEnhancedPanels(player);
+                sidebar.show(player, HudLines.build(model, plugin.hudLabels()));
+            }
         }
+    }
+
+    private void publishEnhancedPanels(Player player, HudModel model) {
+        HudModel party = new HudModel(
+                model.partyMembers(), model.partyLimit(), null, null, null, 0, 0, null, List.of());
+        HudModel guild = new HudModel(
+                List.of(), model.partyLimit(), model.guildName(), model.guildTag(), model.rank(),
+                model.guildOnline(), model.guildTotal(), model.bankBalance(), model.bonuses());
+
+        publish(player, "aurumui.party", "party", 60, HudLines.build(party, plugin.hudLabels()));
+        publish(player, "aurumui.guilds", "guilds", 40, HudLines.build(guild, plugin.hudLabels()));
+    }
+
+    private void publish(Player player, String metadataKey, String id, int priority, List<String> lines) {
+        if (lines.isEmpty()) {
+            player.removeMetadata(metadataKey, plugin);
+            return;
+        }
+        String title = lines.getFirst();
+        List<String> body = lines.size() == 1 ? List.of() : List.copyOf(lines.subList(1, lines.size()));
+        // Пустое тело допустимо только визуально, но Companion игнорирует
+        // панели без строк. Оставляем тонкий разделитель, чтобы заголовок не
+        // исчезал при пати из одного человека.
+        if (body.isEmpty()) body = List.of(" ");
+        player.setMetadata(metadataKey, new FixedMetadataValue(plugin, Map.of(
+                "id", id,
+                "priority", priority,
+                "title", title,
+                "lines", body)));
+    }
+
+    private void clearEnhancedPanels(Player player) {
+        player.removeMetadata("aurumui.party", plugin);
+        player.removeMetadata("aurumui.guilds", plugin);
     }
 
     private HudModel modelFor(Player player, boolean bankAvailable) {

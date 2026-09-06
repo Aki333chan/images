@@ -456,6 +456,14 @@ claim:
     noRegion: "W świecie «{world}» nie ma regionu «{region}»"
     notOwner: "Nie jesteś właścicielem tego regionu. Gildii można oddać tylko własną ziemię"
 
+# ------------------------------------------------ kontekstowa różdżka regionu
+regionWand:
+  header: "&6Chroniony teren:"
+  region: "&7• &f{region} &8[priorytet {priority}] &7— właściciel: &f{owners}"
+  guild: "  &7Gildia: &b{guild}"
+  more: "&8…oraz jeszcze {count} regionów"
+  ownerNone: "serwer"
+
 # ------------------------------------------------------------------- bonusy
 bonus:
   title: "Bonusy gildii"

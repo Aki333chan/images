@@ -750,7 +750,7 @@ public final class GuildService implements AutoCloseable {
         return regions.entrySet().stream()
                 .filter(entry -> entry.getValue().stream()
                         .anyMatch(region -> region.world().equals(world)
-                                && region.regionId().equals(regionId)))
+                                && region.regionId().equalsIgnoreCase(regionId)))
                 .map(Map.Entry::getKey)
                 .findFirst();
     }

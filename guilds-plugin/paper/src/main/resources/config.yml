@@ -87,6 +87,21 @@ luckperms:
   # Во что оборачивается тег. {tag} — сам тег.
   suffix-format: "&7[&b{tag}&7]"
 
+# Одна палка для WorldGuard и FAWE. AurumGuilds забирает клик первым: внутри
+# готового региона показывает владельца, на свободной земле ставит обычную
+# точку выделения FAWE. Так два штатных wand не спорят за одно событие.
+region-wand:
+  enabled: true
+  material: STICK
+  ignore-global-region: true
+  block-selection-inside-regions: true
+  show-guild: true
+  # Администратор с aurumguilds.region-wand.bypass может присесть и поставить
+  # точку внутри региона — нужно для исправления границ и пересечений.
+  admin-sneak-bypass: true
+  message-cooldown-ms: 500
+  max-regions: 5
+
 bank:
   # Общий банк гильдии. Работает только при установленном Vault — своей валюты
   # плагин не заводит намеренно: вторая экономика на сервере, где уже есть одна,

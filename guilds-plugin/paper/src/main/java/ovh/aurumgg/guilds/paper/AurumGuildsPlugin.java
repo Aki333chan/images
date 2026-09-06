@@ -60,6 +60,8 @@ public final class AurumGuildsPlugin extends JavaPlugin {
     private LuckPermsBridge luckPermsBridge;
     /** Мост к WorldGuard или null: без него дома гильдий просто недоступны. */
     private WorldGuardBridge worldGuard;
+    /** Общая палка осмотра WorldGuard и выделения FAWE. */
+    private RegionWandListener regionWand;
     /** Задача HUD: перезагрузка её пересоздаёт, если поменялся период. */
     private BukkitTask hudTask;
     /** Настройки на момент последней загрузки — с ними сверяется перезагрузка. */
@@ -210,6 +212,10 @@ public final class AurumGuildsPlugin extends JavaPlugin {
                 new FriendlyFireListener(guilds, parties, () -> this.config.partyFriendlyFire()), this);
         getServer().getPluginManager().registerEvents(new PlayerTracker(guilds, sidebar), this);
         getServer().getPluginManager().registerEvents(new BonusDropListener(guilds), this);
+        if (worldGuardFound) {
+            regionWand = new RegionWandListener(this, guilds, worldGuard);
+            getServer().getPluginManager().registerEvents(regionWand, this);
+        }
         // Эффекты-бонусы продлеваются задачей: выданный однажды эффект зелья
         // кончился бы сам, а бесконечный остался бы после снятия бонуса.
         getServer().getScheduler().runTaskTimer(this, new BonusEffectsTask(guilds),
@@ -244,7 +250,11 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         if (sidebar != null) {
             // Иначе у всех, кто сейчас в сети, останется висеть сайдбар,
             // который больше некому обновлять.
-            for (Player player : getServer().getOnlinePlayers()) sidebar.hide(player);
+            for (Player player : getServer().getOnlinePlayers()) {
+                sidebar.hide(player);
+                player.removeMetadata("aurumui.party", this);
+                player.removeMetadata("aurumui.guilds", this);
+            }
         }
         if (guilds != null) {
             getServer().getServicesManager().unregisterAll(this);
@@ -314,7 +324,11 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         if (!config.hudEnabled()) {
             // Выключили на ходу — снимаем сайдбар у всех, иначе он застынет на
             // экране навсегда: обновлять его больше некому.
-            for (Player player : getServer().getOnlinePlayers()) sidebar.hide(player);
+            for (Player player : getServer().getOnlinePlayers()) {
+                sidebar.hide(player);
+                player.removeMetadata("aurumui.party", this);
+                player.removeMetadata("aurumui.guilds", this);
+            }
             return;
         }
         long period = Math.max(1, config.hudRefresh().toMillis() / 50);
@@ -374,6 +388,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         }
 
         this.config = fresh;
+        if (regionWand != null) regionWand.reload();
         guilds.applyConfig(fresh);
         parties.applyConfig(fresh.maxPartyMembers(), fresh.partyInviteTtl());
         sidebar.title(fresh.hudTitle());

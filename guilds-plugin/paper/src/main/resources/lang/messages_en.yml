@@ -457,6 +457,14 @@ claim:
     noRegion: "World «{world}» has no region «{region}»"
     notOwner: "You do not own that region. A guild can only be given your own land"
 
+# ---------------------------------------------------- contextual region wand
+regionWand:
+  header: "&6Protected territory:"
+  region: "&7• &f{region} &8[priority {priority}] &7— owner: &f{owners}"
+  guild: "  &7Guild: &b{guild}"
+  more: "&8…and {count} more regions"
+  ownerNone: "server"
+
 # ------------------------------------------------------------------ bonuses
 bonus:
   title: "Guild bonuses"

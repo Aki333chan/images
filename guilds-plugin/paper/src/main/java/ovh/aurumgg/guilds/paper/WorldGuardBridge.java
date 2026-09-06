@@ -1,15 +1,22 @@
 package ovh.aurumgg.guilds.paper;
 
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.protection.managers.RegionManager;
 import com.sk89q.worldguard.protection.regions.ProtectedRegion;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.bukkit.World;
 
 /**
@@ -127,6 +134,49 @@ final class WorldGuardBridge {
     boolean regionExists(World world, String regionId) {
         RegionManager manager = managerFor(world);
         return manager != null && manager.getRegion(regionId) != null;
+    }
+
+    /** Неизменяемая и безопасная для показа часть данных региона. */
+    record RegionSnapshot(String id, int priority, List<String> owners) {}
+
+    /**
+     * Все регионы в точном блоке, сначала самый приоритетный.
+     *
+     * <p>Запрос идёт по пространственному индексу WorldGuard, а не перебирает
+     * все приваты мира. Поэтому его допустимо делать на клик без фоновой
+     * задачи и без заметного влияния на MSPT.</p>
+     */
+    List<RegionSnapshot> at(Location location, boolean ignoreGlobal) {
+        RegionManager manager = managerFor(location.getWorld());
+        if (manager == null) return List.of();
+        try {
+            BlockVector3 point = BlockVector3.at(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+            return manager.getApplicableRegions(point).getRegions().stream()
+                    .filter(region -> !ignoreGlobal || !"__global__".equalsIgnoreCase(region.getId()))
+                    .sorted(Comparator.comparingInt(ProtectedRegion::getPriority).reversed()
+                            .thenComparing(ProtectedRegion::getId))
+                    .map(region -> new RegionSnapshot(
+                            region.getId(), region.getPriority(), ownerNames(region)))
+                    .toList();
+        } catch (RuntimeException error) {
+            logger.warning("WorldGuard не смог проверить блок " + location + ": " + error);
+            return List.of();
+        }
+    }
+
+    private static List<String> ownerNames(ProtectedRegion region) {
+        Set<String> result = new LinkedHashSet<>(region.getOwners().getPlayers());
+        for (UUID uuid : region.getOwners().getUniqueIds()) {
+            Player online = Bukkit.getPlayer(uuid);
+            String name = online == null ? null : online.getName();
+            if (name == null) {
+                OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
+                name = offline.getName();
+            }
+            result.add(name == null ? uuid.toString() : name);
+        }
+        for (String group : region.getOwners().getGroups()) result.add("g:" + group);
+        return List.copyOf(result);
     }
 
     /**
