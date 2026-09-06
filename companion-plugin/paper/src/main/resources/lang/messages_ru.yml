@@ -28,3 +28,8 @@ webtoken:
   loginFirst: "Сначала войдите: /login <пароль>"
   code: "Код для входа в панель: {code}"
   codeHint: "Он одноразовый и действует несколько минут."
+
+ui:
+  noPermission: "§cНедостаточно прав."
+  status: "§6AurumUI §7клиентов: §f{clients}"
+  protocol: "§7Протокол: §f{protocol} §8| §7источников: §f{providers}"

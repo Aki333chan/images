@@ -25,3 +25,11 @@ commands:
   webtoken:
     description: Одноразовый код для входа в панель
     usage: /webtoken — одноразовый код для входа в панель
+  aurumui:
+    description: AurumUI diagnostics
+    usage: /aurumui status
+
+permissions:
+  aurumui.admin:
+    description: AurumUI diagnostics and quick administration
+    default: op

@@ -61,3 +61,14 @@ panel:
 tickets:
   # Пауза между командами /ticket от одного игрока, секунды.
   cooldown-seconds: 10
+
+# Optional Fabric client integration. It uses the Minecraft connection and
+# does not need the HTTP token, panel port or a public network allocation.
+ui:
+  enabled: true
+  refresh-ticks: 10
+  max-payload-bytes: 24576
+  panel-metadata-keys:
+    - aurumui.arena
+    - aurumui.guilds
+    - aurumui.party

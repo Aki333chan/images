@@ -29,3 +29,8 @@ webtoken:
   loginFirst: "Najpierw się zaloguj: /login <hasło>"
   code: "Kod logowania do panelu: {code}"
   codeHint: "Jest jednorazowy i działa kilka minut."
+
+ui:
+  noPermission: "§cNie masz uprawnień."
+  status: "§6AurumUI §7klienci: §f{clients}"
+  protocol: "§7Protokół: §f{protocol} §8| §7źródła: §f{providers}"

@@ -28,6 +28,7 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
 
     private CompanionHttpServer httpServer;
     private TicketCooldown cooldown;
+    private AurumUiChannel uiChannel;
 
     /**
      * Тексты для игроков.
@@ -58,6 +59,15 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
         cooldown = new TicketCooldown(config.ticketCooldownSeconds());
         getServer().getPluginManager().registerEvents(this, this);
 
+        // Игровой Fabric-канал не зависит от HTTP-порта и токена панели.
+        // Даже сервер без настроенной веб-панели получает улучшенный HUD.
+        if (getConfig().getBoolean("ui.enabled", true)) {
+            uiChannel = new AurumUiChannel(this);
+            uiChannel.start();
+            var uiCommand = getCommand("aurumui");
+            if (uiCommand != null) uiCommand.setExecutor(uiChannel);
+        }
+
         startHttpServer(config);
         registerTicketCommand(config);
         registerWebTokenCommand();
@@ -65,6 +75,7 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        if (uiChannel != null) uiChannel.close();
         if (httpServer != null) {
             httpServer.stop();
             getLogger().info("HTTP-сервер companion остановлен");
@@ -180,5 +191,6 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         if (cooldown != null) cooldown.forget(event.getPlayer().getUniqueId());
+        if (uiChannel != null) uiChannel.forget(event.getPlayer().getUniqueId());
     }
 }

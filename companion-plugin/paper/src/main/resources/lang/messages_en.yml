@@ -29,3 +29,8 @@ webtoken:
   loginFirst: "Log in first: /login <password>"
   code: "Panel sign-in code: {code}"
   codeHint: "It is single-use and lasts a few minutes."
+
+ui:
+  noPermission: "§cYou do not have permission."
+  status: "§6AurumUI §7clients: §f{clients}"
+  protocol: "§7Protocol: §f{protocol} §8| §7providers: §f{providers}"
