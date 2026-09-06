@@ -17,7 +17,7 @@ final class PlayerNames implements NameResolver {
 
     @Override
     public String nameOf(UUID uuid) {
-        if (uuid == null) return "неизвестный";
+        if (uuid == null) return Msg.text("player.unknown");
         var online = Bukkit.getPlayer(uuid);
         if (online != null) return online.getName();
         OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);

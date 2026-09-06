@@ -48,6 +48,29 @@ final class Msg {
         return owner == null ? key : owner.text(key, values);
     }
 
+    /** Несколько строк по одному ключу — для пояснений в меню. */
+    static java.util.List<String> lines(String key, java.util.Map<String, String> values) {
+        AurumGuildsPlugin owner = plugin;
+        return owner == null ? java.util.List.of(key) : owner.lines(key, values);
+    }
+
+    /** Подписи сайдбара и словарь для строк, которые собираются из чисел. */
+    static ovh.aurumgg.guilds.core.HudLines.Labels hudLabels() {
+        AurumGuildsPlugin owner = plugin;
+        return owner == null ? ovh.aurumgg.guilds.core.HudLines.RU : owner.hudLabels();
+    }
+
+    /**
+     * Локаль сервера — для дат и чисел, которые форматирует сама Java.
+     *
+     * Не для текстов: их берут по ключу. Здесь нужна ровно там, где формат
+     * определяется не словарём, а языком, — «6 сент. 2026» против «Sep 6, 2026».
+     */
+    static java.util.Locale locale() {
+        AurumGuildsPlugin owner = plugin;
+        return owner == null ? java.util.Locale.forLanguageTag("ru") : owner.locale();
+    }
+
     /** Подписи справки — чтобы их не собирал каждый вызов сам. */
     static ovh.aurumgg.guilds.core.HelpBook.Labels helpLabels() {
         AurumGuildsPlugin owner = plugin;

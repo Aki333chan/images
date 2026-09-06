@@ -77,6 +77,12 @@ guild:
   bank:
     deposited: "Do banku gildii wpłacono {amount}, jest tam teraz {total}"
     withdrawn: "Wypłacono {amount}, w banku zostało {left}"
+    usage: "/guild bank deposit <kwota> — wpłać, withdraw <kwota> — wypłać"
+    usageFull: "/guild bank deposit <kwota> | withdraw <kwota> | log"
+    # {action} — słowo, które gracz już wpisał: deposit albo withdraw.
+    amountUsage: "/guild bank {action} <kwota>"
+    logEmpty: "Nie było jeszcze żadnych operacji bankowych"
+    logTitle: "Ostatnie operacje bankowe:"
 
   bonus:
     granted: "Gildii „{guild}” przyznano bonus „{bonus}” {value} na {duration}"
@@ -87,6 +93,16 @@ guild:
     wasNotInGuild: "Gracz nie należał do gildii"
     leaderSet: "{player} został liderem gildii „{guild}”"
     removed: "{player} usunięty z gildii „{guild}”"
+    bank:
+      disabled: "Bank gildii jest wyłączony w config.yml (bank.enabled: false)."
+      noVault: "Vault nie jest zainstalowany — bank gildii jest niedostępny. Cała reszta gildii działa."
+      noProvider:
+        - "Vault jest, ale nie ma za nim jeszcze dostawcy ekonomii — bank nie działa."
+        - "To może być normalne: dostawcę rejestruje plugin ekonomii (EssentialsX, CMI itp.), a ten mógł się jeszcze nie uruchomić. Bank włączy się sam, gdy tylko dostawca się pojawi — restart nie jest potrzebny."
+      ok: "Vault i dostawca ekonomii są na miejscu: bank gildii działa."
+    reload:
+      dbChanged: "Ustawienia bazy zmienione — zadziałają dopiero po restarcie serwera."
+      done: "Ustawienia przeczytane ponownie."
 
   err:
     leaveFirst: "Najpierw opuść obecną gildię: /guild leave"
@@ -143,11 +159,153 @@ guild:
     tagSpaces: "Tag nie może zawierać spacji"
     tagLong: "Tag jest dłuższy niż {max} znaków"
     tagColors: "W tagu nie można używać § ani & — to kody kolorów"
+    consoleLimited: "Z konsoli dostępne są tylko /guild list i /guild admin"
+    noSuchCommand: "Nie ma takiej komendy: {command}"
+    noSuchAction: "Nie ma takiego działania: {action}"
+    noPermission: "Za mało uprawnień"
+    createPermission: "Nie każdy na tym serwerze może założyć gildię"
+    notFound: "Nie znaleziono gildii «{guild}»"
+    notAnAmount: "«{value}» to nie jest kwota"
+    bankNoVault: "Bank gildii niedostępny: na serwerze nie ma pluginu ekonomii (Vault)"
+
+  inviteReceived: "{player} zaprasza cię do gildii «{guild}». Dołącz: /guild join {guild}"
+  tagHint: "Tag ma do {max} znaków i będzie widoczny przy twoim nicku."
+
+  # Co słyszy reszta gildii — w odróżnieniu od tego, kto wydał polecenie.
+  said:
+    joined: "{player} dołączył do gildii"
+    kicked: "{player} został wyrzucony z gildii"
+    kickedYou: "Zostałeś wyrzucony z gildii"
+    newLeader: "{player} jest teraz liderem gildii"
+    disbandedByLeader: "Gildia została rozwiązana przez lidera"
+    disbandedByAdmin: "Gildia została rozwiązana przez administrację"
+
+  disband:
+    warn: "Gildia zostanie usunięta razem ze składem i bankiem. Nie da się tego cofnąć."
+    confirm: "Wpisz /guild disband jeszcze raz w ciągu {seconds} sekund, aby potwierdzić"
 
 # ------------------------------------------------------------------ pomoc
 help:
   next: "&8Dalej: &e{command} {page}"
   counter: "&7(str. {page} z {total})"
+
+  party:
+    title: "Drużyna"
+    create:
+      use: "/party create"
+      what: "zebrać drużynę i zostać jej liderem"
+    invite:
+      use: "/party invite <nick>"
+      what: "zaprosić gracza; zaproszenie żyje krótko, zapraszać może każdy"
+    accept:
+      use: "/party accept [nick]"
+      what: "przyjąć zaproszenie"
+    list:
+      use: "/party list"
+      what: "kto jest w drużynie i ile ma zdrowia"
+    kick:
+      use: "/party kick <nick>"
+      what: "wyrzucić członka z drużyny (tylko lider)"
+    promote:
+      use: "/party promote <nick>"
+      what: "przekazać przywództwo; zostajesz w drużynie jako członek"
+    leave:
+      use: "/party leave"
+      what: "wyjść z drużyny; gdy odchodzi lider, drużyna przypada następnemu"
+    chat:
+      use: "/p <wiadomość>"
+      what: "napisać do swojej drużyny; postronni tego nie zobaczą"
+
+  claim:
+    title: "Dom gildii"
+
+  guild:
+    title: "Gildie"
+    create:
+      use: "/guild create <nazwa> <tag>"
+      what: "założyć gildię; tag to krótka etykieta przy nicku, 2-5 znaków"
+    join:
+      use: "/guild join [nazwa]"
+      what: "dołączyć — na zaproszenie albo wprost do otwartej gildii"
+    leave:
+      use: "/guild leave"
+      what: "wyjść ze swojej gildii"
+    info:
+      use: "/guild info [nazwa]"
+      what: "skład, rangi i bank — swojej gildii albo cudzej"
+    list:
+      use: "/guild list [szukaj]"
+      what: "wszystkie gildie serwera"
+    invite:
+      use: "/guild invite <nick>"
+      what: "zaprosić gracza do gildii; zapraszać mogą lider i oficerowie"
+    kick:
+      use: "/guild kick <nick>"
+      what: "wyrzucić członka; tylko kogoś niższego rangą od ciebie"
+    promote:
+      use: "/guild promote <nick>"
+      what: "mianować oficerem — będzie mógł zapraszać i wyrzucać (lider)"
+    demote:
+      use: "/guild demote <nick>"
+      what: "zdjąć oficera z powrotem do członka (lider)"
+    transfer:
+      use: "/guild transfer <nick>"
+      what: "oddać gildię innemu; zostaniesz w niej oficerem"
+    disband:
+      use: "/guild disband"
+      what: "rozwiązać gildię — zapyta o potwierdzenie"
+    tag:
+      use: "/guild tag <nowy tag>"
+      what: "zmienić etykietę przy nicku; 2-5 znaków, bez kodów koloru (lider)"
+    settings:
+      use: "/guild settings"
+      what: "menu ustawień: opis, przyjmowanie, ogień do swoich"
+    bank:
+      use: "/guild bank"
+      what: "stan banku; deposit i withdraw — wpłacić i wypłacić"
+      deposit:
+        what: "przełożyć własne pieniądze do banku — może każdy członek"
+      withdraw:
+        what: "wziąć z banku; kto może, decyduje /guild settings"
+    bonuses:
+      use: "/guild bonuses"
+      what: "jakie wzmocnienia działają na gildię i jak długo jeszcze"
+    claim:
+      use: "/guild claim <region>"
+      what: "wpuścić do swojego regionu całą gildię — dom gildii"
+    claimRemove:
+      use: "/guild claim remove <region>"
+      what: "odłączyć region od gildii; członków usuniemy z niego sami"
+    chat:
+      use: "/g <wiadomość>"
+      what: "napisać do swojej gildii; postronni tego nie zobaczą"
+
+  admin:
+    title: "Gildie — administracja"
+    remove:
+      use: "/guild admin remove <nick>"
+      what: "wyrzucić gracza z jego gildii"
+    transfer:
+      use: "/guild admin transfer <gildia> <nick>"
+      what: "mianować liderem innego członka tej gildii"
+    disband:
+      use: "/guild admin disband <gildia>"
+      what: "rozwiązać cudzą gildię"
+    bonusList:
+      use: "/guild admin bonus list <gildia>"
+      what: "co teraz działa na tę gildię"
+    bonusGrant:
+      use: "/guild admin bonus grant <rodzaj> <wielkość> [30m|2h|7d] <gildia>"
+      what: "przyznać wzmocnienie; bez terminu — na zawsze"
+    bonusRevoke:
+      use: "/guild admin bonus revoke <rodzaj> <gildia>"
+      what: "zdjąć wzmocnienie"
+    friendlyFire:
+      use: "/guild admin friendlyfire [on|off]"
+      what: "ogień do swoich w drużynie, dla całego serwera"
+    reload:
+      use: "/guild admin reload"
+      what: "przeczytać config.yml ponownie bez restartu"
 
 # ------------------------------------------------------------ czas trwania
 #
@@ -189,3 +347,144 @@ party:
     notYourMember: "{player} nie jest w twojej drużynie"
     promoteLeaderOnly: "Przekazać przywództwo może tylko lider drużyny"
     alreadyLeader: "I tak jesteś liderem"
+    consoleOnly: "Drużyny zbiera się w grze, z konsoli się nie da"
+    noSuchCommand: "Nie ma takiej komendy: {command}"
+    notOnline: "Gracza {player} nie ma online"
+  inviteReceived: "{player} zaprasza cię do drużyny. Przyjmij: /party accept {player}"
+  youAreLeader: "Jesteś teraz liderem drużyny"
+
+  list:
+    title: "W drużynie {count} z {max}:"
+    offline: "offline"
+
+  # Co słyszy reszta drużyny.
+  said:
+    joined: "{player} dołączył do drużyny"
+    left: "{player} opuścił drużynę"
+    kicked: "{player} został wyrzucony z drużyny"
+    kickedYou: "Zostałeś wyrzucony z drużyny"
+    promoted: "{player} jest teraz liderem drużyny"
+
+# --------------------------------------------------------- kanały prywatne
+chat:
+  party:
+    label: "&b[Drużyna]"
+  guild:
+    label: "&a[Gildia]"
+  err:
+    playersOnly: "Ten czat jest dla graczy w grze"
+    aloneOnline: "Poza tobą nikogo z grupy nie ma teraz online"
+
+# ----------------------------------------------------------- pytanie na czacie
+prompt:
+  howTo: "Wpisz na czacie nową wartość albo «{cancel}», jeśli się rozmyślisz."
+  # Słowo anulowania się WPISUJE, a nie czyta. «cancel» działa zawsze, a ten
+  # klucz dokłada do niego słowo w języku serwera.
+  cancelWord: "anuluj"
+  cancelled: "Anulowano"
+
+# ------------------------------------------------------------- menu ustawień
+menu:
+  title: "&8Ustawienia gildii"
+  enabled: "dozwolony"
+  disabled: "wyłączony"
+  notSet: "nie ustawiono"
+  clickToggle: "Kliknij, aby przełączyć"
+  clickChange: "Kliknij, aby zmienić"
+  friendlyFire:
+    title: "&fOgień do swoich: {value}"
+    # Lista, bo to wiersze podpowiedzi pod ikoną: gdzie łamać, decyduje
+    # tłumaczenie, a nie kod.
+    lore:
+      - "Czy członkowie gildii"
+      - "mogą się nawzajem bić."
+  joinPolicy:
+    title: "&fPrzyjmowanie: {value}"
+    lore:
+      - "Otwarta — wchodzą bez zaproszenia."
+      - "Na zaproszenie — tylko proszeni."
+      - "Zamknięta — nie przyjmuje nikogo."
+  motd:
+    title: "&fOpis gildii"
+    ask: "Nowy opis gildii:"
+  bankAccess:
+    title: "&fWypłata z banku: {value}"
+    lore:
+      - "Wpłacać może każdy członek —"
+      - "to jego własne pieniądze."
+      - "Ustawia się tylko wypłatę."
+  tag:
+    title: "&fTag gildii: &b[{tag}]"
+    ask: "Nowy tag gildii:"
+    lore:
+      - "Widoczny przy nicku każdego członka."
+      - "Do {max} znaków, musi być wolny."
+
+# ---------------------------------------------------------------- karta gildii
+info:
+  leader: "Lider"
+  members: "Skład"
+  membersValue: "&f{total}&7, online &f{online}"
+  created: "Założona"
+  joinPolicy: "Przyjmowanie"
+  friendlyFire: "Ogień do swoich"
+  bank: "Bank"
+  bonuses: "Bonusy"
+  homes: "Domy"
+  roster: "Skład:"
+
+# ------------------------------------------------------------- lista gildii
+list:
+  empty: "Nie ma jeszcze żadnej gildii"
+  nothingFound: "Nic nie znaleziono"
+  title: "Gildie ({count}):"
+  row: "{members} os., lider {leader}"
+
+# --------------------------------------------------------------- dom gildii
+claim:
+  none: "Do gildii nie jest przypisany żaden region"
+  listTitle: "Regiony gildii:"
+  ownerOnlyHint: "Przypisać można tylko region, którego jesteś właścicielem"
+  attached: "Region «{region}» jest teraz domem gildii. Wszyscy członkowie zostali dodani, nowi będą dodawani sami"
+  detached: "Region «{region}» został odłączony od gildii"
+  err:
+    noWorldGuard: "Na serwerze nie ma WorldGuarda — nie ma czego przypisywać"
+    leaderOnly: "Regiony przypisywać może tylko lider gildii"
+    notAttached: "Region «{region}» nie jest przypisany do twojej gildii w tym świecie"
+    otherGuild: "Ten region należy już do innej gildii"
+    noManager: "W tym świecie regiony WorldGuarda są wyłączone"
+    noRegion: "W świecie «{world}» nie ma regionu «{region}»"
+    notOwner: "Nie jesteś właścicielem tego regionu. Gildii można oddać tylko własną ziemię"
+
+# ------------------------------------------------------------------- bonusy
+bonus:
+  title: "Bonusy gildii"
+  titleGuild: "Bonusy: {guild}"
+  noneYours: "Twoja gildia nie ma teraz żadnych bonusów"
+  noneGuild: "Gildia «{guild}» nie ma bonusów"
+  left: "jeszcze {duration}"
+  grantedBy: "przyznał {actor}"
+  kinds: "Rodzaje bonusów:"
+  playableHint: "Grywalne są mnożniki do 3 i efekty poziomu 1-2; wyżej — do testów"
+  range:
+    level: "poziom efektu 1-{max}"
+    multiplier: "mnożnik 1.0-{max}"
+  err:
+    # Nazwy rodzajów (miningspeed i reszta) się WPISUJE — nie tłumaczymy ich.
+    noSuchType: "Nie ma takiego rodzaju. Są: {list}"
+    notANumber: "Wielkość musi być liczbą. Dla «{bonus}» to {range}"
+
+# ------------------------------------------------------------- administracja
+admin:
+  reloadUnavailable: "Przeładowanie niedostępne"
+  ff:
+    unavailable: "Ustawienie niedostępne"
+    state: "Ogień do swoich w drużynie jest teraz: &f{value}"
+    howTo: "Przełącz: /guild admin friendlyfire on|off"
+    expected: "Oczekiwano on albo off"
+    saved: "Ogień do swoich w drużynie jest {value}&7. Zapisano w config.yml."
+    guildsUnaffected: "Gildii to nie dotyczy — każda ma własny przełącznik w /guild settings."
+
+# ------------------------------------------------------------------ gracz
+player:
+  unknown: "nieznany"
