@@ -131,7 +131,33 @@ interface RawGuildMembership {
 
 interface RawGuildOutcome {
   ok?: boolean;
+  /** Ключ сообщения. Плагин присылает именно ключ — см. GuildOutcome. */
   message?: string;
+  values?: Record<string, string>;
+  keys?: Record<string, string>;
+}
+
+/**
+ * Ответ плагина гильдий, разобранный.
+ *
+ * Ключ и подстановки едут дальше врозь: переводит их либо фильтр ошибок (при
+ * отказе), либо сам браузер (при успехе), и оба знают язык читателя. Панель
+ * тут ничего не собирает — она бы собрала не на том языке.
+ */
+export interface GuildOutcome {
+  ok: boolean;
+  message: string;
+  values: Record<string, string>;
+  keys: Record<string, string>;
+}
+
+function outcome(
+  ok: boolean,
+  message: string,
+  values: Record<string, string> = {},
+  keys: Record<string, string> = {},
+): GuildOutcome {
+  return { ok, message, values, keys };
 }
 
 /**
@@ -169,10 +195,20 @@ export class CompanionService {
     init?: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown; timeoutMs?: number },
   ): Promise<
     | { ok: true; body: T }
-    | { ok: false; status: number | null; code: string | null; error: string | null }
+    | {
+        ok: false;
+        status: number | null;
+        code: string | null;
+        error: string | null;
+        // Разобранное тело отказа целиком. Нужно там, где плагин объясняет
+        // отказ не кодом, а полями: гильдии отвечают на 409 тем же ключом и
+        // подстановками, что и на успех, и терять их здесь значило бы
+        // показать «сервер промолчал» вместо «такой гильдии нет».
+        body: Record<string, unknown> | null;
+      }
   > {
     const creds = await this.config.read(serverId);
-    if (!creds.companion) return { ok: false, status: null, code: null, error: null };
+    if (!creds.companion) return { ok: false, status: null, code: null, error: null, body: null };
     try {
       const res = await request(`${creds.companion.baseUrl}${path}`, {
         method: init?.method ?? 'GET',
@@ -195,12 +231,13 @@ export class CompanionService {
           status: res.statusCode,
           code: typeof parsed?.code === 'string' ? parsed.code : null,
           error: typeof parsed?.error === 'string' ? parsed.error : null,
+          body: parsed ?? null,
         };
       }
       return { ok: true, body: (text ? JSON.parse(text) : {}) as T };
     } catch (e) {
       this.logger.warn(`Companion-плагин сервера ${serverId} недоступен: ${(e as Error).message}`);
-      return { ok: false, status: null, code: null, error: null };
+      return { ok: false, status: null, code: null, error: null, body: null };
     }
   }
 
@@ -750,16 +787,29 @@ export class CompanionService {
     path: string,
     method: 'POST' | 'DELETE',
     body: Record<string, unknown>,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<GuildOutcome> {
     if (!(await this.isConfigured(serverId))) {
-      return { ok: false, message: 'mc.err.companionNotConfigured' };
+      return outcome(false, 'mc.err.companionNotConfigured');
     }
     const result = await this.callRaw<RawGuildOutcome>(serverId, path, { method, body });
-    if (result.ok) return { ok: true, message: result.body.message ?? 'common.done' };
-    if (result.code === 'guilds-unavailable') {
-      return { ok: false, message: 'mc.err.noGuildsPlugin' };
+    if (result.ok) {
+      return outcome(
+        true,
+        result.body.message ?? 'common.done',
+        result.body.values,
+        result.body.keys,
+      );
     }
-    return { ok: false, message: result.error ?? 'mc.err.serverSilent' };
+    if (result.code === 'guilds-unavailable') return outcome(false, 'mc.err.noGuildsPlugin');
+    // 409 от плагина приносит ту же тройку: ключ и обе карты. Отказ «такой
+    // гильдии нет» переводится ровно так же, как успех.
+    const refusal = result.body as RawGuildOutcome | null;
+    return outcome(
+      false,
+      refusal?.message ?? result.error ?? 'mc.err.serverSilent',
+      refusal?.values,
+      refusal?.keys,
+    );
   }
 
   /**
@@ -773,19 +823,30 @@ export class CompanionService {
     serverId: string,
     path: string,
     body: Record<string, unknown>,
-  ): Promise<{ ok: boolean; message: string }> {
+  ): Promise<GuildOutcome> {
     if (!(await this.isConfigured(serverId))) {
-      return { ok: false, message: 'mc.err.companionNotConfigured' };
+      return outcome(false, 'mc.err.companionNotConfigured');
     }
     const result = await this.callRaw<RawGuildOutcome>(serverId, path, {
       method: 'POST',
       body,
     });
-    if (result.ok) return { ok: true, message: result.body.message ?? 'common.done' };
-    if (result.code === 'guilds-unavailable') {
-      return { ok: false, message: 'mc.err.noGuildsPlugin' };
+    if (result.ok) {
+      return outcome(
+        true,
+        result.body.message ?? 'common.done',
+        result.body.values,
+        result.body.keys,
+      );
     }
-    return { ok: false, message: result.error ?? 'mc.err.serverSilent' };
+    if (result.code === 'guilds-unavailable') return outcome(false, 'mc.err.noGuildsPlugin');
+    const refusal = result.body as RawGuildOutcome | null;
+    return outcome(
+      false,
+      refusal?.message ?? result.error ?? 'mc.err.serverSilent',
+      refusal?.values,
+      refusal?.keys,
+    );
   }
 
   /**

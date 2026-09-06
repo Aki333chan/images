@@ -1110,5 +1110,20 @@
   "set.smtp.err.auth": "SMTP отверг логин или пароль",
   "set.smtp.err.connect": "Не удалось соединиться с SMTP-сервером — проверьте host, port и TLS",
   "set.smtp.err.timeout": "SMTP-сервер не ответил вовремя",
-  "set.smtp.err.unknown": "Неизвестная ошибка SMTP"
+  "set.smtp.err.unknown": "Неизвестная ошибка SMTP",
+  "guild.disbanded": "Гильдия «{guild}» распущена",
+  "guild.admin.leaderSet": "{player} назначен лидером гильдии «{guild}»",
+  "guild.admin.removed": "{player} убран из гильдии «{guild}»",
+  "guild.admin.wasNotInGuild": "Игрок не состоял в гильдии",
+  "guild.bonus.granted": "Гильдии «{guild}» выдан бонус «{bonus}»",
+  "guild.bonus.grantedForever": "Гильдии «{guild}» выдан бонус «{bonus}» навсегда",
+  "guild.bonus.revoked": "Бонус «{bonus}» снят",
+  "guild.err.noSuchGuild": "Такой гильдии нет",
+  "guild.err.noMemberNamed": "В гильдии «{guild}» нет игрока {player}",
+  "guild.err.targetAlreadyLeader": "{player} и так лидер",
+  "guild.err.targetNoGuild": "{player} не состоит в гильдии",
+  "guild.err.noBonusType": "Не указан вид бонуса",
+  "guild.err.noSuchBonus": "У гильдии нет такого бонуса",
+  "guild.err.internal": "Внутренняя ошибка, попробуйте позже",
+  "mc.g.err.noSuchBonusType": "Плагин гильдий не знает вида бонуса «{type}»"
 }

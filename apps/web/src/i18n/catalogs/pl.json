@@ -1110,5 +1110,20 @@
   "set.smtp.err.auth": "SMTP odrzucił login lub hasło",
   "set.smtp.err.connect": "Nie udało się połączyć z serwerem SMTP — sprawdź host, port i TLS",
   "set.smtp.err.timeout": "Serwer SMTP nie odpowiedział na czas",
-  "set.smtp.err.unknown": "Nieznany błąd SMTP"
+  "set.smtp.err.unknown": "Nieznany błąd SMTP",
+  "guild.disbanded": "Gildia «{guild}» została rozwiązana",
+  "guild.admin.leaderSet": "{player} został liderem gildii «{guild}»",
+  "guild.admin.removed": "{player} został usunięty z gildii «{guild}»",
+  "guild.admin.wasNotInGuild": "Gracz nie należał do żadnej gildii",
+  "guild.bonus.granted": "Gildia «{guild}» dostała bonus «{bonus}»",
+  "guild.bonus.grantedForever": "Gildia «{guild}» dostała bonus «{bonus}» na zawsze",
+  "guild.bonus.revoked": "Bonus «{bonus}» został zdjęty",
+  "guild.err.noSuchGuild": "Nie ma takiej gildii",
+  "guild.err.noMemberNamed": "W gildii «{guild}» nie ma gracza {player}",
+  "guild.err.targetAlreadyLeader": "{player} i tak jest liderem",
+  "guild.err.targetNoGuild": "{player} nie należy do żadnej gildii",
+  "guild.err.noBonusType": "Nie podano rodzaju bonusu",
+  "guild.err.noSuchBonus": "Gildia nie ma takiego bonusu",
+  "guild.err.internal": "Błąd wewnętrzny, spróbuj później",
+  "mc.g.err.noSuchBonusType": "Plugin gildii nie zna rodzaju bonusu «{type}»"
 }

@@ -16,6 +16,7 @@ import {
   type MinecraftBalanceChangeDto,
   type MinecraftBalanceDto,
   type MinecraftCommandResultDto,
+  type MinecraftGuildActionResultDto,
   type MinecraftConfigStatusDto,
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
@@ -456,7 +457,7 @@ export class MinecraftController {
     @Param('serverId') serverId: string,
     @Param('guildId') guildId: string,
     @Body() dto: GuildBonusGrantDto,
-  ): Promise<MinecraftCommandResultDto> {
+  ): Promise<MinecraftGuildActionResultDto> {
     const result = await this.companion.guildBonusAction(
       serverId,
       `/guilds/${Number(guildId)}/bonuses`,
@@ -468,7 +469,7 @@ export class MinecraftController {
         actor: await this.actorName(user.id),
       },
     );
-    return { output: result.message };
+    return guildResult(result);
   }
 
   @Delete('guilds/:guildId/bonuses/:type')
@@ -479,14 +480,14 @@ export class MinecraftController {
     @Param('serverId') serverId: string,
     @Param('guildId') guildId: string,
     @Param('type') type: string,
-  ): Promise<MinecraftCommandResultDto> {
+  ): Promise<MinecraftGuildActionResultDto> {
     const result = await this.companion.guildBonusAction(
       serverId,
       `/guilds/${Number(guildId)}/bonuses/${encodeURIComponent(type)}`,
       'DELETE',
       { actor: await this.actorName(user.id) },
     );
-    return { output: result.message };
+    return guildResult(result);
   }
 
   @Post('guilds/:guildId/disband')
@@ -496,7 +497,7 @@ export class MinecraftController {
     @CurrentUser() user: AuthUser,
     @Param('serverId') serverId: string,
     @Param('guildId') guildId: string,
-  ): Promise<MinecraftCommandResultDto> {
+  ): Promise<MinecraftGuildActionResultDto> {
     return this.guildAction(serverId, `/guilds/${Number(guildId)}/disband`, {
       actor: await this.actorName(user.id),
     });
@@ -510,7 +511,7 @@ export class MinecraftController {
     @Param('serverId') serverId: string,
     @Param('guildId') guildId: string,
     @Body() dto: GuildTransferDto,
-  ): Promise<MinecraftCommandResultDto> {
+  ): Promise<MinecraftGuildActionResultDto> {
     return this.guildAction(serverId, `/guilds/${Number(guildId)}/transfer`, {
       actor: await this.actorName(user.id),
       target: dto.target,
@@ -524,7 +525,7 @@ export class MinecraftController {
     @CurrentUser() user: AuthUser,
     @Param('serverId') serverId: string,
     @Body() dto: GuildRemoveMemberDto,
-  ): Promise<MinecraftCommandResultDto> {
+  ): Promise<MinecraftGuildActionResultDto> {
     return this.guildAction(serverId, `/guilds/members/${encodeURIComponent(dto.target)}/remove`, {
       actor: await this.actorName(user.id),
     });
@@ -541,10 +542,18 @@ export class MinecraftController {
     serverId: string,
     path: string,
     body: Record<string, unknown>,
-  ): Promise<MinecraftCommandResultDto> {
+  ): Promise<MinecraftGuildActionResultDto> {
     const result = await this.companion.guildAction(serverId, path, body);
-    if (!result.ok) throw new ConflictException(result.message);
-    return { output: result.message };
+    // Отказ бросается с подстановками, а не с готовой фразой: переводит его
+    // фильтр ошибок, на языке того, кто прислал запрос.
+    if (!result.ok) {
+      throw new ConflictException({
+        message: result.message,
+        i18nValues: result.values,
+        i18nKeys: result.keys,
+      });
+    }
+    return guildResult(result);
   }
 
   /**
@@ -700,4 +709,22 @@ function positiveInt(raw: string | undefined): number | undefined {
   if (!raw) return undefined;
   const value = Number(raw);
   return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * Успешный ответ гильдий наружу: ключ и подстановки, без готовой фразы.
+ *
+ * Пустые карты не отправляются: в ответе на «распустить гильдию» им взяться
+ * неоткуда, а поле `"values": {}` в каждом ответе только шумит.
+ */
+function guildResult(result: {
+  message: string;
+  values: Record<string, string>;
+  keys: Record<string, string>;
+}): MinecraftGuildActionResultDto {
+  return {
+    message: result.message,
+    ...(Object.keys(result.values).length > 0 ? { values: result.values } : {}),
+    ...(Object.keys(result.keys).length > 0 ? { keys: result.keys } : {}),
+  };
 }

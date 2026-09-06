@@ -6,7 +6,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import java.util.Map;
 import ovh.aurumgg.companion.core.CompanionConfig;
+import ovh.aurumgg.companion.core.Messages;
 import ovh.aurumgg.companion.core.http.CompanionHttpServer;
 import ovh.aurumgg.companion.core.ticket.TicketClient;
 import ovh.aurumgg.companion.core.ticket.TicketCooldown;
@@ -27,9 +29,30 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
     private CompanionHttpServer httpServer;
     private TicketCooldown cooldown;
 
+    /**
+     * Тексты для игроков.
+     *
+     * Их у companion всего дюжина — /ticket и /webtoken, — но слой языка тот
+     * же, что в AurumAuth и AurumGuilds: язык сервера один, файлы в lang/,
+     * запасной вариант всегда встроенный русский. Заводить ради дюжины строк
+     * второй способ было бы хуже, чем повторить знакомый.
+     */
+    private volatile Messages messages;
+
+    /** Текст на языке сервера. */
+    String text(String key) {
+        return messages.get(key);
+    }
+
+    String text(String key, Map<String, String> values) {
+        return messages.get(key, values);
+    }
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        messages = LanguageFiles.load(this, Messages.normalizeLanguage(
+                getConfig().getString("language", Messages.DEFAULT_LANGUAGE)));
         CompanionConfig config = readConfig();
 
         cooldown = new TicketCooldown(config.ticketCooldownSeconds());
@@ -142,7 +165,7 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
             getLogger().warning("Команда /webtoken отключена: HTTP-сервер не запущен");
             return;
         }
-        command.setExecutor(new WebTokenCommand(httpServer.webTokens()));
+        command.setExecutor(new WebTokenCommand(this, httpServer.webTokens()));
 
         if (!AuthIntegration.installed()) {
             // Не ошибка: companion работает и без плагина авторизации. Но об

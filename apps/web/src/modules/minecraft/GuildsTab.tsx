@@ -4,6 +4,7 @@ import {
   MINECRAFT_BONUS_TYPES,
   MINECRAFT_GUILD_RANK_KEYS,
   type MinecraftBonusType,
+  type MinecraftGuildActionResultDto,
   type MinecraftGuildBonusDto,
   type MinecraftGuildDto,
   type MinecraftGuildMemberDto,
@@ -206,11 +207,11 @@ function GuildCard({
       setError('');
       setResult('');
       try {
-        const response = await api<{ output: string }>(`${base(moduleId, serverId)}${path}`, {
-          method: 'POST',
-          body: JSON.stringify(body),
-        });
-        setResult(response.output);
+        const response = await api<MinecraftGuildActionResultDto>(
+          `${base(moduleId, serverId)}${path}`,
+          { method: 'POST', body: JSON.stringify(body) },
+        );
+        setResult(say(apiText, response));
         if (refresh) onChanged();
       } catch (e) {
         setError((e as Error).message);
@@ -288,7 +289,7 @@ function GuildCard({
         )}
 
         {error && <ErrorText>{error}</ErrorText>}
-        {result && <p className="text-xs text-emerald-400">{apiText(result)}</p>}
+        {result && <p className="text-xs text-emerald-400">{result}</p>}
       </div>
 
       {prompt && (
@@ -486,7 +487,7 @@ function GuildBonuses({
       )}
 
       {error && <ErrorText>{error}</ErrorText>}
-      {result && <p className="text-xs text-emerald-400">{apiText(result)}</p>}
+      {result && <p className="text-xs text-emerald-400">{result}</p>}
     </div>
   );
 
@@ -500,7 +501,7 @@ function GuildBonuses({
     }
     const seconds = BONUS_DURATIONS.find((d) => d.value === duration)?.seconds ?? 0;
     await send(() =>
-      api<{ output: string }>(path, {
+      api<MinecraftGuildActionResultDto>(path, {
         method: 'POST',
         body: JSON.stringify({ type, magnitude: value, seconds }),
       }),
@@ -509,7 +510,9 @@ function GuildBonuses({
 
   async function revoke(bonus: MinecraftGuildBonusDto) {
     await send(() =>
-      api<{ output: string }>(`${path}/${encodeURIComponent(bonus.type)}`, { method: 'DELETE' }),
+      api<MinecraftGuildActionResultDto>(`${path}/${encodeURIComponent(bonus.type)}`, {
+        method: 'DELETE',
+      }),
     );
   }
 
@@ -519,12 +522,12 @@ function GuildBonuses({
    * своего потолка, и показать надо то, что действует на самом деле, а не то,
    * что мы попросили.
    */
-  async function send(action: () => Promise<{ output: string }>) {
+  async function send(action: () => Promise<MinecraftGuildActionResultDto>) {
     setBusy(true);
     setError('');
     setResult('');
     try {
-      setResult((await action()).output);
+      setResult(say(apiText, await action()));
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -576,4 +579,19 @@ function describeExpiry(
         ? t('mc.g.leftHours', { count: Math.round(hours) })
         : t('mc.g.leftMinutes', { count: Math.max(1, Math.round(left / 60_000)) });
   return t('mc.g.left', { human, date: formatDateTime(expiresAt) });
+}
+
+/**
+ * Ответ плагина гильдий — фразой на языке того, кто смотрит.
+ *
+ * Подстановки-ключи разворачиваются ПЕРЕД подстановкой: «{player} теперь
+ * {rank}» ждёт на месте {rank} слово, а не «mc.rank.officer». Ники и имена
+ * гильдий из values при этом остаются как есть — искать их в словаре нельзя.
+ */
+function say(
+  apiText: (text: string | null | undefined, values?: Record<string, string>) => string,
+  result: MinecraftGuildActionResultDto,
+): string {
+  const keys = Object.entries(result.keys ?? {}).map(([name, key]) => [name, apiText(key)]);
+  return apiText(result.message, { ...(result.values ?? {}), ...Object.fromEntries(keys) });
 }

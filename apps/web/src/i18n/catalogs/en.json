@@ -1106,5 +1106,20 @@
   "set.smtp.err.auth": "SMTP rejected the login or the password",
   "set.smtp.err.connect": "Could not connect to the SMTP server — check host, port and TLS",
   "set.smtp.err.timeout": "The SMTP server did not answer in time",
-  "set.smtp.err.unknown": "Unknown SMTP error"
+  "set.smtp.err.unknown": "Unknown SMTP error",
+  "guild.disbanded": "Guild «{guild}» has been disbanded",
+  "guild.admin.leaderSet": "{player} is now the leader of «{guild}»",
+  "guild.admin.removed": "{player} was removed from «{guild}»",
+  "guild.admin.wasNotInGuild": "The player was not in a guild",
+  "guild.bonus.granted": "Guild «{guild}» was granted the «{bonus}» bonus",
+  "guild.bonus.grantedForever": "Guild «{guild}» was granted the «{bonus}» bonus permanently",
+  "guild.bonus.revoked": "The «{bonus}» bonus was revoked",
+  "guild.err.noSuchGuild": "No such guild",
+  "guild.err.noMemberNamed": "Guild «{guild}» has no player named {player}",
+  "guild.err.targetAlreadyLeader": "{player} is the leader already",
+  "guild.err.targetNoGuild": "{player} is not in a guild",
+  "guild.err.noBonusType": "No bonus kind given",
+  "guild.err.noSuchBonus": "The guild has no such bonus",
+  "guild.err.internal": "Internal error, try again later",
+  "mc.g.err.noSuchBonusType": "The guilds plugin does not know a bonus kind called «{type}»"
 }

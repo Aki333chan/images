@@ -191,7 +191,8 @@ final class GuildsIntegration {
         // панель показала бы не ту причину. Опечатка в виде бонуса — это
         // ошибка запроса, и говорить о ней надо прямо.
         if (parsed == null) {
-            return Optional.of(new GuildActionOutcome(false, "Неизвестный вид бонуса: " + type));
+            return Optional.of(new GuildActionOutcome(
+                    false, "mc.g.err.noSuchBonusType", java.util.Map.of("type", type)));
         }
         Duration duration = seconds > 0 ? Duration.ofSeconds(seconds) : null;
         return await(api.get().grantBonus(guildId, parsed, magnitude, duration, actor))
@@ -204,7 +205,8 @@ final class GuildsIntegration {
 
         BonusType parsed = BonusType.parse(type);
         if (parsed == null) {
-            return Optional.of(new GuildActionOutcome(false, "Неизвестный вид бонуса: " + type));
+            return Optional.of(new GuildActionOutcome(
+                    false, "mc.g.err.noSuchBonusType", java.util.Map.of("type", type)));
         }
         return await(api.get().revokeBonus(guildId, parsed, actor)).map(GuildsIntegration::toOutcome);
     }
@@ -214,7 +216,7 @@ final class GuildsIntegration {
                 // Вид в нижнем регистре: панель показывает его как есть, а
                 // MINING_SPEED в интерфейсе выглядит криком.
                 bonus.type().name().toLowerCase(java.util.Locale.ROOT),
-                bonus.type().title(),
+                bonus.type().titleKey(),
                 bonus.magnitude(),
                 bonus.type().kind() == BonusType.Kind.MULTIPLIER,
                 // Ноль вместо null: постоянный бонус в JSON проще отличать по
@@ -225,6 +227,9 @@ final class GuildsIntegration {
     }
 
     private static GuildActionOutcome toOutcome(ovh.aurumgg.guilds.api.GuildActionResult result) {
-        return new GuildActionOutcome(result.ok(), result.message());
+        // Ключ и обе карты подстановок — как есть. Ни одна из них здесь не
+        // разворачивается: язык читателя знает панель, а не игровой сервер.
+        return new GuildActionOutcome(
+                result.ok(), result.messageKey(), result.values(), result.keyKeys());
     }
 }

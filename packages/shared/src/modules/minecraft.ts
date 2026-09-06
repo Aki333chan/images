@@ -226,6 +226,25 @@ export interface MinecraftCommandResultDto {
   output: string;
 }
 
+/**
+ * Ответ плагина гильдий на вмешательство администрации.
+ *
+ * КЛЮЧ, А НЕ ФРАЗА. Плагин гильдий живёт на игровом сервере и знает язык
+ * ЭТОГО СЕРВЕРА, а не язык сотрудника, который смотрит в панель. Раньше сюда
+ * приезжало собранное по-русски предложение, и панель показывала его как
+ * есть — на любом языке интерфейса.
+ *
+ * Подстановок две карты, и это не избыточность: в values то, что переводить
+ * нельзя (ник, имя гильдии), в keys — то, что само является ключом словаря
+ * (вид бонуса). Иначе на экране оказалось бы «mc.bonus.blockDrops».
+ */
+export interface MinecraftGuildActionResultDto {
+  /** Ключ сообщения в словаре панели. */
+  message: string;
+  values?: Record<string, string>;
+  keys?: Record<string, string>;
+}
+
 export interface MinecraftInventoryItemDto {
   slot: number;
   id: string;
