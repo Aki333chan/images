@@ -21,6 +21,13 @@ export const SETTING_KEYS = {
    * половину настроек.
    */
   ALERTS: 'alerts.overload',
+  /**
+   * Предлагать ли наши собственные плагины на свежих серверах.
+   *
+   * Один ключ на всю фичу: и на молчаливую установку companion, и на поп-ап
+   * с необязательными. Тот, кто её выключает, выключает её целиком.
+   */
+  OFFER_ADDONS: 'addons.offerAurumAddons',
 } as const;
 
 /** Ключ, под которым лежит зашифрованный JSON с параметрами SMTP. */
@@ -58,7 +65,24 @@ export class SettingsService {
         SETTING_KEYS.REQUIRE_GM_APPROVAL,
         true,
       ),
+      // По умолчанию включено: сервер без companion панель видит вполовину,
+      // и молчать об этом на чужом сервере хуже, чем один раз предложить.
+      offerAurumAddons: await this.getBoolean(SETTING_KEYS.OFFER_ADDONS, true),
     };
+  }
+
+  /** Включена ли фича. Спрашивают на каждом заходе на страницу сервера. */
+  async addonsOfferEnabled(): Promise<boolean> {
+    return this.getBoolean(SETTING_KEYS.OFFER_ADDONS, true);
+  }
+
+  async setOfferAurumAddons(value: boolean): Promise<AppSettingsDto> {
+    await this.prisma.appSetting.upsert({
+      where: { key: SETTING_KEYS.OFFER_ADDONS },
+      create: { key: SETTING_KEYS.OFFER_ADDONS, value: String(value) },
+      update: { value: String(value) },
+    });
+    return this.getAppSettings();
   }
 
   async setRequireGmApproval(value: boolean): Promise<AppSettingsDto> {

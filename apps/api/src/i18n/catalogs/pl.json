@@ -338,5 +338,9 @@
   "market.err.unknownSource": "Nieznane źródło {source}",
   "ptero.err.redirect": "Pterodactyl API {call}: odpowiedź {status} (przekierowanie na {location}). Sprawdź PTERO_BASE_URL (obecnie {base}) — zwykle potrzebne są https i nazwa domenowa panelu.",
   "ptero.err.notJson": "Pterodactyl API {call}: zamiast JSON zwrócono „{type}” ze statusem {status}. Tak zwykle odpowiada strona logowania panelu Pterodactyl albo jej nginx. Sprawdź PTERO_BASE_URL (obecnie {base}). Początek odpowiedzi: {body}",
-  "ptero.err.badJson": "Pterodactyl API {call}: odpowiedź oznaczona jako JSON, ale nie daje się sparsować (status {status}). Początek odpowiedzi: {body}"
+  "ptero.err.badJson": "Pterodactyl API {call}: odpowiedź oznaczona jako JSON, ale nie daje się sparsować (status {status}). Początek odpowiedzi: {body}",
+  "addons.err.disabled": "Proponowanie naszych pluginów jest wyłączone w ustawieniach panelu",
+  "addons.err.noRelease": "Plugin «{name}» nie ma jeszcze wydanej wersji",
+  "addons.err.releasesUnavailable": "Nie udało się pobrać listy wersji z GitHuba ({status})",
+  "addons.err.installFailed": "Instalacja się nie powiodła"
 }

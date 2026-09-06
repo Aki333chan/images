@@ -4,22 +4,31 @@ import type { ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Dot, Select, Spinner, Tabs } from '../components/ui';
-import { IconBack, IconPlay, IconRestart, IconSettings, IconStop } from '../components/icons';
+import {
+  IconBack,
+  IconPlay,
+  IconPlug,
+  IconRestart,
+  IconSettings,
+  IconStop,
+} from '../components/icons';
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { ServerStats } from '../components/ServerStats';
 import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
+import { AddonsModal, useServerAddons } from '../components/AddonsModal';
 import { ServerAddress } from '../components/ServerAddress';
 import { Modal } from '../components/Modal';
 import { refreshServerRuntime, useServerRuntime } from '../lib/server-runtime';
 import { SERVER_TABS } from '../server-tabs/registry';
 import { listCapabilities } from '@aurum/shared';
-import { useT } from '../i18n';
+import { useApiText, useT } from '../i18n';
 
 /** Не пересекается с id capability: те приходят из манифеста модуля. */
 const SETTINGS_TAB_ID = '__settings';
 
 export function ServerDetailPage() {
   const t = useT();
+  const apiText = useApiText();
   const { serverId = '' } = useParams();
   const navigate = useNavigate();
   const { me, modules, hasPermission, canSeeServer } = useAuth();
@@ -30,6 +39,8 @@ export function ServerDetailPage() {
   const [tabPickedByUser, setTabPickedByUser] = useState(false);
   /** Открыт ли выбор модуля. Действие редкое — окно, а не постоянный блок. */
   const [modulePicker, setModulePicker] = useState(false);
+  /** Окно с нашими плагинами: открывается само при первом заходе и кнопкой. */
+  const [addonsOpen, setAddonsOpen] = useState(false);
   const [error, setError] = useState('');
   /** Отказ Pterodactyl по кнопке питания: молча его терять нельзя. */
   const [powerError, setPowerError] = useState('');
@@ -51,6 +62,18 @@ export function ServerDetailPage() {
         else setError((e as Error).message);
       });
   }, [serverId, me]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addons = useServerAddons(server?.id, server?.moduleId ?? null);
+
+  // Поп-ап показывается сам ровно один раз за заход: условие показа целиком
+  // считает бэкенд (canOffer), браузеру остаётся не показать его дважды.
+  const [addonsOffered, setAddonsOffered] = useState(false);
+  useEffect(() => {
+    if (addons.state?.canOffer && !addonsOffered) {
+      setAddonsOffered(true);
+      setAddonsOpen(true);
+    }
+  }, [addons.state?.canOffer, addonsOffered]);
 
   const manifest = useMemo(
     () => modules?.enabled.find((m) => m.id === server?.moduleId) ?? null,
@@ -176,11 +199,31 @@ export function ServerDetailPage() {
               его один раз при заведении. Поэтому здесь подпись в строке
               описания, а не отдельная карточка во всю ширину между кнопками
               питания и метриками, как было раньше. */}
-          <ModuleBadge
-            name={manifest?.displayName ?? null}
-            canManage={hasPermission('servers.manage')}
-            onOpen={() => setModulePicker(true)}
-          />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <ModuleBadge
+              name={manifest?.displayName ?? null}
+              canManage={hasPermission('servers.manage')}
+              onOpen={() => setModulePicker(true)}
+            />
+            {/* Кнопка видна всегда, даже после «не предлагать»: это
+                единственный способ вернуться к выбору, и прятать её вместе
+                с поп-апом значило бы сделать одно нажатие окончательным.
+
+                Рамка как у быстрых команд, размер прежний: рядом стоит
+                подпись модуля — такой же мелкий серый текст, — и без рамки
+                кнопка читалась как часть той же строки, а не как то, на что
+                можно нажать. */}
+            {addons.state && addons.state.optional.length > 0 && addons.state.canInstall && (
+              <button
+                type="button"
+                onClick={() => setAddonsOpen(true)}
+                className="flex min-h-8 items-center gap-1.5 rounded-md border border-neutral-800 bg-transparent px-2 py-1 text-[11px] text-neutral-300 transition-[background-color,border-color,color] duration-200 hover:border-primary/60 hover:bg-primary/10 hover:text-neutral-100"
+              >
+                <IconPlug size={11} className="shrink-0 opacity-70" />
+                <span>{t('addons.button')}</span>
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Значок показывает питание, а не запись в Pterodactyl: «active»
@@ -217,6 +260,37 @@ export function ServerDetailPage() {
       </div>
 
       {powerError && <p className="text-sm text-red-400">{powerError}</p>}
+
+      {/* Companion панель ставит сама и молча — но сказать об этом надо:
+          иначе на сервере появляется плагин, которого никто не ставил, а
+          запущенный сервер подхватит его лишь после перезапуска. */}
+      {addons.state?.requiredInstall && addons.state.required && (
+        <p
+          className={
+            'text-sm ' +
+            (addons.state.requiredInstall === 'failed' ? 'text-amber-400' : 'text-emerald-400')
+          }
+        >
+          {addons.state.requiredInstall === 'failed'
+            ? apiText(addons.state.requiredError) ||
+              t('addons.requiredFailed', { name: addons.state.required.displayName })
+            : t(
+                addons.state.requiredInstall === 'restart-required'
+                  ? 'addons.requiredRunning'
+                  : 'addons.requiredStopped',
+                { name: addons.state.required.displayName },
+              )}
+        </p>
+      )}
+
+      {addonsOpen && addons.state && server && (
+        <AddonsModal
+          serverId={server.id}
+          state={addons.state}
+          onClose={() => setAddonsOpen(false)}
+          onDone={addons.setState}
+        />
+      )}
 
       {modulePicker && (
         <Modal title={t('server.module.title')} onClose={() => setModulePicker(false)}>

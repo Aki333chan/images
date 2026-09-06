@@ -146,6 +146,12 @@ model Server {
   memoryLimitMb   Int?     @map("memory_limit_mb")
   diskLimitMb     Int?     @map("disk_limit_mb")
   cpuLimitPercent Int?     @map("cpu_limit_percent")
+  /// Для этого сервера нажали «не предлагать наши плагины».
+  ///
+  /// Флаг на сервер, а не на человека: решение «нам это не нужно» относится к
+  /// серверу и должно пережить смену того, кто им занимается. Обязательного
+  /// companion он не касается — тот ставится в любом случае.
+  addonsDismissed Boolean  @default(false) @map("addons_dismissed")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

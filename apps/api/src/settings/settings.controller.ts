@@ -12,9 +12,22 @@ import { SettingsService } from './settings.service';
 import { MailService } from '../mail/mail.service';
 import { AuditRedactBody } from '../audit/audit.decorators';
 
+/**
+ * Настройки приходят по одной.
+ *
+ * Оба поля необязательны, и это не небрежность: карточек в «Настройках» две,
+ * нажимают в них по отдельности, и требовать в запросе обе значило бы, что
+ * галочка про подтверждение аккаунтов переставляет заодно и галочку про
+ * плагины — просто потому, что фронтенд прислал её текущее значение.
+ */
 class AppSettingsPatchDto {
+  @IsOptional()
   @IsBoolean()
-  requireGmApprovalForAdminCreatedAccounts!: boolean;
+  requireGmApprovalForAdminCreatedAccounts?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  offerAurumAddons?: boolean;
 }
 
 /** Экспортируется ради теста валидации: см. settings.dto.spec.ts. */
@@ -105,8 +118,14 @@ export class SettingsController {
   }
 
   @Put()
-  updateApp(@Body() dto: AppSettingsPatchDto): Promise<AppSettingsDto> {
-    return this.settings.setRequireGmApproval(dto.requireGmApprovalForAdminCreatedAccounts);
+  async updateApp(@Body() dto: AppSettingsPatchDto): Promise<AppSettingsDto> {
+    if (dto.requireGmApprovalForAdminCreatedAccounts !== undefined) {
+      await this.settings.setRequireGmApproval(dto.requireGmApprovalForAdminCreatedAccounts);
+    }
+    if (dto.offerAurumAddons !== undefined) {
+      await this.settings.setOfferAurumAddons(dto.offerAurumAddons);
+    }
+    return this.settings.getAppSettings();
   }
 
   @Get('smtp')

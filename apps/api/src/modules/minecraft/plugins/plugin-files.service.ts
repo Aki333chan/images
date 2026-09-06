@@ -95,6 +95,59 @@ export class PluginFilesService {
         metadata: { source, pluginId, versionId, fileName: file.fileName, ok, ...extra },
       });
 
+    const placed = await this.fetchAndPlace(
+      identifier,
+      { url: file.url, fileName: file.fileName, hash: file.hash },
+      file.projectType === 'mod' ? MODS_DIR : PLUGINS_DIR,
+      log,
+    );
+    const { safeName, jar, running, targetDir } = placed;
+
+    await log(true, {
+      sizeBytes: jar.length,
+      restartRequired: running,
+      projectType: file.projectType,
+      dir: targetDir,
+    });
+
+    return {
+      ok: true,
+      fileName: safeName,
+      sizeBytes: jar.length,
+      restartRequired: running,
+      // Четыре ключа вместо подстановки «Мод»/«Плагин»: слово это часть
+      // фразы и склоняется вместе с ней, а подставленное готовым оно бы
+      // застряло в именительном падеже посреди чужого языка.
+      message:
+        file.projectType === 'mod'
+          ? running
+            ? 'mc.err.installedModRunning'
+            : 'mc.err.installedModStopped'
+          : running
+            ? 'mc.err.installedPluginRunning'
+            : 'mc.err.installedPluginStopped',
+      messageValues: { dir: targetDir.slice(1) },
+    };
+  }
+
+  /**
+   * Скачать, проверить и положить jar на сервер.
+   *
+   * Вынесено отдельно, потому что путей сюда два: маркет (чужие каталоги) и
+   * наши собственные аддоны из репозитория релизов. Проверки у них обязаны
+   * быть одни и те же — это установка исполняемого кода на живой сервер, и
+   * второй, «упрощённый» путь рано или поздно оказался бы без проверки на то,
+   * что приехало.
+   *
+   * @param log куда записать неудачу; успех вызывающий пишет сам, добавив
+   *            к нему свои поля.
+   */
+  async fetchAndPlace(
+    identifier: string,
+    file: { url: string; fileName: string; hash?: { algo: string; value: string } | null },
+    targetDir: string,
+    log: (ok: boolean, extra: Record<string, unknown>) => Promise<void>,
+  ): Promise<{ safeName: string; jar: Buffer; running: boolean; targetDir: string }> {
     let jar: Buffer;
     try {
       jar = await this.download(file.url);
@@ -126,37 +179,37 @@ export class PluginFilesService {
     }
 
     const safeName = sanitizeJarName(file.fileName);
-    const targetDir = file.projectType === 'mod' ? MODS_DIR : PLUGINS_DIR;
     await this.client.writeFile(identifier, `${targetDir}/${safeName}`, jar);
 
     // Состояние сервера решает только текст предупреждения: запущенный сервер
     // подхватит новый jar лишь после перезапуска, выключенный — при старте.
     const running = await this.isRunning(identifier);
-    await log(true, {
-      sizeBytes: jar.length,
-      restartRequired: running,
-      projectType: file.projectType,
-      dir: targetDir,
-    });
+    return { safeName, jar, running, targetDir };
+  }
 
-    return {
-      ok: true,
-      fileName: safeName,
-      sizeBytes: jar.length,
-      restartRequired: running,
-      // Четыре ключа вместо подстановки «Мод»/«Плагин»: слово это часть
-      // фразы и склоняется вместе с ней, а подставленное готовым оно бы
-      // застряло в именительном падеже посреди чужого языка.
-      message:
-        file.projectType === 'mod'
-          ? running
-            ? 'mc.err.installedModRunning'
-            : 'mc.err.installedModStopped'
-          : running
-            ? 'mc.err.installedPluginRunning'
-            : 'mc.err.installedPluginStopped',
-      messageValues: { dir: targetDir.slice(1) },
-    };
+  /** Идентификатор сервера в Pterodactyl. Нужен и сервису аддонов. */
+  async pteroIdentifier(serverId: string): Promise<string> {
+    return this.identifier(serverId);
+  }
+
+  /**
+   * Имена файлов в plugins/ и plugins/.disabled/.
+   *
+   * Выключенный переносом плагин — это ТОЖЕ установленный: его туда унесли
+   * намеренно, и вернуть его следом же свежей копией значило бы отменить
+   * чужое решение.
+   */
+  async pluginFileNames(serverId: string): Promise<string[] | null> {
+    const identifier = await this.identifier(serverId);
+    try {
+      const files = (await this.client.listFiles(identifier, PLUGINS_DIR))
+        .filter((f) => f.is_file && f.name.toLowerCase().endsWith('.jar'))
+        .map((f) => f.name);
+      return [...files, ...(await this.listDisabled(identifier))];
+    } catch (e) {
+      this.logger.warn(`Файлы сервера ${serverId} недоступны: ${(e as Error).message}`);
+      return null;
+    }
   }
 
   private async download(url: string): Promise<Buffer> {

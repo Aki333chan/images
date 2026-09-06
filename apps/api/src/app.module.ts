@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacModule } from './rbac/rbac.module';
 import { PermissionsGuard } from './rbac/permissions.guard';
+import { AddonsModule } from './addons/addons.module';
 import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
@@ -43,6 +44,9 @@ import { I18nModule } from './i18n/i18n.module';
     // Ассистент импортирует модули, чьи сервисы оборачивает инструментами,
     // поэтому идёт после них.
     AiModule,
+    // Аддоны зависят от установщика плагинов модуля Minecraft, поэтому идут
+    // после него — и до реестра игровых модулей, которому они не нужны.
+    AddonsModule,
     GameModulesModule.forRoot(),
   ],
   providers: [

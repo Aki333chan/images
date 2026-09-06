@@ -9,6 +9,7 @@ export * from './api-types';
 export * from './ai';
 export * from './ascii-art';
 export * from './marketplace';
+export * from './addons';
 export * from './resources';
 export * from './alerts';
 export * from './console-noise';

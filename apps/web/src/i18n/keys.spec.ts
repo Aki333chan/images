@@ -23,6 +23,7 @@ import ru from './catalogs/ru.json';
  */
 const NAMESPACES = [
   'mc',
+  'addons',
   'market',
   'set',
   'acc',
