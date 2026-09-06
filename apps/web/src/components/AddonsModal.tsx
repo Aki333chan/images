@@ -45,7 +45,7 @@ export function AddonsModal({
   const missing = state.optional.filter((a) => !a.installed);
 
   return (
-    <Modal title={t('addons.title')} onClose={onClose}>
+    <Modal title={t('addons.title')} size="lg" onClose={onClose}>
       <div className="space-y-4">
         <p className="text-xs text-muted">{t('addons.intro')}</p>
 
@@ -97,8 +97,12 @@ export function AddonsModal({
 
         {/* Кнопки в столбик на телефоне: три штуки в строку не влезают, а
             переносятся они так, что «не предлагать» оказывается под пальцем
-            рядом с «установить». */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            рядом с «установить».
+            flex-wrap на широком экране — не перестраховка: без него ряд с
+            justify-end при нехватке места вылезал ЗА ЛЕВЫЙ край окна, и
+            «Закрыть» просто не было видно. Длина подписей зависит от языка,
+            так что «влезает» — не то свойство, на которое можно полагаться. */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <Button variant="outline" disabled={busy} onClick={onClose}>
             {t('common.close')}
           </Button>

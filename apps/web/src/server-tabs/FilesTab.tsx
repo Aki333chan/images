@@ -467,7 +467,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
       {editing && (
         <Modal
           title={editing.file.name}
-          wide
+          size="wide"
           onClose={() => {
             if (dirty && !confirm(t('files.confirmClose'))) return;
             setEditing(null);

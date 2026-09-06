@@ -1153,5 +1153,8 @@
   "set.addons.toggle": "Offer our plugins on new servers",
   "set.addons.on": "On: companion installs itself, the rest are offered once.",
   "set.addons.off": "Off: the panel installs nothing and offers nothing.",
-  "set.addons.note": "Covers both the automatic companion install and the window with the optional plugins. With this off, the «Recommended plugins» button on the server page is gone too."
+  "set.addons.note": "Covers both the automatic companion install and the window with the optional plugins. With this off, the «Recommended plugins» button on the server page is gone too.",
+  "addons.about.arena": "Gladiator arenas with betting, equipment kits and a fight sidebar.",
+  "addons.about.slots": "Slot machines built from shelves: bets and payouts through Vault or in gold.",
+  "addons.about.npc": "Interactive NPCs without Citizens: shops, buyers, dialogue and guild-bonus traders."
 }

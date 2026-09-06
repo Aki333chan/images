@@ -1157,5 +1157,8 @@
   "set.addons.toggle": "Proponuj nasze pluginy na nowych serwerach",
   "set.addons.on": "Włączone: companion instaluje się sam, resztę proponujemy raz.",
   "set.addons.off": "Wyłączone: panel nic nie instaluje i nic nie proponuje.",
-  "set.addons.note": "Dotyczy i automatycznej instalacji companiona, i okna z pluginami opcjonalnymi. Przy wyłączonym ustawieniu znika też przycisk «Polecane pluginy» na stronie serwera."
+  "set.addons.note": "Dotyczy i automatycznej instalacji companiona, i okna z pluginami opcjonalnymi. Przy wyłączonym ustawieniu znika też przycisk «Polecane pluginy» na stronie serwera.",
+  "addons.about.arena": "Areny gladiatorów z zakładami, zestawami wyposażenia i paskiem walki.",
+  "addons.about.slots": "Automaty do gry z półek: zakład i wygrana przez Vault albo złotem.",
+  "addons.about.npc": "Interaktywne NPC bez Citizens: sklepy, skupy, kwestie i handlarze bonusami gildii."
 }

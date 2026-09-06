@@ -77,6 +77,30 @@ export const AURUM_GUILDS: AurumAddon = {
   tagPrefix: 'guilds-v',
 };
 
+export const AURUM_ARENA: AurumAddon = {
+  id: 'aurum-arena',
+  pluginName: 'AurumArena',
+  displayName: 'AurumArena',
+  aboutKey: 'addons.about.arena',
+  tagPrefix: 'arena-v',
+};
+
+export const AURUM_SLOTS: AurumAddon = {
+  id: 'aurum-slots',
+  pluginName: 'AurumSlots',
+  displayName: 'AurumSlots',
+  aboutKey: 'addons.about.slots',
+  tagPrefix: 'slots-v',
+};
+
+export const ADDONS_NPC: AurumAddon = {
+  id: 'addons-npc',
+  pluginName: 'AddonsNPC',
+  displayName: 'AddonsNPC',
+  aboutKey: 'addons.about.npc',
+  tagPrefix: 'npc-v',
+};
+
 /**
  * Какие аддоны относятся к какому модулю.
  *
@@ -93,7 +117,9 @@ export const AURUM_GUILDS: AurumAddon = {
 export const MODULE_ADDONS: Record<string, ModuleAddons> = {
   minecraft: {
     required: AURUM_COMPANION,
-    optional: [AURUM_AUTH, AURUM_GUILDS],
+    // Порядок — от того, без чего сервер обходится хуже всего, к развлечениям.
+    // Он же порядок в поп-апе: первым читают то, что стоит первым.
+    optional: [AURUM_AUTH, AURUM_GUILDS, ADDONS_NPC, AURUM_ARENA, AURUM_SLOTS],
   },
 };
 

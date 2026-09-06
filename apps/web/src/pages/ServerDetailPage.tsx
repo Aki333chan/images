@@ -207,12 +207,17 @@ export function ServerDetailPage() {
             />
             {/* Кнопка видна всегда, даже после «не предлагать»: это
                 единственный способ вернуться к выбору, и прятать её вместе
-                с поп-апом значило бы сделать одно нажатие окончательным. */}
+                с поп-апом значило бы сделать одно нажатие окончательным.
+
+                Рамка как у быстрых команд, размер прежний: рядом стоит
+                подпись модуля — такой же мелкий серый текст, — и без рамки
+                кнопка читалась как часть той же строки, а не как то, на что
+                можно нажать. */}
             {addons.state && addons.state.optional.length > 0 && addons.state.canInstall && (
               <button
                 type="button"
                 onClick={() => setAddonsOpen(true)}
-                className="-ml-1 flex min-h-8 items-center gap-1 rounded-sm px-1 text-[11px] text-muted transition-colors hover:text-primary-200"
+                className="flex min-h-8 items-center gap-1.5 rounded-md border border-neutral-800 bg-transparent px-2 py-1 text-[11px] text-neutral-300 transition-[background-color,border-color,color] duration-200 hover:border-primary/60 hover:bg-primary/10 hover:text-neutral-100"
               >
                 <IconPlug size={11} className="shrink-0 opacity-70" />
                 <span>{t('addons.button')}</span>

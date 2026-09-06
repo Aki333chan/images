@@ -1934,10 +1934,13 @@ jar-ы, которые мы и так раздаём всем, кто завод
 
 | Модуль | Обязательный | Опциональные |
 |---|---|---|
-| Minecraft (Paper/Purpur) | **AurumCompanion** | AurumAuth, AurumGuilds |
+| Minecraft (Paper/Purpur) | **AurumCompanion** | AurumAuth, AurumGuilds, AddonsNPC, AurumArena, AurumSlots |
 | Forge, NeoForge, Palworld, 7 Days to Die | — | — |
 
-Всё три плагина — обычные плагины Bukkit. На Forge и NeoForge такого API нет
+Порядок опциональных — от того, без чего сервер обходится хуже всего, к
+развлечениям; он же порядок в поп-апе.
+
+Все шесть плагинов — обычные плагины Bukkit. На Forge и NeoForge такого API нет
 вовсе, и положенный туда jar просто не загрузится; Palworld и 7 Days to Die —
 другие игры с другим форматом дополнений. Пустой список честнее, чем
 предложение, которое не заработает.

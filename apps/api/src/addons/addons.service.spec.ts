@@ -44,7 +44,13 @@ describe('когда панель сама предлагает наши пла�
   it('предлагает: модуль знает аддоны, ничего не стоит, право есть', async () => {
     const state = await makeService({}).state('srv-1', true);
     expect(state.canOffer).toBe(true);
-    expect(state.optional.map((a) => a.id)).toEqual(['aurum-auth', 'aurum-guilds']);
+    expect(state.optional.map((a) => a.id)).toEqual([
+      'aurum-auth',
+      'aurum-guilds',
+      'addons-npc',
+      'aurum-arena',
+      'aurum-slots',
+    ]);
     expect(state.required?.id).toBe('aurum-companion');
   });
 
@@ -65,12 +71,18 @@ describe('когда панель сама предлагает наши пла�
     expect(state.canOffer).toBe(false);
     // Список при этом отдаётся: кнопка «Рекомендуемые плагины» остаётся
     // единственным способом вернуться к выбору.
-    expect(state.optional).toHaveLength(2);
+    expect(state.optional.length).toBeGreaterThan(0);
   });
 
   it('не предлагает, когда всё опциональное уже стоит', async () => {
     const state = await makeService({
-      files: ['AurumAuth-1.0.jar', 'AurumGuilds-1.0.jar'],
+      files: [
+        'AurumAuth-1.0.jar',
+        'AurumGuilds-1.0.jar',
+        'AddonsNPC-1.5.3.jar',
+        'AurumArena-1.1.5.jar',
+        'AurumSlots-1.1.2.jar',
+      ],
     }).state('srv-1', true);
     expect(state.canOffer).toBe(false);
     expect(state.optional.every((a) => a.installed)).toBe(true);
