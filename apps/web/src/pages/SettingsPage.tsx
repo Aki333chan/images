@@ -258,14 +258,21 @@ function AccountRules() {
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  async function toggle(value: boolean) {
+  /**
+   * Меняем ровно одно поле за нажатие.
+   *
+   * Слать вместе с ним текущее значение соседнего было бы удобнее для кода и
+   * опаснее по сути: два человека, нажавшие на разные галочки одновременно,
+   * затирали бы выбор друг друга.
+   */
+  async function patch(body: Partial<AppSettingsDto>) {
     setBusy(true);
     setError('');
     try {
       setSettings(
         await api<AppSettingsDto>('/api/settings', {
           method: 'PUT',
-          body: JSON.stringify({ requireGmApprovalForAdminCreatedAccounts: value }),
+          body: JSON.stringify(body),
         }),
       );
     } catch (e) {
@@ -278,6 +285,7 @@ function AccountRules() {
   if (!settings) return <Card>{error ? <ErrorText>{error}</ErrorText> : <Spinner />}</Card>;
 
   const on = settings.requireGmApprovalForAdminCreatedAccounts;
+  const addonsOn = settings.offerAurumAddons;
   return (
     <Card className="space-y-3">
       <h2 className="font-semibold">{t('set.rules.title')}</h2>
@@ -289,7 +297,9 @@ function AccountRules() {
           className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
           checked={on}
           disabled={busy}
-          onChange={(e) => void toggle(e.target.checked)}
+          onChange={(e) =>
+            void patch({ requireGmApprovalForAdminCreatedAccounts: e.target.checked })
+          }
         />
         <span className="text-sm">
           {t('set.rules.toggle')}
@@ -301,6 +311,25 @@ function AccountRules() {
       <p className="text-xs text-muted">
         {t('set.rules.note')}
       </p>
+
+      {/* Одна галочка на всю фичу: и на молчаливую установку companion, и на
+          поп-ап с необязательными. Тот, кто её снимает, снимает целиком. */}
+      <label className="-mx-2 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-white/5">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
+          checked={addonsOn}
+          disabled={busy}
+          onChange={(e) => void patch({ offerAurumAddons: e.target.checked })}
+        />
+        <span className="text-sm">
+          {t('set.addons.toggle')}
+          <span className="mt-1 block text-xs text-muted">
+            {t(addonsOn ? 'set.addons.on' : 'set.addons.off')}
+          </span>
+        </span>
+      </label>
+      <p className="text-xs text-muted">{t('set.addons.note')}</p>
       {error && <ErrorText>{error}</ErrorText>}
     </Card>
   );

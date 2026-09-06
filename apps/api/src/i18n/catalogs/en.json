@@ -330,5 +330,9 @@
   "market.err.unknownSource": "Unknown source {source}",
   "ptero.err.redirect": "Pterodactyl API {call}: got {status} (a redirect to {location}). Check PTERO_BASE_URL (currently {base}) — it usually needs https and the panel’s domain name.",
   "ptero.err.notJson": "Pterodactyl API {call}: got “{type}” instead of JSON, with status {status}. That is usually the Pterodactyl login page or its nginx answering. Check PTERO_BASE_URL (currently {base}). Start of the response: {body}",
-  "ptero.err.badJson": "Pterodactyl API {call}: the response claims to be JSON but does not parse (status {status}). Start of the response: {body}"
+  "ptero.err.badJson": "Pterodactyl API {call}: the response claims to be JSON but does not parse (status {status}). Start of the response: {body}",
+  "addons.err.disabled": "Offering our plugins is switched off in the panel settings",
+  "addons.err.noRelease": "«{name}» has no released version yet",
+  "addons.err.releasesUnavailable": "Could not fetch the version list from GitHub ({status})",
+  "addons.err.installFailed": "The installation failed"
 }

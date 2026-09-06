@@ -338,5 +338,9 @@
   "market.err.unknownSource": "Неизвестный источник {source}",
   "ptero.err.redirect": "Pterodactyl API {call}: ответ {status} (редирект на {location}). Проверьте PTERO_BASE_URL (сейчас {base}) — обычно нужен https и доменное имя панели.",
   "ptero.err.notJson": "Pterodactyl API {call}: вместо JSON вернулся «{type}» со статусом {status}. Обычно так отвечает страница входа в панель Pterodactyl или её nginx. Проверьте PTERO_BASE_URL (сейчас {base}). Начало ответа: {body}",
-  "ptero.err.badJson": "Pterodactyl API {call}: ответ помечен как JSON, но не разбирается (статус {status}). Начало ответа: {body}"
+  "ptero.err.badJson": "Pterodactyl API {call}: ответ помечен как JSON, но не разбирается (статус {status}). Начало ответа: {body}",
+  "addons.err.disabled": "Предложение наших плагинов выключено в настройках панели",
+  "addons.err.noRelease": "У плагина «{name}» пока нет выпущенной версии",
+  "addons.err.releasesUnavailable": "Не удалось получить список версий с GitHub ({status})",
+  "addons.err.installFailed": "Установка не удалась"
 }

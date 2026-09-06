@@ -46,6 +46,8 @@ import { PluginsController } from './plugins/plugins.controller';
   // правил. Права и инвентарь панель зовёт прямо у CompanionService — ассистент
   // ходит туда же, а не через второй слой.
   // Зависимость односторонняя: модуль про ассистента не знает.
-  exports: [MinecraftService, CompanionService],
+  // PluginFilesService наружу — им пользуется установщик наших аддонов:
+  // скачивание и проверки jar у него и у маркета обязаны быть одни.
+  exports: [MinecraftService, CompanionService, PluginFilesService],
 })
 export class MinecraftModule {}
