@@ -1125,5 +1125,16 @@
   "guild.err.noBonusType": "Nie podano rodzaju bonusu",
   "guild.err.noSuchBonus": "Gildia nie ma takiego bonusu",
   "guild.err.internal": "Błąd wewnętrzny, spróbuj później",
-  "mc.g.err.noSuchBonusType": "Plugin gildii nie zna rodzaju bonusu «{type}»"
+  "mc.g.err.noSuchBonusType": "Plugin gildii nie zna rodzaju bonusu «{type}»",
+  "mc.give.err.unknownItem": "Nieznany przedmiot",
+  "mc.give.err.full": "Ekwipunek jest pełny",
+  "mc.plug.err.notFound": "Nie ma takiego pluginu na serwerze",
+  "mc.plug.err.selfDisable": "Nie można wyłączyć pluginu companion: panel straci łączność z serwerem",
+  "mc.plug.err.refused": "Plugin odmówił przełączenia — szczegóły w konsoli serwera",
+  "mc.plug.err.timeout": "Serwer nie odpowiedział na czas",
+  "mc.perm.err.noUser": "Nie ma takiego gracza w bazie LuckPerms",
+  "mc.perm.err.noGroup": "Nie ma takiej grupy w LuckPerms",
+  "mc.perm.err.alreadyAbsent": "Gracz i tak nie miał tego węzła",
+  "mc.perm.err.alreadyPresent": "Gracz już ma taki węzeł",
+  "mc.perm.err.saveFailed": "LuckPerms nie zapisał zmiany — szczegóły w konsoli serwera"
 }

@@ -1125,5 +1125,16 @@
   "guild.err.noBonusType": "Не указан вид бонуса",
   "guild.err.noSuchBonus": "У гильдии нет такого бонуса",
   "guild.err.internal": "Внутренняя ошибка, попробуйте позже",
-  "mc.g.err.noSuchBonusType": "Плагин гильдий не знает вида бонуса «{type}»"
+  "mc.g.err.noSuchBonusType": "Плагин гильдий не знает вида бонуса «{type}»",
+  "mc.give.err.unknownItem": "Неизвестный предмет",
+  "mc.give.err.full": "Инвентарь заполнен",
+  "mc.plug.err.notFound": "Такого плагина на сервере нет",
+  "mc.plug.err.selfDisable": "Нельзя выключить companion-плагин: панель потеряет связь с сервером",
+  "mc.plug.err.refused": "Плагин отказался переключиться — подробности в консоли сервера",
+  "mc.plug.err.timeout": "Сервер не ответил вовремя",
+  "mc.perm.err.noUser": "Игрок не найден в базе LuckPerms",
+  "mc.perm.err.noGroup": "Такой группы в LuckPerms нет",
+  "mc.perm.err.alreadyAbsent": "У игрока и так не было этой ноды",
+  "mc.perm.err.alreadyPresent": "У игрока уже есть такая нода",
+  "mc.perm.err.saveFailed": "LuckPerms не сохранил изменение — подробности в консоли сервера"
 }

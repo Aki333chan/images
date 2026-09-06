@@ -1121,5 +1121,16 @@
   "guild.err.noBonusType": "No bonus kind given",
   "guild.err.noSuchBonus": "The guild has no such bonus",
   "guild.err.internal": "Internal error, try again later",
-  "mc.g.err.noSuchBonusType": "The guilds plugin does not know a bonus kind called «{type}»"
+  "mc.g.err.noSuchBonusType": "The guilds plugin does not know a bonus kind called «{type}»",
+  "mc.give.err.unknownItem": "Unknown item",
+  "mc.give.err.full": "The inventory is full",
+  "mc.plug.err.notFound": "There is no such plugin on the server",
+  "mc.plug.err.selfDisable": "The companion plugin cannot be disabled: the panel would lose contact with the server",
+  "mc.plug.err.refused": "The plugin refused to switch — details are in the server console",
+  "mc.plug.err.timeout": "The server did not answer in time",
+  "mc.perm.err.noUser": "The player is not in the LuckPerms database",
+  "mc.perm.err.noGroup": "There is no such group in LuckPerms",
+  "mc.perm.err.alreadyAbsent": "The player did not have that node anyway",
+  "mc.perm.err.alreadyPresent": "The player already has that node",
+  "mc.perm.err.saveFailed": "LuckPerms did not save the change — details are in the server console"
 }

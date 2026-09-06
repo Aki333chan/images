@@ -611,7 +611,7 @@ function PlayerInventory({ serverId, name }: { serverId: string; name: string })
               {giveResults.map((r, i) => (
                 <li key={`${r.id}-${i}`} className={r.error ? 'text-amber-400' : 'text-emerald-400'}>
                   {r.id} ×{r.requested}
-                  {r.error ? ` — ${r.error}` : t('mc.pd.given')}
+                  {r.error ? ` — ${apiText(r.error)}` : t('mc.pd.given')}
                   {r.error && r.given > 0 ? t('mc.pd.givePartly', { count: r.given }) : ''}
                 </li>
               ))}
