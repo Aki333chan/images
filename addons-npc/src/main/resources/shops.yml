@@ -1,0 +1,26 @@
+# Example format (remove the leading # characters to use it):
+schema-version: 4
+# shops:
+#   supplies:
+#     title: "&8Supplies"
+#     size: 27
+#     discount: # whole assortment; expires-at: 0 means permanent until disabled
+#       percent: 15.0
+#       expires-at: 0
+#     offers:
+#       11:
+#         icon: BREAD
+#         display-name: "&eFresh bread"
+#         lore: ["&7Click to buy", "&6Price: {price}"]
+#         price: 5.0
+#         item: BREAD
+#         # For potions, use product (an ItemStack section) or the command form
+#         # POTION:HEALING / SPLASH_POTION:STRONG_HEALING / LINGERING_POTION:LONG_SWIFTNESS.
+#         amount: -1 # stock; 0 or a negative value means unlimited
+#         quantity: 8 # items received per purchase
+#         permission: ""
+#         commands: []
+#         discount: # optional slot discount; active slot discount overrides the shop-wide one
+#           percent: 25.0
+#           expires-at: 0
+shops: {}

@@ -1,0 +1,219 @@
+locale-name: Русский
+messages:
+  prefix: "&8[&6NPC&8] &r"
+  no-permission: "&cНедостаточно прав."
+  player-only: "&cЭту команду может выполнить только игрок."
+  npc-not-found: "&cNPC '&f{id}&c' не найден."
+  shop-not-found: "&cМагазин '&f{shop}&c' не найден."
+  buyer-not-found: "&cСкупщик '&f{buyer}&c' не найден."
+  cooldown: "&7Подождите &e{seconds} с &7перед повторным использованием этого NPC."
+  vault-unavailable: "&cЭкономика недоступна. Установите Vault и провайдер экономики."
+  insufficient-funds: "&cНужно &e{price}&c. Ваш баланс: &e{balance}&c."
+  inventory-full: "&cВ инвентаре недостаточно места."
+  out-of-stock: "&cЭтот товар закончился."
+  purchase-success: "&aКуплено &f{item} x{amount} &aза &e{price}&a."
+  purchase-failed: "&cНе удалось завершить покупку."
+  buyer-not-enough-items: "&cНедостаточно подходящих предметов. Доступно: &e{amount}&c."
+  buyer-bulk-disabled: "&cОптовая продажа для этой позиции отключена."
+  buyer-sale-success: "&aПродано &f{item} x{amount} &aза &e{price}&a."
+  buyer-sale-failed: "&cНе удалось завершить продажу. Предметы возвращены."
+  shop-price-changed: "&eЦена или скидка изменилась. Позиция обновлена; нажмите ещё раз."
+  buyer-bonus-changed: "&eБонус выплаты изменился. Позиция обновлена; нажмите ещё раз."
+  offer-replace-confirm: "&eСлот &f{slot} &eуже занят. Повторите ту же команду в течение &f{seconds} с&e для замены."
+  guild-trader-not-found: "&cГильдейский торговец '&f{trader}&c' не найден."
+  guilds-unavailable: "&cAurumGuilds недоступен; купить усиление гильдии нельзя."
+  guild-required: "&cДля покупки усиления нужно состоять в гильдии."
+  guild-rank-required: "&cКупить усиление может только &f{rank}&c гильдии или ранг выше."
+  guild-membership-changed: "&eВаша гильдия изменилась, пока меню было открыто. Откройте его снова."
+  guild-bonus-changed: "&eАктивное усиление изменилось. Позиция обновлена; нажмите ещё раз."
+  guild-purchase-pending: "&eПредыдущая покупка усиления ещё обрабатывается."
+  guild-purchase-success: "&aУсиление гильдии успешно куплено."
+  guild-purchase-failed: "&cУсиление не выдано. Платёж возвращён. Причина: &f{reason}"
+  guild-purchase-refund-failed: "&4Усиление не выдано, автоматический возврат не удался. Немедленно обратитесь к администратору."
+  unknown-error: "неизвестная ошибка"
+common: {none: "нет"}
+gui:
+  shop:
+    discount-name-prefix: "&a&lСКИДКА &r"
+    receive: "&7Получите: &f{item} x{amount}"
+    price: "&6Цена: &e{price}"
+    stock: "&7Остаток: &f{stock}"
+    discount: "&a&lСКИДКА -{discount_percent}%"
+    base-price: "&8&mОбычная цена: {base_price}"
+    sale-price: "&6Цена по акции: &e&l{price}"
+    remaining: "&7Осталось: &f{discount_remaining}"
+  buyer:
+    bonus-name-prefix: "&b&lБОНУС &r"
+    unit-price: "&7За штуку: &e{unit_price}"
+    bulk-price: "&7Оптом: &f{bulk_amount} шт. &7за &e{bulk_price}"
+    match-exact: "&8Учитываются все свойства предмета"
+    match-material: "&8Учитывается только материал"
+    sell-one: "&aЛКМ &7— продать 1"
+    sell-all-units: "&aShift+ЛКМ &7— продать всё поштучно"
+    sell-one-bulk: "&bПКМ &7— продать 1 полную оптовую партию"
+    sell-all-bulk: "&bShift+ПКМ &7— продать все полные партии"
+    bonus: "&b&lБОНУС +{bonus_percent}%"
+    base-unit-price: "&8&mОбычная выплата за штуку: {base_unit_price}"
+    bonus-unit-price: "&6Повышенная выплата: &e&l{unit_price}"
+    bonus-bulk-price: "&6Оптовая выплата: &e&l{bulk_price}"
+    remaining: "&7Осталось: &f{bonus_remaining}"
+  guild-trader:
+    default-title: "&8Усиления гильдии"
+    bonus: "&7Усиление: &f{bonus_value}"
+    duration: "&7Срок: &f{duration}"
+    price: "&6Цена: &e{price}"
+    inactive: "&8Сейчас усиление этого вида не действует."
+    active: "&aДействует: &f{current_value}"
+    remaining: "&aОсталось: &f{current_remaining}"
+    replaces: "&cПокупка заменит текущее усиление."
+    required-rank: "&cТребуемый ранг: &f{rank}"
+    click-to-buy: "&eНажмите, чтобы купить для &f{guild}&e."
+time:
+  expired: "истекло"
+  until-disabled: "до отключения"
+  forever: "навсегда"
+  days-hours: "{days}д {hours}ч"
+  hours-minutes: "{hours}ч {minutes}м"
+  minutes-seconds: "{minutes}м {seconds}с"
+  seconds: "{seconds}с"
+  week-short: "н"
+  day-short: "д"
+  hour-short: "ч"
+  minute-short: "м"
+  second-short: "с"
+guild-ranks: {member: "участник", officer: "офицер", leader: "лидер"}
+guild-bonus-types:
+  mining_speed: {title: "Скорость добычи", short: "Спешка"}
+  movement_speed: {title: "Скорость передвижения", short: "Скорость"}
+  block_drops: {title: "Добыча из блоков", short: "Блоки"}
+  mob_drops: {title: "Добыча с мобов", short: "Мобы"}
+  experience: {title: "Опыт", short: "Опыт"}
+command-help:
+  - "&6--- Команды AddonsNPC ---"
+  - "&e/npc create <id> [имя] &7- создать в вашей позиции"
+  - "&e/npc delete|move|tp|enable|disable <id>"
+  - "&e/npc cleanup <id|orphans> &7- удалить осиротевшие сущности"
+  - "&e/npc name <id> <имя> &7/ &e/npc description <id> <текст|clear>"
+  - "&e/npc type <id> <тип-сущности> &7- манекен, житель, животное или моб"
+  - "&e/npc skin <id> <player|url|clear> [значение]"
+  - "&e/npc equipment <id> <right|left> <материал|hand|clear>"
+  - "&e/npc rotation <id> <set|reset> &7- сохранить или восстановить направление"
+  - "&e/npc message <add|remove|clear|mode|list> <id> ..."
+  - "&e/npc action <add|remove|clear|list> <id> ..."
+  - "&e/npc set <id> <cooldown|permission|click|look|lookrange|lookmode|visibility|namerange|pose> <значение>"
+  - "&e/npc shop <create|delete|list|open|offer|quantity|discount|remove> ..."
+  - "&e/npc buyer <create|delete|list|open|title|size|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ..."
+  - "&e/npc guildtrader <create|delete|list|open|title|size|rank|offer|price|icon|name|lore|permission|remove> ..."
+  - "&e/npc list &7/ &e/npc info <id> &7/ &e/npc reload"
+tab:
+  dialogue-examples: ["&eПривет,{player}!", "&7Нажмите_ещё_раз...", "{npc}"]
+  title-examples: ["&eЗаголовок|&7Подзаголовок"]
+  message-examples: ["&eСообщение_для_{player}"]
+  buyer-lore-examples: ["&7Цена:_{unit_price}", "&7Оптом:_{bulk_amount}_за_{bulk_price}"]
+  buyer-command-examples: ["say_{player}_продал_{amount}_{item}_за_{price}"]
+  guild-lore-examples: ["&7Бонус:_{bonus_value}", "&7Срок:_{duration}", "&6Цена:_{price}"]
+literal-replacements:
+  - {from: "Skin lookup started; it will be applied asynchronously.", to: "Загрузка скина начата; он будет применён асинхронно."}
+  - {from: "Updated NPC skin.", to: "Скин NPC изменён."}
+  - {from: "Updated NPC name.", to: "Имя NPC изменено."}
+  - {from: "Updated NPC description.", to: "Описание NPC изменено."}
+  - {from: "Updated NPC equipment.", to: "Экипировка NPC изменена."}
+  - {from: "Updated NPC setting.", to: "Настройка NPC изменена."}
+  - {from: "Updated dialogue for NPC", to: "Диалог NPC изменён:"}
+  - {from: "Updated actions for NPC", to: "Действия NPC изменены:"}
+  - {from: "Updated purchase quantity.", to: "Количество предметов в покупке изменено."}
+  - {from: "Updated shop discount.", to: "Скидка магазина изменена."}
+  - {from: "Disabled shop discount.", to: "Скидка магазина отключена."}
+  - {from: "Updated wholesale price.", to: "Оптовая цена изменена."}
+  - {from: "Disabled wholesale price.", to: "Оптовая цена отключена."}
+  - {from: "Updated unit price.", to: "Поштучная цена изменена."}
+  - {from: "Updated buyer bonus.", to: "Бонус скупщика изменён."}
+  - {from: "Disabled buyer bonus.", to: "Бонус скупщика отключён."}
+  - {from: "Updated buyer item matching to", to: "Режим сравнения предметов скупщика изменён на"}
+  - {from: "Updated buyer offer", to: "Предложение скупщика изменено:"}
+  - {from: "Updated buyer menu size.", to: "Размер меню скупщика изменён."}
+  - {from: "Updated buyer title.", to: "Заголовок скупщика изменён."}
+  - {from: "Updated guild trader", to: "Гильдейский торговец изменён:"}
+  - {from: "Updated guild bonus", to: "Бонус гильдии изменён:"}
+  - {from: "Reset NPC rotation to its saved direction.", to: "Поворот NPC возвращён к сохранённому направлению."}
+  - {from: "Saved your viewing direction as the NPC base rotation.", to: "Ваше направление взгляда сохранено как базовый поворот NPC."}
+  - {from: "Reloaded config, NPCs, shops, buyers and guild traders.", to: "Конфигурация, NPC, магазины, скупщики и гильдейские торговцы перезагружены."}
+  - {from: "NPC world is not loaded.", to: "Мир NPC не загружен."}
+  - {from: "Skin type must be player, url or clear.", to: "Тип скина должен быть player, url или clear."}
+  - {from: "Hand must be right/mainhand or left/offhand.", to: "Рука должна быть right/mainhand или left/offhand."}
+  - {from: "Rotation operation must be reset or set.", to: "Операция поворота должна быть reset или set."}
+  - {from: "Message index is out of range.", to: "Индекс реплики вне диапазона."}
+  - {from: "Action index is out of range.", to: "Индекс действия вне диапазона."}
+  - {from: "Lore index is out of range.", to: "Индекс описания вне диапазона."}
+  - {from: "Message operation must be add, remove, clear, mode or list.", to: "Операция реплики должна быть add, remove, clear, mode или list."}
+  - {from: "Action operation must be add, remove, clear or list.", to: "Операция действия должна быть add, remove, clear или list."}
+  - {from: "Operation must be add, remove, clear or list.", to: "Операция должна быть add, remove, clear или list."}
+  - {from: "Unknown NPC setting. Use /npc help.", to: "Неизвестная настройка NPC. Используйте /npc help."}
+  - {from: "Unknown shop operation. Use /npc help.", to: "Неизвестная операция магазина. Используйте /npc help."}
+  - {from: "Unknown buyer operation. Use /npc help.", to: "Неизвестная операция скупщика. Используйте /npc help."}
+  - {from: "Unknown guild trader operation. Use /npc help.", to: "Неизвестная операция гильдейского торговца. Используйте /npc help."}
+  - {from: "Slot must be between 0 and ", to: "Слот должен быть от 0 до "}
+  - {from: "Quantity must be between 1 and ", to: "Количество должно быть от 1 до "}
+  - {from: "Unknown shop item: ", to: "Неизвестный товар магазина: "}
+  - {from: "Unknown potion type: ", to: "Неизвестный тип зелья: "}
+  - {from: "Potion type can only be used with POTION, SPLASH_POTION, LINGERING_POTION or TIPPED_ARROW.", to: "Тип зелья можно задавать только для POTION, SPLASH_POTION, LINGERING_POTION или TIPPED_ARROW."}
+  - {from: "Buyer size must be 9, 18, 27, 36, 45 or 54.", to: "Размер скупщика должен быть 9, 18, 27, 36, 45 или 54."}
+  - {from: "Menu size must be 9, 18, 27, 36, 45 or 54.", to: "Размер меню должен быть 9, 18, 27, 36, 45 или 54."}
+  - {from: "Remove offers outside the new menu size first.", to: "Сначала удалите предложения за границами нового размера меню."}
+  - {from: "Unsupported duration unit.", to: "Неподдерживаемая единица времени."}
+  - {from: "Value must be true/on or false/off.", to: "Значение должно быть true/on или false/off."}
+  - {from: " percentage cannot exceed ", to: ": процент не может превышать "}
+  - {from: " must be positive.", to: " должно быть положительным."}
+  - {from: "Invalid ", to: "Некорректное значение "}
+  - {from: "Dialogue lines for ", to: "Реплики NPC "}
+  - {from: "Actions for ", to: "Действия NPC "}
+  - {from: "Shops:", to: "Магазины:"}
+  - {from: "Buyers:", to: "Скупщики:"}
+  - {from: "Guild traders:", to: "Гильдейские торговцы:"}
+  - {from: "Guild bonus lore:", to: "Описание бонуса гильдии:"}
+  - {from: "Click:", to: "Клик:"}
+  - {from: "Look:", to: "Взгляд:"}
+  - {from: " lines)", to: " реплик)"}
+  - {from: "none", to: "нет"}
+  - {from: " at your location.", to: " в вашей позиции."}
+  - {from: " to your location.", to: " к вашей позиции."}
+  - {from: "Offer was not found.", to: "Предложение не найдено."}
+  - {from: "Buyer offer was not found.", to: "Предложение скупщика не найдено."}
+  - {from: "Guild bonus offer was not found.", to: "Предложение бонуса гильдии не найдено."}
+  - {from: "Created NPC", to: "Создан NPC"}
+  - {from: "Deleted NPC", to: "Удалён NPC"}
+  - {from: "Moved NPC", to: "NPC перемещён"}
+  - {from: "Teleported to NPC", to: "Телепортация к NPC"}
+  - {from: "Created shop", to: "Создан магазин"}
+  - {from: "Deleted shop", to: "Удалён магазин"}
+  - {from: "Created buyer", to: "Создан скупщик"}
+  - {from: "Deleted buyer", to: "Удалён скупщик"}
+  - {from: "Created guild trader", to: "Создан гильдейский торговец"}
+  - {from: "Deleted guild trader", to: "Удалён гильдейский торговец"}
+  - {from: "Updated", to: "Обновлено"}
+  - {from: "Removed", to: "Удалено"}
+  - {from: "Saved", to: "Сохранено"}
+  - {from: "Enabled", to: "Включён"}
+  - {from: "Disabled", to: "Отключён"}
+  - {from: "was not found", to: "не найден"}
+  - {from: "already exists", to: "уже существует"}
+  - {from: "This command can only be used by a player.", to: "Эту команду может выполнить только игрок."}
+  - {from: "Unknown entity type:", to: "Неизвестный тип сущности:"}
+  - {from: "Unknown item material:", to: "Неизвестный материал предмета:"}
+  - {from: "Hold the item in your main hand.", to: "Возьмите предмет в основную руку."}
+  - {from: "Usage:", to: "Использование:"}
+  - {from: "Duration is too large.", to: "Слишком большой срок."}
+  - {from: "Duration must look like 30m, 2h, 7d or permanent.", to: "Срок должен иметь вид 30m, 2h, 7d или permanent."}
+  - {from: "connected", to: "подключён"}
+  - {from: "unavailable", to: "недоступен"}
+  - {from: "Name:", to: "Имя:"}
+  - {from: "Type:", to: "Тип:"}
+  - {from: "World:", to: "Мир:"}
+  - {from: "Skin:", to: "Скин:"}
+  - {from: "Cooldown:", to: "Задержка:"}
+  - {from: "Permission:", to: "Право:"}
+  - {from: "Visibility:", to: "Видимость:"}
+  - {from: "Dialogue:", to: "Диалог:"}
+  - {from: "Actions:", to: "Действия:"}
+  - {from: "Hands:", to: "Руки:"}
+  - {from: "Base rotation:", to: "Базовый поворот:"}

@@ -1,0 +1,119 @@
+locale-name: English
+messages:
+  prefix: "&8[&6NPC&8] &r"
+  no-permission: "&cYou do not have permission."
+  player-only: "&cThis command can only be used by a player."
+  npc-not-found: "&cNPC '&f{id}&c' was not found."
+  shop-not-found: "&cShop '&f{shop}&c' was not found."
+  buyer-not-found: "&cBuyer '&f{buyer}&c' was not found."
+  cooldown: "&7Please wait &e{seconds}s &7before using this NPC again."
+  vault-unavailable: "&cEconomy is unavailable. Install Vault and an economy provider."
+  insufficient-funds: "&cYou need &e{price}&c. Your balance: &e{balance}&c."
+  inventory-full: "&cYou do not have enough inventory space."
+  out-of-stock: "&cThis item is out of stock."
+  purchase-success: "&aPurchased &f{item} x{amount} &afor &e{price}&a."
+  purchase-failed: "&cThe purchase could not be completed."
+  buyer-not-enough-items: "&cYou do not have enough matching items. Available: &e{amount}&c."
+  buyer-bulk-disabled: "&cWholesale sales are disabled for this offer."
+  buyer-sale-success: "&aSold &f{item} x{amount} &afor &e{price}&a."
+  buyer-sale-failed: "&cThe sale could not be completed. Your items were returned."
+  shop-price-changed: "&eThe price or discount changed. The offer was refreshed; click again to confirm."
+  buyer-bonus-changed: "&eThe payout bonus changed. The offer was refreshed; click again to confirm."
+  offer-replace-confirm: "&eSlot &f{slot} &eis already occupied. Repeat the same command within &f{seconds}s &eto replace it."
+  guild-trader-not-found: "&cGuild trader '&f{trader}&c' was not found."
+  guilds-unavailable: "&cAurumGuilds is unavailable; guild bonuses cannot be purchased."
+  guild-required: "&cYou must be a member of a guild to buy this bonus."
+  guild-rank-required: "&cOnly a guild &f{rank}&c or higher can buy this bonus."
+  guild-membership-changed: "&eYour guild changed while the menu was open. Open it again."
+  guild-bonus-changed: "&eThe active guild bonus changed. The offer was refreshed; click again to confirm."
+  guild-purchase-pending: "&eYour previous guild bonus purchase is still being processed."
+  guild-purchase-success: "&aGuild bonus purchased successfully."
+  guild-purchase-failed: "&cThe bonus was not granted. Your payment was returned. Reason: &f{reason}"
+  guild-purchase-refund-failed: "&4The bonus was not granted and the automatic refund failed. Contact an administrator immediately."
+  unknown-error: "unknown error"
+common:
+  none: "none"
+gui:
+  shop:
+    discount-name-prefix: "&a&lSALE &r"
+    receive: "&7Receive: &f{item} x{amount}"
+    price: "&6Price: &e{price}"
+    stock: "&7Stock: &f{stock}"
+    discount: "&a&lSALE -{discount_percent}%"
+    base-price: "&8&mRegular price: {base_price}"
+    sale-price: "&6Sale price: &e&l{price}"
+    remaining: "&7Remaining: &f{discount_remaining}"
+  buyer:
+    bonus-name-prefix: "&b&lBONUS &r"
+    unit-price: "&7Per item: &e{unit_price}"
+    bulk-price: "&7Bulk: &f{bulk_amount} items &7for &e{bulk_price}"
+    match-exact: "&8All item properties must match"
+    match-material: "&8Only the material must match"
+    sell-one: "&aLeft click &7— sell 1"
+    sell-all-units: "&aShift+left click &7— sell all individually"
+    sell-one-bulk: "&bRight click &7— sell 1 full bulk lot"
+    sell-all-bulk: "&bShift+right click &7— sell all full bulk lots"
+    bonus: "&b&lBONUS +{bonus_percent}%"
+    base-unit-price: "&8&mRegular payout per item: {base_unit_price}"
+    bonus-unit-price: "&6Increased payout: &e&l{unit_price}"
+    bonus-bulk-price: "&6Bulk payout: &e&l{bulk_price}"
+    remaining: "&7Remaining: &f{bonus_remaining}"
+  guild-trader:
+    default-title: "&8Guild boosts"
+    bonus: "&7Boost: &f{bonus_value}"
+    duration: "&7Duration: &f{duration}"
+    price: "&6Price: &e{price}"
+    inactive: "&8No boost of this type is currently active."
+    active: "&aActive: &f{current_value}"
+    remaining: "&aRemaining: &f{current_remaining}"
+    replaces: "&cThis purchase will replace the current boost."
+    required-rank: "&cRequired rank: &f{rank}"
+    click-to-buy: "&eClick to purchase for &f{guild}&e."
+time:
+  expired: "expired"
+  until-disabled: "until disabled"
+  forever: "forever"
+  days-hours: "{days}d {hours}h"
+  hours-minutes: "{hours}h {minutes}m"
+  minutes-seconds: "{minutes}m {seconds}s"
+  seconds: "{seconds}s"
+  week-short: "w"
+  day-short: "d"
+  hour-short: "h"
+  minute-short: "m"
+  second-short: "s"
+guild-ranks:
+  member: "member"
+  officer: "officer"
+  leader: "leader"
+guild-bonus-types:
+  mining_speed: {title: "Mining speed", short: "Haste"}
+  movement_speed: {title: "Movement speed", short: "Speed"}
+  block_drops: {title: "Block drops", short: "Blocks"}
+  mob_drops: {title: "Mob drops", short: "Mobs"}
+  experience: {title: "Experience", short: "Experience"}
+command-help:
+  - "&6--- AddonsNPC commands ---"
+  - "&e/npc create <id> [name] &7- create at your position"
+  - "&e/npc delete|move|tp|enable|disable <id>"
+  - "&e/npc cleanup <id|orphans> &7- remove orphaned physical entities"
+  - "&e/npc name <id> <name> &7/ &e/npc description <id> <text|clear>"
+  - "&e/npc type <id> <entity-type> &7- mannequin, villager, animal or mob"
+  - "&e/npc skin <id> <player|url|clear> [value]"
+  - "&e/npc equipment <id> <right|left> <material|hand|clear>"
+  - "&e/npc rotation <id> <set|reset> &7- save or restore the base direction"
+  - "&e/npc message <add|remove|clear|mode|list> <id> ..."
+  - "&e/npc action <add|remove|clear|list> <id> ..."
+  - "&e/npc set <id> <cooldown|permission|click|look|lookrange|lookmode|visibility|namerange|pose> <value>"
+  - "&e/npc shop <create|delete|list|open|offer|quantity|discount|remove> ..."
+  - "&e/npc buyer <create|delete|list|open|title|size|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ..."
+  - "&e/npc guildtrader <create|delete|list|open|title|size|rank|offer|price|icon|name|lore|permission|remove> ..."
+  - "&e/npc list &7/ &e/npc info <id> &7/ &e/npc reload"
+tab:
+  dialogue-examples: ["&eHello,{player}!", "&7Click_again...", "{npc}"]
+  title-examples: ["&eTitle|&7Subtitle"]
+  message-examples: ["&eMessage_for_{player}"]
+  buyer-lore-examples: ["&7Price:_{unit_price}", "&7Bulk:_{bulk_amount}_for_{bulk_price}"]
+  buyer-command-examples: ["say_{player}_sold_{amount}_{item}_for_{price}"]
+  guild-lore-examples: ["&7Boost:_{bonus_value}", "&7Duration:_{duration}", "&6Price:_{price}"]
+literal-replacements: []

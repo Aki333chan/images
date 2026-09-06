@@ -1,0 +1,18 @@
+# Interface language: en, pl or ru.
+language: en
+
+# General plugin behaviour. NPCs, shops and buyers are stored in separate YAML files.
+settings:
+  interaction-distance: 5.0
+  default-cooldown-seconds: 1.0
+  default-visibility-range: 48.0
+  default-name-visibility-range: 24.0
+  default-look-mode: HEAD
+  cancel-left-click-damage: true
+  protect-npcs: true
+  look-task-period-ticks: 10
+  # Lets world managers finish startup; worlds loaded later are synchronized by an event listener too.
+  startup-spawn-delay-ticks: 20
+  name-height-offset: 0.35
+  ignore-worldguard-spawn-flags: true
+  debug: false

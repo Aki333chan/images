@@ -1,0 +1,219 @@
+locale-name: Polski
+messages:
+  prefix: "&8[&6NPC&8] &r"
+  no-permission: "&cNie masz uprawnień."
+  player-only: "&cTej komendy może użyć tylko gracz."
+  npc-not-found: "&cNie znaleziono NPC '&f{id}&c'."
+  shop-not-found: "&cNie znaleziono sklepu '&f{shop}&c'."
+  buyer-not-found: "&cNie znaleziono skupu '&f{buyer}&c'."
+  cooldown: "&7Odczekaj &e{seconds}s &7przed ponownym użyciem tego NPC."
+  vault-unavailable: "&cEkonomia jest niedostępna. Zainstaluj Vault oraz dostawcę ekonomii."
+  insufficient-funds: "&cPotrzebujesz &e{price}&c. Twoje saldo: &e{balance}&c."
+  inventory-full: "&cBrak miejsca w ekwipunku."
+  out-of-stock: "&cTen przedmiot jest wyprzedany."
+  purchase-success: "&aKupiono &f{item} x{amount} &aza &e{price}&a."
+  purchase-failed: "&cNie udało się zrealizować zakupu."
+  buyer-not-enough-items: "&cNie masz wystarczającej liczby pasujących przedmiotów. Dostępne: &e{amount}&c."
+  buyer-bulk-disabled: "&cSprzedaż hurtowa jest wyłączona dla tej oferty."
+  buyer-sale-success: "&aSprzedano &f{item} x{amount} &aza &e{price}&a."
+  buyer-sale-failed: "&cNie udało się zrealizować sprzedaży. Przedmioty zostały zwrócone."
+  shop-price-changed: "&eCena lub rabat uległy zmianie. Oferta została odświeżona; kliknij ponownie."
+  buyer-bonus-changed: "&eBonus wypłaty uległ zmianie. Oferta została odświeżona; kliknij ponownie."
+  offer-replace-confirm: "&eSlot &f{slot} &ejest zajęty. Powtórz tę samą komendę w ciągu &f{seconds}s&e, aby go zastąpić."
+  guild-trader-not-found: "&cNie znaleziono handlarza gildyjnego '&f{trader}&c'."
+  guilds-unavailable: "&cAurumGuilds jest niedostępny; nie można kupować bonusów gildii."
+  guild-required: "&cMusisz należeć do gildii, aby kupić ten bonus."
+  guild-rank-required: "&cTen bonus może kupić tylko &f{rank}&c gildii lub wyższa ranga."
+  guild-membership-changed: "&eTwoja gildia zmieniła się, gdy menu było otwarte. Otwórz je ponownie."
+  guild-bonus-changed: "&eAktywny bonus gildii uległ zmianie. Oferta została odświeżona; kliknij ponownie."
+  guild-purchase-pending: "&ePoprzedni zakup bonusu gildii jest nadal przetwarzany."
+  guild-purchase-success: "&aBonus gildii został kupiony."
+  guild-purchase-failed: "&cNie przyznano bonusu. Płatność została zwrócona. Powód: &f{reason}"
+  guild-purchase-refund-failed: "&4Nie przyznano bonusu i automatyczny zwrot się nie powiódł. Natychmiast skontaktuj się z administratorem."
+  unknown-error: "nieznany błąd"
+common: {none: "brak"}
+gui:
+  shop:
+    discount-name-prefix: "&a&lRABAT &r"
+    receive: "&7Otrzymasz: &f{item} x{amount}"
+    price: "&6Cena: &e{price}"
+    stock: "&7Stan: &f{stock}"
+    discount: "&a&lRABAT -{discount_percent}%"
+    base-price: "&8&mCena zwykła: {base_price}"
+    sale-price: "&6Cena promocyjna: &e&l{price}"
+    remaining: "&7Pozostało: &f{discount_remaining}"
+  buyer:
+    bonus-name-prefix: "&b&lBONUS &r"
+    unit-price: "&7Za sztukę: &e{unit_price}"
+    bulk-price: "&7Hurtowo: &f{bulk_amount} szt. &7za &e{bulk_price}"
+    match-exact: "&8Wszystkie właściwości przedmiotu muszą być identyczne"
+    match-material: "&8Liczy się tylko materiał"
+    sell-one: "&aLewy przycisk &7— sprzedaj 1"
+    sell-all-units: "&aShift+lewy przycisk &7— sprzedaj wszystko pojedynczo"
+    sell-one-bulk: "&bPrawy przycisk &7— sprzedaj 1 pełną partię"
+    sell-all-bulk: "&bShift+prawy przycisk &7— sprzedaj wszystkie pełne partie"
+    bonus: "&b&lBONUS +{bonus_percent}%"
+    base-unit-price: "&8&mZwykła wypłata za sztukę: {base_unit_price}"
+    bonus-unit-price: "&6Podwyższona wypłata: &e&l{unit_price}"
+    bonus-bulk-price: "&6Wypłata hurtowa: &e&l{bulk_price}"
+    remaining: "&7Pozostało: &f{bonus_remaining}"
+  guild-trader:
+    default-title: "&8Ulepszenia gildii"
+    bonus: "&7Ulepszenie: &f{bonus_value}"
+    duration: "&7Czas: &f{duration}"
+    price: "&6Cena: &e{price}"
+    inactive: "&8Bonus tego typu nie jest teraz aktywny."
+    active: "&aAktywny: &f{current_value}"
+    remaining: "&aPozostało: &f{current_remaining}"
+    replaces: "&cZakup zastąpi obecny bonus."
+    required-rank: "&cWymagana ranga: &f{rank}"
+    click-to-buy: "&eKliknij, aby kupić dla gildii &f{guild}&e."
+time:
+  expired: "wygasł"
+  until-disabled: "do wyłączenia"
+  forever: "na zawsze"
+  days-hours: "{days}d {hours}g"
+  hours-minutes: "{hours}g {minutes}m"
+  minutes-seconds: "{minutes}m {seconds}s"
+  seconds: "{seconds}s"
+  week-short: "tyg."
+  day-short: "d"
+  hour-short: "g"
+  minute-short: "m"
+  second-short: "s"
+guild-ranks: {member: "członek", officer: "oficer", leader: "lider"}
+guild-bonus-types:
+  mining_speed: {title: "Szybkość kopania", short: "Pośpiech"}
+  movement_speed: {title: "Szybkość poruszania", short: "Szybkość"}
+  block_drops: {title: "Łup z bloków", short: "Bloki"}
+  mob_drops: {title: "Łup z mobów", short: "Moby"}
+  experience: {title: "Doświadczenie", short: "Doświadczenie"}
+command-help:
+  - "&6--- Komendy AddonsNPC ---"
+  - "&e/npc create <id> [nazwa] &7- utwórz w swojej pozycji"
+  - "&e/npc delete|move|tp|enable|disable <id>"
+  - "&e/npc cleanup <id|orphans> &7- usuń osierocone byty"
+  - "&e/npc name <id> <nazwa> &7/ &e/npc description <id> <tekst|clear>"
+  - "&e/npc type <id> <typ-bytu> &7- manekin, wieśniak, zwierzę lub mob"
+  - "&e/npc skin <id> <player|url|clear> [wartość]"
+  - "&e/npc equipment <id> <right|left> <materiał|hand|clear>"
+  - "&e/npc rotation <id> <set|reset> &7- zapisz lub przywróć kierunek"
+  - "&e/npc message <add|remove|clear|mode|list> <id> ..."
+  - "&e/npc action <add|remove|clear|list> <id> ..."
+  - "&e/npc set <id> <cooldown|permission|click|look|lookrange|lookmode|visibility|namerange|pose> <wartość>"
+  - "&e/npc shop <create|delete|list|open|offer|quantity|discount|remove> ..."
+  - "&e/npc buyer <create|delete|list|open|title|size|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ..."
+  - "&e/npc guildtrader <create|delete|list|open|title|size|rank|offer|price|icon|name|lore|permission|remove> ..."
+  - "&e/npc list &7/ &e/npc info <id> &7/ &e/npc reload"
+tab:
+  dialogue-examples: ["&eWitaj,{player}!", "&7Kliknij_ponownie...", "{npc}"]
+  title-examples: ["&eTytuł|&7Podtytuł"]
+  message-examples: ["&eWiadomość_dla_{player}"]
+  buyer-lore-examples: ["&7Cena:_{unit_price}", "&7Hurtowo:_{bulk_amount}_za_{bulk_price}"]
+  buyer-command-examples: ["say_{player}_sprzedał_{amount}_{item}_za_{price}"]
+  guild-lore-examples: ["&7Bonus:_{bonus_value}", "&7Czas:_{duration}", "&6Cena:_{price}"]
+literal-replacements:
+  - {from: "Skin lookup started; it will be applied asynchronously.", to: "Rozpoczęto pobieranie skórki; zostanie zastosowana asynchronicznie."}
+  - {from: "Updated NPC skin.", to: "Zmieniono skórkę NPC."}
+  - {from: "Updated NPC name.", to: "Zmieniono nazwę NPC."}
+  - {from: "Updated NPC description.", to: "Zmieniono opis NPC."}
+  - {from: "Updated NPC equipment.", to: "Zmieniono wyposażenie NPC."}
+  - {from: "Updated NPC setting.", to: "Zmieniono ustawienie NPC."}
+  - {from: "Updated dialogue for NPC", to: "Zmieniono dialog NPC"}
+  - {from: "Updated actions for NPC", to: "Zmieniono akcje NPC"}
+  - {from: "Updated purchase quantity.", to: "Zmieniono liczbę przedmiotów w zakupie."}
+  - {from: "Updated shop discount.", to: "Zmieniono rabat sklepu."}
+  - {from: "Disabled shop discount.", to: "Wyłączono rabat sklepu."}
+  - {from: "Updated wholesale price.", to: "Zmieniono cenę hurtową."}
+  - {from: "Disabled wholesale price.", to: "Wyłączono cenę hurtową."}
+  - {from: "Updated unit price.", to: "Zmieniono cenę jednostkową."}
+  - {from: "Updated buyer bonus.", to: "Zmieniono premię skupu."}
+  - {from: "Disabled buyer bonus.", to: "Wyłączono premię skupu."}
+  - {from: "Updated buyer item matching to", to: "Zmieniono sposób porównywania przedmiotów skupu na"}
+  - {from: "Updated buyer offer", to: "Zmieniono ofertę skupu"}
+  - {from: "Updated buyer menu size.", to: "Zmieniono rozmiar menu skupu."}
+  - {from: "Updated buyer title.", to: "Zmieniono tytuł skupu."}
+  - {from: "Updated guild trader", to: "Zmieniono handlarza gildyjnego"}
+  - {from: "Updated guild bonus", to: "Zmieniono bonus gildii"}
+  - {from: "Reset NPC rotation to its saved direction.", to: "Przywrócono zapisany kierunek obrotu NPC."}
+  - {from: "Saved your viewing direction as the NPC base rotation.", to: "Zapisano kierunek patrzenia jako bazowy obrót NPC."}
+  - {from: "Reloaded config, NPCs, shops, buyers and guild traders.", to: "Przeładowano konfigurację, NPC, sklepy, skupy i handlarzy gildyjnych."}
+  - {from: "NPC world is not loaded.", to: "Świat NPC nie jest wczytany."}
+  - {from: "Skin type must be player, url or clear.", to: "Typ skórki musi mieć wartość player, url albo clear."}
+  - {from: "Hand must be right/mainhand or left/offhand.", to: "Ręka musi mieć wartość right/mainhand albo left/offhand."}
+  - {from: "Rotation operation must be reset or set.", to: "Operacja obrotu musi mieć wartość reset albo set."}
+  - {from: "Message index is out of range.", to: "Indeks wiadomości jest poza zakresem."}
+  - {from: "Action index is out of range.", to: "Indeks akcji jest poza zakresem."}
+  - {from: "Lore index is out of range.", to: "Indeks opisu jest poza zakresem."}
+  - {from: "Message operation must be add, remove, clear, mode or list.", to: "Operacja wiadomości musi mieć wartość add, remove, clear, mode albo list."}
+  - {from: "Action operation must be add, remove, clear or list.", to: "Operacja akcji musi mieć wartość add, remove, clear albo list."}
+  - {from: "Operation must be add, remove, clear or list.", to: "Operacja musi mieć wartość add, remove, clear albo list."}
+  - {from: "Unknown NPC setting. Use /npc help.", to: "Nieznane ustawienie NPC. Użyj /npc help."}
+  - {from: "Unknown shop operation. Use /npc help.", to: "Nieznana operacja sklepu. Użyj /npc help."}
+  - {from: "Unknown buyer operation. Use /npc help.", to: "Nieznana operacja skupu. Użyj /npc help."}
+  - {from: "Unknown guild trader operation. Use /npc help.", to: "Nieznana operacja handlarza gildyjnego. Użyj /npc help."}
+  - {from: "Slot must be between 0 and ", to: "Slot musi mieścić się między 0 a "}
+  - {from: "Quantity must be between 1 and ", to: "Liczba musi mieścić się między 1 a "}
+  - {from: "Unknown shop item: ", to: "Nieznany przedmiot sklepu: "}
+  - {from: "Unknown potion type: ", to: "Nieznany typ mikstury: "}
+  - {from: "Potion type can only be used with POTION, SPLASH_POTION, LINGERING_POTION or TIPPED_ARROW.", to: "Typ mikstury można podać tylko dla POTION, SPLASH_POTION, LINGERING_POTION lub TIPPED_ARROW."}
+  - {from: "Buyer size must be 9, 18, 27, 36, 45 or 54.", to: "Rozmiar skupu musi wynosić 9, 18, 27, 36, 45 albo 54."}
+  - {from: "Menu size must be 9, 18, 27, 36, 45 or 54.", to: "Rozmiar menu musi wynosić 9, 18, 27, 36, 45 albo 54."}
+  - {from: "Remove offers outside the new menu size first.", to: "Najpierw usuń oferty znajdujące się poza nowym rozmiarem menu."}
+  - {from: "Unsupported duration unit.", to: "Nieobsługiwana jednostka czasu."}
+  - {from: "Value must be true/on or false/off.", to: "Wartość musi mieć postać true/on albo false/off."}
+  - {from: " percentage cannot exceed ", to: ": wartość procentowa nie może przekraczać "}
+  - {from: " must be positive.", to: " musi być wartością dodatnią."}
+  - {from: "Invalid ", to: "Nieprawidłowa wartość "}
+  - {from: "Dialogue lines for ", to: "Wiersze dialogu NPC "}
+  - {from: "Actions for ", to: "Akcje NPC "}
+  - {from: "Shops:", to: "Sklepy:"}
+  - {from: "Buyers:", to: "Skupy:"}
+  - {from: "Guild traders:", to: "Handlarze gildyjni:"}
+  - {from: "Guild bonus lore:", to: "Opis bonusu gildii:"}
+  - {from: "Click:", to: "Kliknięcie:"}
+  - {from: "Look:", to: "Spojrzenie:"}
+  - {from: " lines)", to: " wierszy)"}
+  - {from: "none", to: "brak"}
+  - {from: " at your location.", to: " w twojej pozycji."}
+  - {from: " to your location.", to: " do twojej pozycji."}
+  - {from: "Offer was not found.", to: "Nie znaleziono oferty."}
+  - {from: "Buyer offer was not found.", to: "Nie znaleziono oferty skupu."}
+  - {from: "Guild bonus offer was not found.", to: "Nie znaleziono oferty bonusu gildii."}
+  - {from: "Created NPC", to: "Utworzono NPC"}
+  - {from: "Deleted NPC", to: "Usunięto NPC"}
+  - {from: "Moved NPC", to: "Przeniesiono NPC"}
+  - {from: "Teleported to NPC", to: "Teleportowano do NPC"}
+  - {from: "Created shop", to: "Utworzono sklep"}
+  - {from: "Deleted shop", to: "Usunięto sklep"}
+  - {from: "Created buyer", to: "Utworzono skup"}
+  - {from: "Deleted buyer", to: "Usunięto skup"}
+  - {from: "Created guild trader", to: "Utworzono handlarza gildyjnego"}
+  - {from: "Deleted guild trader", to: "Usunięto handlarza gildyjnego"}
+  - {from: "Updated", to: "Zaktualizowano"}
+  - {from: "Removed", to: "Usunięto"}
+  - {from: "Saved", to: "Zapisano"}
+  - {from: "Enabled", to: "Włączono"}
+  - {from: "Disabled", to: "Wyłączono"}
+  - {from: "was not found", to: "nie został znaleziony"}
+  - {from: "already exists", to: "już istnieje"}
+  - {from: "This command can only be used by a player.", to: "Tej komendy może użyć tylko gracz."}
+  - {from: "Unknown entity type:", to: "Nieznany typ bytu:"}
+  - {from: "Unknown item material:", to: "Nieznany materiał przedmiotu:"}
+  - {from: "Hold the item in your main hand.", to: "Trzymaj przedmiot w głównej ręce."}
+  - {from: "Usage:", to: "Użycie:"}
+  - {from: "Duration is too large.", to: "Czas trwania jest zbyt długi."}
+  - {from: "Duration must look like 30m, 2h, 7d or permanent.", to: "Czas musi mieć format 30m, 2h, 7d albo permanent."}
+  - {from: "connected", to: "połączono"}
+  - {from: "unavailable", to: "niedostępny"}
+  - {from: "Name:", to: "Nazwa:"}
+  - {from: "Type:", to: "Typ:"}
+  - {from: "World:", to: "Świat:"}
+  - {from: "Skin:", to: "Skórka:"}
+  - {from: "Cooldown:", to: "Odnowienie:"}
+  - {from: "Permission:", to: "Uprawnienie:"}
+  - {from: "Visibility:", to: "Widoczność:"}
+  - {from: "Dialogue:", to: "Dialog:"}
+  - {from: "Actions:", to: "Akcje:"}
+  - {from: "Hands:", to: "Ręce:"}
+  - {from: "Base rotation:", to: "Obrót bazowy:"}

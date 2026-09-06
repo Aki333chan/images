@@ -1,0 +1,16 @@
+# This file is managed by /npc commands and can also be edited manually.
+# Run /npc reload after manual edits.
+# Per-NPC visibility example:
+# npcs:
+#   guide:
+#     visibility:
+#       entity-range: 48.0
+#       name-range: 24.0
+#     look-at:
+#       enabled: true
+#       range: 8.0
+#       mode: HEAD # HEAD keeps the body fixed where the entity supports independent head rotation; BODY rotates all
+#     equipment:
+#       right-hand: null # use /npc equipment <id> right <material|hand|clear>
+#       left-hand: null  # use /npc equipment <id> left <material|hand|clear>
+npcs: {}
