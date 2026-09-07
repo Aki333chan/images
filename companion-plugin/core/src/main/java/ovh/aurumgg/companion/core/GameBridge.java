@@ -15,6 +15,7 @@ import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.InventorySelection;
 import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
+import ovh.aurumgg.companion.core.model.JailsInfo;
 import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -279,4 +280,17 @@ public interface GameBridge {
 
     /** Снять бонус досрочно. */
     Optional<GuildActionOutcome> guildRevokeBonus(long guildId, String type, String actor);
+
+    // ---------------------------------------------------------- Тюрьмы
+
+    /**
+     * Тюрьмы EssentialsX и те, кто в них сидит.
+     *
+     * ТОЛЬКО ЧТЕНИЕ. Сажает и выпускает панель командой {@code togglejail}
+     * через RCON, а не отсюда: у этой команды есть события для других
+     * плагинов, телепорт, сообщение самому игроку и оповещение персонала.
+     * Повторить всё это отражением значило бы завести вторую, слегка другую
+     * тюрьму рядом с настоящей.
+     */
+    JailsInfo jails();
 }

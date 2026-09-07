@@ -107,7 +107,14 @@ export function PlayerPicker({
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') setOpen(false);
+          // Escape при открытом списке закрывает ТОЛЬКО список. Без
+          // stopPropagation событие доходит до window, где его слушает
+          // модалка, и вместе с подсказками закрывалось всё окно —
+          // введённое пропадало.
+          if (e.key === 'Escape' && open) {
+            e.stopPropagation();
+            setOpen(false);
+          }
           // Enter при единственном совпадении дописывает его целиком —
           // так ник вводится тремя буквами.
           if (e.key === 'Enter' && matches.length === 1 && !exact) {

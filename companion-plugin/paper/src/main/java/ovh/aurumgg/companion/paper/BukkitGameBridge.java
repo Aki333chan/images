@@ -646,6 +646,17 @@ public final class BukkitGameBridge implements GameBridge {
     // Всё делегируется мосту: он один знает про классы AurumGuilds, и на
     // сервере без этого плагина они не загружаются вовсе.
 
+    /**
+     * Тюрьмы читаются в основном потоке: {@code getUser} трогает состояние
+     * игрока, а оно принадлежит главному потоку сервера.
+     */
+    @Override
+    public ovh.aurumgg.companion.core.model.JailsInfo jails() {
+        return callSync(
+                EssentialsJails::read,
+                ovh.aurumgg.companion.core.model.JailsInfo.unavailable());
+    }
+
     @Override
     public boolean guildsAvailable() {
         return GuildsIntegration.installed();

@@ -1028,6 +1028,45 @@ class CompanionHttpServerTest {
     }
 
     @Test
+    @DisplayName("GET /jails отдаёт список тюрем и тех, кто сидит")
+    void listsJails() throws Exception {
+        HttpResponse<String> response = get("/jails", TOKEN);
+        assertEquals(200, response.statusCode());
+
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(true, body.get("available"));
+        assertEquals(List.of("main", "pvp"), body.get("jails"));
+
+        List<?> jailed = (List<?>) body.get("jailed");
+        assertEquals(1, jailed.size());
+        Map<?, ?> steve = (Map<?, ?>) jailed.get(0);
+        assertEquals("Steve", steve.get("name"));
+        assertEquals("main", steve.get("jail"));
+        // Момент выпуска, а не срок: EssentialsX хранит именно его.
+        assertEquals(1.8E12, steve.get("releaseAt"));
+    }
+
+    @Test
+    @DisplayName("Без EssentialsX тюрьмы отвечают available:false, а не 404")
+    void jailsWithoutEssentials() throws Exception {
+        // Маршрут существует и заработает, как только плагин поставят;
+        // отличить это от «тюрем не создано» панель обязана.
+        bridge.jailsInfo = ovh.aurumgg.companion.core.model.JailsInfo.unavailable();
+
+        HttpResponse<String> response = get("/jails", TOKEN);
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(false, body.get("available"));
+        assertEquals(List.of(), body.get("jails"));
+    }
+
+    @Test
+    @DisplayName("Тюрьмы закрыты токеном, как и всё остальное")
+    void jailsNeedToken() throws Exception {
+        assertEquals(401, get("/jails", null).statusCode());
+    }
+
+    @Test
     @DisplayName("Действия с гильдиями тоже закрыты токеном")
     void guildActionsNeedToken() throws Exception {
         withGuild();

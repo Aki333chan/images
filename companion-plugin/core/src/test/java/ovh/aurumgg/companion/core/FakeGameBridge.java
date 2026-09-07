@@ -369,6 +369,19 @@ public final class FakeGameBridge implements GameBridge {
             new ovh.aurumgg.companion.core.model.GuildActionOutcome(true, "готово");
     public final java.util.List<String> guildActions = new java.util.ArrayList<>();
 
+    /** Тюрьмы подставные: две штуки и один сидящий. */
+    public ovh.aurumgg.companion.core.model.JailsInfo jailsInfo =
+            new ovh.aurumgg.companion.core.model.JailsInfo(
+                    true,
+                    java.util.List.of("main", "pvp"),
+                    java.util.List.of(new ovh.aurumgg.companion.core.model.JailedPlayer(
+                            STEVE, "Steve", "main", 1_800_000_000_000L)));
+
+    @Override
+    public ovh.aurumgg.companion.core.model.JailsInfo jails() {
+        return jailsInfo;
+    }
+
     @Override
     public boolean guildsAvailable() {
         return guildsInstalled;

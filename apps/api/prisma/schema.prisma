@@ -163,6 +163,7 @@ model Server {
   activitySamples ServerActivitySample[]
   metrics         ServerMetricSample?
   alertStates     ServerAlertState[]
+  jailRecords     MinecraftJailRecord[]
 
   @@map("servers")
 }
@@ -436,4 +437,34 @@ enum AiActionStatus {
   failed
   /// Истекло по времени — старое предложение исполнять нельзя.
   expired
+}
+
+/// Кого панель посадила в тюрьму EssentialsX и когда.
+///
+/// ЗАЧЕМ ЭТО НУЖНО. EssentialsX хранит только момент, когда игрока ВЫПУСТЯТ,
+/// и ноль для бессрочных. Времени посадки у него нет вообще — а именно оно
+/// отвечает на вопрос «сколько он уже сидит», ради которого таблица и
+/// заведена. Другого источника не существует: вычислить начало из конца можно
+/// было бы, знай мы длину срока, но её плагин тоже не хранит.
+///
+/// ЗАПИСЬ ЖИВЁТ, ПОКА ЧЕЛОВЕК СИДИТ. Выпустили через панель — строка
+/// удаляется. Срок вышел сам или выпустили в игре — строка остаётся сиротой,
+/// и её убирает сверка со списком от companion: единственный источник правды
+/// о том, кто сидит, — сам EssentialsX, а это лишь память о начале.
+model MinecraftJailRecord {
+  id         String   @id @default(uuid())
+  serverId   String   @map("server_id")
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  /// Ник в нижнем регистре: сопоставляется с тем, что вернул сервер.
+  /// UUID тут не годится — панель сажает по нику, а офлайн-игрока в момент
+  /// посадки может не быть в кэше сервера вовсе.
+  playerName String   @map("player_name")
+  /// Куда посадили — на случай, если в игре его перевели в другую тюрьму.
+  jail       String
+  /// Ник сотрудника: в аудите это тоже есть, но там строку ещё надо найти.
+  jailedBy   String   @map("jailed_by")
+  jailedAt   DateTime @default(now()) @map("jailed_at")
+
+  @@unique([serverId, playerName])
+  @@map("minecraft_jail_records")
 }

@@ -8,6 +8,7 @@ import {
 } from './activity-sampler.processor';
 import { CompanionService } from './companion.service';
 import { CompanionTokenGuard } from './companion-token.guard';
+import { JailsService } from './jails.service';
 import { MinecraftSharedModule } from '../minecraft-shared/minecraft-shared.module';
 import { MinecraftController } from './minecraft.controller';
 import { MinecraftInternalController } from './minecraft-internal.controller';
@@ -33,6 +34,7 @@ import { PluginsController } from './plugins/plugins.controller';
   providers: [
     CompanionService,
     CompanionTokenGuard,
+    JailsService,
     MinecraftService,
     MinecraftTicketDelivery,
     ActivitySamplerScheduler,
