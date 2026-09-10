@@ -11,7 +11,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 final class LanguageBundle {
     static final List<String> REQUIRED_KEYS = List.of(
             "prefix", "passive-only", "no-permission", "player-only", "player-not-online",
-            "balance-missing", "balance", "treasury-unavailable", "status-header", "status-line"
+            "balance-missing", "balance", "treasury-unavailable", "status-header", "status-line",
+            "active-only", "migration-shadow-only", "migration-database-unavailable",
+            "migration-vault-unavailable", "migration-busy", "migration-started", "migration-saved",
+            "migration-failed", "migration-not-found", "migration-summary", "migration-confirm",
+            "migration-importing", "migration-imported", "migration-blocked", "migration-exported",
+            "migration-invalid-id", "migration-usage", "migration-provider-changed"
     );
 
     private final YamlConfiguration messages;

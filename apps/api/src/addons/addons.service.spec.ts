@@ -45,6 +45,7 @@ describe('когда панель сама предлагает наши пла�
     const state = await makeService({}).state('srv-1', true);
     expect(state.canOffer).toBe(true);
     expect(state.optional.map((a) => a.id)).toEqual([
+      'aurum-core',
       'aurum-auth',
       'aurum-guilds',
       'addons-npc',
@@ -77,6 +78,7 @@ describe('когда панель сама предлагает наши пла�
   it('не предлагает, когда всё опциональное уже стоит', async () => {
     const state = await makeService({
       files: [
+        'AurumCore-0.3.0.jar',
         'AurumAuth-1.0.jar',
         'AurumGuilds-1.0.jar',
         'AddonsNPC-1.5.3.jar',

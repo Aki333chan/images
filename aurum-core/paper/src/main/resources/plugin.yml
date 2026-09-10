@@ -9,7 +9,16 @@ softdepend: [Vault, VaultUnlocked, PlaceholderAPI]
 commands:
   aurum:
     description: AurumCore balance and diagnostics
-    usage: /aurum <balance|status|treasury>
+    usage: /aurum <balance|status|treasury|migrate|economy>
+    aliases: [acore]
+  abal:
+    description: Short form of /aurum balance
+  atreasury:
+    description: Short form of /aurum treasury
+  amigrate:
+    description: Short form of /aurum migrate
+  aeco:
+    description: Short form of /aurum economy
 
 permissions:
   aurum.balance:
@@ -20,4 +29,13 @@ permissions:
     default: op
   aurum.admin:
     description: View AurumCore diagnostics and treasury state
+    default: op
+    children:
+      aurum.admin.migrate: true
+      aurum.admin.economy: true
+  aurum.admin.migrate:
+    description: Create, import, verify and export economy migration snapshots
+    default: op
+  aurum.admin.economy:
+    description: Manage the authoritative Aurum economy when active mode is enabled
     default: op

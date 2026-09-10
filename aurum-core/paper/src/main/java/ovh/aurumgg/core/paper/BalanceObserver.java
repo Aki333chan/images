@@ -7,4 +7,5 @@ import org.bukkit.OfflinePlayer;
 interface BalanceObserver {
     Optional<BigDecimal> balance(OfflinePlayer player);
     String providerName();
+    default boolean available() { return !providerName().equals("unavailable"); }
 }

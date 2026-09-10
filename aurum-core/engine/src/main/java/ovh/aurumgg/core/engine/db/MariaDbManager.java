@@ -6,6 +6,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import ovh.aurumgg.core.engine.LedgerRepository;
+import ovh.aurumgg.core.engine.migration.MigrationRepository;
 
 public final class MariaDbManager implements AutoCloseable {
     private final HikariDataSource dataSource;
@@ -37,6 +38,10 @@ public final class MariaDbManager implements AutoCloseable {
 
     public LedgerRepository ledgerRepository(Clock clock) {
         return new MariaDbLedgerRepository(dataSource, clock);
+    }
+
+    public MigrationRepository migrationRepository() {
+        return new MariaDbMigrationRepository(dataSource);
     }
 
     @Override

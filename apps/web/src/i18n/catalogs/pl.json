@@ -1194,6 +1194,7 @@
   "addons.install": "Zainstaluj wybrane",
   "addons.dismiss": "Zamknij i nie proponuj",
   "addons.about.companion": "Gracze, ekwipunki, ekonomia, lista wtyczek. Instaluje się sam.",
+  "addons.about.core": "Wspólna ekonomia: bezpieczna migracja, księga, skarbiec i integracje.",
   "addons.about.auth": "Własne logowanie: hasła, dwuskładnikowe, historia wejść.",
   "addons.about.guilds": "Gildie i drużyny: bank, rangi, czat, bonusy.",
   "addons.requiredStopped": "{name} zainstalowany — wczyta się przy następnym starcie serwera.",

@@ -61,6 +61,14 @@ export const AURUM_COMPANION: AurumAddon = {
   tagPrefix: 'companion-v',
 };
 
+export const AURUM_CORE: AurumAddon = {
+  id: 'aurum-core',
+  pluginName: 'AurumCore',
+  displayName: 'AurumCore',
+  aboutKey: 'addons.about.core',
+  tagPrefix: 'core-v',
+};
+
 export const AURUM_AUTH: AurumAddon = {
   id: 'aurum-auth',
   pluginName: 'AurumAuth',
@@ -119,7 +127,7 @@ export const MODULE_ADDONS: Record<string, ModuleAddons> = {
     required: AURUM_COMPANION,
     // Порядок — от того, без чего сервер обходится хуже всего, к развлечениям.
     // Он же порядок в поп-апе: первым читают то, что стоит первым.
-    optional: [AURUM_AUTH, AURUM_GUILDS, ADDONS_NPC, AURUM_ARENA, AURUM_SLOTS],
+    optional: [AURUM_CORE, AURUM_AUTH, AURUM_GUILDS, ADDONS_NPC, AURUM_ARENA, AURUM_SLOTS],
   },
 };
 
