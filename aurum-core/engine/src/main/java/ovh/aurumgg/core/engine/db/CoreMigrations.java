@@ -162,11 +162,47 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> migrationRuns = List.of(
+                """
+                CREATE TABLE IF NOT EXISTS aurum_migration_runs (
+                    run_id CHAR(36) PRIMARY KEY,
+                    provider_name VARCHAR(64) NOT NULL,
+                    currency_id VARCHAR(32) NOT NULL,
+                    status VARCHAR(24) NOT NULL,
+                    player_count INT UNSIGNED NOT NULL DEFAULT 0,
+                    read_failures INT UNSIGNED NOT NULL DEFAULT 0,
+                    mismatch_count INT UNSIGNED NOT NULL DEFAULT 0,
+                    negative_count INT UNSIGNED NOT NULL DEFAULT 0,
+                    external_total DECIMAL(24,8) NOT NULL DEFAULT 0,
+                    internal_total DECIMAL(24,8) NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    completed_at TIMESTAMP(6) NULL,
+                    KEY ix_aurum_migration_latest (currency_id, created_at),
+                    CONSTRAINT fk_aurum_migration_currency FOREIGN KEY (currency_id) REFERENCES aurum_currencies(id)
+                ) ENGINE=InnoDB
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_migration_balances (
+                    run_id CHAR(36) NOT NULL,
+                    player_uuid CHAR(36) NOT NULL,
+                    username VARCHAR(64) NOT NULL,
+                    external_balance DECIMAL(24,8) NOT NULL,
+                    internal_balance DECIMAL(24,8) NOT NULL DEFAULT 0,
+                    difference_amount DECIMAL(24,8) NOT NULL DEFAULT 0,
+                    PRIMARY KEY (run_id, player_uuid),
+                    KEY ix_aurum_migration_difference (run_id, difference_amount),
+                    CONSTRAINT fk_aurum_migration_run FOREIGN KEY (run_id) REFERENCES aurum_migration_runs(run_id)
+                        ON DELETE CASCADE
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
                 new SchemaMigration(2, "shadow balance observations and generalized policy links",
-                        checksum(shadowAndPolicyLinks), shadowAndPolicyLinks)
+                        checksum(shadowAndPolicyLinks), shadowAndPolicyLinks),
+                new SchemaMigration(3, "repeatable economy migration snapshots",
+                        checksum(migrationRuns), migrationRuns)
         );
     }
 

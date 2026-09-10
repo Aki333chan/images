@@ -19,23 +19,28 @@
   стабильном порядке, idempotency, запрет отрицательного баланса, казна,
   money supply, аудит отказов, outbox и конкурентные тесты. Paper/Vault доступ
   к денежным записям пока намеренно не включён.
+- [x] Shadow/migration 0.3.0: неизменяемые снимки Vault, чтение порциями без
+  длительной нагрузки одного тика, отчёт расхождений, защищённый повторяемый
+  import в неактивный ledger, verify и rollback CSV. Essentials/Vault остаются
+  рабочим провайдером и не изменяются.
+- [x] Публикационный контракт экосистемы: исходники и каталог панели находятся
+  в `Images`, готовые JAR — в `Addons`, а установка панелью идёт только из
+  GitHub Releases с отдельными тегами `<name>-v<version>`.
 
 ## Осталось — в порядке выполнения
 
-1. [ ] Shadow mode и инструменты миграции Essentials/Vault:
-   `dry-run`, отчёт расхождений, повторяемый import, verify, rollback-export.
-2. [ ] Active mode и VaultUnlocked adapter; команды `/pay`, `/aurum balance` и
+1. [ ] Active mode и VaultUnlocked adapter; команды `/pay`, `/aurum balance` и
    `/aurum economy give|take|set`, права, лимиты, причины и tab completion.
-3. [ ] Реализовать policy engine исполнения: конфиг, DB revisions, налоги,
+2. [ ] Реализовать policy engine исполнения: конфиг, DB revisions, налоги,
    комиссии, сборы, кешбэк, субсидии, лимиты и аудит изменений.
-4. [ ] По одному перевести AddonsNPC, AurumSlots, AurumArena и AurumGuilds на
+3. [ ] По одному перевести AddonsNPC, AurumSlots, AurumArena и AurumGuilds на
    AurumEconomyApi, сохраняя recovery и возможность отката на каждом шаге.
-5. [ ] Реализовать гарантированный player trade: GUI, деньги и предметы,
+4. [ ] Реализовать гарантированный player trade: GUI, деньги и предметы,
    повторное подтверждение, рестарт/recovery и claim-хранилище.
-6. [ ] Подключить AurumUI: баланс, переводы, сделки, казна и админские формы.
-7. [ ] Переделать Companion и веб-панель с Vault-summary на AurumCore API:
+5. [ ] Подключить AurumUI: баланс, переводы, сделки, казна и админские формы.
+6. [ ] Переделать Companion и веб-панель с Vault-summary на AurumCore API:
    казна, денежная масса, оборот, источники/стоки, правила и ledger history.
-8. [ ] Опционально мигрировать динамические настройки арен, NPC, автоматов и
+7. [ ] Опционально мигрировать динамические настройки арен, NPC, автоматов и
    связей гильдий. WorldGuard остаётся владельцем самих регионов.
-9. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
+8. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
     сбои БД/рестарты, Spark и финальная инструкция переключения Essentials.

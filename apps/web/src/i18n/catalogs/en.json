@@ -1190,6 +1190,7 @@
   "addons.install": "Install selected",
   "addons.dismiss": "Close and stop offering",
   "addons.about.companion": "Players, inventories, economy, plugin list. Installed automatically.",
+  "addons.about.core": "Shared economy foundation: safe migration, ledger, treasury and integrations.",
   "addons.about.auth": "Our own login: passwords, two-factor, sign-in history.",
   "addons.about.guilds": "Guilds and parties: bank, ranks, chat, bonuses.",
   "addons.requiredStopped": "{name} installed — it will load the next time the server starts.",

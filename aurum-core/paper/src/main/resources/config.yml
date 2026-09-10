@@ -2,8 +2,8 @@
 language: en
 
 economy:
-  # Version 0.2.0 intentionally supports passive only. It observes the current
-  # Vault provider and never changes balances or registers as Economy provider.
+  # passive: observe Vault only. shadow: enable migration snapshots/import into
+  # the dormant ledger, while Vault/Essentials remains the live economy.
   mode: passive
   currency:
     id: coins
@@ -16,9 +16,14 @@ passive:
   # Refresh cached online balances for commands, TAB and other placeholders.
   refresh-ticks: 100
 
+migration:
+  # Vault balance reads run on the server thread for provider compatibility,
+  # but are spread across ticks to avoid a migration-time MSPT spike.
+  players-per-tick: 20
+
 database:
   # Safe default for the first install. Enable after filling the connection.
-  # In passive mode this only creates the versioned empty ledger schema.
+  # Required by shadow mode. In passive mode it only initializes the schema.
   enabled: false
   jdbc-url: "jdbc:mariadb://127.0.0.1:3306/aurum_core"
   username: "aurum"

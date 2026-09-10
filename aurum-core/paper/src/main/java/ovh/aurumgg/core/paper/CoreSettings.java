@@ -10,6 +10,7 @@ record CoreSettings(
         String configuredMode,
         CurrencySpec currency,
         int refreshTicks,
+        int migrationPlayersPerTick,
         boolean databaseEnabled,
         MariaDbSettings database
 ) {
@@ -23,6 +24,8 @@ record CoreSettings(
                 config.getInt("economy.currency.scale", 2)
         );
         int refresh = Math.max(20, config.getInt("passive.refresh-ticks", 100));
+        int migrationPlayersPerTick = Math.max(1, Math.min(200,
+                config.getInt("migration.players-per-tick", 20)));
         boolean enabled = config.getBoolean("database.enabled", false);
         MariaDbSettings database = new MariaDbSettings(
                 config.getString("database.jdbc-url", "jdbc:mariadb://127.0.0.1:3306/aurum_core"),
@@ -30,6 +33,6 @@ record CoreSettings(
                 config.getString("database.password", "change-me"),
                 Math.max(1, Math.min(16, config.getInt("database.pool-size", 3)))
         );
-        return new CoreSettings(language, mode, currency, refresh, enabled, database);
+        return new CoreSettings(language, mode, currency, refresh, migrationPlayersPerTick, enabled, database);
     }
 }
