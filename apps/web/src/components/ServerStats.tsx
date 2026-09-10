@@ -11,7 +11,7 @@ import {
 } from '@aurum/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { RUNTIME_POLL_MS, useServerRuntime } from '../lib/server-runtime';
+import { GAME_POLL_MS, useServerRuntime } from '../lib/server-runtime';
 import { Button, Card } from './ui';
 import { useI18n } from '../i18n';
 
@@ -157,7 +157,7 @@ export function ServerStats({
     }
 
     void tick();
-    const timer = setInterval(() => void tick(), RUNTIME_POLL_MS);
+    const timer = setInterval(() => void tick(), GAME_POLL_MS);
     return () => {
       stopped = true;
       clearInterval(timer);
