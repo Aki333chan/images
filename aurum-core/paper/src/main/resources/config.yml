@@ -2,8 +2,8 @@
 language: en
 
 economy:
-  # passive: observe Vault only. shadow: enable migration snapshots/import into
-  # the dormant ledger, while Vault/Essentials remains the live economy.
+  # passive: observe Vault only. shadow: prepare and verify migration while the
+  # old provider stays live. active: AurumCore becomes the economy provider.
   mode: passive
   currency:
     id: coins
@@ -21,9 +21,16 @@ migration:
   # but are spread across ticks to avoid a migration-time MSPT spike.
   players-per-tick: 20
 
+active:
+  # Keep this enabled for an Essentials/Vault migration. Disable only for a
+  # deliberately fresh economy with no legacy balances to preserve.
+  require-verified-migration: true
+  # Cached global treasury/supply placeholders are refreshed asynchronously.
+  global-refresh-ticks: 100
+
 database:
   # Safe default for the first install. Enable after filling the connection.
-  # Required by shadow mode. In passive mode it only initializes the schema.
+  # Required by shadow and active modes. Passive only initializes the schema.
   enabled: false
   jdbc-url: "jdbc:mariadb://127.0.0.1:3306/aurum_core"
   username: "aurum"
@@ -34,13 +41,13 @@ treasury:
   account-id: global
 
 financial-policies:
-  # Reserved for the active ledger release. No rule is executed in 0.1.0.
+  # Reserved for the next policy-engine stage. No rule is executed in 0.4.0.
   enabled: false
   # Active rules will be versioned in MariaDB. YAML supplies defaults and hard
   # limits; commands and UI will use the same validation and audit path.
 
 payments:
-  enabled: false
+  enabled: true
   minimum: "0.01"
   maximum: "1000000.00"
   cooldown-seconds: 2

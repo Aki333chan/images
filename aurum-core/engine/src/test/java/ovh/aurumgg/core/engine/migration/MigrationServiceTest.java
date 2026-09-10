@@ -84,6 +84,9 @@ class MigrationServiceTest {
                 List<ObservedPlayerBalance> balances, int failures) { throw new UnsupportedOperationException(); }
         @Override public Optional<MigrationRunSummary> summary(UUID id, CurrencySpec currency) { return Optional.of(value); }
         @Override public Optional<MigrationRunSummary> latest(CurrencySpec currency) { return Optional.of(value); }
+        @Override public Optional<MigrationRunSummary> latestVerified(CurrencySpec currency) {
+            return value.status().equals("VERIFIED") ? Optional.of(value) : Optional.empty();
+        }
         @Override public MigrationRunSummary refreshComparison(UUID id, CurrencySpec currency) {
             value = MigrationServiceTest.summary(id, "VERIFIED", 0, 0);
             return value;

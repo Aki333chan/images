@@ -196,13 +196,25 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> runtimeState = List.of(
+                """
+                CREATE TABLE IF NOT EXISTS aurum_runtime_state (
+                    state_key VARCHAR(64) PRIMARY KEY,
+                    state_value VARCHAR(512) NOT NULL,
+                    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+                        ON UPDATE CURRENT_TIMESTAMP(6)
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
                 new SchemaMigration(2, "shadow balance observations and generalized policy links",
                         checksum(shadowAndPolicyLinks), shadowAndPolicyLinks),
                 new SchemaMigration(3, "repeatable economy migration snapshots",
-                        checksum(migrationRuns), migrationRuns)
+                        checksum(migrationRuns), migrationRuns),
+                new SchemaMigration(4, "authoritative runtime cutover state",
+                        checksum(runtimeState), runtimeState)
         );
     }
 

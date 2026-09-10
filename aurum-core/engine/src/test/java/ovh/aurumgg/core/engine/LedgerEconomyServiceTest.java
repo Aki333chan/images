@@ -96,6 +96,32 @@ class LedgerEconomyServiceTest {
         assertEquals(new BigDecimal("10.00"), result.taxAmount());
     }
 
+    @Test
+    void committedTransferUpdatesAuthoritativeCache() {
+        LedgerEconomyService service = service(TaxRuleResolver.none());
+        service.seedBalances(Map.of(ALICE, new BigDecimal("100.00"), BOB, new BigDecimal("0.00")));
+
+        service.transfer(request("pay:cached", "25.00")).toCompletableFuture().join();
+
+        assertEquals(new BigDecimal("75.00"), service.cachedBalance(ALICE).orElseThrow().balance());
+        assertEquals(new BigDecimal("25.00"), service.cachedBalance(BOB).orElseThrow().balance());
+    }
+
+    @Test
+    void administrativeSetIsSerializedAndCanSetZero() {
+        LedgerEconomyService service = service(TaxRuleResolver.none());
+        service.seedBalances(Map.of(ALICE, new BigDecimal("100.00")));
+
+        TransactionResult result = service.setPlayerBalance(ALICE, BigDecimal.ZERO,
+                "admin:set:zero", Map.of("actor", "console")).toCompletableFuture().join();
+
+        assertEquals(TransactionResult.Status.SUCCESS, result.status());
+        assertEquals(new BigDecimal("0.00"), repository.value(ALICE));
+        assertEquals(new BigDecimal("0.00"), service.cachedBalance(ALICE).orElseThrow().balance());
+        assertEquals(new BigDecimal("100.00"),
+                repository.value(new AccountId(AccountType.SYSTEM_SINK, "global")));
+    }
+
     private LedgerEconomyService service(TaxRuleResolver resolver) {
         return new LedgerEconomyService(COINS, repository, resolver, executor, Clock.systemUTC());
     }

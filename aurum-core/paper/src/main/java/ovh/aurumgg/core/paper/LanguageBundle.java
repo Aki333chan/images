@@ -16,7 +16,10 @@ final class LanguageBundle {
             "migration-vault-unavailable", "migration-busy", "migration-started", "migration-saved",
             "migration-failed", "migration-not-found", "migration-summary", "migration-confirm",
             "migration-importing", "migration-imported", "migration-blocked", "migration-exported",
-            "migration-invalid-id", "migration-usage", "migration-provider-changed"
+            "migration-invalid-id", "migration-usage", "migration-provider-changed",
+            "active-not-ready", "payments-disabled", "pay-usage", "player-unknown", "pay-self",
+            "pay-limits", "pay-cooldown", "pay-sent", "pay-received", "money-unavailable",
+            "insufficient-funds", "economy-usage", "economy-success", "invalid-amount", "treasury"
     );
 
     private final YamlConfiguration messages;

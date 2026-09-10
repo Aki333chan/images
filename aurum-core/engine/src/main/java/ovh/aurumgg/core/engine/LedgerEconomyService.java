@@ -4,8 +4,12 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.Executor;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumEconomyApi;
@@ -15,6 +19,8 @@ import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 import ovh.aurumgg.core.api.TransactionRequest;
 import ovh.aurumgg.core.api.TransactionResult;
+import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.TransactionCategory;
 
 /** Authoritative service. Paper does not expose this implementation until migration is verified. */
 public final class LedgerEconomyService implements AurumEconomyApi {
@@ -23,6 +29,9 @@ public final class LedgerEconomyService implements AurumEconomyApi {
     private final TaxRuleResolver taxRules;
     private final Executor executor;
     private final Clock clock;
+    private final Object mutationLock = new Object();
+    private final ConcurrentMap<AccountId, BigDecimal> balanceCache = new ConcurrentHashMap<>();
+    private final AtomicReference<GlobalEconomySnapshot> globalCache = new AtomicReference<>();
 
     public LedgerEconomyService(CurrencySpec currency, LedgerRepository repository,
                                 TaxRuleResolver taxRules, Executor executor, Clock clock) {
@@ -38,20 +47,39 @@ public final class LedgerEconomyService implements AurumEconomyApi {
 
     @Override
     public CompletionStage<Optional<BalanceSnapshot>> balance(AccountId account) {
-        return supply(() -> repository.balance(account, currency)
-                .map(value -> new BalanceSnapshot(account, currency, value, Instant.now(clock), true)));
+        BigDecimal cached = balanceCache.get(account);
+        if (cached != null) return CompletableFuture.completedFuture(Optional.of(snapshot(account, cached)));
+        return supply(() -> {
+            BigDecimal value = repository.balance(account, currency)
+                    .orElse(BigDecimal.ZERO.setScale(currency.scale()));
+            balanceCache.put(account, value);
+            return Optional.of(snapshot(account, value));
+        });
     }
 
     @Override
     public CompletionStage<GlobalEconomySnapshot> globalSnapshot() {
-        return supply(() -> repository.globalSnapshot(currency));
+        return supply(() -> {
+            GlobalEconomySnapshot snapshot = repository.globalSnapshot(currency);
+            globalCache.set(snapshot);
+            return snapshot;
+        });
     }
 
     @Override
     public CompletionStage<TransactionResult> transfer(TransactionRequest request) {
-        return supply(() -> {
+        return supply(() -> transferBlocking(request)).exceptionally(exception -> unavailable(request, exception));
+    }
+
+    /** Vault is synchronous, so its adapter calls this and receives a definitive database result. */
+    public TransactionResult transferBlocking(TransactionRequest request) throws Exception {
+        synchronized (mutationLock) {
             TransactionPlan plan = TransactionPlanner.plan(request, currency, taxRules.select(request));
             LedgerCommit commit = repository.commit(plan, currency);
+            if (commit.status() == LedgerCommit.Status.COMMITTED) {
+                balanceCache.put(request.from(), commit.sourceBalance());
+                balanceCache.put(request.to(), commit.targetBalance());
+            }
             TransactionResult.Status status = switch (commit.status()) {
                 case COMMITTED -> TransactionResult.Status.SUCCESS;
                 case DUPLICATE -> TransactionResult.Status.DUPLICATE;
@@ -59,13 +87,86 @@ public final class LedgerEconomyService implements AurumEconomyApi {
             };
             return new TransactionResult(status, request.idempotencyKey(), commit.grossAmount(),
                     commit.netAmount(), commit.taxAmount(), commit.message());
+        }
+    }
+
+    /** Serialized compare-and-adjust used by the administrative set command. */
+    public CompletionStage<TransactionResult> setPlayerBalance(AccountId player, BigDecimal target,
+                                                                String idempotencyKey, Map<String, String> metadata) {
+        return supply(() -> {
+            synchronized (mutationLock) {
+                BigDecimal wanted = currency.requireAmount(target);
+                if (wanted.signum() < 0 || player.type() != AccountType.PLAYER) {
+                    throw new IllegalArgumentException("Player balance cannot be negative");
+                }
+                BigDecimal current = balanceCache.computeIfAbsent(player, ignored -> {
+                    try {
+                        return repository.balance(player, currency)
+                                .orElse(BigDecimal.ZERO.setScale(currency.scale()));
+                    } catch (Exception exception) {
+                        throw new LedgerAccessException(exception);
+                    }
+                });
+                int comparison = wanted.compareTo(current);
+                if (comparison == 0) {
+                    BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+                    return new TransactionResult(TransactionResult.Status.SUCCESS, idempotencyKey,
+                            zero, zero, zero, "Balance already has the requested value");
+                }
+                AccountId system = new AccountId(
+                        comparison > 0 ? AccountType.SYSTEM_SOURCE : AccountType.SYSTEM_SINK, "global");
+                TransactionRequest request = new TransactionRequest(
+                        idempotencyKey,
+                        comparison > 0 ? system : player,
+                        comparison > 0 ? player : system,
+                        currency.id(),
+                        wanted.subtract(current).abs(),
+                        TransactionCategory.ADMIN_ADJUSTMENT,
+                        metadata
+                );
+                return transferBlocking(request);
+            }
         }).exceptionally(exception -> {
             BigDecimal amount;
-            try { amount = currency.requireAmount(request.amount()); }
+            try { amount = currency.requireAmount(target); }
             catch (RuntimeException invalid) { amount = BigDecimal.ZERO.setScale(currency.scale()); }
-            return new TransactionResult(TransactionResult.Status.UNAVAILABLE, request.idempotencyKey(),
+            return new TransactionResult(TransactionResult.Status.UNAVAILABLE, idempotencyKey,
                     amount, amount, BigDecimal.ZERO.setScale(currency.scale()), rootMessage(exception));
         });
+    }
+
+    public void seedBalances(Map<AccountId, BigDecimal> balances) {
+        balances.forEach((account, amount) -> balanceCache.put(account, currency.requireAmount(amount)));
+    }
+
+    public Optional<BalanceSnapshot> cachedBalance(AccountId account) {
+        BigDecimal value = balanceCache.get(account);
+        return value == null ? Optional.empty() : Optional.of(snapshot(account, value));
+    }
+
+    public GlobalEconomySnapshot cachedGlobalSnapshot() {
+        GlobalEconomySnapshot value = globalCache.get();
+        if (value != null) return value;
+        BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+        return new GlobalEconomySnapshot(currency, zero, zero, zero, Instant.now(clock), false, false);
+    }
+
+    public int cachedAccountCount() { return balanceCache.size(); }
+
+    public void cacheZeroIfAbsent(AccountId account) {
+        balanceCache.putIfAbsent(account, BigDecimal.ZERO.setScale(currency.scale()));
+    }
+
+    private BalanceSnapshot snapshot(AccountId account, BigDecimal value) {
+        return new BalanceSnapshot(account, currency, value, Instant.now(clock), true);
+    }
+
+    private TransactionResult unavailable(TransactionRequest request, Throwable exception) {
+        BigDecimal amount;
+        try { amount = currency.requireAmount(request.amount()); }
+        catch (RuntimeException invalid) { amount = BigDecimal.ZERO.setScale(currency.scale()); }
+        return new TransactionResult(TransactionResult.Status.UNAVAILABLE, request.idempotencyKey(),
+                amount, amount, BigDecimal.ZERO.setScale(currency.scale()), rootMessage(exception));
     }
 
     private <T> CompletableFuture<T> supply(CheckedSupplier<T> action) {

@@ -20,6 +20,8 @@ public final class MariaDbManager implements AutoCloseable {
         config.setMinimumIdle(1);
         config.setConnectionTimeout(5_000);
         config.setValidationTimeout(2_000);
+        config.addDataSourceProperty("connectTimeout", "5000");
+        config.addDataSourceProperty("socketTimeout", "5000");
         config.setPoolName("AurumCore-DB");
         this.dataSource = new HikariDataSource(config);
     }
@@ -42,6 +44,10 @@ public final class MariaDbManager implements AutoCloseable {
 
     public MigrationRepository migrationRepository() {
         return new MariaDbMigrationRepository(dataSource);
+    }
+
+    public MariaDbStateRepository stateRepository() {
+        return new MariaDbStateRepository(dataSource);
     }
 
     @Override

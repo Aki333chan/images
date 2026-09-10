@@ -6,6 +6,8 @@ import java.util.Locale;
 import java.util.Objects;
 
 public record CurrencySpec(String id, String displayName, String symbol, int scale) {
+    private static final BigDecimal DATABASE_LIMIT = new BigDecimal("10000000000000000");
+
     public CurrencySpec {
         id = Objects.requireNonNull(id, "id").trim().toLowerCase(Locale.ROOT);
         displayName = Objects.requireNonNull(displayName, "displayName").trim();
@@ -21,7 +23,11 @@ public record CurrencySpec(String id, String displayName, String symbol, int sca
     public BigDecimal requireAmount(BigDecimal value) {
         Objects.requireNonNull(value, "value");
         try {
-            return value.setScale(scale, RoundingMode.UNNECESSARY);
+            BigDecimal normalized = value.setScale(scale, RoundingMode.UNNECESSARY);
+            if (normalized.abs().compareTo(DATABASE_LIMIT) >= 0) {
+                throw new IllegalArgumentException("Amount exceeds the ledger limit");
+            }
+            return normalized;
         } catch (ArithmeticException exception) {
             throw new IllegalArgumentException("Amount has more than " + scale + " decimal places", exception);
         }

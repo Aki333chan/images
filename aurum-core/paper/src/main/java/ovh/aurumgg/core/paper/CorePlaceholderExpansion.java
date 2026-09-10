@@ -7,16 +7,12 @@ import org.bukkit.OfflinePlayer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ovh.aurumgg.core.api.AccountId;
-import ovh.aurumgg.core.api.BalanceSnapshot;
-import ovh.aurumgg.core.engine.PassiveEconomyService;
 
 final class CorePlaceholderExpansion extends PlaceholderExpansion {
     private final AurumCorePlugin plugin;
-    private final PassiveEconomyService economy;
 
-    CorePlaceholderExpansion(AurumCorePlugin plugin, PassiveEconomyService economy) {
+    CorePlaceholderExpansion(AurumCorePlugin plugin) {
         this.plugin = plugin;
-        this.economy = economy;
     }
 
     @Override public @NotNull String getIdentifier() { return "aurum"; }
@@ -27,16 +23,25 @@ final class CorePlaceholderExpansion extends PlaceholderExpansion {
     @Override
     public @Nullable String onRequest(OfflinePlayer player, @NotNull String params) {
         String key = params.toLowerCase(Locale.ROOT);
-        if (key.equals("currency")) return economy.primaryCurrency().displayName();
-        if (key.equals("currency_symbol")) return economy.primaryCurrency().symbol();
-        if (key.equals("treasury_balance") || key.equals("money_supply") || key.equals("taxes_collected")) {
-            return ""; // Deliberately unavailable until the authoritative ledger is enabled.
+        if (key.equals("currency")) return plugin.settings().currency().displayName();
+        if (key.equals("currency_symbol")) return plugin.settings().currency().symbol();
+        if (key.equals("treasury_balance")) {
+            var snapshot = plugin.cachedGlobalSnapshot();
+            return snapshot.authoritative() ? raw(snapshot.treasuryBalance()) : "";
+        }
+        if (key.equals("money_supply")) {
+            var snapshot = plugin.cachedGlobalSnapshot();
+            return snapshot.authoritative() ? raw(snapshot.moneySupply()) : "";
+        }
+        if (key.equals("taxes_collected")) {
+            var snapshot = plugin.cachedGlobalSnapshot();
+            return snapshot.authoritative() ? raw(snapshot.taxesCollected()) : "";
         }
         if (player == null || (!key.equals("balance") && !key.equals("balance_raw"))) return null;
-        return economy.cachedBalance(AccountId.player(player.getUniqueId()))
+        return plugin.cachedBalance(AccountId.player(player.getUniqueId()))
                 .map(snapshot -> key.equals("balance_raw")
                         ? raw(snapshot.balance())
-                        : raw(snapshot.balance()) + economy.primaryCurrency().symbol())
+                        : raw(snapshot.balance()) + plugin.settings().currency().symbol())
                 .orElse("");
     }
 

@@ -26,21 +26,23 @@
 - [x] Публикационный контракт экосистемы: исходники и каталог панели находятся
   в `Images`, готовые JAR — в `Addons`, а установка панелью идёт только из
   GitHub Releases с отдельными тегами `<name>-v<version>`.
+- [x] Active economy 0.4.0: AurumCore — авторитетный MariaDB ledger и
+  VaultUnlocked-провайдер; безопасный cutover gate, кэшированные чтения,
+  атомарные записи, `/pay`/`/apay`, баланс, казна, give/take/set, права,
+  лимиты, причины, локализации и умное tab completion.
 
 ## Осталось — в порядке выполнения
 
-1. [ ] Active mode и VaultUnlocked adapter; команды `/pay`, `/aurum balance` и
-   `/aurum economy give|take|set`, права, лимиты, причины и tab completion.
-2. [ ] Реализовать policy engine исполнения: конфиг, DB revisions, налоги,
+1. [ ] Реализовать policy engine исполнения: конфиг, DB revisions, налоги,
    комиссии, сборы, кешбэк, субсидии, лимиты и аудит изменений.
-3. [ ] По одному перевести AddonsNPC, AurumSlots, AurumArena и AurumGuilds на
+2. [ ] По одному перевести AddonsNPC, AurumSlots, AurumArena и AurumGuilds на
    AurumEconomyApi, сохраняя recovery и возможность отката на каждом шаге.
-4. [ ] Реализовать гарантированный player trade: GUI, деньги и предметы,
+3. [ ] Реализовать гарантированный player trade: GUI, деньги и предметы,
    повторное подтверждение, рестарт/recovery и claim-хранилище.
-5. [ ] Подключить AurumUI: баланс, переводы, сделки, казна и админские формы.
-6. [ ] Переделать Companion и веб-панель с Vault-summary на AurumCore API:
+4. [ ] Подключить AurumUI: баланс, переводы, сделки, казна и админские формы.
+5. [ ] Переделать Companion и веб-панель с Vault-summary на AurumCore API:
    казна, денежная масса, оборот, источники/стоки, правила и ledger history.
-7. [ ] Опционально мигрировать динамические настройки арен, NPC, автоматов и
+6. [ ] Опционально мигрировать динамические настройки арен, NPC, автоматов и
    связей гильдий. WorldGuard остаётся владельцем самих регионов.
-8. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
+7. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
     сбои БД/рестарты, Spark и финальная инструкция переключения Essentials.

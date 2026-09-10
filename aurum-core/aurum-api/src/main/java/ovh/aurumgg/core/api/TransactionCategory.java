@@ -2,6 +2,8 @@ package ovh.aurumgg.core.api;
 
 public enum TransactionCategory {
     TRANSFER,
+    VAULT_DEPOSIT,
+    VAULT_WITHDRAWAL,
     PLAYER_PAYMENT,
     NPC_PURCHASE,
     NPC_SALE,

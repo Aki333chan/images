@@ -1,9 +1,13 @@
 package ovh.aurumgg.core.paper;
 
+import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -12,9 +16,14 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.TransactionCategory;
+import ovh.aurumgg.core.api.TransactionRequest;
+import ovh.aurumgg.core.api.TransactionResult;
 
 final class AurumCommand implements CommandExecutor, TabCompleter {
     private final AurumCorePlugin plugin;
+    private final Map<UUID, Long> paymentCooldowns = new ConcurrentHashMap<>();
 
     AurumCommand(AurumCorePlugin plugin) {
         this.plugin = plugin;
@@ -24,6 +33,7 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
         args = normalized(command.getName(), args);
+        if (args.length > 0 && args[0].equalsIgnoreCase("pay")) return pay(sender, args);
         if (args.length == 0 || args[0].equalsIgnoreCase("status")) {
             if (!sender.hasPermission("aurum.admin")) return deny(sender);
             plugin.sendStatus(sender);
@@ -31,7 +41,16 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         }
         if (args[0].equalsIgnoreCase("treasury")) {
             if (!sender.hasPermission("aurum.admin")) return deny(sender);
-            sender.sendMessage(plugin.messages().component("treasury-unavailable"));
+            var snapshot = plugin.cachedGlobalSnapshot();
+            if (!snapshot.authoritative()) {
+                sender.sendMessage(plugin.messages().component("treasury-unavailable"));
+            } else {
+                sender.sendMessage(plugin.messages().component("treasury", Map.of(
+                        "balance", amount(snapshot.treasuryBalance()),
+                        "supply", amount(snapshot.moneySupply()),
+                        "taxes", amount(snapshot.taxesCollected()),
+                        "symbol", plugin.settings().currency().symbol())));
+            }
             return true;
         }
         if (args[0].equalsIgnoreCase("balance")) {
@@ -50,7 +69,7 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(plugin.messages().component("player-only"));
                 return true;
             }
-            var snapshot = plugin.economy().cachedBalance(AccountId.player(target.getUniqueId()));
+            var snapshot = plugin.cachedBalance(AccountId.player(target.getUniqueId()));
             if (snapshot.isEmpty()) {
                 sender.sendMessage(plugin.messages().component("balance-missing"));
             } else {
@@ -68,11 +87,165 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         }
         if (args[0].equalsIgnoreCase("economy") || args[0].equalsIgnoreCase("eco")) {
             if (!sender.hasPermission("aurum.admin.economy")) return deny(sender);
-            sender.sendMessage(plugin.messages().component("active-only"));
-            return true;
+            return economy(sender, args);
         }
         sender.sendMessage(plugin.messages().component("passive-only"));
         return true;
+    }
+
+    private boolean pay(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("aurum.pay")) return deny(sender);
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(plugin.messages().component("player-only"));
+            return true;
+        }
+        if (!plugin.activeReady()) return activeUnavailable(sender);
+        if (!plugin.settings().paymentsEnabled()) {
+            sender.sendMessage(plugin.messages().component("payments-disabled"));
+            return true;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(plugin.messages().component("pay-usage"));
+            return true;
+        }
+        OfflinePlayer target = target(args[1]);
+        if (target == null) {
+            sender.sendMessage(plugin.messages().component("player-unknown"));
+            return true;
+        }
+        if (target.getUniqueId().equals(player.getUniqueId())) {
+            sender.sendMessage(plugin.messages().component("pay-self"));
+            return true;
+        }
+        BigDecimal value = parseAmount(sender, args[2], false);
+        if (value == null) return true;
+        if (value.compareTo(plugin.settings().paymentMinimum()) < 0
+                || value.compareTo(plugin.settings().paymentMaximum()) > 0) {
+            sender.sendMessage(plugin.messages().component("pay-limits", Map.of(
+                    "minimum", amount(plugin.settings().paymentMinimum()),
+                    "maximum", amount(plugin.settings().paymentMaximum()))));
+            return true;
+        }
+        long now = System.currentTimeMillis();
+        if (paymentCooldowns.size() > 4_096) {
+            paymentCooldowns.entrySet().removeIf(entry -> entry.getValue() <= now);
+        }
+        long until = paymentCooldowns.getOrDefault(player.getUniqueId(), 0L);
+        if (until > now) {
+            long seconds = Math.max(1, (until - now + 999) / 1000);
+            sender.sendMessage(plugin.messages().component("pay-cooldown", Map.of("seconds", Long.toString(seconds))));
+            return true;
+        }
+        paymentCooldowns.put(player.getUniqueId(), now + plugin.settings().paymentCooldownSeconds() * 1000L);
+        String reason = reason(args, 3);
+        TransactionRequest request = new TransactionRequest(
+                "pay:" + UUID.randomUUID(),
+                AccountId.player(player.getUniqueId()),
+                AccountId.player(target.getUniqueId()),
+                plugin.settings().currency().id(), value, TransactionCategory.PLAYER_PAYMENT,
+                metadata(sender, reason)
+        );
+        plugin.activeEconomy().transfer(request).whenComplete((result, error) -> reply(() -> {
+            if (error != null || result.status() == TransactionResult.Status.UNAVAILABLE) {
+                sender.sendMessage(plugin.messages().component("money-unavailable"));
+            } else if (result.status() == TransactionResult.Status.REJECTED) {
+                sender.sendMessage(plugin.messages().component("insufficient-funds"));
+            } else {
+                sender.sendMessage(plugin.messages().component("pay-sent", Map.of(
+                        "player", displayName(target, args[1]), "amount", amount(value),
+                        "symbol", plugin.settings().currency().symbol())));
+                if (target.isOnline() && target.getPlayer() != null) {
+                    target.getPlayer().sendMessage(plugin.messages().component("pay-received", Map.of(
+                            "player", player.getName(), "amount", amount(result.netAmount()),
+                            "symbol", plugin.settings().currency().symbol())));
+                }
+            }
+        }));
+        return true;
+    }
+
+    private boolean economy(CommandSender sender, String[] args) {
+        if (!plugin.activeReady()) return activeUnavailable(sender);
+        if (args.length < 4 || !List.of("give", "take", "set").contains(args[1].toLowerCase())) {
+            sender.sendMessage(plugin.messages().component("economy-usage"));
+            return true;
+        }
+        OfflinePlayer target = target(args[2]);
+        if (target == null) {
+            sender.sendMessage(plugin.messages().component("player-unknown"));
+            return true;
+        }
+        String operation = args[1].toLowerCase();
+        BigDecimal value = parseAmount(sender, args[3], operation.equals("set"));
+        if (value == null) return true;
+        String key = "admin:" + operation + ":" + UUID.randomUUID();
+        String reason = reason(args, 4);
+        var future = operation.equals("set")
+                ? plugin.activeEconomy().setPlayerBalance(AccountId.player(target.getUniqueId()), value,
+                        key, metadata(sender, reason))
+                : plugin.activeEconomy().transfer(new TransactionRequest(
+                        key,
+                        operation.equals("give") ? system(AccountType.SYSTEM_SOURCE)
+                                : AccountId.player(target.getUniqueId()),
+                        operation.equals("give") ? AccountId.player(target.getUniqueId())
+                                : system(AccountType.SYSTEM_SINK),
+                        plugin.settings().currency().id(), value, TransactionCategory.ADMIN_ADJUSTMENT,
+                        metadata(sender, reason)));
+        future.whenComplete((result, error) -> reply(() -> {
+            if (error != null || result.status() == TransactionResult.Status.UNAVAILABLE) {
+                sender.sendMessage(plugin.messages().component("money-unavailable"));
+            } else if (result.status() == TransactionResult.Status.REJECTED) {
+                sender.sendMessage(plugin.messages().component("insufficient-funds"));
+            } else {
+                var balance = plugin.cachedBalance(AccountId.player(target.getUniqueId()))
+                        .map(it -> amount(it.balance())).orElse("0");
+                sender.sendMessage(plugin.messages().component("economy-success", Map.of(
+                        "operation", operation, "player", displayName(target, args[2]),
+                        "amount", amount(value), "balance", balance,
+                        "symbol", plugin.settings().currency().symbol())));
+            }
+        }));
+        return true;
+    }
+
+    private boolean activeUnavailable(CommandSender sender) {
+        sender.sendMessage(plugin.messages().component(plugin.activeMode()
+                ? "active-not-ready" : "active-only"));
+        return true;
+    }
+
+    private OfflinePlayer target(String name) {
+        Player online = Bukkit.getPlayerExact(name);
+        return online != null ? online : Bukkit.getServer().getOfflinePlayerIfCached(name);
+    }
+
+    private BigDecimal parseAmount(CommandSender sender, String raw, boolean allowZero) {
+        try {
+            BigDecimal value = plugin.settings().currency().requireAmount(new BigDecimal(raw));
+            if (value.signum() < 0 || (!allowZero && value.signum() == 0)) throw new IllegalArgumentException();
+            return value;
+        } catch (RuntimeException exception) {
+            sender.sendMessage(plugin.messages().component("invalid-amount", Map.of(
+                    "scale", Integer.toString(plugin.settings().currency().scale()))));
+            return null;
+        }
+    }
+
+    private static AccountId system(AccountType type) { return new AccountId(type, "global"); }
+    private static String reason(String[] args, int from) {
+        if (args.length <= from) return "unspecified";
+        String value = String.join(" ", Arrays.copyOfRange(args, from, args.length)).trim();
+        return value.length() <= 200 ? value : value.substring(0, 200);
+    }
+    private static Map<String, String> metadata(CommandSender sender, String reason) {
+        return Map.of("actor", sender.getName(), "reason", reason);
+    }
+    private static String displayName(OfflinePlayer player, String fallback) {
+        return player.getName() == null ? fallback : player.getName();
+    }
+    private static String amount(BigDecimal value) { return value.stripTrailingZeros().toPlainString(); }
+    private void reply(Runnable action) {
+        if (plugin.isEnabled()) Bukkit.getScheduler().runTask(plugin, action);
     }
 
     private boolean migrate(CommandSender sender, String[] args) {
@@ -137,6 +310,7 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             case "atreasury" -> "treasury";
             case "amigrate" -> "migrate";
             case "aeco" -> "economy";
+            case "pay", "apay" -> "pay";
             default -> null;
         };
         if (prefix == null) return args;
@@ -173,6 +347,15 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         if (values.length == 2 && values[0].equalsIgnoreCase("economy")) {
             return List.of("give", "take", "set").stream()
                     .filter(it -> it.startsWith(values[1].toLowerCase())).toList();
+        }
+        if (values.length == 2 && values[0].equalsIgnoreCase("pay")) {
+            return Bukkit.getOnlinePlayers().stream().map(Player::getName)
+                    .filter(it -> !it.equalsIgnoreCase(sender.getName()))
+                    .filter(it -> it.toLowerCase().startsWith(values[1].toLowerCase())).toList();
+        }
+        if (values.length == 3 && values[0].equalsIgnoreCase("economy")) {
+            return Bukkit.getOnlinePlayers().stream().map(Player::getName)
+                    .filter(it -> it.toLowerCase().startsWith(values[2].toLowerCase())).toList();
         }
         return List.of();
     }

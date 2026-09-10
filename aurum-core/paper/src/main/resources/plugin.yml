@@ -5,6 +5,7 @@ api-version: '26.2'
 description: Shared economy and service foundation for the Aurum ecosystem.
 author: Aurum
 softdepend: [Vault, VaultUnlocked, PlaceholderAPI]
+loadbefore: [Essentials, AddonsNPC, AurumSlots, AurumArena, AurumGuilds]
 
 commands:
   aurum:
@@ -19,10 +20,19 @@ commands:
     description: Short form of /aurum migrate
   aeco:
     description: Short form of /aurum economy
+  pay:
+    description: Safely transfer currency to another player
+    usage: /pay <player> <amount> [reason]
+  apay:
+    description: Conflict-free form of /pay
+    usage: /apay <player> <amount> [reason]
 
 permissions:
   aurum.balance:
     description: View own observed balance
+    default: true
+  aurum.pay:
+    description: Transfer own currency to another player
     default: true
   aurum.balance.others:
     description: View another online player's observed balance

@@ -14,6 +14,8 @@ public interface MigrationRepository {
 
     Optional<MigrationRunSummary> latest(CurrencySpec currency) throws SQLException;
 
+    Optional<MigrationRunSummary> latestVerified(CurrencySpec currency) throws SQLException;
+
     MigrationRunSummary refreshComparison(UUID runId, CurrencySpec currency) throws SQLException;
 
     List<StoredMigrationBalance> balances(UUID runId, CurrencySpec currency) throws SQLException;

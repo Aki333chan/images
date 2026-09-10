@@ -107,6 +107,21 @@ public final class MariaDbMigrationRepository implements MigrationRepository {
     }
 
     @Override
+    public Optional<MigrationRunSummary> latestVerified(CurrencySpec currency) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT * FROM aurum_migration_runs
+                     WHERE currency_id = ? AND status = 'VERIFIED'
+                     ORDER BY created_at DESC LIMIT 1
+                     """)) {
+            statement.setString(1, currency.id());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(readSummary(result, currency)) : Optional.empty();
+            }
+        }
+    }
+
+    @Override
     public MigrationRunSummary refreshComparison(UUID runId, CurrencySpec currency) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);

@@ -69,6 +69,8 @@ class TaxCalculatorTest {
     @Test
     void excessPrecisionIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> COINS.requireAmount(new BigDecimal("1.001")));
+        assertThrows(IllegalArgumentException.class,
+                () -> COINS.requireAmount(new BigDecimal("10000000000000000.00")));
     }
 
     @Test
