@@ -1,0 +1,29 @@
+package ovh.aurumgg.core.api;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Locale;
+import java.util.Objects;
+
+public record CurrencySpec(String id, String displayName, String symbol, int scale) {
+    public CurrencySpec {
+        id = Objects.requireNonNull(id, "id").trim().toLowerCase(Locale.ROOT);
+        displayName = Objects.requireNonNull(displayName, "displayName").trim();
+        symbol = Objects.requireNonNull(symbol, "symbol");
+        if (!id.matches("[a-z0-9][a-z0-9_-]{0,31}")) {
+            throw new IllegalArgumentException("Invalid currency id");
+        }
+        if (displayName.isEmpty() || scale < 0 || scale > 8) {
+            throw new IllegalArgumentException("Invalid currency specification");
+        }
+    }
+
+    public BigDecimal requireAmount(BigDecimal value) {
+        Objects.requireNonNull(value, "value");
+        try {
+            return value.setScale(scale, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException("Amount has more than " + scale + " decimal places", exception);
+        }
+    }
+}

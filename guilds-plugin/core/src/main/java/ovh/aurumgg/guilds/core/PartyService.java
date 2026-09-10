@@ -161,6 +161,18 @@ public final class PartyService {
         return maxMembers;
     }
 
+    public synchronized List<PartyView> allParties() {
+        return parties.values().stream().map(this::toView).toList();
+    }
+
+    /** Caller must enforce administrator permission. */
+    public synchronized GuildActionResult adminDisband(long id) {
+        Party party = parties.get(id);
+        if (party == null) return GuildActionResult.fail("party.err.gone");
+        for (UUID uuid : List.copyOf(party.members.keySet())) removeFrom(party, uuid);
+        return GuildActionResult.ok("party.admin.disbanded");
+    }
+
     /** Подключить словарь сервера. См. поле labels. */
     public void useLabels(HudLines.Labels labels) {
         this.labels = labels == null ? HudLines.RU : labels;

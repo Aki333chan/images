@@ -727,3 +727,22 @@ Citizens спавнит своих NPC настоящими сущностями
 
 Готовый `AurumGuilds-0.1.0.jar` кладётся в `plugins/`. Зависимости (HikariCP,
 драйвер MariaDB) уже внутри.
+# Release 0.3.0: social UI and guild switching
+
+AurumUI 0.5.0 + AurumCompanion 0.5.0 expose player/leader/admin social menus.
+The transport calls `aurumSocialSnapshot(Player, String)` and
+`aurumSocialAction(Player, String, String, Map)`; the latter returns a future.
+Database work never blocks the Minecraft payload handler. The provider checks
+authentication and current permissions before calling the same services as commands.
+
+Players may invite members of another guild. `/guild join [name]` first warns an
+existing member and requires repeating acceptance within 30 seconds for the same
+source and destination guild. UI acceptance shares this confirmation state.
+The move is a single conditional SQL UPDATE; UUID is already the primary key.
+On database failure membership and invitations remain unchanged. No schema migration
+is required. A leader must transfer leadership or disband before switching.
+
+The optional Fabric menu supports roster, settings, invitations, bank deposits,
+withdrawals according to rank, and party management. Administrators need both
+`aurumui.admin` and `aurumguilds.admin` for diagnostics, forced member/leader/disband
+operations and bonus management. Install by replacing the old JAR and restarting.

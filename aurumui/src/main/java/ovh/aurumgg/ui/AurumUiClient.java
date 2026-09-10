@@ -15,7 +15,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
 
 public final class AurumUiClient implements ClientModInitializer {
-    static final String VERSION = "0.4.0";
+    static final String VERSION = "0.5.0";
     private static final UiSettings SETTINGS = UiSettings.load();
     private static volatile List<UiPanel> panels = List.of();
     private static volatile long revision = -1;

@@ -55,6 +55,16 @@ public final class AurumGuildsPlugin extends JavaPlugin {
 
     private GuildService guilds;
     private PartyService parties;
+    private SocialUiProvider socialUi;
+
+    public List<Map<String, String>> aurumSocialSnapshot(Player player, String scope) {
+        return socialUi == null ? List.of() : socialUi.snapshot(player, scope);
+    }
+
+    public java.util.concurrent.CompletableFuture<String> aurumSocialAction(
+            Player player, String id, String action, Map<String, String> arguments) {
+        return socialUi.action(player, id, action, arguments);
+    }
     private SidebarKeeper sidebar;
     /** Мост к LuckPerms или null — нужен перезагрузке, чтобы обновить формат суффикса. */
     private LuckPermsBridge luckPermsBridge;
@@ -277,6 +287,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         guild.setTabCompleter(guildCommand);
 
         PartyCommand partyCommand = new PartyCommand(parties);
+        socialUi = new SocialUiProvider(this, guilds, parties);
         party.setExecutor(partyCommand);
         party.setTabCompleter(partyCommand);
 
@@ -403,6 +414,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
     }
 
     private void housekeeping() {
+        if (socialUi != null) socialUi.purge();
         guilds.purgeInvites();
         guilds.purgeExpiredBonuses();
         int removed = parties.purgeIdle(

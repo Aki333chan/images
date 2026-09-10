@@ -16,6 +16,7 @@ public final class UiWireProtocol {
     public static final int ADMIN_ARENA = 1;
     public static final int ADMIN_NPC = 1 << 1;
     public static final int ADMIN_SLOTS = 1 << 2;
+    public static final int SOCIAL = 1 << 3;
 
     private UiWireProtocol() {}
 
@@ -37,7 +38,7 @@ public final class UiWireProtocol {
             output.writeInt(MAGIC);
             output.writeShort(protocol);
             output.writeLong(revision);
-            if (protocol >= 2) output.writeByte(capabilities & 0x07);
+            if (protocol >= 2) output.writeByte(capabilities & 0x0F);
             output.writeByte(Math.min(32, panels.size()));
             for (UiPanel panel : panels.stream().limit(32).toList()) {
                 output.writeUTF(panel.id());

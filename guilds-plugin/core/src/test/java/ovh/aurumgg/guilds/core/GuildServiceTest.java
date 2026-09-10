@@ -67,6 +67,63 @@ class GuildServiceTest {
 
     // ------------------------------------------------------------ создание
 
+    private void prepareSwitch() {
+        service.create(LEADER, "First", "ONE").join();
+        service.invite(LEADER, MEMBER).join();
+        assertTrue(service.join(MEMBER, null).join().ok());
+        service.create(STRANGER, "Second", "TWO").join();
+        assertTrue(service.invite(STRANGER, MEMBER).join().ok());
+    }
+
+    @Test void switchingRequiresSecondAcceptanceAndPersistsSingleMembership() throws Exception {
+        prepareSwitch();
+        assertEquals("guild.join.confirmSwitch", service.join(MEMBER, "Second").join().messageKey());
+        assertEquals("First", service.guildOf(MEMBER).orElseThrow().name());
+        assertTrue(service.join(MEMBER, "Second").join().ok());
+        assertEquals("Second", service.guildOf(MEMBER).orElseThrow().name());
+        assertEquals(1, service.allGuilds().stream().flatMap(g -> g.members().stream()).filter(m -> m.uuid().equals(MEMBER)).count());
+        assertEquals(1, repository.loadAll().stream().flatMap(g -> g.members().stream()).filter(m -> m.uuid().equals(MEMBER)).count());
+        assertFalse(service.byName("First").orElseThrow().members().stream().anyMatch(m -> m.uuid().equals(MEMBER)));
+    }
+
+    @Test void expiredConfirmationMustWarnAgain() {
+        prepareSwitch();
+        assertFalse(service.join(MEMBER, null).join().ok());
+        now.set(now.get().plusSeconds(31));
+        assertEquals("guild.join.confirmSwitch", service.join(MEMBER, null).join().messageKey());
+        assertEquals("First", service.guildOf(MEMBER).orElseThrow().name());
+    }
+
+    @Test void failedDatabaseMoveKeepsOldMembershipAndInvite() {
+        prepareSwitch();
+        service.join(MEMBER, null).join();
+        repository.failMove = true;
+        assertEquals("guild.err.internal", service.join(MEMBER, null).join().messageKey());
+        assertEquals("First", service.guildOf(MEMBER).orElseThrow().name());
+        assertEquals(1, service.pendingGuilds(MEMBER).size());
+        repository.failMove = false;
+        assertEquals("guild.join.confirmSwitch", service.join(MEMBER, null).join().messageKey());
+        assertTrue(service.join(MEMBER, null).join().ok());
+    }
+
+    @Test void confirmationCannotBeReusedForAnotherGuild() {
+        prepareSwitch();
+        service.join(MEMBER, "Second").join();
+        service.create(OFFICER, "Third", "THR").join();
+        service.invite(OFFICER, MEMBER).join();
+        assertEquals("guild.join.confirmSwitch", service.join(MEMBER, "Third").join().messageKey());
+        assertEquals("First", service.guildOf(MEMBER).orElseThrow().name());
+    }
+
+    @Test void concurrentAcceptanceNeverDuplicatesMembership() {
+        prepareSwitch();
+        service.join(MEMBER, "Second").join();
+        var first = service.join(MEMBER, "Second");
+        var second = service.join(MEMBER, "Second");
+        assertTrue(first.join().ok() ^ second.join().ok());
+        assertEquals(1, service.allGuilds().stream().flatMap(g -> g.members().stream()).filter(m -> m.uuid().equals(MEMBER)).count());
+    }
+
     @Test
     @DisplayName("Гильдия создаётся сразу с тегом и лидером")
     void создание() {

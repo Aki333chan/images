@@ -32,6 +32,16 @@ final class FakeGuildRepository implements GuildRepository {
     final List<GuildRegion> regions = new ArrayList<>();
     /** Сколько раз просили записать что-либо — чтобы отличить «не сохранилось». */
     int writes;
+    boolean failMove;
+
+    @Override
+    public void moveMember(long from, long to, UUID uuid, String username, Instant joinedAt) {
+        if (failMove) throw new IllegalStateException("Simulated database failure");
+        if (!guilds.containsKey(to) || guilds.get(from).members().stream().noneMatch(m -> m.uuid().equals(uuid)))
+            throw new IllegalStateException("Invalid membership transfer");
+        removeMember(from, uuid);
+        addMember(to, uuid, username, GuildRank.MEMBER, joinedAt);
+    }
 
     @Override
     public void initSchema() {}

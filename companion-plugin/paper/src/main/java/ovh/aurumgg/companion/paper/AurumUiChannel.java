@@ -43,6 +43,8 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
     private final Set<UUID> enhanced = new HashSet<>();
     private final Map<UUID, Integer> protocols = new HashMap<>();
     private final Map<UUID, byte[]> lastPayload = new HashMap<>();
+    private final Set<UUID> pendingRequests = new HashSet<>();
+    private final Map<UUID, Long> requestTimes = new HashMap<>();
     private final int maxPayloadBytes;
     private final List<String> panelKeys;
     private long revision;
@@ -73,6 +75,8 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
         enhanced.clear();
         protocols.clear();
         lastPayload.clear();
+        pendingRequests.clear();
+        requestTimes.clear();
         plugin.getServer().getMessenger().unregisterIncomingPluginChannel(plugin);
         plugin.getServer().getMessenger().unregisterOutgoingPluginChannel(plugin);
     }
@@ -81,6 +85,8 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
         enhanced.remove(player);
         protocols.remove(player);
         lastPayload.remove(player);
+        pendingRequests.remove(player);
+        requestTimes.remove(player);
     }
 
     @Override
@@ -144,6 +150,11 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
 
     private void handleAdminRequest(Player player, byte[] message) {
         if (protocols.getOrDefault(player.getUniqueId(), 0) < 3 || !enhanced.contains(player.getUniqueId())) return;
+        if (!authenticated(player) || player.hasMetadata("NPC")) return;
+        UUID uuid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        if (pendingRequests.contains(uuid) || now - requestTimes.getOrDefault(uuid, 0L) < 200) return;
+        requestTimes.put(uuid, now);
         try {
             UiWireProtocol.AdminRequest request = UiWireProtocol.adminRequest(message);
             Provider provider = provider(player, request.scope());
@@ -152,9 +163,29 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
                 return;
             }
             boolean action = !request.action().isEmpty();
-            String result = action
+            Object rawResult = action
                     ? provider.action(player, request.id(), request.action(), request.arguments())
                     : "";
+            if (rawResult instanceof java.util.concurrent.CompletionStage<?> future) {
+                pendingRequests.add(uuid);
+                future.whenComplete((result, failure) -> {
+                    if (!plugin.isEnabled()) return;
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        pendingRequests.remove(uuid);
+                        if (!player.isOnline() || plugin.getServer().getPlayer(uuid) != player || !authenticated(player)) return;
+                        try {
+                            Provider current = provider(player, request.scope());
+                            String text = failure == null ? String.valueOf(result) : "error.internal";
+                            sendAdminState(player, request.scope(), failure == null && !text.startsWith("error."), text,
+                                    current == null ? List.of() : current.snapshot(player, request.scope()));
+                        } catch (ReflectiveOperationException | IOException error) {
+                            plugin.getLogger().log(Level.WARNING, "Could not refresh social UI", error);
+                        }
+                    });
+                });
+                return;
+            }
+            String result = String.valueOf(rawResult);
             List<Map<String, String>> objects = provider.snapshot(player, request.scope());
             sendAdminState(player, request.scope(), !result.startsWith("error."), result, objects);
         } catch (IOException | ReflectiveOperationException | RuntimeException error) {
@@ -170,6 +201,12 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
     }
 
     private Provider provider(Player player, String scope) throws ReflectiveOperationException {
+        if (scope.matches("(?:guild|party)(?:-(?:members|players|details|bonuses):[0-9]+)?(?:@[0-9]{1,6})?")) {
+            Plugin target = plugin.getServer().getPluginManager().getPlugin("AurumGuilds");
+            if (target == null || !target.isEnabled() || !authenticated(player)) return null;
+            return new Provider(target, target.getClass().getMethod("aurumSocialSnapshot", Player.class, String.class),
+                    target.getClass().getMethod("aurumSocialAction", Player.class, String.class, String.class, Map.class));
+        }
         String pluginName;
         String permission;
         if (scope.equals("arena")) {
@@ -219,16 +256,20 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
             return List.copyOf(result);
         }
 
-        String action(Player player, String id, String action, Map<String, String> arguments)
+        Object action(Player player, String id, String action, Map<String, String> arguments)
                 throws InvocationTargetException, IllegalAccessException {
             Object raw = actionMethod.invoke(plugin, player, id, action, arguments);
-            return raw == null ? "" : String.valueOf(raw);
+            return raw == null ? "" : raw;
         }
     }
 
     private int capabilities(Player player) {
-        if (!player.hasPermission("aurumui.admin")) return 0;
         int result = 0;
+        if (authenticated(player)) {
+            try { if (provider(player, "guild") != null) result |= UiWireProtocol.SOCIAL; }
+            catch (ReflectiveOperationException ignored) { }
+        }
+        if (!player.hasPermission("aurumui.admin")) return result;
         if (hasAdminProvider("AurumArena") && player.hasPermission("arena.admin")) {
             result |= UiWireProtocol.ADMIN_ARENA;
         }
@@ -239,6 +280,12 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
             result |= UiWireProtocol.ADMIN_SLOTS;
         }
         return result;
+    }
+
+    private boolean authenticated(Player player) {
+        Plugin auth = plugin.getServer().getPluginManager().getPlugin("AurumAuth");
+        if (auth == null) return true;
+        return auth.isEnabled() && AuthIntegration.provider().map(api -> api.isAuthenticated(player.getUniqueId())).orElse(false);
     }
 
     private boolean hasAdminProvider(String name) {

@@ -16,6 +16,7 @@ final class WireProtocol {
     static final int ADMIN_ARENA = 1;
     static final int ADMIN_NPC = 1 << 1;
     static final int ADMIN_SLOTS = 1 << 2;
+    static final int SOCIAL = 1 << 3;
 
     private WireProtocol() {}
 

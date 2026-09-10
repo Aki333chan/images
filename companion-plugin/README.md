@@ -1,5 +1,16 @@
 # Aurum Companion
 
+## Release 0.5.0
+
+Includes upstream `cdebb2c` (offline-player EssentialsX jail status) and optional
+social menus for AurumUI 0.5.0 / AurumGuilds 0.3.0. Protocol 3 gains a SOCIAL
+capability bit; older clients safely ignore it. Social scopes use a separate
+player-authorized provider and never inherit administrator privileges from the
+transport. Async guild results are awaited off the server thread and refreshed
+on the server thread. Requests require login when AurumAuth is installed,
+are rate-limited, and allow only one outstanding mutation per player.
+
+
 Плагин-компаньон для Paper. Даёт панели то, чего нельзя получить через RCON:
 инвентари игроков, их UUID и пинг, команду `/ticket` в игре, а также
 интеграцию со сторонними плагинами сервера.

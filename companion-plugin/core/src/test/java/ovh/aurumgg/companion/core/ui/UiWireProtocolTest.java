@@ -10,6 +10,11 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class UiWireProtocolTest {
+    @Test void socialCapabilitySurvivesEncodingWithoutAdminRights() throws Exception {
+        byte[] result = UiWireProtocol.state(3, 1, UiWireProtocol.SOCIAL, List.of());
+        assertEquals(UiWireProtocol.SOCIAL, result[14] & 0xff);
+        assertEquals(0, result[14] & 0x07);
+    }
     @Test
     void recognizesCompatibleProtocolHello() throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();

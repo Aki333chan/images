@@ -1,0 +1,25 @@
+package ovh.aurumgg.core.api;
+
+public enum TransactionCategory {
+    TRANSFER,
+    PLAYER_PAYMENT,
+    NPC_PURCHASE,
+    NPC_SALE,
+    GUILD_DEPOSIT,
+    GUILD_WITHDRAWAL,
+    ARENA_BET,
+    ARENA_PAYOUT,
+    SLOT_BET,
+    SLOT_PAYOUT,
+    TAX,
+    FEE,
+    COMMISSION,
+    CASHBACK,
+    TRADE_HOLD,
+    TRADE_SETTLEMENT,
+    REFUND,
+    PROCUREMENT,
+    SUBSIDY,
+    ADMIN_ADJUSTMENT,
+    MIGRATION
+}

@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -17,6 +18,7 @@ final class AurumFormScreen extends Screen {
     private final List<Field> fields;
     private final Consumer<Map<String, String>> save;
     private final Map<String, EditBox> inputs = new LinkedHashMap<>();
+    private final Map<String, String> choices = new LinkedHashMap<>();
 
     AurumFormScreen(Screen parent, Component title, List<Field> fields, Consumer<Map<String, String>> save) {
         super(title); this.parent = parent; this.fields = fields; this.save = save;
@@ -24,6 +26,7 @@ final class AurumFormScreen extends Screen {
 
     @Override protected void init() {
         inputs.clear();
+        choices.clear();
         int columns = columns();
         int rows = (fields.size() + columns - 1) / columns;
         int formWidth = Math.min(columns == 2 ? 420 : 320, width - 20);
@@ -34,6 +37,21 @@ final class AurumFormScreen extends Screen {
             Field field = fields.get(index);
             int column = index % columns;
             int row = index / columns;
+            List<String> options = switch (field.name) {
+                case "friendlyFire" -> List.of("false", "true");
+                case "joinPolicy" -> List.of("OPEN", "INVITE", "CLOSED");
+                case "bankAccess" -> List.of("LEADER_ONLY", "LEADER_AND_OFFICERS");
+                default -> List.of();
+            };
+            if (!options.isEmpty()) {
+                String selected = options.contains(field.value) ? field.value : options.getFirst();
+                choices.put(field.name, selected);
+                addRenderableWidget(CycleButton.builder(value -> Component.translatable("screen.aurumui.social.option." + value), selected)
+                        .withValues(options).displayOnlyValue()
+                        .create(x + column * (fieldWidth + 6), top + row * 30 + 10, fieldWidth, 20,
+                                Component.translatable(field.translation), (button, value) -> choices.put(field.name, value)));
+                continue;
+            }
             EditBox input = new EditBox(font, x + column * (fieldWidth + 6), top + row * 30 + 10, fieldWidth, 20,
                     Component.translatable(field.translation));
             input.setMaxLength(field.maxLength);
@@ -46,6 +64,7 @@ final class AurumFormScreen extends Screen {
                 .bounds(x, buttonsY, (formWidth - 6) / 2, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("screen.aurumui.action.save"), ignored -> {
             Map<String, String> values = new LinkedHashMap<>();
+            values.putAll(choices);
             inputs.forEach((name, input) -> values.put(name, input.getValue().trim()));
             minecraft.gui.setScreen(parent);
             save.accept(Map.copyOf(values));

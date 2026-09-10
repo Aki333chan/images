@@ -1,0 +1,49 @@
+# English is the safe fallback. Supported: en, ru, pl.
+language: en
+
+economy:
+  # Version 0.2.0 intentionally supports passive only. It observes the current
+  # Vault provider and never changes balances or registers as Economy provider.
+  mode: passive
+  currency:
+    id: coins
+    display-name: Coins
+    symbol: "$"
+    # Allowed digits after the decimal point, 0..8.
+    scale: 2
+
+passive:
+  # Refresh cached online balances for commands, TAB and other placeholders.
+  refresh-ticks: 100
+
+database:
+  # Safe default for the first install. Enable after filling the connection.
+  # In passive mode this only creates the versioned empty ledger schema.
+  enabled: false
+  jdbc-url: "jdbc:mariadb://127.0.0.1:3306/aurum_core"
+  username: "aurum"
+  password: "change-me"
+  pool-size: 3
+
+treasury:
+  account-id: global
+
+financial-policies:
+  # Reserved for the active ledger release. No rule is executed in 0.1.0.
+  enabled: false
+  # Active rules will be versioned in MariaDB. YAML supplies defaults and hard
+  # limits; commands and UI will use the same validation and audit path.
+
+payments:
+  enabled: false
+  minimum: "0.01"
+  maximum: "1000000.00"
+  cooldown-seconds: 2
+
+trading:
+  enabled: false
+  invite-timeout-seconds: 30
+  session-timeout-seconds: 300
+  require-final-confirmation: true
+  # Items that cannot be delivered stay claimable; they are never dropped.
+  claim-expire-days: 30
