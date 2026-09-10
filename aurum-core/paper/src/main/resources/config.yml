@@ -2,7 +2,7 @@
 language: en
 
 economy:
-  # Version 0.1.0 intentionally supports passive only. It observes the current
+  # Version 0.2.0 intentionally supports passive only. It observes the current
   # Vault provider and never changes balances or registers as Economy provider.
   mode: passive
   currency:

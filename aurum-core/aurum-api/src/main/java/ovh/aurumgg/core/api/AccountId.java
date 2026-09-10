@@ -11,6 +11,9 @@ public record AccountId(AccountType type, String reference) {
         if (reference.isEmpty() || reference.length() > 128) {
             throw new IllegalArgumentException("Account reference must contain 1..128 characters");
         }
+        if (reference.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("Account reference cannot contain control characters");
+        }
     }
 
     public static AccountId player(UUID playerId) {

@@ -71,6 +71,18 @@ class TaxCalculatorTest {
         assertThrows(IllegalArgumentException.class, () -> COINS.requireAmount(new BigDecimal("1.001")));
     }
 
+    @Test
+    void hundredPercentIncludedTaxProducesNoZeroPosting() {
+        TaxRule rule = new TaxRule("all-tax", Set.of(TransactionCategory.NPC_PURCHASE), BigDecimal.ONE,
+                TaxMode.INCLUDED, AccountId.globalTreasury(), 100, true);
+        TransactionRequest request = new TransactionRequest(
+                "npc:purchase:all-tax", PLAYER, SHOP, "coins", new BigDecimal("100.00"),
+                TransactionCategory.NPC_PURCHASE, Map.of());
+        TransactionPlan plan = TransactionPlanner.plan(request, COINS, Optional.of(rule));
+        assertEquals(2, plan.postings().size());
+        assertEquals(new BigDecimal("0.00"), plan.targetCredit());
+    }
+
     private static TaxRule rule(TaxMode mode) {
         return new TaxRule("sales", Set.of(TransactionCategory.NPC_PURCHASE), new BigDecimal("0.10"),
                 mode, AccountId.globalTreasury(), 100, true);

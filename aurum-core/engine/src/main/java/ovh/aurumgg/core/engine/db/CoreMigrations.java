@@ -142,7 +142,32 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
-        return List.of(new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox", checksum(statements), statements));
+        List<String> shadowAndPolicyLinks = List.of(
+                """
+                ALTER TABLE aurum_transactions
+                    ADD COLUMN IF NOT EXISTS policy_rule_ids_json JSON NULL AFTER tax_rule_id
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_shadow_balances (
+                    player_uuid CHAR(36) NOT NULL,
+                    currency_id VARCHAR(32) NOT NULL,
+                    external_balance DECIMAL(24,8) NOT NULL,
+                    internal_balance DECIMAL(24,8) NULL,
+                    difference_amount DECIMAL(24,8) NULL,
+                    provider_name VARCHAR(64) NOT NULL,
+                    observed_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    PRIMARY KEY (player_uuid, currency_id),
+                    KEY ix_aurum_shadow_difference (difference_amount),
+                    CONSTRAINT fk_aurum_shadow_currency FOREIGN KEY (currency_id) REFERENCES aurum_currencies(id)
+                ) ENGINE=InnoDB
+                """
+        );
+        return List.of(
+                new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
+                        checksum(statements), statements),
+                new SchemaMigration(2, "shadow balance observations and generalized policy links",
+                        checksum(shadowAndPolicyLinks), shadowAndPolicyLinks)
+        );
     }
 
     private static String checksum(List<String> statements) {

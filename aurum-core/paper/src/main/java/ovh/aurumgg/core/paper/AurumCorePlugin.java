@@ -42,7 +42,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         }
         messages = new LanguageBundle(this, settings.language());
         if (!settings.configuredMode().equals("passive")) {
-            getLogger().severe("AurumCore 0.1.0 supports only economy.mode=passive. No economy provider was registered.");
+            getLogger().severe("AurumCore " + getPluginMeta().getVersion()
+                    + " supports only economy.mode=passive. No economy provider was registered.");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }

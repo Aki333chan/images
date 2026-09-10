@@ -10,6 +10,7 @@ public record TransactionPlan(
         BigDecimal sourceDebit,
         BigDecimal targetCredit,
         BigDecimal taxCredit,
+        String appliedRuleId,
         List<LedgerPosting> postings
 ) {
     public TransactionPlan {

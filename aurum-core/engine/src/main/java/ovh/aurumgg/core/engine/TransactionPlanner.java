@@ -42,6 +42,7 @@ public final class TransactionPlanner {
                 breakdown.sourceDebit(),
                 breakdown.targetCredit(),
                 breakdown.treasuryCredit(),
+                rule == null ? null : rule.id(),
                 postings
         );
     }

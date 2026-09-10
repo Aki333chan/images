@@ -4,6 +4,8 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Clock;
+import ovh.aurumgg.core.engine.LedgerRepository;
 
 public final class MariaDbManager implements AutoCloseable {
     private final HikariDataSource dataSource;
@@ -31,6 +33,10 @@ public final class MariaDbManager implements AutoCloseable {
         } catch (SQLException exception) {
             return false;
         }
+    }
+
+    public LedgerRepository ledgerRepository(Clock clock) {
+        return new MariaDbLedgerRepository(dataSource, clock);
     }
 
     @Override

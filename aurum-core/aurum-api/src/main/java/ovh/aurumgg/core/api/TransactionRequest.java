@@ -27,5 +27,10 @@ public record TransactionRequest(
         if (from.equals(to) || amount.signum() <= 0) {
             throw new IllegalArgumentException("Transaction needs different accounts and positive amount");
         }
+        if (metadata.size() > 32 || metadata.entrySet().stream().anyMatch(entry ->
+                entry.getKey().isBlank() || entry.getKey().length() > 64 || entry.getValue().length() > 512
+                        || entry.getKey().chars().anyMatch(Character::isISOControl))) {
+            throw new IllegalArgumentException("Transaction metadata exceeds its safe limits");
+        }
     }
 }

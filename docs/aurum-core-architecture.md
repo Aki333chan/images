@@ -79,7 +79,8 @@ Vault остаётся синхронной границей совместим�
 ## Переводы и гарантированный обмен
 
 `/pay` является обычной журналируемой транзакцией PLAYER_PAYMENT. Команды
-администратора give/take/set используют ADMIN_ADJUSTMENT; set рассчитывает
+администратора `/aurum economy give|take|set` (или `/aurum eco ...`) используют
+ADMIN_ADJUSTMENT; set рассчитывает
 разницу и делает проводку через системный source/sink, а не переписывает баланс.
 Команды имеют отдельные права, лимиты, аудит и обязательную причину для действий
 над чужим счётом.
@@ -101,8 +102,8 @@ Core один раз проводит деньги, а сервер достав
 
 План команд активного режима:
 
-- `/money [player]` и `/pay <player> <amount>`;
-- `/aurum money give|take|set <player> <amount> <reason>`;
+- `/aurum balance [player]` и `/pay <player> <amount>`;
+- `/aurum economy give|take|set <player> <amount> <reason>`;
 - `/aurum treasury balance|deposit|withdraw|history`;
 - `/aurum policy list|create|enable|disable|inspect`;
 - `/trade <player>`, `/trade accept|cancel` и GUI одной сделки;
