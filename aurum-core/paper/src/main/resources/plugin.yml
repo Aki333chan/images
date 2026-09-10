@@ -1,0 +1,23 @@
+name: AurumCore
+version: '${version}'
+main: ovh.aurumgg.core.paper.AurumCorePlugin
+api-version: '26.2'
+description: Shared economy and service foundation for the Aurum ecosystem.
+author: Aurum
+softdepend: [Vault, VaultUnlocked, PlaceholderAPI]
+
+commands:
+  aurum:
+    description: AurumCore balance and diagnostics
+    usage: /aurum <balance|status|treasury>
+
+permissions:
+  aurum.balance:
+    description: View own observed balance
+    default: true
+  aurum.balance.others:
+    description: View another online player's observed balance
+    default: op
+  aurum.admin:
+    description: View AurumCore diagnostics and treasury state
+    default: op

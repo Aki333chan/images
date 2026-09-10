@@ -1,0 +1,41 @@
+package ovh.aurumgg.core.paper;
+
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.java.JavaPlugin;
+
+final class LanguageBundle {
+    static final List<String> REQUIRED_KEYS = List.of(
+            "prefix", "passive-only", "no-permission", "player-only", "player-not-online",
+            "balance-missing", "balance", "treasury-unavailable", "status-header", "status-line"
+    );
+
+    private final YamlConfiguration messages;
+
+    LanguageBundle(JavaPlugin plugin, String language) {
+        for (String locale : List.of("en", "ru", "pl")) {
+            String resource = "lang/messages_" + locale + ".yml";
+            if (!new File(plugin.getDataFolder(), resource).isFile()) plugin.saveResource(resource, false);
+        }
+        File selected = new File(plugin.getDataFolder(), "lang/messages_" + language + ".yml");
+        if (!selected.isFile()) selected = new File(plugin.getDataFolder(), "lang/messages_en.yml");
+        messages = YamlConfiguration.loadConfiguration(selected);
+    }
+
+    Component component(String key, Map<String, String> replacements) {
+        String value = messages.getString(key, "&cMissing language key: " + key);
+        value = messages.getString("prefix", "") + value;
+        for (Map.Entry<String, String> entry : replacements.entrySet()) {
+            value = value.replace("%" + entry.getKey() + "%", entry.getValue());
+        }
+        return LegacyComponentSerializer.legacyAmpersand().deserialize(value);
+    }
+
+    Component component(String key) {
+        return component(key, Map.of());
+    }
+}
