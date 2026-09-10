@@ -1064,6 +1064,35 @@ class CompanionHttpServerTest {
     @DisplayName("Тюрьмы закрыты токеном, как и всё остальное")
     void jailsNeedToken() throws Exception {
         assertEquals(401, get("/jails", null).statusCode());
+        assertEquals(401, get("/players/Steve/jail", null).statusCode());
+    }
+
+    @Test
+    @DisplayName("Состояние по нику отвечает и про того, кого нет в сети")
+    void playerJailOffline() throws Exception {
+        // Ради этого маршрут и заведён: в /jails офлайн-игрока нет и быть не
+        // может, а посадить и выпустить его панель обязана уметь.
+        bridge.jailStates.put(
+                "Notch",
+                new ovh.aurumgg.companion.core.model.PlayerJailState(
+                        true, true, "main", 1_800_000_000_000L, false));
+
+        Map<String, Object> body = JsonParser.parseObject(get("/players/Notch/jail", TOKEN).body());
+        assertEquals(true, body.get("known"));
+        assertEquals(true, body.get("jailed"));
+        assertEquals("main", body.get("jail"));
+        assertEquals(1.8E12, body.get("releaseAt"));
+        assertEquals(false, body.get("online"));
+    }
+
+    @Test
+    @DisplayName("Незнакомый ник — known:false, а не «не сидит»")
+    void playerJailUnknown() throws Exception {
+        // Различать обязательно: «не сидит» означает «можно сажать», а
+        // «не знаю» — что команда всё равно не сработает.
+        Map<String, Object> body = JsonParser.parseObject(get("/players/Ghost/jail", TOKEN).body());
+        assertEquals(false, body.get("known"));
+        assertEquals(false, body.get("jailed"));
     }
 
     @Test

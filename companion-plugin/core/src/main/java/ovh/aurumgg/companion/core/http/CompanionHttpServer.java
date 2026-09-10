@@ -61,6 +61,7 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  *   POST /players/{uuid}/balance/withdraw
  *   GET  /economy?top=...
  *   GET  /jails
+ *   GET  /players/{ник}/jail
  *   POST /webtoken/{code}
  *   POST /auth/reset/{name}
  */
@@ -423,6 +424,23 @@ public final class CompanionHttpServer {
         // бы завести вторую, слегка другую тюрьму рядом с настоящей.
         if (parts.length == 1 && parts[0].equals("jails") && method.equals("GET")) {
             respond(exchange, 200, PayloadWriter.jails(bridge.jails()));
+            return;
+        }
+
+        // GET /players/{ник}/jail — сидит ли ОДИН игрок, включая офлайн.
+        //
+        // Адресация по НИКУ, а не по UUID, — намеренно. Сажает панель по нику
+        // (команда togglejail принимает его же), и офлайн-игрока может не
+        // оказаться ни в одном списке, откуда UUID берётся. Лишний перевод
+        // ника в UUID и обратно только добавил бы способов промахнуться.
+        //
+        // Это ЕДИНСТВЕННЫЙ способ узнать состояние офлайн-игрока: /jails
+        // перечисляет только тех, кто в сети, и иначе не может — см. JailsInfo.
+        if (parts.length == 3
+                && parts[0].equals("players")
+                && parts[2].equals("jail")
+                && method.equals("GET")) {
+            respond(exchange, 200, PayloadWriter.playerJail(bridge.playerJail(decode(parts[1]))));
             return;
         }
 

@@ -16,6 +16,7 @@ import ovh.aurumgg.companion.core.model.InventorySelection;
 import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemSpec;
 import ovh.aurumgg.companion.core.model.JailsInfo;
+import ovh.aurumgg.companion.core.model.PlayerJailState;
 import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PermissionChange;
@@ -293,4 +294,17 @@ public interface GameBridge {
      * тюрьму рядом с настоящей.
      */
     JailsInfo jails();
+
+    /**
+     * Сидит ли этот игрок — по нику, включая тех, кого сейчас нет в сети.
+     *
+     * Дополняет {@link #jails()} ровно там, где тот принципиально бессилен:
+     * список сидящих собирается по игрокам в сети, а посадить и выпустить
+     * панель должна уметь и офлайн-игрока — EssentialsX это позволяет и
+     * телепортирует его в тюрьму при следующем входе.
+     *
+     * Один вызов — одно чтение файла игрока. Звать на каждого подряд нельзя,
+     * звать по одному на действие — можно и нужно.
+     */
+    PlayerJailState playerJail(String name);
 }

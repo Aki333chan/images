@@ -373,60 +373,63 @@ function PlayerActions({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>{t('mc.pd.state')}</Label>
-        <div className="flex flex-wrap gap-2">
-          {/* Вылечить можно только того, кто в игре: у вышедшего здоровья
-              нет — оно лежит в его файле и восстановится само при входе.
-              Кнопка над записью из истории лишь предлагала бы команду,
-              которая ответит «игрок не найден». */}
-          {online && (
-            <ActionButton
-              label={t('mc.pd.heal')}
-              hint={t('mc.pd.healHint')}
-              requirement="Essentials"
-              available={has('Essentials')}
-              disabled={busy || !canAct}
-              onClick={() => void runQuick('ess-heal', { player: name })}
-            />
-          )}
-          <ActionButton
-            label={t('mc.pd.kill')}
-            hint={t('mc.pd.killHint')}
-            requirement={null}
-            available
-            variant="destructive"
-            disabled={busy || !canAct}
-            onClick={() => {
-              if (!confirm(t('mc.pd.killConfirm', { name }))) return;
-              void runQuick('vanilla-kill', { player: name });
-            }}
-          />
-        </div>
-      </div>
+      {/* Лечение, «Убить» и телепорт работают только по игроку в игре: все три
+          команды адресуют его через селектор сервера, а у вышедшего ни
+          здоровья, ни координат нет — они лежат в его файле. Над записью из
+          истории эти кнопки лишь предлагали бы команду, которая ответит
+          «игрок не найден». */}
+      {online && (
+        <>
+          <div className="space-y-2">
+            <Label>{t('mc.pd.state')}</Label>
+            <div className="flex flex-wrap gap-2">
+              <ActionButton
+                label={t('mc.pd.heal')}
+                hint={t('mc.pd.healHint')}
+                requirement="Essentials"
+                available={has('Essentials')}
+                disabled={busy || !canAct}
+                onClick={() => void runQuick('ess-heal', { player: name })}
+              />
+              <ActionButton
+                label={t('mc.pd.kill')}
+                hint={t('mc.pd.killHint')}
+                requirement={null}
+                available
+                variant="destructive"
+                disabled={busy || !canAct}
+                onClick={() => {
+                  if (!confirm(t('mc.pd.killConfirm', { name }))) return;
+                  void runQuick('vanilla-kill', { player: name });
+                }}
+              />
+            </div>
+          </div>
 
-      <div className="space-y-2">
-        <Label>{t('mc.pd.teleport')}</Label>
-        <div className="flex flex-wrap items-center gap-2">
-          <PlayerPicker
-            value={target}
-            onChange={setTarget}
-            players={teleportTargets}
-            placeholder={t('mc.pd.teleportTo')}
-            // На телефоне поле занимает строку целиком, на десктопе —
-            // прежняя узкая колонка рядом с кнопкой.
-            className="min-w-0 flex-1 sm:w-[220px] sm:flex-none"
-          />
-          <ActionButton
-            label={t('mc.pd.move')}
-            hint={t('mc.pd.moveHint')}
-            requirement={null}
-            available
-            disabled={busy || !canAct || !target.trim()}
-            onClick={() => void runQuick('vanilla-tp', { player: name, target: target.trim() })}
-          />
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label>{t('mc.pd.teleport')}</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <PlayerPicker
+                value={target}
+                onChange={setTarget}
+                players={teleportTargets}
+                placeholder={t('mc.pd.teleportTo')}
+                // На телефоне поле занимает строку целиком, на десктопе —
+                // прежняя узкая колонка рядом с кнопкой.
+                className="min-w-0 flex-1 sm:w-[220px] sm:flex-none"
+              />
+              <ActionButton
+                label={t('mc.pd.move')}
+                hint={t('mc.pd.moveHint')}
+                requirement={null}
+                available
+                disabled={busy || !canAct || !target.trim()}
+                onClick={() => void runQuick('vanilla-tp', { player: name, target: target.trim() })}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="space-y-2">
         <Label>{t('mc.pd.punish')}</Label>

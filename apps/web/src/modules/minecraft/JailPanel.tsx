@@ -248,6 +248,11 @@ function JailForm({
           players={onlinePlayers}
           placeholder={t('mc.jail.playerHint')}
           autoFocus
+          // Офлайн-игрок здесь не ошибка, а рабочий случай: EssentialsX
+          // запомнит наказание и телепортирует человека в тюрьму при
+          // следующем входе. Общее предупреждение «такого нет в сети» тут
+          // сбивало бы с толку.
+          notOnlineKey="mc.jail.offlineOk"
         />
       </div>
 

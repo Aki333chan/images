@@ -17,6 +17,7 @@ import ovh.aurumgg.companion.core.model.IpRecordInfo;
 import ovh.aurumgg.companion.core.model.ItemInfo;
 import ovh.aurumgg.companion.core.model.JailedPlayer;
 import ovh.aurumgg.companion.core.model.JailsInfo;
+import ovh.aurumgg.companion.core.model.PlayerJailState;
 import ovh.aurumgg.companion.core.model.KnownPlayer;
 import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
@@ -295,6 +296,24 @@ public final class PayloadWriter {
         body.put("available", info.available() ? "true" : "false");
         body.put("jails", Json.array(names));
         body.put("jailed", Json.array(jailed));
+        return Json.object(body);
+    }
+
+    /**
+     * Сидит ли конкретный игрок.
+     *
+     * {@code known: false} — EssentialsX такого игрока не знает: ник с
+     * опечаткой либо человек, который ни разу не заходил. Это НЕ то же
+     * самое, что «не сидит», и панель должна их различать: посадить того,
+     * кого сервер не знает, всё равно не выйдет.
+     */
+    public static String playerJail(PlayerJailState state) {
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("known", state.known() ? "true" : "false");
+        body.put("jailed", state.jailed() ? "true" : "false");
+        body.put("jail", Json.string(state.jail()));
+        body.put("releaseAt", Json.number(state.releaseAt()));
+        body.put("online", state.online() ? "true" : "false");
         return Json.object(body);
     }
 

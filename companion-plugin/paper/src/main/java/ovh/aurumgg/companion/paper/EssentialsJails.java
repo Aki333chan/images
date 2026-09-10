@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import ovh.aurumgg.companion.core.model.JailedPlayer;
 import ovh.aurumgg.companion.core.model.JailsInfo;
+import ovh.aurumgg.companion.core.model.PlayerJailState;
 
 /**
  * Тюрьмы EssentialsX — чтение.
@@ -45,6 +46,17 @@ import ovh.aurumgg.companion.core.model.JailsInfo;
  * EssentialsX нет. Найти всех — значит прочитать файл каждого, кто когда-либо
  * заходил; на живом сервере это тысячи обращений к диску на каждый показ
  * страницы. Онлайн стоит ноль: объекты игроков и так в памяти.
+ *
+ * <h2>Про одного офлайн-игрока спросить всё-таки можно</h2>
+ *
+ * {@link #state(String)} читает файл ОДНОГО игрока по нику — это одно
+ * обращение к диску, и оно того стоит: без состояния нельзя собрать
+ * правильную команду {@code togglejail}, а сажать офлайн-игроков панель
+ * должна. Цепочка та же, только пользователь берётся по имени:
+ *
+ * <pre>
+ *   Object user = p.getUser(String);  // = getOfflineUser, null если не знает
+ * </pre>
  */
 final class EssentialsJails {
 
@@ -52,6 +64,7 @@ final class EssentialsJails {
     private static volatile Method getJailsMethod;
     private static volatile Method getListMethod;
     private static volatile Method getUserMethod;
+    private static volatile Method getUserByNameMethod;
     private static volatile Method isJailedMethod;
     private static volatile Method getJailMethod;
     private static volatile Method getJailTimeoutMethod;
@@ -85,6 +98,67 @@ final class EssentialsJails {
         return new JailsInfo(true, names, List.copyOf(jailed));
     }
 
+    /**
+     * Состояние одного игрока по нику. Работает и для тех, кого нет в сети.
+     *
+     * {@code getUser(String)} у EssentialsX — это {@code getOfflineUser}: он
+     * ищет по карте ников и при попадании читает файл игрока. {@code null}
+     * означает «такого не знаю» — например, ник с опечаткой или человек,
+     * который ни разу не заходил.
+     */
+    static PlayerJailState state(String name) {
+        Plugin plugin = Bukkit.getPluginManager().getPlugin(EssentialsIntegration.PLUGIN_NAME);
+        if (plugin == null) return PlayerJailState.unknown();
+
+        try {
+            Method getUser = getUserByNameMethod;
+            if (getUser == null || !getUser.getDeclaringClass().isInstance(plugin)) {
+                getUser = plugin.getClass().getMethod("getUser", String.class);
+                getUserByNameMethod = getUser;
+            }
+            Object user = getUser.invoke(plugin, name);
+            if (user == null) return PlayerJailState.unknown();
+
+            boolean online = Bukkit.getPlayerExact(name) != null;
+            if (!jailed(user)) return new PlayerJailState(true, false, "", 0L, online);
+            return new PlayerJailState(true, true, jailName(user), jailTimeout(user), online);
+        } catch (Exception | NoClassDefFoundError e) {
+            // Версия EssentialsX несовместима либо файл игрока не читается.
+            // «Не знаю» честнее выдуманного «не сидит»: на последнем панель
+            // отправила бы команду посадки тому, кто уже сидит.
+            return PlayerJailState.unknown();
+        }
+    }
+
+    private static boolean jailed(Object user) throws Exception {
+        Method isJailed = isJailedMethod;
+        if (isJailed == null || !isJailed.getDeclaringClass().isInstance(user)) {
+            isJailed = user.getClass().getMethod("isJailed");
+            isJailedMethod = isJailed;
+        }
+        return Boolean.TRUE.equals(isJailed.invoke(user));
+    }
+
+    private static String jailName(Object user) throws Exception {
+        Method getJail = getJailMethod;
+        if (getJail == null || !getJail.getDeclaringClass().isInstance(user)) {
+            getJail = user.getClass().getMethod("getJail");
+            getJailMethod = getJail;
+        }
+        Object where = getJail.invoke(user);
+        return where == null ? "" : String.valueOf(where);
+    }
+
+    private static long jailTimeout(Object user) throws Exception {
+        Method getTimeout = getJailTimeoutMethod;
+        if (getTimeout == null || !getTimeout.getDeclaringClass().isInstance(user)) {
+            getTimeout = user.getClass().getMethod("getJailTimeout");
+            getJailTimeoutMethod = getTimeout;
+        }
+        Object until = getTimeout.invoke(user);
+        return until instanceof Long value ? value : 0L;
+    }
+
     private static List<String> jailNames(Plugin plugin) throws Exception {
         Method getJails = getJailsMethod;
         if (getJails == null || !getJails.getDeclaringClass().isInstance(plugin)) {
@@ -116,33 +190,9 @@ final class EssentialsJails {
             getUserMethod = getUser;
         }
         Object user = getUser.invoke(plugin, player);
-        if (user == null) return null;
-
-        Method isJailed = isJailedMethod;
-        if (isJailed == null || !isJailed.getDeclaringClass().isInstance(user)) {
-            isJailed = user.getClass().getMethod("isJailed");
-            isJailedMethod = isJailed;
-        }
-        if (!Boolean.TRUE.equals(isJailed.invoke(user))) return null;
-
-        Method getJail = getJailMethod;
-        if (getJail == null || !getJail.getDeclaringClass().isInstance(user)) {
-            getJail = user.getClass().getMethod("getJail");
-            getJailMethod = getJail;
-        }
-        Object where = getJail.invoke(user);
-
-        Method getTimeout = getJailTimeoutMethod;
-        if (getTimeout == null || !getTimeout.getDeclaringClass().isInstance(user)) {
-            getTimeout = user.getClass().getMethod("getJailTimeout");
-            getJailTimeoutMethod = getTimeout;
-        }
-        Object until = getTimeout.invoke(user);
+        if (user == null || !jailed(user)) return null;
 
         return new JailedPlayer(
-                player.getUniqueId(),
-                player.getName(),
-                where == null ? "" : String.valueOf(where),
-                until instanceof Long value ? value : 0L);
+                player.getUniqueId(), player.getName(), jailName(user), jailTimeout(user));
     }
 }

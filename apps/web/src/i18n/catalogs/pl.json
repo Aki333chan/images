@@ -335,6 +335,7 @@
   "mc.jail.willMove": "Gracz już siedzi w „{jail}”. EssentialsX nie przenosi jedną komendą, więc zostanie najpierw wypuszczony i osadzony ponownie — zobaczy teleportację.",
   "mc.jail.nobody": "Nikt teraz nie siedzi.",
   "mc.jail.offline": "offline",
+  "mc.jail.offlineOk": "Gracza nie ma online — trafi do więzienia zaraz po następnym wejściu.",
   "mc.jail.in": "więzienie „{jail}”",
   "mc.jail.sitting": "siedzi {span}",
   "mc.jail.left": "zostało {span}",

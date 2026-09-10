@@ -333,6 +333,7 @@
   "mc.jail.willMove": "The player is already in “{jail}”. EssentialsX will not move them in one command, so they will be released first and jailed again — they will see the teleport.",
   "mc.jail.nobody": "Nobody is jailed right now.",
   "mc.jail.offline": "offline",
+  "mc.jail.offlineOk": "The player is offline — they will be in jail the moment they next join.",
   "mc.jail.in": "jail “{jail}”",
   "mc.jail.sitting": "serving for {span}",
   "mc.jail.left": "{span} left",
