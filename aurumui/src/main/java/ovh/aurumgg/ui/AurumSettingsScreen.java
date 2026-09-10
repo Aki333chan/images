@@ -21,10 +21,14 @@ final class AurumSettingsScreen extends Screen {
     private WireProtocol.AdminState adminState;
     private Tab tab = Tab.HUD;
     private String npcScope = "npc";
+    private String socialScope = "guild";
     private String requestedScope = "";
+    private long requestedAt;
     private String selectedId = "";
     private int listPage;
     private int actionPage;
+    private Runnable repeatSocialAction;
+    private boolean partyDisband;
 
     AurumSettingsScreen(Screen parent, UiSettings settings, int capabilities, int serverProtocol,
                         int activePanels, WireProtocol.AdminState adminState) {
@@ -45,6 +49,7 @@ final class AurumSettingsScreen extends Screen {
 
     private void addTabs() {
         List<Tab> available = new ArrayList<>(List.of(Tab.HUD));
+        if (has(WireProtocol.SOCIAL)) { available.add(Tab.GUILD); available.add(Tab.PARTY); }
         if (has(WireProtocol.ADMIN_ARENA)) available.add(Tab.ARENA);
         if (has(WireProtocol.ADMIN_NPC)) available.add(Tab.NPC);
         if (has(WireProtocol.ADMIN_SLOTS)) available.add(Tab.SLOTS);
@@ -93,7 +98,7 @@ final class AurumSettingsScreen extends Screen {
             addScopeButton("shop", "screen.aurumui.scope.shops", top);
             addScopeButton("buyer", "screen.aurumui.scope.buyers", top);
             top += 26;
-        } else if (npcScope.contains("-offer:")) {
+        } else if (tab == Tab.NPC && npcScope.contains("-offer:")) {
             addRenderableWidget(Button.builder(Component.translatable("screen.aurumui.action.back"), ignored -> {
                 npcScope = npcScope.startsWith("shop-") ? "shop" : "buyer";
                 changeScope();
@@ -102,10 +107,17 @@ final class AurumSettingsScreen extends Screen {
                     .bounds(left() + 134, top, contentWidth() - 134, 20).build());
             top += 26;
         }
+        if (social()) {
+            addRenderableWidget(Button.builder(Component.translatable("screen.aurumui.action.back"), ignored -> {
+                socialScope = tab == Tab.GUILD ? "guild" : "party"; changeScope();
+            }).bounds(left(), top, contentWidth(), 20).build());
+            top += 26;
+        }
         String scope = scope();
         if (serverProtocol < 3) { addDoneButton(); return; }
         if (!scope.equals(requestedScope)) {
             requestedScope = scope;
+            requestedAt = System.currentTimeMillis();
             AurumUiClient.requestAdmin(scope);
         }
         List<WireProtocol.AdminObject> objects = scope.equals(adminState.scope()) ? adminState.objects() : List.of();
@@ -191,9 +203,52 @@ final class AurumSettingsScreen extends Screen {
             case "buyer" -> buyerActions(result, object);
             case "shopOffer" -> shopOfferActions(result, object);
             case "buyerOffer" -> buyerOfferActions(result, object);
+            case "social" -> socialActions(result, object);
             default -> { }
         }
         return result;
+    }
+
+    private boolean social() { return tab == Tab.GUILD || tab == Tab.PARTY; }
+
+    private void socialActions(List<UiAction> list, WireProtocol.AdminObject object) {
+        for (String action : object.get("actions").split(",")) {
+            if (action.isBlank()) continue;
+            action(list, "screen.aurumui.social." + action, () -> {
+                String group = object.id().contains(":") ? object.id().split(":")[1] : "";
+                switch (action) {
+                    case "guild_members", "guild_players", "party_members", "party_players", "guild_details", "guild_bonuses" -> {
+                        socialScope = action.replace('_', '-') + ":" + group; changeScope();
+                    }
+                    case "social_page" -> { socialScope = object.get("scope"); changeScope(); }
+                    case "guild_create" -> form(object, action, List.of(
+                            new AurumFormScreen.Field("name", "screen.aurumui.field.name", "", 32),
+                            new AurumFormScreen.Field("tag", "screen.aurumui.social.tag", "", 16)));
+                    case "guild_deposit", "guild_withdraw" -> form(object, action, List.of(
+                            new AurumFormScreen.Field("amount", "screen.aurumui.social.amount", "", 24)));
+                    case "guild_tag" -> form(object, action, List.of(
+                            new AurumFormScreen.Field("tag", "screen.aurumui.social.tag", object.get("tag"), 16)));
+                    case "admin_bonus_grant" -> form(object, action, List.of(
+                            new AurumFormScreen.Field("magnitude", "screen.aurumui.social.magnitude", object.get("magnitude"), 16),
+                            new AurumFormScreen.Field("duration", "screen.aurumui.field.duration", "1h", 16)));
+                    case "guild_settings" -> form(object, action, List.of(
+                            new AurumFormScreen.Field("friendlyFire", "screen.aurumui.social.friendlyFire", object.get("friendlyFire"), 5),
+                            new AurumFormScreen.Field("joinPolicy", "screen.aurumui.social.joinPolicy", object.get("joinPolicy"), 10),
+                            new AurumFormScreen.Field("bankAccess", "screen.aurumui.social.bankAccess", object.get("bankAccess"), 24),
+                            new AurumFormScreen.Field("motd", "screen.aurumui.social.motd", object.get("motd"), 190)));
+                    case "guild_kick", "guild_transfer", "party_kick", "party_promote", "guild_leave", "party_leave",
+                         "admin_guild_remove", "admin_guild_transfer", "admin_party_remove", "admin_bonus_revoke" ->
+                            minecraft.gui.setScreen(new AurumConfirmScreen(this,
+                                    Component.translatable("screen.aurumui.social.confirmTarget", clean(object.title())), () -> send(object, action)));
+                    // Server requires a second identical request for destructive disband operations.
+                    default -> {
+                        repeatSocialAction = () -> send(object, action);
+                        partyDisband = action.equals("admin_party_disband");
+                        send(object, action);
+                    }
+                }
+            });
+        }
     }
 
     private void arenaActions(List<UiAction> list, WireProtocol.AdminObject o) {
@@ -351,7 +406,7 @@ final class AurumSettingsScreen extends Screen {
                 (button, selected) -> { change.accept(selected); settings.save(); }));
     }
     private void changeScope() { selectedId = ""; requestedScope = ""; listPage = 0; actionPage = 0; rebuildWidgets(); }
-    private void select(Tab value) { tab = value; changeScope(); }
+    private void select(Tab value) { tab = value; socialScope = value == Tab.PARTY ? "party" : "guild"; changeScope(); }
 
     void adminUpdated(WireProtocol.AdminState state) {
         adminState = state;
@@ -359,6 +414,13 @@ final class AurumSettingsScreen extends Screen {
             minecraft.player.sendOverlayMessage(Component.translatable("message.aurumui." + state.message()));
         }
         if (state.scope().equals(scope())) rebuildWidgets();
+        if (social() && state.scope().equals(scope()) && repeatSocialAction != null
+                && (state.message().equals("social.confirm") || state.message().equals("social.confirmSwitch"))) {
+            Runnable accepted = repeatSocialAction;
+            repeatSocialAction = null;
+            confirm(state.message().equals("social.confirm") ? (partyDisband ? "screen.aurumui.social.confirmPartyDisband" : "screen.aurumui.social.confirmDisband")
+                    : "screen.aurumui.social.confirmSwitch", accepted);
+        }
     }
 
     private void addDoneButton() {
@@ -369,7 +431,7 @@ final class AurumSettingsScreen extends Screen {
                 .bounds(left() + refreshWidth + GAP, height - 26, contentWidth() - refreshWidth - GAP, 20).build());
     }
     private boolean has(int capability) { return (capabilities & capability) != 0; }
-    private String scope() { return switch (tab) { case ARENA -> "arena"; case NPC -> npcScope; case SLOTS -> "slots"; default -> ""; }; }
+    private String scope() { return switch (tab) { case GUILD, PARTY -> socialScope; case ARENA -> "arena"; case NPC -> npcScope; case SLOTS -> "slots"; default -> ""; }; }
     private int contentWidth() { return Math.min(430, width - 20); }
     private int left() { return (width - contentWidth()) / 2; }
     private int tabsY() { return height < 220 ? 31 : 42; }
@@ -392,14 +454,31 @@ final class AurumSettingsScreen extends Screen {
             adminState.objects().stream().filter(o -> o.id().equals(selectedId)).findFirst().ifPresent(object -> {
                 int x = left() + 134;
                 int y = adminObjectsTop();
-                graphics.text(font, Component.literal(clean(object.title())), x, y, 0xFFFFC85C, false);
-                graphics.text(font, Component.literal(summary(object)), x, y + 12, 0xFFAAAAAA, false);
+                graphics.text(font, Component.literal(font.plainSubstrByWidth(clean(object.title()), contentWidth() - 134)), x, y, 0xFFFFC85C, false);
+                if (object.kind().equals("social") && object.get("actions").isBlank()) {
+                    int lineY = y + 12;
+                    for (var line : font.split(Component.literal(summary(object)), contentWidth() - 134)) {
+                        if (lineY >= height - 52) break;
+                        graphics.text(font, line, x, lineY, 0xFFAAAAAA, false);
+                        lineY += 10;
+                    }
+                } else graphics.text(font, Component.literal(font.plainSubstrByWidth(summary(object), contentWidth() - 134)), x, y + 12, 0xFFAAAAAA, false);
             });
+        }
+    }
+
+    @Override public void tick() {
+        super.tick();
+        // Retry a list request dropped while a previous asynchronous action was pending.
+        if (social() && !scope().equals(adminState.scope()) && System.currentTimeMillis() - requestedAt > 1500) {
+            requestedAt = System.currentTimeMillis();
+            AurumUiClient.requestAdmin(scope());
         }
     }
 
     private String summary(WireProtocol.AdminObject object) {
         return switch (object.kind()) {
+            case "social" -> object.get("summary");
             case "arena" -> object.get("state") + " · " + object.get("redPlayers") + ":" + object.get("bluePlayers")
                     + " · " + object.get("redBets") + "/" + object.get("blueBets");
             case "slots" -> object.get("payment") + (object.bool("spinning") ? " · spinning" : "");
@@ -408,7 +487,7 @@ final class AurumSettingsScreen extends Screen {
             default -> object.get("material") + " · slot " + object.get("slot");
         };
     }
-    private int adminObjectsTop() { return contentTop() + (tab == Tab.NPC ? 26 : 0); }
+    private int adminObjectsTop() { return contentTop() + (tab == Tab.NPC || social() ? 26 : 0); }
     private Component connectionStatus() {
         if (serverProtocol == 0) return Component.translatable("screen.aurumui.connection.waiting");
         if (serverProtocol == 1) return Component.translatable("screen.aurumui.connection.legacy", activePanels);
@@ -421,6 +500,7 @@ final class AurumSettingsScreen extends Screen {
 
     private enum Tab {
         HUD("screen.aurumui.tab.hud"), ARENA("screen.aurumui.tab.arena"),
+        GUILD("screen.aurumui.guilds"), PARTY("screen.aurumui.party"),
         NPC("screen.aurumui.tab.npc"), SLOTS("screen.aurumui.tab.slots");
         final String translation;
         Tab(String translation) { this.translation = translation; }

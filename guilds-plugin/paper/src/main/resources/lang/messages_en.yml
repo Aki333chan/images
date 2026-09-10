@@ -497,3 +497,15 @@ admin:
 # ------------------------------------------------------------------ player
 player:
   unknown: "unknown"
+guild.join.confirmSwitch: "You belong to {from}. Accept the invitation to {to} again within 30 seconds to leave your current guild and join it. Your previous rank and access will be lost."
+guild.ui.invitation: "Incoming invitation"
+guild.ui.previous: "Previous page"
+guild.ui.next: "Next page"
+guild.ui.online: "Online"
+guild.ui.offline: "Offline"
+guild.ui.bankAccess: "Bank withdrawal access"
+guild.ui.motd: "Description"
+guild.ui.permanent: "Permanent"
+guild.ui.inactive: "Inactive"
+guild.ui.changed: "{player}: {result}"
+party.admin.disbanded: "The party was disbanded by an administrator."

@@ -108,6 +108,17 @@ public final class GuildService implements AutoCloseable {
     private final Map<UUID, Long> memberOf = new ConcurrentHashMap<>();
     /** Приглашённый → зовущие его гильдии. */
     private final Map<UUID, List<Invite>> invites = new ConcurrentHashMap<>();
+    private record JoinConfirmation(long from, long to, Instant membershipSince, Instant expiresAt) {}
+    private final Map<UUID, JoinConfirmation> joinConfirmations = new ConcurrentHashMap<>();
+
+    public List<StoredGuild> pendingGuilds(UUID player) {
+        return activeInvites(player, clock.get()).stream().map(invite -> guilds.get(invite.guildId()))
+                .filter(java.util.Objects::nonNull).toList();
+    }
+
+    public List<StoredGuild> allGuilds() {
+        return guilds.values().stream().sorted(Comparator.comparing(StoredGuild::name)).toList();
+    }
 
     /**
      * Язык сервера — для тех немногих значений, что собираются здесь целиком.
@@ -352,7 +363,7 @@ public final class GuildService implements AutoCloseable {
             if (guild.settings().joinPolicy() == JoinPolicy.CLOSED) {
                 return GuildActionResult.fail("guild.err.closed");
             }
-            if (memberOf.containsKey(target)) {
+            if (java.util.Objects.equals(memberOf.get(target), guild.id())) {
                 return GuildActionResult.fail("guild.err.targetInGuild", Map.of("player", names.nameOf(target)));
             }
             if (guild.members().size() >= config.maxGuildMembers()) {
@@ -384,10 +395,7 @@ public final class GuildService implements AutoCloseable {
      */
     public CompletableFuture<GuildActionResult> join(UUID player, String guildName) {
         return async(() -> {
-            if (memberOf.containsKey(player)) {
-                return GuildActionResult.fail("guild.err.alreadyInGuild");
-            }
-
+            StoredGuild previous = guildOf(player).orElse(null);
             Instant now = clock.get();
             StoredGuild guild;
             if (guildName != null && !guildName.isBlank()) {
@@ -413,17 +421,42 @@ public final class GuildService implements AutoCloseable {
                 return GuildActionResult.fail("guild.err.noSlots");
             }
 
+            if (previous != null) {
+                if (previous.id() == guild.id()) return GuildActionResult.fail("guild.err.alreadyInGuild");
+                // Never silently dissolve a leader's guild or abandon its bank.
+                if (previous.leader().equals(player)) return GuildActionResult.fail("guild.err.leaderMustTransfer");
+                Instant joined = memberOf(previous, player).orElseThrow().joinedAt();
+                JoinConfirmation confirmation = joinConfirmations.remove(player);
+                if (confirmation == null || confirmation.from() != previous.id() || confirmation.to() != guild.id()
+                        || !confirmation.membershipSince().equals(joined) || !confirmation.expiresAt().isAfter(now)) {
+                    joinConfirmations.put(player, new JoinConfirmation(previous.id(), guild.id(), joined, now.plusSeconds(30)));
+                    return GuildActionResult.fail("guild.join.confirmSwitch",
+                            Map.of("from", previous.name(), "to", guild.name()));
+                }
+            }
+
             String username = names.nameOf(player);
             GuildMember member = new GuildMember(player, username, GuildRank.MEMBER, now);
-            write(() -> repository.addMember(guild.id(), player, username, GuildRank.MEMBER, now),
-                    "добавить участника в гильдию " + guild.name());
+            try {
+                if (previous == null) repository.addMember(guild.id(), player, username, GuildRank.MEMBER, now);
+                else repository.moveMember(previous.id(), guild.id(), player, username, now);
+            } catch (Exception failure) {
+                logger.log(Level.SEVERE, "Could not persist guild membership", failure);
+                return GuildActionResult.fail("guild.err.internal");
+            }
+
+            if (previous != null) {
+                replace(previous, withMembers(previous, previous.members().stream()
+                        .filter(existing -> !existing.uuid().equals(player)).toList()));
+            }
 
             List<GuildMember> updated = new ArrayList<>(guild.members());
             updated.add(member);
             replace(guild, withMembers(guild, updated));
             memberOf.put(player, guild.id());
             invites.remove(player);
-
+            joinConfirmations.remove(player);
+            if (previous != null) hooks.memberLeft(previous.id(), player);
             hooks.memberJoined(guild.id(), player);
             return GuildActionResult.ok("guild.joined", Map.of("guild", guild.name()));
         });
@@ -1022,6 +1055,7 @@ public final class GuildService implements AutoCloseable {
 
     public synchronized void purgeInvites() {
         Instant now = clock.get();
+        joinConfirmations.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(now));
         invites.entrySet().removeIf(entry -> {
             entry.setValue(activeInvites(entry.getKey(), now));
             return entry.getValue().isEmpty();

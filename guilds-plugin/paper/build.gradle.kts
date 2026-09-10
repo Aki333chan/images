@@ -84,6 +84,8 @@ dependencies {
     // сервера, поэтому проверка ключей идёт обычным JUnit.
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
     testImplementation("org.yaml:snakeyaml:2.3")
+    testImplementation("io.papermc.paper:paper-api:26.2.build.+")
+    testImplementation("org.mockito:mockito-core:5.23.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

@@ -55,6 +55,9 @@ public interface GuildRepository extends AutoCloseable {
 
     void removeMember(long guildId, UUID uuid) throws Exception;
 
+    /** Atomically move one existing membership; failure must leave it unchanged. */
+    void moveMember(long from, long to, UUID uuid, String username, Instant joinedAt) throws Exception;
+
     void updateRank(long guildId, UUID uuid, GuildRank rank) throws Exception;
 
     /**

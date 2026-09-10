@@ -1,5 +1,31 @@
 # AurumUI
 
+## Social menus (0.5.0)
+
+Requires AurumCompanion 0.5.0 and AurumGuilds 0.3.0. Press U and select Guilds
+or Party. Existing admin object editors and the vanilla HUD fallback remain supported.
+
+- Guilds: browse existing guilds, overview/settings and roster, incoming invitations,
+  create/join/leave, deposit a custom amount and open the bank history in chat.
+- Officers can invite visible online players and kick lower-ranked members.
+  Leaders can also promote/demote, transfer leadership, edit the tag and settings.
+  Withdrawal follows the guild's bank-access setting.
+- Party: create, accept invitations, inspect members, invite from the online list,
+  leave; leaders can kick and transfer leadership.
+- Administrators with BOTH `aurumui.admin` and `aurumguilds.admin` see all parties
+  and additional guild controls: force removal/leadership/disband, bonus grant/revoke,
+  and read-only diagnostics. Bonus duration accepts `30m`, `2h`, `7d`, or `0` for permanent.
+- Lists are paginated on the server (20 entries per response). Data/actions are
+  checked again against current membership, rank and login state on every request.
+- Switching guilds requires two accepts within 30 seconds. First acceptance changes
+  nothing and shows a warning; confirming transfers the existing database membership.
+  Leaders must transfer leadership or explicitly disband before joining elsewhere.
+- Destructive actions have confirmation screens; disband additionally requires
+  server-side confirmation. English, Polish and Russian translations are included.
+
+The normal player tabs do not require `aurumui.admin`. Role restrictions follow
+the existing GuildService/PartyService rules, not client-supplied flags.
+
 Optional Fabric 26.2 client for the Aurum Paper plugin ecosystem.
 
 ## Runtime layout

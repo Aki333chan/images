@@ -53,6 +53,22 @@ import ovh.aurumgg.guilds.api.JoinPolicy;
  */
 public final class MariaDbGuildRepository implements GuildRepository {
 
+    @Override
+    public void moveMember(long from, long to, UUID uuid, String username, Instant joinedAt) throws Exception {
+        // One UPDATE is atomic in InnoDB. UUID remains the unique primary key.
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("UPDATE " + members
+                     + " SET guild_id=?, username=?, rank_name=?, joined_at=? WHERE uuid=? AND guild_id=?")) {
+            statement.setLong(1, to);
+            statement.setString(2, username);
+            statement.setString(3, GuildRank.MEMBER.name().toLowerCase(java.util.Locale.ROOT));
+            statement.setTimestamp(4, Timestamp.from(joinedAt));
+            statement.setString(5, uuid.toString());
+            statement.setLong(6, from);
+            if (statement.executeUpdate() != 1) throw new IllegalStateException("Membership changed before transfer");
+        }
+    }
+
     private final HikariDataSource dataSource;
     private final String guilds;
     private final String members;
@@ -331,13 +347,9 @@ public final class MariaDbGuildRepository implements GuildRepository {
     @Override
     public void addMember(long guildId, UUID uuid, String username, GuildRank rank, Instant joinedAt)
             throws Exception {
-        // ON DUPLICATE KEY UPDATE, а не INSERT: строка участника могла остаться
-        // от прошлой гильдии, если её удаляли в обход каскада. Перезапись
-        // безопаснее отказа — игрок в любом случае состоит ровно в одной.
+        // Existing membership must be moved explicitly after confirmation.
         update("INSERT INTO " + members + " (uuid, guild_id, username, rank_name, joined_at) "
-                + "VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE "
-                + "guild_id = VALUES(guild_id), username = VALUES(username), "
-                + "rank_name = VALUES(rank_name), joined_at = VALUES(joined_at)", statement -> {
+                + "VALUES (?, ?, ?, ?, ?)", statement -> {
             statement.setString(1, uuid.toString());
             statement.setLong(2, guildId);
             statement.setString(3, username);

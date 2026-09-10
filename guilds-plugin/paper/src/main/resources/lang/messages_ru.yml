@@ -501,3 +501,15 @@ admin:
 # ------------------------------------------------------------------- игрок
 player:
   unknown: "неизвестный"
+guild.join.confirmSwitch: "Вы состоите в {from}. Повторно примите приглашение в {to} в течение 30 секунд, чтобы выйти из текущей гильдии и вступить в новую. Прежний ранг и доступы будут потеряны."
+guild.ui.invitation: "Входящее приглашение"
+guild.ui.previous: "Предыдущая страница"
+guild.ui.next: "Следующая страница"
+guild.ui.online: "В сети"
+guild.ui.offline: "Не в сети"
+guild.ui.bankAccess: "Доступ к снятию из банка"
+guild.ui.motd: "Описание"
+guild.ui.permanent: "Постоянно"
+guild.ui.inactive: "Неактивен"
+guild.ui.changed: "{player}: {result}"
+party.admin.disbanded: "Пати распущена администратором."

@@ -496,3 +496,15 @@ admin:
 # ------------------------------------------------------------------ gracz
 player:
   unknown: "nieznany"
+guild.join.confirmSwitch: "Należysz do {from}. Przyjmij zaproszenie do {to} ponownie w ciągu 30 sekund, aby opuścić obecną gildię i dołączyć do nowej. Utracisz poprzednią rangę i dostęp."
+guild.ui.invitation: "Otrzymane zaproszenie"
+guild.ui.previous: "Poprzednia strona"
+guild.ui.next: "Następna strona"
+guild.ui.online: "Online"
+guild.ui.offline: "Offline"
+guild.ui.bankAccess: "Dostęp do wypłat"
+guild.ui.motd: "Opis"
+guild.ui.permanent: "Na stałe"
+guild.ui.inactive: "Nieaktywny"
+guild.ui.changed: "{player}: {result}"
+party.admin.disbanded: "Grupa została rozwiązana przez administratora."
