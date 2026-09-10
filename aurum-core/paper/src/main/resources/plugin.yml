@@ -10,7 +10,7 @@ loadbefore: [Essentials, AddonsNPC, AurumSlots, AurumArena, AurumGuilds]
 commands:
   aurum:
     description: AurumCore balance and diagnostics
-    usage: /aurum <balance|status|treasury|migrate|economy>
+    usage: /aurum <balance|status|treasury|migrate|economy|policy>
     aliases: [acore]
   abal:
     description: Short form of /aurum balance
@@ -20,6 +20,8 @@ commands:
     description: Short form of /aurum migrate
   aeco:
     description: Short form of /aurum economy
+  apolicy:
+    description: Short form of /aurum policy
   pay:
     description: Safely transfer currency to another player
     usage: /pay <player> <amount> [reason]
@@ -43,9 +45,13 @@ permissions:
     children:
       aurum.admin.migrate: true
       aurum.admin.economy: true
+      aurum.admin.policy: true
   aurum.admin.migrate:
     description: Create, import, verify and export economy migration snapshots
     default: op
   aurum.admin.economy:
     description: Manage the authoritative Aurum economy when active mode is enabled
+    default: op
+  aurum.admin.policy:
+    description: Create, inspect, schedule and enable financial policies
     default: op

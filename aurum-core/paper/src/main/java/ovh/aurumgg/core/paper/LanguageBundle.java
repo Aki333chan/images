@@ -19,7 +19,11 @@ final class LanguageBundle {
             "migration-invalid-id", "migration-usage", "migration-provider-changed",
             "active-not-ready", "payments-disabled", "pay-usage", "player-unknown", "pay-self",
             "pay-limits", "pay-cooldown", "pay-sent", "pay-received", "money-unavailable",
-            "insufficient-funds", "economy-usage", "economy-success", "invalid-amount", "treasury"
+            "insufficient-funds", "economy-usage", "economy-success", "invalid-amount", "treasury",
+            "policy-unavailable", "policy-usage", "policy-invalid", "policy-list-header",
+            "policy-list-line", "policy-inspect", "policy-history-header", "policy-history-line",
+            "policy-reloaded", "policy-saved", "policy-transaction-rejected",
+            "policy-import-confirm", "policy-imported", "policy-saved-reload-failed"
     );
 
     private final YamlConfiguration messages;

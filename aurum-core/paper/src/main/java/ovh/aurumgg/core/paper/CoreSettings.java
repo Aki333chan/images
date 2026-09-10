@@ -18,6 +18,7 @@ record CoreSettings(
         BigDecimal paymentMinimum,
         BigDecimal paymentMaximum,
         int paymentCooldownSeconds,
+        PolicyConfiguration policies,
         boolean databaseEnabled,
         MariaDbSettings database
 ) {
@@ -45,6 +46,7 @@ record CoreSettings(
         }
         int paymentCooldownSeconds = Math.max(0, Math.min(3600,
                 config.getInt("payments.cooldown-seconds", 2)));
+        PolicyConfiguration policies = PolicyConfiguration.read(config, currency);
         boolean enabled = config.getBoolean("database.enabled", false);
         MariaDbSettings database = new MariaDbSettings(
                 config.getString("database.jdbc-url", "jdbc:mariadb://127.0.0.1:3306/aurum_core"),
@@ -54,6 +56,6 @@ record CoreSettings(
         );
         return new CoreSettings(language, mode, currency, refresh, migrationPlayersPerTick,
                 requireVerifiedMigration, globalRefreshTicks, paymentsEnabled, paymentMinimum,
-                paymentMaximum, paymentCooldownSeconds, enabled, database);
+                paymentMaximum, paymentCooldownSeconds, policies, enabled, database);
     }
 }

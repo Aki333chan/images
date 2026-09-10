@@ -30,19 +30,20 @@
   VaultUnlocked-провайдер; безопасный cutover gate, кэшированные чтения,
   атомарные записи, `/pay`/`/apay`, баланс, казна, give/take/set, права,
   лимиты, причины, локализации и умное tab completion.
+- [x] Policy engine 0.5.0: цепочка TAX/FEE/COMMISSION/CASHBACK/SUBSIDY,
+  LIMIT и EXEMPTION; расписание и условия, YAML bootstrap/import, управление
+  командами, неизменяемые DB revisions и атомарный аудит сумм каждого правила.
 
 ## Осталось — в порядке выполнения
 
-1. [ ] Реализовать policy engine исполнения: конфиг, DB revisions, налоги,
-   комиссии, сборы, кешбэк, субсидии, лимиты и аудит изменений.
-2. [ ] По одному перевести AddonsNPC, AurumSlots, AurumArena и AurumGuilds на
+1. [ ] По одному перевести AddonsNPC, AurumSlots, AurumArena и AurumGuilds на
    AurumEconomyApi, сохраняя recovery и возможность отката на каждом шаге.
-3. [ ] Реализовать гарантированный player trade: GUI, деньги и предметы,
+2. [ ] Реализовать гарантированный player trade: GUI, деньги и предметы,
    повторное подтверждение, рестарт/recovery и claim-хранилище.
-4. [ ] Подключить AurumUI: баланс, переводы, сделки, казна и админские формы.
-5. [ ] Переделать Companion и веб-панель с Vault-summary на AurumCore API:
+3. [ ] Подключить AurumUI: баланс, переводы, сделки, казна и админские формы.
+4. [ ] Переделать Companion и веб-панель с Vault-summary на AurumCore API:
    казна, денежная масса, оборот, источники/стоки, правила и ledger history.
-6. [ ] Опционально мигрировать динамические настройки арен, NPC, автоматов и
+5. [ ] Опционально мигрировать динамические настройки арен, NPC, автоматов и
    связей гильдий. WorldGuard остаётся владельцем самих регионов.
-7. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
+6. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
     сбои БД/рестарты, Spark и финальная инструкция переключения Essentials.

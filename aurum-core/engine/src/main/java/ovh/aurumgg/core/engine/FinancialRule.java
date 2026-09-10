@@ -23,7 +23,10 @@ public record FinancialRule(
         Objects.requireNonNull(kind, "kind");
         categories = Set.copyOf(Objects.requireNonNull(categories, "categories"));
         definition = Map.copyOf(Objects.requireNonNull(definition, "definition"));
-        if (id.isEmpty() || id.length() > 64 || handlerVersion < 1 || categories.isEmpty()) {
+        if (!id.matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}")
+                || handlerVersion < 1 || categories.isEmpty() || definition.size() > 16
+                || definition.entrySet().stream().anyMatch(entry -> entry.getKey().isBlank()
+                || entry.getKey().length() > 64 || entry.getValue().length() > 256)) {
             throw new IllegalArgumentException("Invalid financial rule");
         }
         if (effectiveFrom != null && effectiveUntil != null && !effectiveUntil.isAfter(effectiveFrom)) {

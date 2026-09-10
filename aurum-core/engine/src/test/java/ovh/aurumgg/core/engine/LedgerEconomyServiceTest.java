@@ -51,7 +51,7 @@ class LedgerEconomyServiceTest {
 
     @Test
     void repeatedIdempotencyKeyCommitsOnlyOnceUnderConcurrency() {
-        LedgerEconomyService service = service(TaxRuleResolver.none());
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
         TransactionRequest request = request("pay:same", "10.00");
         List<CompletableFuture<TransactionResult>> futures = new ArrayList<>();
         for (int i = 0; i < 50; i++) futures.add(service.transfer(request).toCompletableFuture());
@@ -69,7 +69,7 @@ class LedgerEconomyServiceTest {
 
     @Test
     void concurrentDebitsNeverMakeBalanceNegative() {
-        LedgerEconomyService service = service(TaxRuleResolver.none());
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
         List<CompletableFuture<TransactionResult>> futures = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             futures.add(service.transfer(request("pay:" + i, "10.00")).toCompletableFuture());
@@ -85,9 +85,10 @@ class LedgerEconomyServiceTest {
 
     @Test
     void selectedTaxRuleCreditsGlobalTreasuryInSamePlan() {
-        TaxRule rule = new TaxRule("income-tax", Set.of(TransactionCategory.PLAYER_PAYMENT),
-                new BigDecimal("0.10"), TaxMode.INCLUDED, AccountId.globalTreasury(), 10, true);
-        LedgerEconomyService service = service(ignored -> Optional.of(rule));
+        FinancialRule rule = new FinancialRule("income-tax", PolicyKind.TAX, 1,
+                Set.of(TransactionCategory.PLAYER_PAYMENT),
+                Map.of("rate", "0.10", "mode", "INCLUDED"), 10, true, null, null);
+        LedgerEconomyService service = service((ignored, now) -> List.of(rule));
         TransactionResult result = service.transfer(request("pay:tax", "100.00")).toCompletableFuture().join();
 
         assertEquals(TransactionResult.Status.SUCCESS, result.status());
@@ -98,7 +99,7 @@ class LedgerEconomyServiceTest {
 
     @Test
     void committedTransferUpdatesAuthoritativeCache() {
-        LedgerEconomyService service = service(TaxRuleResolver.none());
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
         service.seedBalances(Map.of(ALICE, new BigDecimal("100.00"), BOB, new BigDecimal("0.00")));
 
         service.transfer(request("pay:cached", "25.00")).toCompletableFuture().join();
@@ -109,7 +110,7 @@ class LedgerEconomyServiceTest {
 
     @Test
     void administrativeSetIsSerializedAndCanSetZero() {
-        LedgerEconomyService service = service(TaxRuleResolver.none());
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
         service.seedBalances(Map.of(ALICE, new BigDecimal("100.00")));
 
         TransactionResult result = service.setPlayerBalance(ALICE, BigDecimal.ZERO,
@@ -122,7 +123,7 @@ class LedgerEconomyServiceTest {
                 repository.value(new AccountId(AccountType.SYSTEM_SINK, "global")));
     }
 
-    private LedgerEconomyService service(TaxRuleResolver resolver) {
+    private LedgerEconomyService service(FinancialRuleResolver resolver) {
         return new LedgerEconomyService(COINS, repository, resolver, executor, Clock.systemUTC());
     }
 

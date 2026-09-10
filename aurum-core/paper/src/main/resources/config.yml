@@ -37,14 +37,33 @@ database:
   password: "change-me"
   pool-size: 3
 
-treasury:
-  account-id: global
-
 financial-policies:
-  # Reserved for the next policy-engine stage. No rule is executed in 0.4.0.
+  # Master switch. Rules can be prepared while this is false; no transaction
+  # is affected until it is enabled and the server is restarted.
   enabled: false
-  # Active rules will be versioned in MariaDB. YAML supplies defaults and hard
-  # limits; commands and UI will use the same validation and audit path.
+  # YAML rules are imported only when the DB contains no rules. Afterwards
+  # MariaDB revisions are authoritative and /apolicy manages them.
+  bootstrap-on-empty: true
+  max-rules: 100
+  rules:
+    market-sales-tax:
+      kind: TAX
+      handler-version: 1
+      categories: [NPC_PURCHASE, NPC_SALE]
+      rate: "0.05"
+      mode: INCLUDED
+      recipient-type: TREASURY
+      recipient-id: global
+      priority: 100
+      enabled: false
+    player-payment-limit:
+      kind: LIMIT
+      handler-version: 1
+      categories: [PLAYER_PAYMENT]
+      minimum: "1.00"
+      maximum: "1000000.00"
+      priority: 1000
+      enabled: false
 
 payments:
   enabled: true

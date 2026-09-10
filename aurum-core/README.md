@@ -1,4 +1,4 @@
-# AurumCore 0.4.0
+# AurumCore 0.5.0
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -12,7 +12,7 @@ them into the dormant ledger, verifies every balance and exports rollback CSV.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.4.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.5.0.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
@@ -37,11 +37,28 @@ deliberately fresh, empty ledger; a non-empty unverified ledger is rejected.
 - `/aurum economy give|take|set <player> <amount> [reason]`, short form
   `/aeco ...` — `aurum.admin.economy`.
 - `/aurum migrate ...`, short form `/amigrate ...` — `aurum.admin.migrate`.
+- `/aurum policy ...`, short form `/apolicy ...` — `aurum.admin.policy`.
 
 The top-level commands `give`, `take` and `set` are intentionally not
 registered. Commands have context-aware tab completion. Player names are
 accepted only when known to the server, preventing misspellings from creating
 money accounts.
+
+## Financial policies
+
+The policy pipeline supports percentage taxes, fees and commissions in
+`INCLUDED` or `ADDED` mode, treasury-funded cashback and subsidies, transaction
+limits and scoped exemptions. Several matching rules form one balanced ledger
+plan and commit atomically with the original payment. Exact per-rule amounts,
+rule IDs and immutable rule revisions are retained for audit.
+
+Rules can be prepared in YAML and imported only on an empty policy database, or
+explicitly re-imported with `/apolicy import-config CONFIRM`. Runtime edits are
+stored as MariaDB revisions with actor, reason and schedule. The master switch
+`financial-policies.enabled` changes only after restart. Raw Vault compatibility
+deposits/withdrawals, migration, refunds and administrative adjustments are
+protected from policies; our game plugins receive policy processing when they
+move to `AurumEconomyApi` categories.
 
 ## Runtime behavior
 
@@ -56,4 +73,4 @@ Placeholders: `%aurum_balance%`, `%aurum_balance_raw%`, `%aurum_currency%`,
 `%aurum_money_supply%`, `%aurum_taxes_collected%`.
 
 See `../docs/aurum-core-architecture.md` and
-`../docs/aurum-ecosystem-roadmap.md` for the architecture and next stages.
+`../docs/aurum-policy-engine.md` for commands, configuration and semantics.

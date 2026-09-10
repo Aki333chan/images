@@ -2,7 +2,7 @@ plugins { java }
 
 allprojects {
     group = "ovh.aurumgg"
-    version = "0.4.0"
+    version = "0.5.0"
     repositories { mavenCentral() }
 }
 

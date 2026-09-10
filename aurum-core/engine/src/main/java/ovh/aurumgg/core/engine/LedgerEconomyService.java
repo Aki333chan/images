@@ -26,7 +26,7 @@ import ovh.aurumgg.core.api.TransactionCategory;
 public final class LedgerEconomyService implements AurumEconomyApi {
     private final CurrencySpec currency;
     private final LedgerRepository repository;
-    private final TaxRuleResolver taxRules;
+    private final FinancialRuleResolver policies;
     private final Executor executor;
     private final Clock clock;
     private final Object mutationLock = new Object();
@@ -34,10 +34,10 @@ public final class LedgerEconomyService implements AurumEconomyApi {
     private final AtomicReference<GlobalEconomySnapshot> globalCache = new AtomicReference<>();
 
     public LedgerEconomyService(CurrencySpec currency, LedgerRepository repository,
-                                TaxRuleResolver taxRules, Executor executor, Clock clock) {
+                                FinancialRuleResolver policies, Executor executor, Clock clock) {
         this.currency = currency;
         this.repository = repository;
-        this.taxRules = taxRules;
+        this.policies = policies;
         this.executor = executor;
         this.clock = clock;
     }
@@ -74,11 +74,24 @@ public final class LedgerEconomyService implements AurumEconomyApi {
     /** Vault is synchronous, so its adapter calls this and receives a definitive database result. */
     public TransactionResult transferBlocking(TransactionRequest request) throws Exception {
         synchronized (mutationLock) {
-            TransactionPlan plan = TransactionPlanner.plan(request, currency, taxRules.select(request));
+            TransactionPlan plan;
+            try {
+                plan = TransactionPlanner.plan(request, currency,
+                        policies.select(request, Instant.now(clock)), Instant.now(clock));
+            } catch (PolicyRejectedException exception) {
+                BigDecimal amount = currency.requireAmount(request.amount());
+                return new TransactionResult(TransactionResult.Status.REJECTED,
+                        request.idempotencyKey(), amount, amount,
+                        BigDecimal.ZERO.setScale(currency.scale()), "POLICY:" + exception.getMessage());
+            }
             LedgerCommit commit = repository.commit(plan, currency);
             if (commit.status() == LedgerCommit.Status.COMMITTED) {
-                balanceCache.put(request.from(), commit.sourceBalance());
-                balanceCache.put(request.to(), commit.targetBalance());
+                if (commit.balancesAfter().isEmpty()) {
+                    balanceCache.put(request.from(), commit.sourceBalance());
+                    balanceCache.put(request.to(), commit.targetBalance());
+                } else {
+                    balanceCache.putAll(commit.balancesAfter());
+                }
             }
             TransactionResult.Status status = switch (commit.status()) {
                 case COMMITTED -> TransactionResult.Status.SUCCESS;

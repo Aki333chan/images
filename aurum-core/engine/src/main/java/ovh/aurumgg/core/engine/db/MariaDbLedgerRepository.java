@@ -186,7 +186,8 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                         plan.taxCredit(),
                         balanceAfter(locked, plan.request().from(), currency),
                         balanceAfter(locked, plan.request().to(), currency),
-                        "Committed"
+                        "Committed",
+                        balancesAfter(locked, currency)
                 );
             } catch (SQLException exception) {
                 rollback(connection, exception);
@@ -203,8 +204,9 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO aurum_transactions(
                     id, idempotency_key, currency_id, category, status, gross_amount,
-                    net_amount, tax_amount, tax_rule_id, policy_rule_ids_json, metadata_json)
-                VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
+                    net_amount, tax_amount, tax_rule_id, policy_rule_ids_json,
+                    policy_amounts_json, metadata_json)
+                VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             statement.setString(1, id.toString());
             statement.setString(2, plan.request().idempotencyKey());
@@ -214,8 +216,9 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
             statement.setBigDecimal(6, plan.targetCredit());
             statement.setBigDecimal(7, plan.taxCredit());
             statement.setString(8, plan.appliedRuleId());
-            statement.setString(9, plan.appliedRuleId() == null ? null : "[\"" + jsonEscape(plan.appliedRuleId()) + "\"]");
-            statement.setString(10, jsonObject(plan.request().metadata()));
+            statement.setString(9, plan.appliedRuleIds().isEmpty() ? null : jsonArray(plan.appliedRuleIds()));
+            statement.setString(10, plan.policyAmounts().isEmpty() ? null : jsonAmounts(plan.policyAmounts()));
+            statement.setString(11, jsonObject(plan.request().metadata()));
             statement.executeUpdate();
             return true;
         } catch (SQLException exception) {
@@ -374,6 +377,25 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                                            CurrencySpec currency) {
         LockedAccount value = locked.get(account);
         return value == null ? BigDecimal.ZERO.setScale(currency.scale()) : value.balance().setScale(currency.scale());
+    }
+
+    private static String jsonArray(List<String> values) {
+        return "[" + values.stream().map(value -> "\"" + jsonEscape(value) + "\"")
+                .collect(java.util.stream.Collectors.joining(",")) + "]";
+    }
+
+    private static String jsonAmounts(Map<String, BigDecimal> values) {
+        List<String> entries = new ArrayList<>();
+        values.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> entries.add(
+                "\"" + jsonEscape(entry.getKey()) + "\":\"" + entry.getValue().toPlainString() + "\""));
+        return "{" + String.join(",", entries) + "}";
+    }
+
+    private static Map<AccountId, BigDecimal> balancesAfter(Map<AccountId, LockedAccount> locked,
+                                                             CurrencySpec currency) {
+        Map<AccountId, BigDecimal> balances = new LinkedHashMap<>();
+        locked.forEach((account, value) -> balances.put(account, value.balance().setScale(currency.scale())));
+        return balances;
     }
 
     private record LockedAccount(long id, BigDecimal balance) {}

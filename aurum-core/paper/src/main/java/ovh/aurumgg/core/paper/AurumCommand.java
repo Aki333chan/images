@@ -89,6 +89,14 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             if (!sender.hasPermission("aurum.admin.economy")) return deny(sender);
             return economy(sender, args);
         }
+        if (args[0].equalsIgnoreCase("policy")) {
+            if (!sender.hasPermission("aurum.admin.policy")) return deny(sender);
+            if (plugin.policies() == null) {
+                sender.sendMessage(plugin.messages().component("policy-unavailable"));
+                return true;
+            }
+            return plugin.policies().execute(sender, args);
+        }
         sender.sendMessage(plugin.messages().component("passive-only"));
         return true;
     }
@@ -149,7 +157,12 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             if (error != null || result.status() == TransactionResult.Status.UNAVAILABLE) {
                 sender.sendMessage(plugin.messages().component("money-unavailable"));
             } else if (result.status() == TransactionResult.Status.REJECTED) {
-                sender.sendMessage(plugin.messages().component("insufficient-funds"));
+                if (result.message().startsWith("POLICY:")) {
+                    sender.sendMessage(plugin.messages().component("policy-transaction-rejected", Map.of(
+                            "reason", result.message().substring("POLICY:".length()))));
+                } else {
+                    sender.sendMessage(plugin.messages().component("insufficient-funds"));
+                }
             } else {
                 sender.sendMessage(plugin.messages().component("pay-sent", Map.of(
                         "player", displayName(target, args[1]), "amount", amount(value),
@@ -310,6 +323,7 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             case "atreasury" -> "treasury";
             case "amigrate" -> "migrate";
             case "aeco" -> "economy";
+            case "apolicy" -> "policy";
             case "pay", "apay" -> "pay";
             default -> null;
         };
@@ -329,7 +343,7 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                  @NotNull String alias, @NotNull String[] args) {
         String[] values = normalized(command.getName(), args);
-        if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy").stream()
+        if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy", "policy").stream()
                 .filter(it -> it.startsWith(values[0].toLowerCase())).toList();
         if (values.length == 2 && values[0].equalsIgnoreCase("balance")
                 && sender.hasPermission("aurum.balance.others")) {
@@ -347,6 +361,53 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         if (values.length == 2 && values[0].equalsIgnoreCase("economy")) {
             return List.of("give", "take", "set").stream()
                     .filter(it -> it.startsWith(values[1].toLowerCase())).toList();
+        }
+        if (values.length == 2 && values[0].equalsIgnoreCase("policy")) {
+            return List.of("list", "inspect", "history", "reload", "import-config", "create", "enable", "disable",
+                            "priority", "schedule", "categories", "rate", "account", "condition",
+                            "range", "exempt").stream()
+                    .filter(it -> it.startsWith(values[1].toLowerCase())).toList();
+        }
+        if (values.length == 3 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("import-config")) {
+            return "CONFIRM".startsWith(values[2]) ? List.of("CONFIRM") : List.of();
+        }
+        if (values.length == 3 && values[0].equalsIgnoreCase("policy")
+                && List.of("inspect", "history", "enable", "disable", "priority", "schedule",
+                "categories", "rate", "account", "condition", "range", "exempt")
+                .contains(values[1].toLowerCase())) {
+            return plugin.policies() == null ? List.of() : plugin.policies().ids(values[2]);
+        }
+        if (values.length == 4 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("create")) {
+            return Arrays.stream(ovh.aurumgg.core.engine.PolicyKind.values())
+                    .filter(kind -> kind != ovh.aurumgg.core.engine.PolicyKind.CUSTOM).map(Enum::name)
+                    .map(String::toLowerCase).filter(it -> it.startsWith(values[3].toLowerCase())).toList();
+        }
+        if (values.length == 6 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("create")) {
+            return Arrays.stream(TransactionCategory.values())
+                    .filter(ovh.aurumgg.core.engine.PolicyValidator::policyEligible).map(Enum::name)
+                    .filter(it -> it.toLowerCase().startsWith(values[5].toLowerCase())).toList();
+        }
+        if (values.length == 7 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("create")) {
+            return List.of("included", "added").stream()
+                    .filter(it -> it.startsWith(values[6].toLowerCase())).toList();
+        }
+        if (values.length == 4 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("schedule")) return List.of("now", "-");
+        if (values.length == 5 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("schedule")) return List.of("-");
+        if (values.length == 4 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("account")) {
+            return Arrays.stream(AccountType.values()).map(Enum::name)
+                    .filter(it -> it.toLowerCase().startsWith(values[3].toLowerCase())).toList();
+        }
+        if (values.length == 4 && values[0].equalsIgnoreCase("policy")
+                && values[1].equalsIgnoreCase("condition")) {
+            return List.of("source-type", "source-id", "target-type", "target-id", "metadata").stream()
+                    .filter(it -> it.startsWith(values[3].toLowerCase())).toList();
         }
         if (values.length == 2 && values[0].equalsIgnoreCase("pay")) {
             return Bukkit.getOnlinePlayers().stream().map(Player::getName)

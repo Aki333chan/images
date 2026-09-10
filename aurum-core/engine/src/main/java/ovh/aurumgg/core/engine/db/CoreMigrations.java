@@ -206,6 +206,37 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> policyRevisions = List.of(
+                """
+                ALTER TABLE aurum_transactions
+                    ADD COLUMN IF NOT EXISTS policy_amounts_json JSON NULL AFTER policy_rule_ids_json
+                """,
+                """
+                ALTER TABLE aurum_financial_rules
+                    ADD COLUMN IF NOT EXISTS revision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS updated_by VARCHAR(128) NOT NULL DEFAULT 'system',
+                    ADD COLUMN IF NOT EXISTS update_reason VARCHAR(255) NOT NULL DEFAULT 'legacy'
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_financial_rule_revisions (
+                    rule_id VARCHAR(64) NOT NULL,
+                    revision BIGINT UNSIGNED NOT NULL,
+                    rule_kind VARCHAR(32) NOT NULL,
+                    handler_version INT UNSIGNED NOT NULL,
+                    categories_json JSON NOT NULL,
+                    definition_json JSON NOT NULL,
+                    priority INT NOT NULL DEFAULT 0,
+                    enabled BOOLEAN NOT NULL,
+                    effective_from TIMESTAMP(6) NULL,
+                    effective_until TIMESTAMP(6) NULL,
+                    changed_by VARCHAR(128) NOT NULL,
+                    change_reason VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    PRIMARY KEY (rule_id, revision),
+                    KEY ix_aurum_rule_revision_time (created_at)
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -214,7 +245,9 @@ public final class CoreMigrations {
                 new SchemaMigration(3, "repeatable economy migration snapshots",
                         checksum(migrationRuns), migrationRuns),
                 new SchemaMigration(4, "authoritative runtime cutover state",
-                        checksum(runtimeState), runtimeState)
+                        checksum(runtimeState), runtimeState),
+                new SchemaMigration(5, "versioned financial policy audit",
+                        checksum(policyRevisions), policyRevisions)
         );
     }
 
