@@ -126,7 +126,9 @@ export function InstalledPluginsPanel({
       )}
 
       <p className="text-xs text-muted">
-        {t('mc.ip.hintA')} <code>/reload</code> {t('mc.ip.hintB')}{' '}
+        {/* Пробела перед hintB нет намеренно: строка начинается с точки,
+            закрывающей предложение про /reload. */}
+        {t('mc.ip.hintA')} <code>/reload</code>{t('mc.ip.hintB')}{' '}
         <code>plugins/{DISABLED_PLUGINS_DIR}/</code> {t('mc.ip.hintC')}
       </p>
 

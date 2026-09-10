@@ -382,6 +382,16 @@ public final class FakeGameBridge implements GameBridge {
         return jailsInfo;
     }
 
+    /** Состояния по нику: то, что панель спрашивает про офлайн-игроков. */
+    public final java.util.Map<String, ovh.aurumgg.companion.core.model.PlayerJailState> jailStates =
+            new java.util.HashMap<>();
+
+    @Override
+    public ovh.aurumgg.companion.core.model.PlayerJailState playerJail(String name) {
+        return jailStates.getOrDefault(
+                name, ovh.aurumgg.companion.core.model.PlayerJailState.unknown());
+    }
+
     @Override
     public boolean guildsAvailable() {
         return guildsInstalled;

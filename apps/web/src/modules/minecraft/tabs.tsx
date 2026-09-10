@@ -325,6 +325,11 @@ export function MinecraftPlayersTab({ serverId, moduleId }: ModuleTabProps) {
               serverId={serverId}
               moduleId={moduleId}
               player={selectedPlayer}
+              // Именно onlineSelected, а не «нашёлся ли он где-нибудь»:
+              // карточку открывают и из списка онлайна, и из истории, и
+              // только первый из них означает, что человек в игре прямо
+              // сейчас. От этого зависит, показывать ли кик и лечение.
+              online={onlineSelected !== null}
               known={selectedKnownRecord}
               plugins={plugins}
               onChanged={() => void load()}

@@ -24,6 +24,8 @@ describe('JailsService: команды по текущему состоянию'
     jails?: CompanionJails | null;
     online?: string[];
     records?: { id: string; playerName: string; jail: string; jailedBy: string; jailedAt: Date }[];
+    /** Что сервер отвечает про КОНКРЕТНОГО игрока — так узнаётся офлайн. */
+    states?: Record<string, { known: boolean; jailed: boolean; jail: string; releaseAt: number }>;
   }) {
     const commands: string[] = [];
     const deleted: unknown[] = [];
@@ -49,6 +51,12 @@ describe('JailsService: команды по текущему состоянию'
       getJails: () => Promise.resolve(options.jails === undefined ? JAILS : options.jails),
       getPlayers: () =>
         Promise.resolve((options.online ?? []).map((name) => ({ name }) as never)),
+      getPlayerJail: (_serverId: string, name: string) =>
+        Promise.resolve(
+          options.states?.[name]
+            ? { ...options.states[name], online: false }
+            : { known: false, jailed: false, jail: '', releaseAt: 0, online: false },
+        ),
     } as unknown as CompanionService;
 
     const rcon = {
@@ -144,6 +152,49 @@ describe('JailsService: команды по текущему состоянию'
     expect(deleted).toHaveLength(1);
   });
 
+  it('офлайн-игрока сажает: EssentialsX сам телепортирует его при входе', async () => {
+    // Ради этого всё и затевалось. В списке сидящих офлайн-игрока нет и быть
+    // не может, поэтому состояние спрашивается про него отдельно.
+    const { service, commands, upserted } = setup({
+      states: { Notch: { known: true, jailed: false, jail: '', releaseAt: 0 } },
+    });
+
+    await service.jail('s1', { player: 'Notch', jail: 'main', duration: '7d' }, 'u');
+    expect(commands).toEqual(['togglejail Notch main 7d']);
+    expect(upserted).toHaveLength(1);
+  });
+
+  it('офлайн-игроку в той же тюрьме срок заменяется одной командой', async () => {
+    const { service, commands } = setup({
+      states: { Notch: { known: true, jailed: true, jail: 'main', releaseAt: Date.now() } },
+    });
+
+    await service.jail('s1', { player: 'Notch', jail: 'main', duration: '1d' }, 'u');
+    expect(commands).toEqual(['togglejail Notch main 1d']);
+  });
+
+  it('офлайн-игрока переводит в другую тюрьму выпуском и посадкой', async () => {
+    // Без запроса состояния панель считала бы его не сидящим и отправила бы
+    // одну команду — а EssentialsX ответил бы jailAlreadyIncarcerated и не
+    // сделал ничего.
+    const { service, commands } = setup({
+      states: { Notch: { known: true, jailed: true, jail: 'main', releaseAt: 0 } },
+    });
+
+    await service.jail('s1', { player: 'Notch', jail: 'arena' }, 'u');
+    expect(commands).toEqual(['togglejail Notch', 'togglejail Notch arena']);
+  });
+
+  it('выпускает офлайн-сидельца, которого нет ни в одном списке', async () => {
+    const { service, commands, deleted } = setup({
+      states: { Notch: { known: true, jailed: true, jail: 'main', releaseAt: 0 } },
+    });
+
+    await service.release('s1', 'Notch');
+    expect(commands).toEqual(['togglejail Notch']);
+    expect(deleted).toHaveLength(1);
+  });
+
   it('выпуск не сидящего отклоняется, команда не уходит', async () => {
     // Главная защита кнопки: togglejail с одним аргументом по не сидящему
     // игроку на сервере с единственной тюрьмой САЖАЕТ его туда.
@@ -163,6 +214,11 @@ describe('JailsService: список сидящих', () => {
     jails: CompanionJails | null;
     online: string[];
     records: { id: string; playerName: string; jail: string; jailedBy: string; jailedAt: Date }[];
+    /** Ответ сервера про офлайн-игрока; null — companion промолчал. */
+    states?: Record<
+      string,
+      { known: boolean; jailed: boolean; jail: string; releaseAt: number; online: boolean } | null
+    >;
   }) {
     const deleted: { where: { id: { in: string[] } } }[] = [];
     const prisma = {
@@ -177,6 +233,8 @@ describe('JailsService: список сидящих', () => {
     const companion = {
       getJails: () => Promise.resolve(options.jails),
       getPlayers: () => Promise.resolve(options.online.map((name) => ({ name }) as never)),
+      getPlayerJail: (_serverId: string, name: string) =>
+        Promise.resolve(options.states?.[name] ?? null),
     } as unknown as CompanionService;
     return {
       service: new JailsService(prisma, companion, {} as VanillaRconService),
@@ -237,6 +295,52 @@ describe('JailsService: список сидящих', () => {
     expect(entry).toMatchObject({ name: 'steve', online: false, releaseAt: null, jailedBy: 'GM' });
     // Записи офлайновых не трогаем: плагин их просто не видит, и удалять их
     // значило бы забыть о человеке, который продолжает сидеть.
+    expect(deleted).toEqual([]);
+  });
+
+  it('офлайн-записи достаётся остаток срока от самого сервера', async () => {
+    // Своей записи хватает на «сидит столько-то», но не на «осталось
+    // столько-то»: срок знает только EssentialsX, и про одного игрока его
+    // можно спросить.
+    const { service } = setup({
+      jails: { available: true, jails: ['main'], jailed: [] },
+      online: [],
+      records: [{ id: 'r1', playerName: 'steve', jail: 'main', jailedBy: 'GM', jailedAt }],
+      states: {
+        steve: { known: true, jailed: true, jail: 'main', releaseAt: 1_800_000_000_000, online: false },
+      },
+    });
+
+    const [entry] = (await service.list('s1')).jailed;
+    expect(entry).toMatchObject({ name: 'steve', online: false, releaseAt: 1_800_000_000_000 });
+  });
+
+  it('офлайн-запись о том, кого выпустили в игре, снимается', async () => {
+    // Раньше такая запись висела бы, пока человек не зайдёт: плагин его не
+    // видит, а панель верила себе на слово.
+    const { service, deleted } = setup({
+      jails: { available: true, jails: ['main'], jailed: [] },
+      online: [],
+      records: [{ id: 'r1', playerName: 'steve', jail: 'main', jailedBy: 'GM', jailedAt }],
+      states: { steve: { known: true, jailed: false, jail: '', releaseAt: 0, online: false } },
+    });
+
+    expect((await service.list('s1')).jailed).toEqual([]);
+    expect(deleted).toEqual([{ where: { id: { in: ['r1'] } } }]);
+  });
+
+  it('офлайн-запись показывается и без ответа сервера, но без срока', async () => {
+    // Companion молчит. Спрятать человека, который сидит, хуже, чем
+    // показать его без остатка срока.
+    const { service, deleted } = setup({
+      jails: { available: true, jails: ['main'], jailed: [] },
+      online: [],
+      records: [{ id: 'r1', playerName: 'steve', jail: 'main', jailedBy: 'GM', jailedAt }],
+      states: { steve: null },
+    });
+
+    const [entry] = (await service.list('s1')).jailed;
+    expect(entry).toMatchObject({ name: 'steve', releaseAt: null, jailedBy: 'GM' });
     expect(deleted).toEqual([]);
   });
 

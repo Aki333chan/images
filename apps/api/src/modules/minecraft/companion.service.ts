@@ -25,6 +25,7 @@ import type {
   MinecraftPermissionChangeDto,
   MinecraftPermissionsDto,
   MinecraftPlayerDto,
+  MinecraftPlayerJailDto,
 } from '@aurum/shared';
 import { MinecraftConfigService } from '../minecraft-shared/minecraft-config.service';
 
@@ -135,6 +136,14 @@ interface RawJailedPlayer {
   jail?: string;
   /** Момент выхода, миллисекунды эпохи; 0 — до отмены. Момента посадки нет. */
   releaseAt?: number;
+}
+
+interface RawPlayerJail {
+  known?: boolean;
+  jailed?: boolean;
+  jail?: string;
+  releaseAt?: number;
+  online?: boolean;
 }
 
 interface RawJails {
@@ -929,6 +938,36 @@ export class CompanionService {
           jail: typeof e.jail === 'string' ? e.jail : '',
           releaseAt: numberOr(e.releaseAt, 0),
         })),
+    };
+  }
+
+  /**
+   * Сидит ли ОДИН игрок — по нику, включая тех, кого сейчас нет в сети.
+   *
+   * Дополняет getJails там, где тот бессилен: список сидящих плагин собирает
+   * по игрокам в сети и иначе не может, а сажать и выпускать панель должна и
+   * офлайн-игроков. EssentialsX это умеет и телепортирует человека в тюрьму
+   * при следующем входе.
+   *
+   * Стоит это одно чтение файла игрока, поэтому зовётся по одному на действие
+   * и никогда — списком.
+   *
+   * null — companion не настроен или молчит. Это НЕ «не сидит»: на таком
+   * ответе панель отправила бы команду посадки тому, кто уже сидит, и
+   * получила бы в консоли отказ вместо действия.
+   */
+  async getPlayerJail(serverId: string, player: string): Promise<MinecraftPlayerJailDto | null> {
+    const data = await this.call<RawPlayerJail>(
+      serverId,
+      `/players/${encodeURIComponent(player)}/jail`,
+    );
+    if (!data) return null;
+    return {
+      known: data.known === true,
+      jailed: data.jailed === true,
+      jail: typeof data.jail === 'string' ? data.jail : '',
+      releaseAt: numberOr(data.releaseAt, 0),
+      online: data.online === true,
     };
   }
 

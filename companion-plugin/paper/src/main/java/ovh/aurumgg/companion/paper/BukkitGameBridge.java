@@ -657,6 +657,18 @@ public final class BukkitGameBridge implements GameBridge {
                 ovh.aurumgg.companion.core.model.JailsInfo.unavailable());
     }
 
+    /**
+     * Тоже в основном потоке и по той же причине: {@code getUser} по нику
+     * читает файл игрока и кладёт его в общую карту пользователей
+     * EssentialsX, а она принадлежит главному потоку.
+     */
+    @Override
+    public ovh.aurumgg.companion.core.model.PlayerJailState playerJail(String name) {
+        return callSync(
+                () -> EssentialsJails.state(name),
+                ovh.aurumgg.companion.core.model.PlayerJailState.unknown());
+    }
+
     @Override
     public boolean guildsAvailable() {
         return GuildsIntegration.installed();

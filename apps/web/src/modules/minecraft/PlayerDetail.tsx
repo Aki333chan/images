@@ -94,6 +94,7 @@ export function PlayerDetail({
   serverId,
   moduleId,
   player,
+  online,
   known,
   plugins,
   onChanged,
@@ -103,6 +104,17 @@ export function PlayerDetail({
   /** Модуль сервера: от него зависят и адрес API, и набор вкладок карточки. */
   moduleId: string;
   player: MinecraftPlayerDto;
+  /**
+   * Игрок сейчас на сервере.
+   *
+   * От этого зависит набор действий: вылечить и кикнуть можно только того,
+   * кто в игре, и показывать эти кнопки над записью из истории значит
+   * предлагать команду, которая заведомо ответит «игрок не найден».
+   * Признак приходит снаружи, а не выводится из player: карточка одна и та
+   * же и для строки онлайна, и для строки истории, а различает их только
+   * тот, кто её открыл.
+   */
+  online: boolean;
   /**
    * Запись из исторического списка, если она есть.
    *
@@ -165,6 +177,7 @@ export function PlayerDetail({
             serverId={serverId}
             moduleId={moduleId}
             player={player}
+            online={online}
             has={has}
             canAct={canAct}
             onChanged={onChanged}
@@ -279,6 +292,7 @@ function PlayerStats({
 function PlayerActions({
   serverId,
   player,
+  online,
   moduleId,
   has,
   canAct,
@@ -288,6 +302,7 @@ function PlayerActions({
   serverId: string;
   moduleId: string;
   player: MinecraftPlayerDto;
+  online: boolean;
   has: (id: string) => boolean;
   canAct: boolean;
   onChanged: () => void;
@@ -302,7 +317,9 @@ function PlayerActions({
   const [target, setTarget] = useState('');
   // Кого предлагать в поле телепорта. Себя из списка убираем: «телепорт
   // Steve к Steve» — не действие, а недоразумение.
-  const online = useOnlinePlayers(serverId, true, moduleId).filter((n) => n !== player.name);
+  const teleportTargets = useOnlinePlayers(serverId, true, moduleId).filter(
+    (n) => n !== player.name,
+  );
 
   async function runQuick(id: string, args: Record<string, string>) {
     setBusy(true);
@@ -356,59 +373,72 @@ function PlayerActions({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>{t('mc.pd.state')}</Label>
-        <div className="flex flex-wrap gap-2">
-          <ActionButton
-            label={t('mc.pd.heal')}
-            hint={t('mc.pd.healHint')}
-            requirement="Essentials"
-            available={has('Essentials')}
-            disabled={busy || !canAct}
-            onClick={() => void runQuick('ess-heal', { player: name })}
-          />
-          <ActionButton
-            label={t('mc.pd.kill')}
-            hint={t('mc.pd.killHint')}
-            requirement={null}
-            available
-            variant="destructive"
-            disabled={busy || !canAct}
-            onClick={() => {
-              if (!confirm(t('mc.pd.killConfirm', { name }))) return;
-              void runQuick('vanilla-kill', { player: name });
-            }}
-          />
-        </div>
-      </div>
+      {/* Лечение, «Убить» и телепорт работают только по игроку в игре: все три
+          команды адресуют его через селектор сервера, а у вышедшего ни
+          здоровья, ни координат нет — они лежат в его файле. Над записью из
+          истории эти кнопки лишь предлагали бы команду, которая ответит
+          «игрок не найден». */}
+      {online && (
+        <>
+          <div className="space-y-2">
+            <Label>{t('mc.pd.state')}</Label>
+            <div className="flex flex-wrap gap-2">
+              <ActionButton
+                label={t('mc.pd.heal')}
+                hint={t('mc.pd.healHint')}
+                requirement="Essentials"
+                available={has('Essentials')}
+                disabled={busy || !canAct}
+                onClick={() => void runQuick('ess-heal', { player: name })}
+              />
+              <ActionButton
+                label={t('mc.pd.kill')}
+                hint={t('mc.pd.killHint')}
+                requirement={null}
+                available
+                variant="destructive"
+                disabled={busy || !canAct}
+                onClick={() => {
+                  if (!confirm(t('mc.pd.killConfirm', { name }))) return;
+                  void runQuick('vanilla-kill', { player: name });
+                }}
+              />
+            </div>
+          </div>
 
-      <div className="space-y-2">
-        <Label>{t('mc.pd.teleport')}</Label>
-        <div className="flex flex-wrap items-center gap-2">
-          <PlayerPicker
-            value={target}
-            onChange={setTarget}
-            players={online}
-            placeholder={t('mc.pd.teleportTo')}
-            // На телефоне поле занимает строку целиком, на десктопе —
-            // прежняя узкая колонка рядом с кнопкой.
-            className="min-w-0 flex-1 sm:w-[220px] sm:flex-none"
-          />
-          <ActionButton
-            label={t('mc.pd.move')}
-            hint={t('mc.pd.moveHint')}
-            requirement={null}
-            available
-            disabled={busy || !canAct || !target.trim()}
-            onClick={() => void runQuick('vanilla-tp', { player: name, target: target.trim() })}
-          />
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label>{t('mc.pd.teleport')}</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <PlayerPicker
+                value={target}
+                onChange={setTarget}
+                players={teleportTargets}
+                placeholder={t('mc.pd.teleportTo')}
+                // На телефоне поле занимает строку целиком, на десктопе —
+                // прежняя узкая колонка рядом с кнопкой.
+                className="min-w-0 flex-1 sm:w-[220px] sm:flex-none"
+              />
+              <ActionButton
+                label={t('mc.pd.move')}
+                hint={t('mc.pd.moveHint')}
+                requirement={null}
+                available
+                disabled={busy || !canAct || !target.trim()}
+                onClick={() => void runQuick('vanilla-tp', { player: name, target: target.trim() })}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="space-y-2">
         <Label>{t('mc.pd.punish')}</Label>
         <div className="flex flex-wrap gap-2">
-          {hasPermission('minecraft.kick') && (
+          {/* Кик — тоже только онлайн: выгонять того, кто уже вышел, не из
+              чего. Бан рядом остаётся: забанить офлайн-игрока не только
+              можно, но чаще всего именно так и делают — после разбора
+              жалобы, когда нарушитель давно вышел. */}
+          {online && hasPermission('minecraft.kick') && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => onPunish('kick')}>
               {t('mc.pd.kick')}
             </Button>

@@ -6,6 +6,7 @@ import type {
 } from '@aurum/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VanillaRconService } from '../minecraft-shared/vanilla-rcon.service';
+import type { CompanionJails } from './companion.service';
 import { CompanionService } from './companion.service';
 
 /**
@@ -18,6 +19,16 @@ import { CompanionService } from './companion.service';
  * лишний пробел превратил бы срок в несколько аргументов.
  */
 const DURATION_RE = /^(?:\d{1,4}(?:y|mo|w|d|h|m|s)){1,6}$/i;
+
+/**
+ * Сколько офлайн-записей сверяем с сервером за один показ списка.
+ *
+ * Каждая сверка — чтение файла игрока на игровом сервере. Записей столько,
+ * скольких панель посадила и кто сейчас не в сети; десятка хватает с запасом,
+ * а на случай, когда кто-то посадил полсотни человек разом, граница не даёт
+ * списку сидящих превратиться в полсотни обращений к диску.
+ */
+const MAX_OFFLINE_CHECKS = 10;
 
 /**
  * Тюрьмы EssentialsX: посадка, выпуск и «кто сейчас сидит».
@@ -107,19 +118,53 @@ export class JailsService {
       };
     });
 
-    for (const record of records) {
-      if (live.has(record.playerName) || online.has(record.playerName)) continue;
+    // Офлайн-сидельцы. В ответе плагина их нет и быть не может, поэтому
+    // берутся из записей панели — но каждая запись СВЕРЯЕТСЯ с сервером
+    // отдельным запросом. Так решаются сразу три вещи: сидящий, которого
+    // выпустили в игре, перестаёт числиться; переведённый в другую тюрьму
+    // показывается там, где он на самом деле; и главное — появляется остаток
+    // срока, которого у записи панели нет.
+    //
+    // По запросу на запись — это дорого только на бумаге: записей столько,
+    // скольких панель посадила и кто сейчас не в сети, то есть единицы.
+    // Верхняя граница всё равно стоит: список сидящих не должен уметь
+    // превращаться в сотню обращений к диску игрового сервера.
+    const offline = records.filter(
+      (r) => !live.has(r.playerName) && !online.has(r.playerName),
+    );
+    const checked = await Promise.all(
+      offline
+        .slice(0, MAX_OFFLINE_CHECKS)
+        .map((r) => this.companion.getPlayerJail(serverId, r.playerName)),
+    );
+
+    const orphans: string[] = [];
+    offline.forEach((record, index) => {
+      // Сверх лимита — показываем по записи, без остатка срока. Честнее, чем
+      // спрятать человека, который сидит.
+      const state = index < checked.length ? checked[index] : undefined;
+      if (state && state.known && !state.jailed) {
+        orphans.push(record.id);
+        return;
+      }
       jailed.push({
         // UUID у офлайн-записи нет: панель сажает по нику, и в момент посадки
         // игрока может не быть ни в сети, ни в кэше сервера.
         uuid: '',
         name: record.playerName,
-        jail: record.jail,
-        releaseAt: null,
+        jail: state?.jailed ? state.jail : record.jail,
+        // null — спросить не удалось: companion молчит либо записей больше
+        // лимита. «До отмены» тут было бы выдумкой.
+        releaseAt: state?.jailed ? state.releaseAt : null,
         jailedAt: record.jailedAt.getTime(),
         jailedBy: record.jailedBy,
         online: false,
       });
+    });
+    if (orphans.length) {
+      await this.prisma.minecraftJailRecord
+        .deleteMany({ where: { id: { in: orphans } } })
+        .catch(() => undefined);
     }
 
     jailed.sort((a, b) => a.name.localeCompare(b.name));
@@ -158,15 +203,15 @@ export class JailsService {
       throw new BadRequestException('mc.err.badJailDuration');
     }
 
-    const current = info.jailed.find((e) => e.name.toLowerCase() === player.toLowerCase());
-    const sameJail = current && current.jail.toLowerCase() === jail.toLowerCase();
+    const current = await this.currentJail(serverId, player, info);
+    const sameJail = current && current.toLowerCase() === jail.toLowerCase();
 
     // Одной командой обходимся ровно в двух случаях: игрок не сидит вовсе
     // либо сидит в этой же тюрьме и ему назначают новый срок. Всё остальное —
     // выпуск и посадка заново.
     const inPlace = sameJail && !!duration;
     const commands: string[] = [];
-    if (current && !inPlace) commands.push(`togglejail ${player}`);
+    if (current !== null && !inPlace) commands.push(`togglejail ${player}`);
     commands.push(`togglejail ${player} ${jail}${duration ? ` ${duration}` : ''}`);
 
     const output: string[] = [];
@@ -198,9 +243,8 @@ export class JailsService {
    */
   async release(serverId: string, player: string): Promise<{ output: string }> {
     const name = this.rcon.assertNickname(player);
-    const state = await this.list(serverId);
-    if (!state.available) throw new ServiceUnavailableException('mc.err.noJails');
-    if (!state.jailed.some((e) => e.name.toLowerCase() === name.toLowerCase())) {
+    const info = await this.requireJails(serverId);
+    if ((await this.currentJail(serverId, name, info)) === null) {
       throw new BadRequestException('mc.err.notJailed');
     }
 
@@ -214,6 +258,31 @@ export class JailsService {
   }
 
   // ------------------------------------------------------------- Служебное
+
+  /**
+   * В какой тюрьме игрок сидит СЕЙЧАС; null — не сидит.
+   *
+   * Сначала смотрим в уже полученный список сидящих: для игрока в сети это
+   * бесплатно. Для остальных спрашиваем сервер про одного человека — иначе
+   * состояние офлайн-игрока узнать негде, а без него команда собирается
+   * наугад: посадка того, кто уже сидит, у EssentialsX либо не делает ничего
+   * (другая тюрьма), либо падает на разборе пустого срока (та же).
+   *
+   * Если companion не ответил, считаем «не сидит»: сервер в этом случае сам
+   * рассудит команду и в худшем случае откажет — это лучше, чем не дать
+   * посадить нарушителя из-за молчания необязательного плагина.
+   */
+  private async currentJail(
+    serverId: string,
+    player: string,
+    info: CompanionJails,
+  ): Promise<string | null> {
+    const online = info.jailed.find((e) => e.name.toLowerCase() === player.toLowerCase());
+    if (online) return online.jail;
+
+    const state = await this.companion.getPlayerJail(serverId, player);
+    return state?.jailed ? state.jail : null;
+  }
 
   private async requireJails(serverId: string) {
     const info = await this.companion.getJails(serverId);

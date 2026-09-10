@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MinecraftPluginsDto } from '@aurum/shared';
 import { api } from '../../lib/api';
-import { useServerRuntime } from '../../lib/server-runtime';
+import { RUNTIME_POLL_MS, useServerRuntime } from '../../lib/server-runtime';
 import { Badge, Button, Card, ErrorText, Spinner } from '../../components/ui';
 import { useApiText, useT } from '../../i18n';
 
@@ -76,12 +76,15 @@ export function rememberedFits(kept: Remembered, bootAt: number | null): boolean
  * не хватало: она уходила в пустоту, и до нажатия «Обновить» руками таблица
  * так и оставалась пустой.
  *
- * Тридцать попыток с шагом опроса (10 с) — это пять минут: столько сервер
- * поднимается с большим запасом. Дальше молчание означает не «ещё грузится», а
- * «настроено неверно», и долбиться в него бесконечно незачем — кнопка
- * «Обновить» никуда не делась.
+ * Считаем от ВРЕМЕНИ, а не числом попыток: попытка привязана к тику опроса
+ * состояния, и стоило этому опросу стать чаще, как «тридцать попыток» из пяти
+ * минут молча превратились бы в две. Пять минут — с большим запасом на самый
+ * тяжёлый старт. Дальше молчание означает не «ещё грузится», а «настроено
+ * неверно», и долбиться в него бесконечно незачем — кнопка «Обновить»
+ * никуда не делась.
  */
-const MAX_RETRIES = 30;
+const RETRY_WINDOW_MS = 5 * 60_000;
+const MAX_RETRIES = Math.ceil(RETRY_WINDOW_MS / RUNTIME_POLL_MS);
 
 export function PluginsPanel({ serverId }: { serverId: string }) {
   const t = useT();
@@ -137,7 +140,7 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
     retriesRef.current = 0;
     void load(runtime.bootAt);
     // bootAt намеренно не в зависимостях: он уточняется на каждом опросе на
-    // доли секунды, и по нему запрос уходил бы каждые десять секунд.
+    // доли секунды, и по нему запрос уходил бы на каждом тике.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, runtime.runId]);
 

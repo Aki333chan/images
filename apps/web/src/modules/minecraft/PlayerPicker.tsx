@@ -57,6 +57,7 @@ export function PlayerPicker({
   placeholder,
   autoFocus,
   className,
+  notOnlineKey = 'mc.picker.notOnline',
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -65,6 +66,15 @@ export function PlayerPicker({
   placeholder?: string;
   autoFocus?: boolean;
   className?: string;
+  /**
+   * Что написать, когда введённого ника нет среди тех, кто в сети.
+   *
+   * По умолчанию это предупреждение: для большинства действий офлайн-игрок —
+   * повод перепроверить ник. Но не для всех: посадить в тюрьму можно и того,
+   * кого сейчас нет, и там та же строка должна не настораживать, а объяснять,
+   * что произойдёт. Поэтому текст задаёт тот, кто знает про своё действие.
+   */
+  notOnlineKey?: string;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -158,7 +168,7 @@ export function PlayerPicker({
           ник принимается как есть, строка лишь помогает заметить опечатку. */}
       {!exact && query.length > 0 && players.length > 0 && matches.length === 0 && (
         <p className="mt-1 text-xs text-muted">
-          {t('mc.picker.notOnline')}
+          {t(notOnlineKey)}
         </p>
       )}
     </div>
