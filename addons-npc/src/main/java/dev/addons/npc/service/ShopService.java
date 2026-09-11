@@ -35,11 +35,11 @@ public final class ShopService implements Listener {
     private final ShopRepository repository;
     private final EconomyService economy;
     private final MessageService messages;
-    private final ShopDelivery delivery;
+    private final ClaimDelivery delivery;
     private final Set<UUID> pending = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public ShopService(JavaPlugin plugin, ShopRepository repository, EconomyService economy,
-                       MessageService messages, ShopDelivery delivery) {
+                       MessageService messages, ClaimDelivery delivery) {
         this.plugin = plugin;
         this.repository = repository;
         this.economy = economy;
@@ -230,7 +230,7 @@ public final class ShopService implements Listener {
         ClaimRequest request;
         try {
             request = new ClaimRequest("npc-shop-claim:" + hold.idempotencyKey(), ClaimGateway.PLUGIN,
-                    player.getUniqueId(), "SHOP_PURCHASE", purchase.stepCount(), purchase.summary(),
+                    player.getUniqueId(), ShopPlan.KIND, purchase.stepCount(), purchase.summary(),
                     purchase.encode());
         } catch (IllegalArgumentException invalid) {
             plugin.getLogger().warning("Could not describe NPC purchase as a claim: " + invalid.getMessage());
@@ -257,7 +257,8 @@ public final class ShopService implements Listener {
             // Delivery from here on is Core's record, not this method's: even
             // if the server dies on the next line, the claim survives and the
             // player is served on their next login.
-            delivery.deliver(player, promised.claim().orElseThrow(), purchase);
+            delivery.deliver(player, promised.claim().orElseThrow(),
+                    new ShopPlan(plugin, economy, messages, repository, delivery, purchase));
         }));
     }
 

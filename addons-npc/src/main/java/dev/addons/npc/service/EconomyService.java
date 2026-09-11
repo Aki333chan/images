@@ -109,6 +109,28 @@ public final class EconomyService {
         return current == null ? unavailable() : current.releaseHold(saga.holdId());
     }
 
+    /**
+     * Pay a player from a system source, once.
+     *
+     * <p>No reservation: a buyer pays from {@code SYSTEM_SOURCE:npc-buyers},
+     * and the ledger treats a system source as always funded, so there is
+     * nothing to prove in advance. The idempotency key is what makes a repeat
+     * safe, and unlike a hold it does not expire — which matters, because the
+     * repeat may happen a restart later.
+     */
+    public CompletionStage<ovh.aurumgg.core.api.TransactionResult> pay(
+            String key, AccountId from, AccountId to, BigDecimal amount,
+            TransactionCategory category, Map<String, String> metadata) {
+        AurumEconomyApi current = aurum;
+        if (current == null) {
+            return CompletableFuture.completedFuture(new ovh.aurumgg.core.api.TransactionResult(
+                    ovh.aurumgg.core.api.TransactionResult.Status.UNAVAILABLE, key,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "AurumCore is unavailable"));
+        }
+        return current.transfer(new ovh.aurumgg.core.api.TransactionRequest(
+                key, from, to, currencyId(), amount, category, metadata));
+    }
+
     /** Release a reservation the plugin never wrote a saga for. */
     public CompletionStage<HoldResult> release(ovh.aurumgg.core.api.HoldSnapshot hold) {
         AurumEconomyApi current = aurum;

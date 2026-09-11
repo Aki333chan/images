@@ -24,7 +24,11 @@ import dev.addons.npc.service.GuildTraderService;
 import dev.addons.npc.service.AurumExchangeService;
 import dev.addons.npc.service.ClaimGateway;
 import dev.addons.npc.service.NpcSagaRepository;
-import dev.addons.npc.service.ShopDelivery;
+import dev.addons.npc.service.BuyerPlan;
+import dev.addons.npc.service.ClaimDelivery;
+import dev.addons.npc.service.PurchaseClaim;
+import dev.addons.npc.service.SaleClaim;
+import dev.addons.npc.service.ShopPlan;
 import dev.addons.npc.model.BuyerDefinition;
 import dev.addons.npc.model.BuyerOffer;
 import dev.addons.npc.model.ClickMode;
@@ -65,7 +69,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     private AurumExchangeService exchangerService;
     private NpcSagaRepository sagas;
     private ClaimGateway claims;
-    private ShopDelivery delivery;
+    private ClaimDelivery delivery;
 
     @Override
     public void onEnable() {
@@ -92,9 +96,15 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         npcManager = new NpcManager(this, npcRepository, new dev.addons.npc.service.SkinService(this, adapter), adapter);
         claims = new ClaimGateway(this);
         boolean deliveryClaims = claims.hook();
-        delivery = new ShopDelivery(this, claims, economy, messages, shopRepository);
+        delivery = new ClaimDelivery(this, claims, messages);
+        // Каждый вид заявки умеет читать только свой payload. Неизвестный вид
+        // не трогаем вовсе: угадывать, что задолжал чужой плагин, нельзя.
+        delivery.register(ShopPlan.KIND, payload -> PurchaseClaim.decode(payload)
+                .map(purchase -> new ShopPlan(this, economy, messages, shopRepository, delivery, purchase)));
+        delivery.register(BuyerPlan.KIND, payload -> SaleClaim.decode(payload)
+                .map(sale -> new BuyerPlan(this, economy, messages, buyerRepository, delivery, sale)));
         shopService = new ShopService(this, shopRepository, economy, messages, delivery);
-        buyerService = new BuyerService(this, buyerRepository, economy, messages, sagas);
+        buyerService = new BuyerService(this, buyerRepository, economy, messages, delivery);
         guildsHook = new AurumGuildsHook(this);
         GuildTraderService guildTraderService = new GuildTraderService(this, guildTraderRepository, economy,
                 messages, guildsHook, sagas);
