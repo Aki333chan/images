@@ -70,8 +70,10 @@ Vault остаётся синхронной границей совместим�
    регистрация AurumCore как Vault-провайдера и команды управления экономикой.
 5. 0.5.0 policies: несколько правил одной операции собираются в единый
    сбалансированный план; определения и изменения версионируются в MariaDB.
-6. Перевести NPC, Slots, Arena и Guilds на AurumEconomyApi по одному.
-7. После staging-наблюдения перенести дополнительные динамические настройки.
+6. 0.6.0 multi-currency: Vault видит только primary-валюту, native API работает
+   со всеми валютами, а обмен двух валют коммитится одной SQL-транзакцией.
+7. Перевести NPC, Slots, Arena и Guilds на AurumEconomyApi по одному.
+8. После staging-наблюдения перенести дополнительные динамические настройки.
    Статичные настройки остаются YAML с экспортом/импортом.
 
 Перед переключением сохраняются дамп MariaDB и каталоги плагинов. Инструмент
@@ -104,10 +106,11 @@ Core один раз проводит деньги, а сервер достав
 
 План команд активного режима:
 
-- `/aurum balance [player]` и `/pay <player> <amount>`;
-- `/aurum economy give|take|set <player> <amount> <reason>`;
-- `/aurum treasury balance|deposit|withdraw|history`;
+- `/aurum balance [player] [currency]` и `/pay <player> <amount>`;
+- `/aurum economy give|take|set <player> <amount> [currency:<id>] [reason]`;
+- `/aurum treasury [currency]`;
 - `/aurum policy list|create|enable|disable|inspect`;
+- `/aurum exchange list|create|enable|disable|inspect|history|reserve`;
 - `/trade <player>`, `/trade accept|cancel` и GUI одной сделки;
 - `/aurum migrate dry-run|import|verify|rollback-export`.
 
