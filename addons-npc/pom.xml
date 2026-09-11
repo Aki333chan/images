@@ -6,7 +6,7 @@
 
     <groupId>dev.addons</groupId>
     <artifactId>addons-npc</artifactId>
-    <version>1.8.0</version>
+    <version>1.9.0</version>
     <name>AddonsNPC</name>
     <description>Configurable interactive mannequin NPCs for Paper and Spigot 26.2</description>
 
@@ -35,7 +35,7 @@
         <dependency>
             <groupId>ovh.aurumgg</groupId>
             <artifactId>aurum-api</artifactId>
-            <version>0.6.1</version>
+            <version>0.7.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>

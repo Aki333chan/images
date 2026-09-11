@@ -9,6 +9,7 @@ messages:
   exchanger-not-found: "&cExchanger '&f{exchanger}&c' was not found."
   cooldown: "&7Please wait &e{seconds}s &7before using this NPC again."
   vault-unavailable: "&cEconomy is unavailable. Install Vault and an economy provider."
+  aurum-economy-unavailable: "&cNPC commerce is unavailable because AurumCore holds are not active."
   insufficient-funds: "&cYou need &e{price}&c. Your balance: &e{balance}&c."
   inventory-full: "&cYou do not have enough inventory space."
   out-of-stock: "&cThis item is out of stock."

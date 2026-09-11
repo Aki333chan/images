@@ -9,6 +9,7 @@ messages:
   exchanger-not-found: "&cNie znaleziono kantoru '&f{exchanger}&c'."
   cooldown: "&7Odczekaj &e{seconds}s &7przed ponownym użyciem tego NPC."
   vault-unavailable: "&cEkonomia jest niedostępna. Zainstaluj Vault oraz dostawcę ekonomii."
+  aurum-economy-unavailable: "&cHandel NPC jest niedostępny, ponieważ rezerwacje AurumCore nie są aktywne."
   insufficient-funds: "&cPotrzebujesz &e{price}&c. Twoje saldo: &e{balance}&c."
   inventory-full: "&cBrak miejsca w ekwipunku."
   out-of-stock: "&cTen przedmiot jest wyprzedany."

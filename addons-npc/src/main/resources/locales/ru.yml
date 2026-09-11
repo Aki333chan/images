@@ -9,6 +9,7 @@ messages:
   exchanger-not-found: "&cОбменник '&f{exchanger}&c' не найден."
   cooldown: "&7Подождите &e{seconds} с &7перед повторным использованием этого NPC."
   vault-unavailable: "&cЭкономика недоступна. Установите Vault и провайдер экономики."
+  aurum-economy-unavailable: "&cТорговля с NPC недоступна: резервы AurumCore не активны."
   insufficient-funds: "&cНужно &e{price}&c. Ваш баланс: &e{balance}&c."
   inventory-full: "&cВ инвентаре недостаточно места."
   out-of-stock: "&cЭтот товар закончился."

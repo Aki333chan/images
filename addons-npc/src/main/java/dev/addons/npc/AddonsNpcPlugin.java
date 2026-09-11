@@ -22,6 +22,7 @@ import dev.addons.npc.service.BuyerService;
 import dev.addons.npc.service.AurumGuildsHook;
 import dev.addons.npc.service.GuildTraderService;
 import dev.addons.npc.service.AurumExchangeService;
+import dev.addons.npc.service.NpcSagaRepository;
 import dev.addons.npc.model.BuyerDefinition;
 import dev.addons.npc.model.BuyerOffer;
 import dev.addons.npc.model.ClickMode;
@@ -60,6 +61,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     private ShopService shopService;
     private BuyerService buyerService;
     private AurumExchangeService exchangerService;
+    private NpcSagaRepository sagas;
 
     @Override
     public void onEnable() {
@@ -78,15 +80,17 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         exchangerRepository.load();
 
         messages = new MessageService(this);
+        sagas = new NpcSagaRepository(this);
         economy = new EconomyService(this);
-        boolean vault = economy.hook();
+        boolean nativeEconomy = economy.hook();
         dialogues = new DialogueService(messages);
         MannequinAdapter adapter = new MannequinAdapter(this);
         npcManager = new NpcManager(this, npcRepository, new dev.addons.npc.service.SkinService(this, adapter), adapter);
-        shopService = new ShopService(this, shopRepository, economy, messages);
-        buyerService = new BuyerService(this, buyerRepository, economy, messages);
+        shopService = new ShopService(this, shopRepository, economy, messages, sagas);
+        buyerService = new BuyerService(this, buyerRepository, economy, messages, sagas);
         guildsHook = new AurumGuildsHook(this);
-        GuildTraderService guildTraderService = new GuildTraderService(this, guildTraderRepository, economy, messages, guildsHook);
+        GuildTraderService guildTraderService = new GuildTraderService(this, guildTraderRepository, economy,
+                messages, guildsHook, sagas);
         exchangerService = new AurumExchangeService(this, exchangerRepository, messages);
         boolean aurumExchange = exchangerService.hook();
         ActionExecutor actionExecutor = new ActionExecutor(messages, shopService, buyerService,
@@ -115,11 +119,14 @@ public final class AddonsNpcPlugin extends JavaPlugin {
 
         long startupDelay = Math.max(1L, getConfig().getLong("settings.startup-spawn-delay-ticks", 20L));
         getServer().getScheduler().runTaskLater(this, npcManager::start, startupDelay);
+        long recoveryPeriod = Math.max(5L, getConfig().getLong("economy.recovery-retry-seconds", 20L)) * 20L;
+        getServer().getScheduler().runTaskTimer(this,
+                () -> economy.recover(sagas, guildsHook), recoveryPeriod, recoveryPeriod);
         getLogger().info("Enabled " + npcRepository.ids().size() + " NPC(s) and " + shopRepository.ids().size()
                 + " shop(s), " + buyerRepository.ids().size() + " buyer(s), and "
                 + guildTraderRepository.ids().size() + " guild trader(s), "
-                + exchangerRepository.ids().size() + " exchanger(s). Vault economy: "
-                + (vault ? "connected" : "unavailable") + "; AurumGuilds: "
+                + exchangerRepository.ids().size() + " exchanger(s). AurumCore holds: "
+                + (nativeEconomy ? "connected" : "unavailable") + "; AurumGuilds: "
                 + (guildsHook.available() ? "connected" : "unavailable") + "; Aurum exchange: "
                 + (aurumExchange ? "connected" : "unavailable"));
     }
@@ -144,6 +151,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         exchangerRepository.load();
         dialogues.clear();
         economy.hook();
+        economy.recover(sagas, guildsHook);
         exchangerService.hook();
         npcManager.syncAll();
     }

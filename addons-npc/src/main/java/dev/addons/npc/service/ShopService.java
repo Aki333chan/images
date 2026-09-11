@@ -8,7 +8,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -21,18 +22,26 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.HoldResult;
+import ovh.aurumgg.core.api.TransactionCategory;
 
 public final class ShopService implements Listener {
     private final JavaPlugin plugin;
     private final ShopRepository repository;
     private final EconomyService economy;
     private final MessageService messages;
+    private final NpcSagaRepository sagas;
+    private final Set<UUID> pending = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    public ShopService(JavaPlugin plugin, ShopRepository repository, EconomyService economy, MessageService messages) {
+    public ShopService(JavaPlugin plugin, ShopRepository repository, EconomyService economy,
+                       MessageService messages, NpcSagaRepository sagas) {
         this.plugin = plugin;
         this.repository = repository;
         this.economy = economy;
         this.messages = messages;
+        this.sagas = sagas;
     }
 
     public void open(Player player, String shopId) {
@@ -134,49 +143,130 @@ public final class ShopService implements Listener {
             return;
         }
         double price = activePrice.finalPrice();
-        if (price > 0 && !economy.available()) {
-            messages.send(player, "vault-unavailable");
+        if (price <= 0) {
+            applyFreePurchase(player, shop, offer, activePrice, holder);
             return;
         }
-        double balance = economy.balance(player);
-        Map<String, Object> values = placeholders(player, offer, activePrice, balance, System.currentTimeMillis());
-        if (price > balance) {
-            messages.send(player, "insufficient-funds", values);
+        if (!economy.available() && !economy.hook()) {
+            messages.send(player, "aurum-economy-unavailable");
             return;
         }
-        Optional<String> failure = price <= 0 ? Optional.empty() : economy.withdraw(player, price);
-        if (failure.isPresent()) {
-            plugin.getLogger().warning("Vault transaction failed for " + player.getName() + ": " + failure.get());
+        if (!pending.add(player.getUniqueId())) return;
+        String operation = UUID.randomUUID().toString();
+        Map<String, String> metadata = Map.of("plugin", "AddonsNPC", "operation", operation,
+                "shop", shop.id(), "offer-slot", Integer.toString(offer.slot()));
+        economy.reserve("npc-shop:" + operation, AccountId.player(player.getUniqueId()),
+                new AccountId(AccountType.NPC_SHOP, shop.id()), price, TransactionCategory.NPC_PURCHASE,
+                "npc-shop", shop.id() + ":" + offer.slot(), metadata)
+                .whenComplete((result, error) -> runMain(() -> reservedPurchase(player, shop.id(), offer.slot(),
+                        price, holder, result, error)));
+    }
+
+    private void reservedPurchase(Player player, String shopId, int slot, double reservedPrice, ShopHolder holder,
+                                  HoldResult result, Throwable error) {
+        if (error != null || result == null || (result.status() != HoldResult.Status.SUCCESS
+                && result.status() != HoldResult.Status.DUPLICATE) || result.hold().isEmpty()) {
+            pending.remove(player.getUniqueId());
+            messages.send(player, result != null && result.status() == HoldResult.Status.INSUFFICIENT_FUNDS
+                    ? "insufficient-funds" : "purchase-failed");
+            return;
+        }
+        NpcSaga saga;
+        try { saga = sagas.begin(NpcSaga.Kind.SHOP_PURCHASE, player.getUniqueId(), result.hold().orElseThrow()); }
+        catch (RuntimeException failure) {
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not journal NPC shop purchase", failure);
+            economy.release(NpcSaga.held(NpcSaga.Kind.SHOP_PURCHASE, player.getUniqueId(), result.hold().orElseThrow()));
+            pending.remove(player.getUniqueId());
             messages.send(player, "purchase-failed");
             return;
         }
+        ShopDefinition shop = repository.get(shopId);
+        ShopOffer offer = shop == null ? null : shop.offers().get(slot);
+        long now = System.currentTimeMillis();
+        ActivePrice price = offer == null ? null : activePrice(shop, offer, now);
+        if (offer == null || !offer.available() || Math.abs(price.finalPrice() - reservedPrice) > 0.0000001
+                || !canFit(player.getInventory().getStorageContents(), offer.product())) {
+            releaseFailed(saga, player, "shop-price-changed");
+            return;
+        }
+        ItemStack reward = offer.product();
         int stockBefore = offer.stock();
+        Map<String, Object> values = placeholders(player, offer, price, economy.balance(player), now);
         try {
             HashMap<Integer, ItemStack> leftovers = player.getInventory().addItem(reward);
             if (!leftovers.isEmpty()) {
                 throw new IllegalStateException("Inventory changed during purchase");
             }
-            for (String command : offer.commands()) {
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), stripSlash(MessageService.replace(command, values)));
-            }
             offer.consume();
             repository.save();
-            if (player.getOpenInventory().getTopInventory().getHolder() instanceof ShopHolder) {
-                long now = System.currentTimeMillis();
-                ActivePrice refreshed = activePrice(shop, offer, now);
-                player.getOpenInventory().getTopInventory().setItem(offer.slot(), icon(offer, refreshed, now));
-                holder.shownPrices.put(offer.slot(), refreshed.finalPrice());
-                holder.promotionKeys.put(offer.slot(), promotionKey(refreshed));
-            }
-            player.updateInventory();
-            messages.send(player, "purchase-success", values);
+            NpcSaga applied = sagas.markApplied(saga);
+            economy.capture(applied).whenComplete((capture, failure) -> runMain(() -> {
+                pending.remove(player.getUniqueId());
+                if (failure == null && capture != null && (capture.status() == HoldResult.Status.SUCCESS
+                        || capture.status() == HoldResult.Status.DUPLICATE)) {
+                    for (String command : offer.commands()) try {
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
+                                stripSlash(MessageService.replace(command, values)));
+                    } catch (RuntimeException commandError) {
+                        plugin.getLogger().warning("Shop post-purchase command failed: " + commandError.getMessage());
+                    }
+                    sagas.complete(applied);
+                    refreshOffer(player, holder, shop, offer);
+                    player.updateInventory();
+                    messages.send(player, "purchase-success", values);
+                } else if (capture != null && capture.status() != HoldResult.Status.UNAVAILABLE) {
+                    offer.stock(stockBefore); repository.save(); player.getInventory().removeItem(reward);
+                    economy.release(applied); sagas.complete(applied); player.updateInventory();
+                    messages.send(player, "purchase-failed");
+                } else {
+                    plugin.getLogger().warning("NPC shop purchase " + applied.id()
+                            + " is awaiting AurumCore recovery");
+                    messages.send(player, "purchase-failed");
+                }
+            }));
         } catch (RuntimeException exception) {
             offer.stock(stockBefore);
             player.getInventory().removeItem(reward);
-            economy.refund(player, price);
+            economy.release(saga); sagas.complete(saga); pending.remove(player.getUniqueId());
             plugin.getLogger().warning("Rolled back purchase for " + player.getName() + ": " + exception.getMessage());
             messages.send(player, "purchase-failed");
         }
+    }
+
+    private void applyFreePurchase(Player player, ShopDefinition shop, ShopOffer offer,
+                                   ActivePrice price, ShopHolder holder) {
+        ItemStack reward = offer.product();
+        int stockBefore = offer.stock();
+        Map<String, Object> values = placeholders(player, offer, price, economy.balance(player), System.currentTimeMillis());
+        try {
+            if (!player.getInventory().addItem(reward).isEmpty()) throw new IllegalStateException("Inventory changed");
+            offer.consume(); repository.save();
+            for (String command : offer.commands()) Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
+                    stripSlash(MessageService.replace(command, values)));
+            refreshOffer(player, holder, shop, offer); player.updateInventory();
+            messages.send(player, "purchase-success", values);
+        } catch (RuntimeException error) {
+            offer.stock(stockBefore); player.getInventory().removeItem(reward); repository.save();
+            messages.send(player, "purchase-failed");
+        }
+    }
+
+    private void releaseFailed(NpcSaga saga, Player player, String message) {
+        economy.release(saga).whenComplete((ignored, error) -> sagas.complete(saga));
+        pending.remove(player.getUniqueId()); messages.send(player, message);
+    }
+
+    private void refreshOffer(Player player, ShopHolder holder, ShopDefinition shop, ShopOffer offer) {
+        if (!(player.getOpenInventory().getTopInventory().getHolder() instanceof ShopHolder)) return;
+        long now = System.currentTimeMillis(); ActivePrice refreshed = activePrice(shop, offer, now);
+        player.getOpenInventory().getTopInventory().setItem(offer.slot(), icon(offer, refreshed, now));
+        holder.shownPrices.put(offer.slot(), refreshed.finalPrice());
+        holder.promotionKeys.put(offer.slot(), promotionKey(refreshed));
+    }
+
+    private void runMain(Runnable action) {
+        if (!plugin.isEnabled()) return;
+        if (Bukkit.isPrimaryThread()) action.run(); else Bukkit.getScheduler().runTask(plugin, action);
     }
 
     private Map<String, Object> placeholders(Player player, ShopOffer offer, ActivePrice price, double balance, long now) {

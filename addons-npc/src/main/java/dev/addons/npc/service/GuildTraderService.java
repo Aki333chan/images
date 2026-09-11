@@ -9,7 +9,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,23 +27,29 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.HoldResult;
+import ovh.aurumgg.core.api.TransactionCategory;
 
-/** GUI merchant that exchanges Vault currency for AurumGuilds bonuses. */
+/** GUI merchant that exchanges AurumCore currency for AurumGuilds bonuses. */
 public final class GuildTraderService implements Listener {
     private final JavaPlugin plugin;
     private final GuildTraderRepository repository;
     private final EconomyService economy;
     private final MessageService messages;
     private final AurumGuildsHook guilds;
-    private final Set<UUID> pendingPurchases = new HashSet<>();
+    private final NpcSagaRepository sagas;
+    private final Set<UUID> pendingPurchases = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public GuildTraderService(JavaPlugin plugin, GuildTraderRepository repository, EconomyService economy,
-                              MessageService messages, AurumGuildsHook guilds) {
+                              MessageService messages, AurumGuildsHook guilds, NpcSagaRepository sagas) {
         this.plugin = plugin;
         this.repository = repository;
         this.economy = economy;
         this.messages = messages;
         this.guilds = guilds;
+        this.sagas = sagas;
     }
 
     public void open(Player player, String traderId) {
@@ -169,34 +174,95 @@ public final class GuildTraderService implements Listener {
         if (price > 0 && !economy.available()) economy.hook();
         if (price > 0 && !economy.available()) {
             pendingPurchases.remove(player.getUniqueId());
-            messages.send(player, "vault-unavailable");
+            messages.send(player, "aurum-economy-unavailable");
             return;
         }
-        double balance = economy.balance(player);
-        Map<String, Object> placeholders = placeholders(offer, membership, null);
-        placeholders = new HashMap<>(placeholders);
-        placeholders.put("balance", economy.format(balance));
-        if (price > balance) {
-            pendingPurchases.remove(player.getUniqueId());
-            messages.send(player, "insufficient-funds", placeholders);
-            return;
-        }
-        Optional<String> withdrawal = price <= 0 ? Optional.empty() : economy.withdraw(player, price);
-        if (withdrawal.isPresent()) {
-            pendingPurchases.remove(player.getUniqueId());
-            plugin.getLogger().warning("Guild bonus payment failed for " + player.getName() + ": " + withdrawal.get());
-            messages.send(player, "purchase-failed");
-            return;
-        }
-
         Duration duration = offer.permanent() ? null : Duration.ofSeconds(offer.durationSeconds());
-        String actor = "AurumNPC:" + trader.id() + "/" + player.getName();
-        guilds.grant(membership.guildId(), offer.type(), offer.magnitude(), duration, actor)
-                .whenComplete((result, error) -> completePurchase(player.getUniqueId(), trader.id(), price, result, error));
+        String operation = UUID.randomUUID().toString();
+        String actor = "AurumNPC:" + trader.id() + "/" + player.getName() + "#" + operation;
+        if (price <= 0) {
+            guilds.grant(membership.guildId(), offer.type(), offer.magnitude(), duration, actor)
+                    .whenComplete((result, error) -> completeFreePurchase(player.getUniqueId(), trader.id(), result, error));
+            return;
+        }
+        Map<String, String> metadata = Map.of("plugin", "AddonsNPC", "operation", operation,
+                "guild-trader", trader.id(), "offer-slot", Integer.toString(offer.slot()),
+                "guild-id", Long.toString(membership.guildId()), "guild-actor", actor);
+        economy.reserve("npc-guild:" + operation, AccountId.player(player.getUniqueId()),
+                new AccountId(AccountType.NPC_SHOP, "guild-trader:" + trader.id()), price,
+                TransactionCategory.NPC_PURCHASE, "npc-guild-bonus",
+                trader.id() + ":" + offer.slot(), metadata).whenComplete((hold, error) -> runMain(() ->
+                reservedGuildPurchase(player.getUniqueId(), trader.id(), offer.slot(), membership.guildId(),
+                        duration, actor, hold, error)));
     }
 
-    private void completePurchase(UUID playerId, String traderId, double price,
+    private void reservedGuildPurchase(UUID playerId, String traderId, int slot, long guildId,
+                                       Duration duration, String actor, HoldResult hold, Throwable error) {
+        Player player = Bukkit.getPlayer(playerId);
+        if (error != null || hold == null || (hold.status() != HoldResult.Status.SUCCESS
+                && hold.status() != HoldResult.Status.DUPLICATE) || hold.hold().isEmpty()) {
+            pendingPurchases.remove(playerId);
+            if (player != null) messages.send(player, hold != null && hold.status() == HoldResult.Status.INSUFFICIENT_FUNDS
+                    ? "insufficient-funds" : "purchase-failed");
+            return;
+        }
+        NpcSaga saga;
+        try { saga = sagas.begin(NpcSaga.Kind.GUILD_BONUS, playerId, hold.hold().orElseThrow()); }
+        catch (RuntimeException failure) {
+            economy.release(NpcSaga.held(NpcSaga.Kind.GUILD_BONUS, playerId, hold.hold().orElseThrow()));
+            pendingPurchases.remove(playerId); if (player != null) messages.send(player, "purchase-failed"); return;
+        }
+        GuildTraderDefinition trader = repository.get(traderId);
+        GuildBonusOffer offer = trader == null ? null : trader.offers().get(slot);
+        Optional<AurumGuildsHook.Membership> membership = guilds.membership(playerId);
+        if (offer == null || membership.isEmpty() || membership.get().guildId() != guildId) {
+            economy.release(saga).whenComplete((ignored, failure) -> sagas.complete(saga));
+            pendingPurchases.remove(playerId); if (player != null) messages.send(player, "guild-membership-changed");
+            return;
+        }
+        guilds.grant(guildId, offer.type(), offer.magnitude(), duration, actor)
+                .whenComplete((result, failure) -> runMain(() -> finishGuildGrant(playerId, traderId, saga, result, failure)));
+    }
+
+    private void finishGuildGrant(UUID playerId, String traderId, NpcSaga saga,
                                   AurumGuildsHook.GrantResult result, Throwable error) {
+        Player player = Bukkit.getPlayer(playerId);
+        boolean success = error == null && result != null && result.ok();
+        if (!success) {
+            economy.release(saga).whenComplete((ignored, failure) -> sagas.complete(saga));
+            pendingPurchases.remove(playerId);
+            if (player != null) messages.send(player, "guild-purchase-failed",
+                    Map.of("reason", result == null ? messages.text("messages.unknown-error") : result.message()));
+            return;
+        }
+        NpcSaga applied;
+        try { applied = sagas.markApplied(saga); }
+        catch (RuntimeException failure) {
+            plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                    "Guild bonus was granted but NPC saga could not advance: " + saga.id(), failure);
+            pendingPurchases.remove(playerId); return;
+        }
+        economy.capture(applied).whenComplete((capture, failure) -> runMain(() -> {
+            pendingPurchases.remove(playerId);
+            if (failure == null && capture != null && (capture.status() == HoldResult.Status.SUCCESS
+                    || capture.status() == HoldResult.Status.DUPLICATE)) {
+                sagas.complete(applied);
+                if (player != null) {
+                    messages.send(player, "guild-purchase-success", Map.of("result", result.message()));
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                    if (player.getOpenInventory().getTopInventory().getHolder() instanceof GuildTraderHolder holder
+                            && holder.traderId.equals(traderId)) open(player, traderId);
+                }
+            } else {
+                plugin.getLogger().warning("Guild bonus saga " + applied.id() + " is awaiting AurumCore recovery");
+                if (player != null) messages.send(player, "guild-purchase-refund-failed",
+                        Map.of("reason", capture == null ? "AurumCore unavailable" : capture.message()));
+            }
+        }));
+    }
+
+    private void completeFreePurchase(UUID playerId, String traderId,
+                                      AurumGuildsHook.GrantResult result, Throwable error) {
         if (!plugin.isEnabled()) {
             plugin.getLogger().severe("Guild bonus transaction completed while AddonsNPC was disabled for " + playerId
                     + "; verify the payment and bonus manually.");
@@ -207,13 +273,7 @@ public final class GuildTraderService implements Listener {
             Player player = Bukkit.getPlayer(playerId);
             boolean success = error == null && result != null && result.ok();
             if (!success) {
-                Optional<String> refundFailure = price <= 0 ? Optional.empty()
-                        : economy.deposit(Bukkit.getOfflinePlayer(playerId), price);
-                if (refundFailure.isPresent()) {
-                    plugin.getLogger().severe("Could not refund guild bonus purchase for " + playerId + ": " + refundFailure.get());
-                }
-                if (player != null) messages.send(player, refundFailure.isPresent()
-                        ? "guild-purchase-refund-failed" : "guild-purchase-failed",
+                if (player != null) messages.send(player, "guild-purchase-failed",
                         Map.of("reason", result == null ? messages.text("messages.unknown-error") : result.message()));
                 return;
             }
@@ -224,6 +284,11 @@ public final class GuildTraderService implements Listener {
                         && holder.traderId.equals(traderId)) open(player, traderId);
             }
         });
+    }
+
+    private void runMain(Runnable action) {
+        if (!plugin.isEnabled()) return;
+        if (Bukkit.isPrimaryThread()) action.run(); else Bukkit.getScheduler().runTask(plugin, action);
     }
 
     private Map<String, Object> placeholders(GuildBonusOffer offer, AurumGuildsHook.Membership membership,

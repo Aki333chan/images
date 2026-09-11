@@ -16,3 +16,8 @@ settings:
   name-height-offset: 0.35
   ignore-worldguard-spawn-flags: true
   debug: false
+
+economy:
+  # Cross-system NPC operations are reserved in AurumCore before items or bonuses change.
+  hold-ttl-seconds: 300
+  recovery-retry-seconds: 20
