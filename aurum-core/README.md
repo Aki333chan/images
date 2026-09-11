@@ -1,4 +1,4 @@
-# AurumCore 0.7.0
+# AurumCore 0.8.0
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -39,6 +39,7 @@ deliberately fresh, empty ledger; a non-empty unverified ledger is rejected.
 - `/aurum migrate ...`, short form `/amigrate ...` — `aurum.admin.migrate`.
 - `/aurum policy ...`, short form `/apolicy ...` — `aurum.admin.policy`.
 - `/aurum exchange ...`, short form `/aexchange ...` — `aurum.admin.exchange`.
+- `/aurum claims [list [plugin]|inspect <id>|retry <id>|drop <id>]` — `aurum.admin.claims`.
 
 The top-level commands `give`, `take` and `set` are intentionally not
 registered. Commands have context-aware tab completion. Player names are
@@ -93,6 +94,47 @@ Hold lifetime is capped by `holds.max-ttl-seconds` (300 by default, 10..3600).
 Expired holds stop reducing available balance. Database failures fail closed,
 and a capture retry after a lost response resumes through its stable transaction
 key instead of charging twice. See `../docs/aurum-holds.md` for the lifecycle.
+
+## Durable delivery claims
+
+Version 0.8.0 adds `AurumClaimApi`, registered as its own service. A hold
+protects the money half of a cross-system operation; a claim protects the half
+that happens in Minecraft, and it exists because holds alone leave one window
+open — the expensive one.
+
+Consider an NPC shop. The plugin reserves the price, hands over the items, then
+writes its journal and captures. Kill the process between the items and the
+journal and the restarted plugin sees a reservation it believes was never
+applied: it releases the money, and the player keeps the goods for free.
+Post-purchase console commands are worse, because they run after capture and
+simply vanish if the process dies first — and re-running them blindly is not
+safe either.
+
+A claim reverses the order. Money moves first, the debt is recorded, and only
+then is anything handed over:
+
+1. `promise` — idempotent by key; promising twice owes once.
+2. `take` — leases the claim. Exactly one worker wins; a second server racing
+   for it is told CONFLICT rather than quietly succeeding.
+3. `advance` — after **each** step takes effect, not after the batch. The
+   number recorded here is what a restarted server trusts.
+4. `settle`, or `defer` if it may work later, or `quarantine` if it cannot.
+
+A crash anywhere simply lets the lease run out: the claim returns to the queue
+with its cursor intact, and delivery resumes at the step that never ran. Steps
+are ordered, so one cursor is enough to say what has already happened.
+
+Payloads are opaque. Core stores them, hands them back and never parses them —
+items, commands and their encoding belong to the plugin. Core owns only what a
+plugin cannot get right alone: the record survives a crash, one worker holds it
+at a time, and progress inside it is remembered.
+
+`claims.max-lease-seconds` (120 by default, 10..600) caps how long a crashed
+server keeps a player's goods locked away; a live delivery renews its lease as
+it makes progress. After `claims.max-attempts` (5) failed hand-backs the claim
+quarantines itself and waits for `/aurum claims`, because a delivery that keeps
+failing needs a person, not another login-time retry. See
+`../docs/aurum-claims.md`.
 
 ## Runtime behavior
 

@@ -24,6 +24,8 @@ record CoreSettings(
         PolicyConfiguration policies,
         ExchangeConfiguration exchange,
         int holdMaxTtlSeconds,
+        int claimMaxLeaseSeconds,
+        int claimMaxAttempts,
         boolean databaseEnabled,
         MariaDbSettings database
 ) {
@@ -54,6 +56,12 @@ record CoreSettings(
         ExchangeConfiguration exchange = ExchangeConfiguration.read(config, currencies);
         int holdMaxTtlSeconds = Math.max(10, Math.min(3600,
                 config.getInt("holds.max-ttl-seconds", 300)));
+        // A lease is how long a crashed server may keep a player's goods locked
+        // away, so the ceiling is deliberately low.
+        int claimMaxLeaseSeconds = Math.max(10, Math.min(600,
+                config.getInt("claims.max-lease-seconds", 120)));
+        int claimMaxAttempts = Math.max(1, Math.min(50,
+                config.getInt("claims.max-attempts", 5)));
         boolean enabled = config.getBoolean("database.enabled", false);
         MariaDbSettings database = new MariaDbSettings(
                 config.getString("database.jdbc-url", "jdbc:mariadb://127.0.0.1:3306/aurum_core"),
@@ -63,7 +71,8 @@ record CoreSettings(
         );
         return new CoreSettings(language, mode, currency, currencies, refresh, migrationPlayersPerTick,
                 requireVerifiedMigration, globalRefreshTicks, paymentsEnabled, paymentMinimum,
-                paymentMaximum, paymentCooldownSeconds, policies, exchange, holdMaxTtlSeconds, enabled, database);
+                paymentMaximum, paymentCooldownSeconds, policies, exchange, holdMaxTtlSeconds, claimMaxLeaseSeconds, claimMaxAttempts,
+                enabled, database);
     }
 
     private static Map<String, CurrencySpec> readCurrencies(FileConfiguration config) {

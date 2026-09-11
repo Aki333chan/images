@@ -111,6 +111,25 @@ holds:
   # Maximum lifetime requested by Arena, Slots, NPC or future trade sagas.
   max-ttl-seconds: 300
 
+claims:
+  # Durable delivery of what a player has already paid for.
+  #
+  # A hold protects the money half of an operation; a claim protects the half
+  # that happens in Minecraft. Items and post-purchase commands are recorded
+  # before anything is handed over, so a crash halfway through resumes at the
+  # step that never ran instead of giving goods away for free or losing a
+  # command silently.
+
+  # How long one server may keep a claim leased for delivery. This is also how
+  # long a CRASHED server keeps the player's goods locked away, so keep it
+  # short: a live delivery renews the lease as it makes progress.
+  max-lease-seconds: 120
+
+  # Failed deliveries that are handed back this many times stop retrying and
+  # go to quarantine for /aurum claims. Retrying for ever would mean an
+  # unfixable delivery failing on every single login, forever, in the log.
+  max-attempts: 5
+
 trading:
   enabled: false
   invite-timeout-seconds: 30

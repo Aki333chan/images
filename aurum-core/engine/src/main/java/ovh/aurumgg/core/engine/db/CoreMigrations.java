@@ -323,6 +323,32 @@ public final class CoreMigrations {
                     ADD INDEX IF NOT EXISTS ix_aurum_holds_expiry (status, expires_at)
                 """
         );
+        List<String> deliveryClaims = List.of(
+                """
+                CREATE TABLE IF NOT EXISTS aurum_claims (
+                    id CHAR(36) PRIMARY KEY,
+                    idempotency_key VARCHAR(191) NOT NULL UNIQUE,
+                    plugin VARCHAR(64) NOT NULL,
+                    owner_uuid CHAR(36) NOT NULL,
+                    kind VARCHAR(64) NOT NULL,
+                    status VARCHAR(24) NOT NULL,
+                    step_cursor INT UNSIGNED NOT NULL DEFAULT 0,
+                    step_count INT UNSIGNED NOT NULL,
+                    attempts INT UNSIGNED NOT NULL DEFAULT 0,
+                    summary VARCHAR(255) NOT NULL DEFAULT '',
+                    payload MEDIUMTEXT NOT NULL,
+                    last_error VARCHAR(255) NOT NULL DEFAULT '',
+                    claimed_by VARCHAR(64) NULL,
+                    lease_until TIMESTAMP(6) NULL,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+                    settled_at TIMESTAMP(6) NULL,
+                    KEY ix_aurum_claims_owed (plugin, owner_uuid, status, created_at),
+                    KEY ix_aurum_claims_status (status, plugin, updated_at),
+                    KEY ix_aurum_claims_lease (status, lease_until)
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -337,7 +363,9 @@ public final class CoreMigrations {
                 new SchemaMigration(6, "multi-currency exchange rates and atomic exchanges",
                         checksum(currencyExchange), currencyExchange),
                 new SchemaMigration(7, "durable cross-system hold intents",
-                        checksum(durableHolds), durableHolds)
+                        checksum(durableHolds), durableHolds),
+                new SchemaMigration(8, "durable delivery claims and quarantine",
+                        checksum(deliveryClaims), deliveryClaims)
         );
     }
 
