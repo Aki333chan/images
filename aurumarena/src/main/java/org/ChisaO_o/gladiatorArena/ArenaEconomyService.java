@@ -45,8 +45,19 @@ import ovh.aurumgg.core.api.TransactionResult;
  *
  * Раньше комиссия вычиталась из распределяемой суммы и не доставалась никому:
  * с точки зрения Vault это был невидимый сток денег. Теперь она уходит
- * отдельной проводкой на {@code SYSTEM_SINK:arena-commission} категорией
- * COMMISSION — иначе счёт арены не сошёлся бы после выплат.
+ * отдельной проводкой в {@code TREASURY:global} категорией COMMISSION — туда
+ * же, куда policy engine по умолчанию отправляет налоги и сборы, и туда, где
+ * её видно в {@code /aurum treasury}. Иначе счёт арены не сошёлся бы после
+ * выплат.
+ *
+ * <h2>Почему ставку комиссии считает арена, а не policy engine</h2>
+ *
+ * У policy engine есть свой тип правила COMMISSION, и общесерверные сборы
+ * задаются именно им. Но ставка казино — это правило ИГРЫ, а не фискальное:
+ * из неё считаются коэффициенты, которые видит игрок до ставки. Разнести их
+ * по двум местам значило бы, что показанный коэффициент и реальная выплата
+ * разъезжаются при первой же правке правила. Поэтому процент живёт в конфиге
+ * арены, а policy engine остаётся свободен для настоящих налогов сверху.
  *
  * <h2>Порядок, на котором держится безопасность</h2>
  *
@@ -63,10 +74,6 @@ import ovh.aurumgg.core.api.TransactionResult;
  * {@link #recover()}.
  */
 final class ArenaEconomyService implements Listener {
-
-    /** Счёт, куда уходит комиссия казино. Раньше эти деньги просто пропадали. */
-    private static final AccountId COMMISSION_SINK =
-            new AccountId(AccountType.SYSTEM_SINK, "arena-commission");
 
     private final GladiatorArena plugin;
     private final BetJournal journal;
@@ -138,7 +145,9 @@ final class ArenaEconomyService implements Listener {
                     current.primaryCurrency().id(), amount(value), TransactionCategory.ARENA_BET,
                     purpose == BetTicket.Purpose.BET ? "arena-bet" : "arena-final", arena,
                     Instant.now().plusSeconds(ttl),
-                    Map.of("plugin", "AurumArena", "arena", arena, "operation", operation.toString()));
+                    // Те же метаданные, что уйдут в capture: Core сверяет их
+                    // на полное равенство и иначе откажет.
+                    BetTicket.metadata(operation, arena, purpose));
             return current.createHold(request);
         } catch (IllegalArgumentException error) {
             return CompletableFuture.completedFuture(new HoldResult(HoldResult.Status.REJECTED,
@@ -189,9 +198,9 @@ final class ArenaEconomyService implements Listener {
                 TransactionCategory.REFUND, ticket.metadata()));
     }
 
-    /** Комиссия казино — реальной проводкой, а не вычитанием из выплат. */
+    /** Комиссия казино — реальной проводкой в казну, а не вычитанием из выплат. */
     CompletionStage<TransactionResult> commission(String arena, UUID round, double value) {
-        return move(escrow(arena, BetTicket.Purpose.BET), COMMISSION_SINK, value,
+        return move(escrow(arena, BetTicket.Purpose.BET), AccountId.globalTreasury(), value,
                 TransactionCategory.COMMISSION, "arena-commission:" + round, arena);
     }
 

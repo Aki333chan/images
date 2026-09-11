@@ -74,7 +74,19 @@ record BetTicket(UUID operation, UUID playerId, String arena, Purpose purpose,
         return "arena-ticket-refund:" + operation;
     }
 
+    /**
+     * Метаданные операции.
+     *
+     * ОДИН источник на резерв и на capture — это требование Core, а не
+     * аккуратность: {@code HoldService.sameIntent} сверяет metadata резерва и
+     * запроса на равенство целиком, и лишний ключ в одном из них отклонил бы
+     * capture с уже зарезервированными деньгами игрока.
+     */
     Map<String, String> metadata() {
+        return metadata(operation, arena, purpose);
+    }
+
+    static Map<String, String> metadata(UUID operation, String arena, Purpose purpose) {
         return Map.of("plugin", "AurumArena", "arena", arena,
                 "purpose", purpose.name().toLowerCase(java.util.Locale.ROOT),
                 "operation", operation.toString());
