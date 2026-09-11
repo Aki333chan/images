@@ -204,6 +204,21 @@ final class ArenaEconomyService implements Listener {
                 TransactionCategory.COMMISSION, "arena-commission:" + round, arena);
     }
 
+    /**
+     * Повторить отложенную выплату ровно тем же переводом.
+     *
+     * Тот же ключ, та же касса, та же сумма. Если операция уже проводилась,
+     * Core вернёт DUPLICATE и второй раз не заплатит; если нет — заплатит
+     * сейчас. Категория берётся из назначения: возврат остаётся возвратом,
+     * выплата — выплатой, и в аудите это видно раздельно.
+     */
+    CompletionStage<TransactionResult> repeat(String key, UUID playerId, double value,
+                                              String arena, BetTicket.Purpose source) {
+        TransactionCategory category = key.startsWith("arena-refund:")
+                ? TransactionCategory.REFUND : TransactionCategory.ARENA_PAYOUT;
+        return move(escrow(arena, source), AccountId.player(playerId), value, category, key, arena);
+    }
+
     private CompletionStage<TransactionResult> move(AccountId from, AccountId to, double value,
                                                     TransactionCategory category, String key, String arena) {
         AurumEconomyApi current = api;

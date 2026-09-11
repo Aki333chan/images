@@ -1,7 +1,5 @@
 package org.ChisaO_o.gladiatorArena;
 
-import net.milkbowl.vault.economy.Economy;
-import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
@@ -41,9 +39,18 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
     private final Map<UUID, Scoreboard> arenaScoreboards = new HashMap<>();
     private final Map<UUID, List<String>> arenaScoreboardLines = new HashMap<>();
     private final Map<UUID, String> arenaUiOwners = new HashMap<>();
-    private Economy economy;
+    /**
+     * Денежный режим ставок.
+     *
+     * Ключ {@code economy.use_vault} остался прежним ради старых конфигов, но
+     * Vault за ним больше не стоит: деньги идут через AurumCore. Переименовать
+     * ключ значило бы сломать все существующие настройки ради названия.
+     */
     private boolean useVault;
-    private boolean vaultReady;
+    private BetJournal betJournal;
+    private ArenaEconomyService money;
+    /** Кто уже жмёт кнопку ставки: резерв в Core не мгновенный. */
+    private final Set<UUID> pendingWagers = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private String vaultSymbol;
     private double vaultBetStep;
     private Material mainCurrency;
@@ -99,6 +106,11 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         hologramKey = Objects.requireNonNull(NamespacedKey.fromString("gladiatorarena:hologram"));
         guiActionKey = new NamespacedKey(this, "gui_action");
         recovery = new RecoveryStore(this);
+        betJournal = new BetJournal(this);
+        // Предикат нужен журналу, чтобы не вернуть деньги дважды: билет, чья
+        // ставка уже в recovery.yml, закрывается молча.
+        money = new ArenaEconomyService(this, betJournal, recovery::hasBet);
+        Bukkit.getPluginManager().registerEvents(money, this);
         loadSettings();
         loadKits();
         connectEconomy();
@@ -174,19 +186,35 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         }
     }
 
+    /**
+     * Подключиться к денежному движку.
+     *
+     * Молчаливого перехода на предметы нет и не будет: если админ включил
+     * денежный режим, а Core недоступен, ставки обязаны быть заблокированы.
+     * Тихо начать принимать золотые слитки вместо денег значило бы изменить
+     * правила игры за спиной у игроков.
+     */
     private void connectEconomy() {
-        economy = null;
-        vaultReady = false;
-        if (!useVault) return;
-        if (Bukkit.getPluginManager().getPlugin("Vault") == null && Bukkit.getPluginManager().getPlugin("VaultUnlocked") == null) {
-            getLogger().severe("В конфиге включён Vault, но Vault/VaultUnlocked не установлен. Денежные операции заблокированы.");
-            return;
+        if (!useVault || money == null) return;
+        if (money.hook()) {
+            getLogger().info("Экономика AurumCore подключена: ставки идут через ledger.");
+            money.recover();
+        } else {
+            getLogger().severe("Включён денежный режим, но AurumCore недоступен или не в активном режиме. "
+                    + "Денежные операции заблокированы; перехода на предметы нет.");
         }
-        RegisteredServiceProvider<Economy> registration = Bukkit.getServicesManager().getRegistration(Economy.class);
-        if (registration != null) economy = registration.getProvider();
-        vaultReady = economy != null;
-        if (vaultReady) getLogger().info("Vault-экономика подключена: " + economy.getName());
-        else getLogger().severe("В конфиге включён Vault, но провайдер Economy недоступен. Денежные операции заблокированы; перехода на предметы нет.");
+    }
+
+    /** Деньгами можно распоряжаться: режим включён и движок отвечает. */
+    boolean moneyMode() {
+        return useVault && money != null && money.available();
+    }
+
+    /** Выполнить в основном потоке: ответы Core приходят на чужих потоках. */
+    void onMain(Runnable task) {
+        if (!isEnabled()) return;
+        if (Bukkit.isPrimaryThread()) task.run();
+        else Bukkit.getScheduler().runTask(this, task);
     }
 
     private void loadArenas() {
@@ -278,18 +306,99 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         saveConfig();
     }
 
+    /**
+     * Вернуть ставки, пережившие перезапуск.
+     *
+     * Арена не восстанавливает бои: круг ставок, прерванный рестартом, не
+     * продолжается, и деньги возвращаются владельцам. Ключ возврата строится
+     * из НОВОГО roundId арены — прежний не пережил перезапуск, а повторный
+     * запуск этой же процедуры на тех же записях невозможен: запись
+     * удаляется сразу.
+     */
     private void recoverInterruptedBets() {
         List<RecoveryStore.StoredBet> bets = recovery.allBets();
-        if (bets.isEmpty()) return;
+        List<RecoveryStore.PendingPayout> pending = recovery.allMoneyPayouts();
+        if (bets.isEmpty() && pending.isEmpty()) return;
         if (!getConfig().getBoolean("settings.refund_interrupted_bets", true)) {
             getLogger().warning("В recovery.yml осталось " + bets.size() + " незавершённых ставок; автовозврат отключён.");
-            return;
+        } else {
+            for (RecoveryStore.StoredBet bet : bets) {
+                if (bet.vault()) {
+                    Arena arena = arenas.get(bet.arena());
+                    UUID round = arena == null ? UUID.randomUUID() : arena.roundId;
+                    refundMoney(bet.arena(), round, bet.player(), bet.playerName(), bet.amount());
+                } else {
+                    payOrQueue(bet.player(), bet.playerName(), bet.amount(), false);
+                }
+                recovery.removeBet(bet.arena(), bet.team(), bet.player());
+            }
+            if (!bets.isEmpty()) getLogger().warning("Возвращено незавершённых ставок: " + bets.size());
         }
-        for (RecoveryStore.StoredBet bet : bets) {
-            payOrQueue(bet.player(), bet.playerName(), bet.amount(), bet.vault());
-            recovery.removeBet(bet.arena(), bet.team(), bet.player());
+        // Выплаты, по которым в прошлый раз не пришёл ответ. Повтор идёт с тем
+        // же ключом, поэтому уже проведённая операция вторично не заплатит.
+        for (RecoveryStore.PendingPayout payout : pending) retryMoneyPayout(payout, null);
+        reportLegacyDebts();
+    }
+
+    /**
+     * Сообщить о долгах, оставшихся от Vault-версии.
+     *
+     * Их не выплачивает никто автоматически — и это осознанно. За такой
+     * записью не стоит счёт в ledger: в эпоху Vault деньги просто появлялись
+     * на балансе игрока. Выдать их сейчас значило бы создать валюту мимо
+     * проводки; рассчитаться должен администратор командой /aurum economy
+     * give, и тогда операция попадёт в аудит как положено.
+     */
+    private void reportLegacyDebts() {
+        Map<UUID, RecoveryStore.LegacyDebt> debts = recovery.legacyMoneyDebts();
+        if (debts.isEmpty()) return;
+        getLogger().warning("В recovery.yml остались денежные выплаты старого формата (версия 1.4.0). "
+                + "Автоматически они не выдаются: за ними нет проводки в ledger. "
+                + "Рассчитайтесь вручную через /aurum economy give и удалите записи:");
+        for (RecoveryStore.LegacyDebt debt : debts.values()) {
+            getLogger().warning("  " + debt.playerName() + " (" + debt.player() + "): " + money(debt.amount()));
         }
-        getLogger().warning("Возвращено/поставлено в очередь незавершённых ставок: " + bets.size());
+    }
+
+    /** Догнать отложенные денежные выплаты конкретного игрока. */
+    private void drainMoneyPayouts(UUID uuid, String name) {
+        if (!moneyMode()) return;
+        for (RecoveryStore.PendingPayout payout : recovery.moneyPayouts(uuid)) retryMoneyPayout(payout, name);
+    }
+
+    /**
+     * Повторить отложенную выплату её собственным ключом.
+     *
+     * Ключ хранится вместе с суммой именно ради этого: «ответа не было» не
+     * значит «не проведено», и новый ключ означал бы вторую выплату.
+     */
+    private void retryMoneyPayout(RecoveryStore.PendingPayout payout, String name) {
+        if (!moneyMode()) return;
+        BetTicket.Purpose source = "FINAL".equals(payout.purpose())
+                ? BetTicket.Purpose.FINAL : BetTicket.Purpose.BET;
+        money.repeat(payout.key(), payout.player(), payout.amount(), payout.arena(), source)
+                .whenComplete((result, error) -> onMain(() -> {
+            if (!succeeded(result, error)) return;
+            recovery.clearMoneyPayout(payout);
+            Player online = Bukkit.getPlayer(payout.player());
+            if (online != null) send(online, "§aПолучена отложенная выплата: " + money(payout.amount()) + currency());
+        }));
+    }
+
+    /** Резерв получен и держится. */
+    private static boolean heldOk(ovh.aurumgg.core.api.HoldResult result, Throwable error) {
+        return error == null && result != null && result.hold().isPresent()
+                && (result.status() == ovh.aurumgg.core.api.HoldResult.Status.SUCCESS
+                || result.status() == ovh.aurumgg.core.api.HoldResult.Status.DUPLICATE)
+                && result.hold().get().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.HELD;
+    }
+
+    /** Резерв зафиксирован: деньги действительно перешли арене. */
+    private static boolean capturedOk(ovh.aurumgg.core.api.HoldResult result, Throwable error) {
+        return error == null && result != null && result.hold().isPresent()
+                && (result.status() == ovh.aurumgg.core.api.HoldResult.Status.SUCCESS
+                || result.status() == ovh.aurumgg.core.api.HoldResult.Status.DUPLICATE)
+                && result.hold().get().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.CAPTURED;
     }
 
     Arena arenaAt(Location location) {
@@ -456,7 +565,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             loadSettings(); loadKits(); connectEconomy();
             if (database != null) database.close();
             database = new DatabaseManager(this); database.start(); loadArenas();
-            send(player, "§aКонфигурация, Vault и база данных перезагружены."); return true;
+            send(player, "§aКонфигурация, экономика и база данных перезагружены."); return true;
         }
         Arena arena = args.length >= 2 && Set.of("status", "validate", "gui").contains(action) ? arenaByName(args[1]) : arenaAt(player.getLocation());
         if (arena == null) { send(player, "§cВы не в радиусе арены."); return true; }
@@ -842,6 +951,15 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         final Map<String, Set<UUID>> holograms = new HashMap<>(); boolean hologramsDiscovered;
         final Set<UUID> red = new LinkedHashSet<>(), blue = new LinkedHashSet<>(), originalRed = new LinkedHashSet<>(), originalBlue = new LinkedHashSet<>();
         final Map<UUID, Double> redBets = new HashMap<>(), blueBets = new HashMap<>(); final Set<UUID> usedResets = new HashSet<>();
+        /**
+         * Идентификатор текущего круга ставок.
+         *
+         * Из него строятся ключи идемпотентности выплат и возвратов: повтор
+         * после сбоя обязан попасть в ТУ ЖЕ операцию, иначе победителю
+         * заплатят дважды. Меняется при открытии ставок — с этого момента
+         * начинаются новые деньги, и старые ключи к ним отношения не имеют.
+         */
+        UUID roundId = UUID.randomUUID();
         final Map<UUID, BossBar> bars = new HashMap<>(); GameState state = GameState.WAITING; int timerTicks = -1, fightTicks, tickCounter;
         Arena(String name, Location center) {
             this.name = name;
@@ -937,7 +1055,8 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         void updatePhase() {
             boolean ready = !red.isEmpty() && !blue.isEmpty();
             if (ready && state == GameState.WAITING) {
-                state = GameState.BETTING; usedResets.clear(); timerTicks = automatic && !finalMode ? bettingSeconds * 2 : -1;
+                state = GameState.BETTING; usedResets.clear(); roundId = UUID.randomUUID();
+                timerTicks = automatic && !finalMode ? bettingSeconds * 2 : -1;
                 broadcast(automatic && !finalMode ? "§eСтавки открыты. Автостарт через " + bettingSeconds + " с." : "§eКоманды готовы. Ожидаем ручного старта.");
             } else if (!ready && (state == GameState.BETTING || state == GameState.COUNTDOWN)) {
                 state = GameState.WAITING; timerTicks = -1; broadcast("§eОжидание обеих команд.");
@@ -980,16 +1099,39 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             double winTotal = winners == null ? 0.0 : (winners.equals(originalRed) ? total(redBets) : total(blueBets));
             Map<UUID, Double> winningBets = winners == null ? Map.of() : (winners.equals(originalRed) ? redBets : blueBets);
             double pot = total(redBets) + total(blueBets), distributable = pot * (1.0 - commissionPercent / 100.0);
+            UUID round = roundId;
+            double paidOut = 0.0;
             if (winTotal > 0.0) for (Map.Entry<UUID, Double> entry : winningBets.entrySet()) {
                 double payout = roundTenth(entry.getValue() / winTotal * distributable); String playerName = playerName(entry.getKey());
-                payOrQueue(entry.getKey(), playerName, payout, useVault); database.recordBet(entry.getKey(), playerName, true, Math.max(0.0, payout - entry.getValue()));
+                if (useVault) payMoney(name, round, entry.getKey(), playerName, payout, BetTicket.Purpose.BET);
+                else payOrQueue(entry.getKey(), playerName, payout, false);
+                paidOut += payout;
+                database.recordBet(entry.getKey(), playerName, true, Math.max(0.0, payout - entry.getValue()));
+            }
+            // Всё, что осталось в кассе после выплат, — комиссия казино. В
+            // Vault она просто исчезала; в ledger у денег обязан быть
+            // владелец, поэтому она уходит в казну сервера отдельной
+            // проводкой. Считаем остатком, а не процентом от пота: так
+            // копейки округления выплат не повисают на счёте арены навсегда.
+            double rake = roundTenth(pot - paidOut);
+            if (useVault && rake > 0.0) {
+                money.commission(name, round, rake).whenComplete((result, error) -> onMain(() -> {
+                    if (!succeeded(result, error)) {
+                        getLogger().warning("Комиссия " + money(rake) + " осталась на счёте арены " + name
+                                + ": " + describe(result, error));
+                    }
+                }));
             }
             Map<UUID, Double> losingBets = winners == null ? Map.of() : (winners.equals(originalRed) ? blueBets : redBets);
             for (UUID uuid : losingBets.keySet()) database.recordBet(uuid, playerName(uuid), false, 0.0);
             double championShare = 0.0;
             if (finalMode && winners != null && !winners.isEmpty()) {
                 championShare = roundTenth(finalPool / winners.size()); lastChampions.clear();
-                for (UUID uuid : winners) { String playerName = playerName(uuid); lastChampions.add(playerName); payOrQueue(uuid, playerName, championShare, useVault); }
+                for (UUID uuid : winners) {
+                    String playerName = playerName(uuid); lastChampions.add(playerName);
+                    if (useVault) payMoney(name, round, uuid, playerName, championShare, BetTicket.Purpose.FINAL);
+                    else payOrQueue(uuid, playerName, championShare, false);
+                }
                 finalPool = 0.0; finalMode = false; saveArena(this);
             }
             if (winners == null) refundAllBets(); else {
@@ -1035,13 +1177,92 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             removeHolograms();
         }
 
+        /**
+         * Принять ставку.
+         *
+         * Предметный режим остаётся мгновенным: слиток изымается из руки, и
+         * ответа ждать не от кого. Денежный уходит в Core и возвращается
+         * асинхронно — MariaDB нельзя трогать из основного потока, — поэтому
+         * ставка учитывается только после подтверждённой фиксации.
+         */
         void placeBet(Player player, boolean onRed) {
             if (!bettingEnabled || state != GameState.BETTING) { send(player, "§cСтавки сейчас закрыты."); return; }
             Map<UUID, Double> team = onRed ? redBets : blueBets, other = onRed ? blueBets : redBets;
             if (other.getOrDefault(player.getUniqueId(), 0.0) > 0.0) { send(player, "§cНельзя ставить на обе команды."); return; }
             double value = useVault ? vaultBetStep : heldCurrencyValue(player), current = team.getOrDefault(player.getUniqueId(), 0.0);
             if (value < minBet || current + value > maxBet) { send(player, "§cСтавка должна быть от " + money(minBet) + " до " + money(maxBet) + "."); return; }
-            if (!withdraw(player, value)) return; double newValue = roundTenth(current + value); team.put(player.getUniqueId(), newValue);
+
+            if (!useVault) {
+                if (!takeCurrencyItem(player)) return;
+                acceptBet(player, onRed, value, roundTenth(current + value));
+                return;
+            }
+            if (!moneyMode()) { player.sendMessage(locales.text("messages.vault-unavailable")); return; }
+            // Резерв идёт не мгновенно, а кнопка нажимается быстрее ответа.
+            // Без этой отметки два клика дали бы два списания под одну ставку.
+            if (!pendingWagers.add(player.getUniqueId())) { send(player, "§eСтавка уже обрабатывается."); return; }
+
+            UUID operation = UUID.randomUUID();
+            UUID round = roundId;
+            money.reserve(operation, player.getUniqueId(), name, BetTicket.Purpose.BET, value)
+                    .whenComplete((result, error) -> onMain(() ->
+                            onWagerReserved(player, onRed, value, operation, round, result, error)));
+        }
+
+        /** Резерв получен: записать билет и только потом двигать деньги. */
+        private void onWagerReserved(Player player, boolean onRed, double value, UUID operation,
+                                     UUID round, ovh.aurumgg.core.api.HoldResult result, Throwable error) {
+            if (!heldOk(result, error)) {
+                pendingWagers.remove(player.getUniqueId());
+                if (result != null && result.status() == ovh.aurumgg.core.api.HoldResult.Status.INSUFFICIENT_FUNDS) {
+                    send(player, "§cНедостаточно средств: нужно " + money(value) + currency());
+                } else {
+                    send(player, "§cПлатёж отклонён.");
+                    if (error != null) getLogger().log(java.util.logging.Level.WARNING, "Резерв ставки не удался", error);
+                }
+                return;
+            }
+            BetTicket ticket = BetTicket.of(operation, player.getUniqueId(), name,
+                    BetTicket.Purpose.BET, result.hold().orElseThrow());
+            // Ставки уже закрылись или раунд сменился, пока шёл резерв —
+            // отпускаем деньги, не тронув их.
+            if (state != GameState.BETTING || !round.equals(roundId) || !player.isOnline()) {
+                pendingWagers.remove(player.getUniqueId());
+                money.release(ticket);
+                send(player, "§cСтавки закрылись раньше, чем прошёл платёж.");
+                return;
+            }
+            betJournal.open(ticket);
+            money.capture(ticket).whenComplete((captured, failure) -> onMain(() ->
+                    onWagerCaptured(player, onRed, value, ticket, round, captured, failure)));
+        }
+
+        /** Деньги на счёте арены: учесть ставку и закрыть билет. */
+        private void onWagerCaptured(Player player, boolean onRed, double value, BetTicket ticket,
+                                     UUID round, ovh.aurumgg.core.api.HoldResult result, Throwable error) {
+            pendingWagers.remove(player.getUniqueId());
+            if (!capturedOk(result, error)) {
+                money.release(ticket).whenComplete((released, ignored) -> onMain(() -> betJournal.close(ticket)));
+                send(player, "§cПлатёж отклонён.");
+                if (error != null) getLogger().log(java.util.logging.Level.WARNING, "Фиксация ставки не удалась", error);
+                return;
+            }
+            if (!round.equals(roundId)) {
+                // Раунд сменился между фиксацией и учётом: деньги уже у арены,
+                // и вернуть их надо явно — ставка в этот бой не попадёт.
+                money.refundTicket(ticket).whenComplete((refund, ignored) -> onMain(() -> betJournal.close(ticket)));
+                send(player, "§cСтавки закрылись раньше, чем прошёл платёж. Деньги возвращены.");
+                return;
+            }
+            Map<UUID, Double> team = onRed ? redBets : blueBets;
+            double newValue = roundTenth(team.getOrDefault(player.getUniqueId(), 0.0) + value);
+            acceptBet(player, onRed, value, newValue);
+            betJournal.close(ticket);
+        }
+
+        /** Общий хвост обоих режимов: учесть ставку и сказать об этом. */
+        private void acceptBet(Player player, boolean onRed, double value, double newValue) {
+            (onRed ? redBets : blueBets).put(player.getUniqueId(), newValue);
             recovery.saveBet(name, onRed ? "red" : "blue", player.getUniqueId(), player.getName(), newValue, useVault);
             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
             send(player, "§aСтавка на " + (onRed ? "§cкрасных" : "§9синих") + "§a принята: §f" + money(value) + currency() + "§a. Всего поставлено: §f" + money(newValue) + currency() + "§a.");
@@ -1053,19 +1274,77 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             UUID uuid = player.getUniqueId(); if (usedResets.contains(uuid)) { send(player, "§cВы уже отменяли ставку."); return; }
             double amount = redBets.getOrDefault(uuid, 0.0) + blueBets.getOrDefault(uuid, 0.0);
             if (amount <= 0.0) { send(player, "§eУ вас нет ставки."); return; }
-            if (!pay(player, amount, useVault)) return; redBets.remove(uuid); blueBets.remove(uuid); usedResets.add(uuid);
-            recovery.removeBet(name, "red", uuid); recovery.removeBet(name, "blue", uuid); send(player, "§aСтавка возвращена: " + money(amount) + currency()); updateHolograms();
+            if (useVault && !moneyMode()) { player.sendMessage(locales.text("messages.vault-unavailable")); return; }
+
+            // Ставку снимаем ДО выплаты и сразу помечаем отмену использованной:
+            // иначе второй клик успел бы попросить возврат ещё раз, пока идёт
+            // первый. Если перевод не пройдёт, сумма ляжет в очередь выплат —
+            // она всё равно достанется игроку, просто позже.
+            redBets.remove(uuid); blueBets.remove(uuid); usedResets.add(uuid);
+            recovery.removeBet(name, "red", uuid); recovery.removeBet(name, "blue", uuid);
+            if (useVault) refundMoney(name, roundId, uuid, player.getName(), amount);
+            else RecoveryStore.giveItems(player, amount, mainCurrency, subCurrency);
+            send(player, "§aСтавка возвращена: " + money(amount) + currency()); updateHolograms();
         }
 
         void refundAllBets() {
             Map<UUID, Double> all = new HashMap<>(redBets); blueBets.forEach((uuid, amount) -> all.merge(uuid, amount, Double::sum));
-            all.forEach((uuid, amount) -> payOrQueue(uuid, playerName(uuid), amount, useVault)); redBets.clear(); blueBets.clear(); recovery.clearArenaBets(name);
+            UUID round = roundId;
+            all.forEach((uuid, amount) -> {
+                if (useVault) refundMoney(name, round, uuid, playerName(uuid), amount);
+                else payOrQueue(uuid, playerName(uuid), amount, false);
+            });
+            redBets.clear(); blueBets.clear(); recovery.clearArenaBets(name);
         }
 
+        /**
+         * Взнос в финальную кассу.
+         *
+         * Деньги ложатся на ОТДЕЛЬНЫЙ счёт {@code ARENA_ESCROW:final:<арена>}:
+         * призовой пул не должен смешиваться с удержаниями зрителей, иначе
+         * возврат ставок при ничьей залез бы в чужие деньги.
+         */
         void contributeFinal(Player player) {
             if (state != GameState.WAITING) { send(player, "§cФинальная касса заблокирована."); return; }
-            double value = useVault ? vaultBetStep : heldCurrencyValue(player); if (!withdraw(player, value)) return;
-            finalPool = roundTenth(finalPool + value); saveArena(this); updateHolograms(); send(player, "§aВзнос принят. Пул: " + money(finalPool) + currency());
+            double value = useVault ? vaultBetStep : heldCurrencyValue(player);
+            if (!useVault) {
+                if (!takeCurrencyItem(player)) return;
+                acceptContribution(value, player);
+                return;
+            }
+            if (!moneyMode()) { player.sendMessage(locales.text("messages.vault-unavailable")); return; }
+            if (!pendingWagers.add(player.getUniqueId())) { send(player, "§eВзнос уже обрабатывается."); return; }
+
+            UUID operation = UUID.randomUUID();
+            money.reserve(operation, player.getUniqueId(), name, BetTicket.Purpose.FINAL, value)
+                    .whenComplete((result, error) -> onMain(() -> {
+                        if (!heldOk(result, error)) {
+                            pendingWagers.remove(player.getUniqueId());
+                            send(player, result != null && result.status() == ovh.aurumgg.core.api.HoldResult.Status.INSUFFICIENT_FUNDS
+                                    ? "§cНедостаточно средств: нужно " + money(value) + currency()
+                                    : "§cПлатёж отклонён.");
+                            return;
+                        }
+                        BetTicket ticket = BetTicket.of(operation, player.getUniqueId(), name,
+                                BetTicket.Purpose.FINAL, result.hold().orElseThrow());
+                        betJournal.open(ticket);
+                        money.capture(ticket).whenComplete((captured, failure) -> onMain(() -> {
+                            pendingWagers.remove(player.getUniqueId());
+                            if (!capturedOk(captured, failure)) {
+                                money.release(ticket).whenComplete((released, ignored) ->
+                                        onMain(() -> betJournal.close(ticket)));
+                                send(player, "§cПлатёж отклонён.");
+                                return;
+                            }
+                            acceptContribution(value, player);
+                            betJournal.close(ticket);
+                        }));
+                    }));
+        }
+
+        private void acceptContribution(double value, Player player) {
+            finalPool = roundTenth(finalPool + value); saveArena(this); updateHolograms();
+            send(player, "§aВзнос принят. Пул: " + money(finalPool) + currency());
         }
 
         void exchange(Player player) {
@@ -1291,7 +1570,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             if (spawnRed1 == null) errors.add("не задан spawnred1"); if (spawnBlue1 == null) errors.add("не задан spawnblue1");
             if (maxPlayers > 1 && spawnRed2 == null) errors.add("не задан spawnred2"); if (maxPlayers > 1 && spawnBlue2 == null) errors.add("не задан spawnblue2");
             if (specSpawn == null) errors.add("не задан setspawn"); if (bettingEnabled && (redHopper == null || blueHopper == null)) errors.add("не заданы обе воронки ставок");
-            if (hasOverlap(this)) errors.add("радиус пересекает другую арену"); if (useVault && !vaultReady) errors.add("Vault Economy недоступен"); return errors;
+            if (hasOverlap(this)) errors.add("радиус пересекает другую арену"); if (useVault && !moneyMode()) errors.add("экономика AurumCore недоступна"); return errors;
         }
 
         void toggleFinal(Player player) {
@@ -1307,40 +1586,87 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         void removeBar(UUID uuid) { BossBar bar = bars.remove(uuid); if (bar != null) bar.removeAll(); }
     }
 
-    private boolean withdraw(Player player, double amount) {
-        if (!Double.isFinite(amount) || amount <= 0.0) { send(player, "§cВозьмите валюту в основную руку."); return false; }
-        if (useVault) {
-            if (!vaultReady || economy == null) { player.sendMessage(locales.text("messages.vault-unavailable")); return false; }
-            if (!economy.has(player, amount)) { send(player, "§cНедостаточно средств: нужно " + money(amount) + vaultSymbol); return false; }
-            EconomyResponse response = economy.withdrawPlayer(player, amount);
-            if (!response.transactionSuccess()) { send(player, "§cПлатёж отклонён: " + response.errorMessage); getLogger().warning("Vault withdraw отказал для " + player.getName() + ": " + response.errorMessage); return false; }
-            return true;
-        }
+    /**
+     * Забрать предмет-валюту из руки. Только для предметного режима.
+     *
+     * Денежный режим сюда не заходит вовсе: там списание идёт резервом в Core
+     * и завершается асинхронно, а вернуть из такого вызова boolean нельзя, не
+     * соврав вызывающему.
+     */
+    private boolean takeCurrencyItem(Player player) {
         ItemStack hand = player.getInventory().getItemInMainHand();
-        if ((hand.getType() != mainCurrency && hand.getType() != subCurrency) || hand.getAmount() < 1) { send(player, "§cВозьмите валюту в основную руку."); return false; }
+        if ((hand.getType() != mainCurrency && hand.getType() != subCurrency) || hand.getAmount() < 1) {
+            send(player, "§cВозьмите валюту в основную руку."); return false;
+        }
         hand.setAmount(hand.getAmount() - 1); return true;
     }
 
-    private boolean pay(Player player, double amount, boolean vault) {
-        if (vault) {
-            if (!vaultReady || economy == null) { recovery.queuePayout(player.getUniqueId(), player.getName(), amount, true); send(player, "§eVault недоступен; выплата сохранена."); return true; }
-            EconomyResponse response = economy.depositPlayer(player, amount);
-            if (!response.transactionSuccess()) { recovery.queuePayout(player.getUniqueId(), player.getName(), amount, true); getLogger().warning("Vault deposit отказал для " + player.getName() + ": " + response.errorMessage); }
-            return true;
+    /**
+     * Выдать игроку выигрыш или возврат.
+     *
+     * Предметный режим отдаёт слитки на месте. Денежный уходит в ledger со
+     * СТАБИЛЬНЫМ ключом: при потере ответа выплата ляжет в очередь и будет
+     * повторена с тем же ключом, а Core распознает повтор и не заплатит
+     * дважды. Офлайн-игрок здесь ничем не отличается от онлайнового — у счёта
+     * в ledger нет требования, чтобы владелец был в сети.
+     */
+    private void payOrQueue(UUID uuid, String name, double amount, boolean vault) {
+        if (!Double.isFinite(amount) || amount <= 0.0) return;
+        if (!vault) {
+            Player online = Bukkit.getPlayer(uuid);
+            if (online != null && online.isOnline()) RecoveryStore.giveItems(online, amount, mainCurrency, subCurrency);
+            else recovery.queuePayout(uuid, name, amount, false);
+            return;
         }
-        RecoveryStore.giveItems(player, amount, mainCurrency, subCurrency); return true;
+        getLogger().warning("Денежная выплата без ключа идемпотентности для " + name + " отложена.");
+        recovery.queuePayout(uuid, name, amount, true);
     }
 
-    private void payOrQueue(UUID uuid, String name, double amount, boolean vault) {
-        if (amount <= 0.0) return; Player online = Bukkit.getPlayer(uuid); if (online != null && online.isOnline()) { pay(online, amount, vault); return; }
-        if (vault && vaultReady && economy != null) { EconomyResponse response = economy.depositPlayer(Bukkit.getOfflinePlayer(uuid), amount); if (response.transactionSuccess()) return; getLogger().warning("Офлайн-выплата Vault отложена для " + name + ": " + response.errorMessage); }
-        recovery.queuePayout(uuid, name, amount, vault);
+    /**
+     * Денежная выплата из кассы арены с ключом, по которому повтор безопасен.
+     *
+     * Неудача — не потеря: сумма ложится в очередь вместе с тем же ключом и
+     * повторяется при входе игрока и при следующем старте сервера.
+     */
+    void payMoney(String arena, UUID round, UUID uuid, String name, double amount,
+                  BetTicket.Purpose source) {
+        if (!Double.isFinite(amount) || amount <= 0.0) return;
+        String key = "arena-payout:" + source.name().toLowerCase(Locale.ROOT) + ":" + round + ":" + uuid;
+        money.payout(arena, round, uuid, source, amount).whenComplete((result, error) -> onMain(() -> {
+            if (succeeded(result, error)) return;
+            recovery.queueMoneyPayout(uuid, name, amount, key, arena, source.name());
+            getLogger().warning("Выплата " + money(amount) + " игроку " + name + " отложена: "
+                    + describe(result, error));
+        }));
+    }
+
+    /** Возврат накопленной ставки — тот же приём, свой ключ. */
+    void refundMoney(String arena, UUID round, UUID uuid, String name, double amount) {
+        if (!Double.isFinite(amount) || amount <= 0.0) return;
+        String key = "arena-refund:" + round + ":" + uuid;
+        money.refundStake(arena, round, uuid, amount).whenComplete((result, error) -> onMain(() -> {
+            if (succeeded(result, error)) return;
+            recovery.queueMoneyPayout(uuid, name, amount, key, arena, BetTicket.Purpose.BET.name());
+            getLogger().warning("Возврат " + money(amount) + " игроку " + name + " отложен: "
+                    + describe(result, error));
+        }));
+    }
+
+    private static boolean succeeded(ovh.aurumgg.core.api.TransactionResult result, Throwable error) {
+        return error == null && result != null
+                && (result.status() == ovh.aurumgg.core.api.TransactionResult.Status.SUCCESS
+                || result.status() == ovh.aurumgg.core.api.TransactionResult.Status.DUPLICATE);
+    }
+
+    private static String describe(ovh.aurumgg.core.api.TransactionResult result, Throwable error) {
+        if (error != null) return error.getClass().getSimpleName() + ": " + error.getMessage();
+        return result == null ? "нет ответа" : result.status() + " " + result.message();
     }
 
     private void claimPending(Player player) {
         double items = recovery.claimItemPayout(player, mainCurrency, subCurrency);
-        double vault = vaultReady ? recovery.claimVaultPayout(player, economy) : 0.0;
-        if (items + vault > 0.0) send(player, "§aПолучена отложенная выплата: " + money(items + vault) + currency());
+        if (items > 0.0) send(player, "§aПолучена отложенная выплата: " + money(items) + currency());
+        drainMoneyPayouts(player.getUniqueId(), player.getName());
         RecoveryStore.StoredExperience experience = recovery.claimExperience(player);
         if (!experience.isEmpty()) {
             send(player, "§aПолучена отложенная награда: §e" + experience.points() + " очков опыта§a, §e" + experience.levels() + " уровней§a.");

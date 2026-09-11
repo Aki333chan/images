@@ -1,7 +1,5 @@
 package org.ChisaO_o.gladiatorArena;
 
-import net.milkbowl.vault.economy.Economy;
-import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -25,6 +23,25 @@ import java.util.logging.Level;
 /** Synchronous local journal for inventory recovery, pending payouts and active bets. */
 final class RecoveryStore {
     record StoredBet(String arena, String team, UUID player, String playerName, double amount, boolean vault) {}
+
+    /**
+     * Невыплаченные деньги.
+     *
+     * Кроме суммы и ключа запись хранит, ИЗ КАКОЙ кассы шла выплата. Без
+     * этого повтор пришлось бы отправлять наугад, а касса ставок и финальный
+     * пул — разные счета: списание не с того оставило бы один счёт в минусе,
+     * а другой с зависшими деньгами.
+     */
+    record PendingPayout(UUID player, double amount, String key, String arena, String purpose) {}
+
+    /**
+     * Долг, доставшийся от версии 1.4.0.
+     *
+     * За ним нет ни счёта, ни проводки: в эпоху Vault выплата была простым
+     * depositPlayer, и очередь хранила только сумму. Выдать такое
+     * автоматически нельзя — это создало бы валюту мимо ledger.
+     */
+    record LegacyDebt(UUID player, String playerName, double amount) {}
     record StoredExperience(int points, int levels) {
         boolean isEmpty() { return points <= 0 && levels <= 0; }
     }
@@ -166,19 +183,120 @@ final class RecoveryStore {
         return amount;
     }
 
-    synchronized double claimVaultPayout(Player player, Economy economy) {
-        String path = "payouts." + player.getUniqueId() + ".vault";
-        double amount = data.getDouble(path, 0.0);
-        if (amount <= 0.0 || economy == null) return 0.0;
-        EconomyResponse response = economy.depositPlayer(player, amount);
-        if (!response.transactionSuccess()) {
-            plugin.getLogger().warning("Vault отклонил ожидающую выплату для " + player.getName() + ": " + response.errorMessage);
-            return 0.0;
-        }
-        data.set(path, null);
-        cleanupPayout(player.getUniqueId());
+    /**
+     * Отложить денежную выплату вместе с ключом идемпотентности.
+     *
+     * Ключ обязателен именно здесь. Выплата откладывается тогда, когда ответа
+     * от Core не пришло, — а «не пришло» не значит «не проведено»: связь могла
+     * оборваться после commit. Повтор с тем же ключом Core распознаёт и второй
+     * раз не платит; повтор с новым ключом заплатил бы дважды.
+     */
+    synchronized void queueMoneyPayout(UUID uuid, String name, double amount, String key,
+                                       String arena, String purpose) {
+        if (!Double.isFinite(amount) || amount <= 0.0 || key == null || key.isBlank()) return;
+        String base = "money-payouts." + uuid + "." + sanitizeKey(key);
+        data.set(base + ".amount", amount);
+        data.set(base + ".key", key);
+        data.set(base + ".arena", arena);
+        data.set(base + ".purpose", purpose);
+        data.set("money-payouts." + uuid + ".name", name);
         saveNow();
-        return amount;
+    }
+
+    /** Что осталось выплатить игроку деньгами; пары «сумма, ключ». */
+    synchronized List<PendingPayout> moneyPayouts(UUID uuid) {
+        List<PendingPayout> result = new ArrayList<>();
+        ConfigurationSection section = data.getConfigurationSection("money-payouts." + uuid);
+        if (section == null) return result;
+        for (String entry : section.getKeys(false)) {
+            ConfigurationSection item = section.getConfigurationSection(entry);
+            if (item == null) continue;
+            double amount = item.getDouble("amount", 0.0);
+            String key = item.getString("key", "");
+            String arena = item.getString("arena", "");
+            String purpose = item.getString("purpose", "BET");
+            if (amount > 0.0 && !key.isBlank() && !arena.isBlank()) {
+                result.add(new PendingPayout(uuid, amount, key, arena, purpose));
+            }
+        }
+        return result;
+    }
+
+    /** Все отложенные денежные выплаты — для восстановления при старте. */
+    synchronized List<PendingPayout> allMoneyPayouts() {
+        List<PendingPayout> result = new ArrayList<>();
+        ConfigurationSection root = data.getConfigurationSection("money-payouts");
+        if (root == null) return result;
+        for (String id : root.getKeys(false)) {
+            try {
+                result.addAll(moneyPayouts(UUID.fromString(id)));
+            } catch (IllegalArgumentException exception) {
+                plugin.getLogger().warning("Пропущена повреждённая запись выплаты: " + id);
+            }
+        }
+        return result;
+    }
+
+    synchronized void clearMoneyPayout(PendingPayout payout) {
+        data.set("money-payouts." + payout.player() + "." + sanitizeKey(payout.key()), null);
+        ConfigurationSection section = data.getConfigurationSection("money-payouts." + payout.player());
+        if (section != null && section.getKeys(false).stream().allMatch("name"::equals)) {
+            data.set("money-payouts." + payout.player(), null);
+        }
+        saveNow();
+    }
+
+    /**
+     * Долги из версии 1.4.0: очередь выплат старого Vault-формата.
+     *
+     * Эти деньги арена обещала, но не выдала, и за ними не стоит ни один счёт
+     * ledger: в эпоху Vault выплата была бы просто depositPlayer. Выдать их
+     * автоматически значило бы создать деньги из воздуха мимо всякой
+     * проводки — ровно то, ради чего ledger и заводился. Поэтому плагин их
+     * только показывает администратору, а решение остаётся за человеком.
+     */
+    synchronized Map<UUID, LegacyDebt> legacyMoneyDebts() {
+        Map<UUID, LegacyDebt> result = new HashMap<>();
+        ConfigurationSection root = data.getConfigurationSection("payouts");
+        if (root == null) return result;
+        for (String id : root.getKeys(false)) {
+            double amount = data.getDouble("payouts." + id + ".vault", 0.0);
+            if (amount <= 0.0) continue;
+            try {
+                UUID uuid = UUID.fromString(id);
+                result.put(uuid, new LegacyDebt(uuid, data.getString("payouts." + id + ".name", "Unknown"), amount));
+            } catch (IllegalArgumentException exception) {
+                plugin.getLogger().warning("Пропущена повреждённая запись старой выплаты: " + id);
+            }
+        }
+        return result;
+    }
+
+    /** Убрать старую запись после того, как администратор рассчитался. */
+    synchronized void clearLegacyMoneyDebt(UUID uuid) {
+        data.set("payouts." + uuid + ".vault", null);
+        cleanupPayout(uuid);
+        saveNow();
+    }
+
+    /**
+     * Есть ли уже учтённая ставка этого игрока на этой арене.
+     *
+     * Нужна журналу списаний: билет, чья ставка уже записана, закрывается без
+     * возврата — иначе деньги вернулись бы дважды. См. ArenaEconomyService.
+     */
+    synchronized boolean hasBet(String arena, UUID player) {
+        ConfigurationSection teams = data.getConfigurationSection("bets." + arena);
+        if (teams == null) return false;
+        for (String team : teams.getKeys(false)) {
+            if (data.getDouble("bets." + arena + "." + team + "." + player + ".amount", 0.0) > 0.0) return true;
+        }
+        return false;
+    }
+
+    /** Ключ идемпотентности как имя узла YAML: двоеточия и точки там не живут. */
+    private static String sanitizeKey(String key) {
+        return key.replace(':', '-').replace('.', '-');
     }
 
     synchronized void saveBet(String arena, String team, UUID player, String playerName, double amount, boolean vault) {

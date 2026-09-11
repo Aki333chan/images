@@ -1,9 +1,9 @@
 name: AurumArena
-version: '1.4.0'
+version: '1.5.0'
 main: org.ChisaO_o.gladiatorArena.GladiatorArena
 api-version: '26.2'
 description: Настраиваемые гладиаторские арены со ставками и комплектами
-softdepend: [Vault, VaultUnlocked, PlaceholderAPI, AurumCompanion]
+softdepend: [AurumCore, PlaceholderAPI, AurumCompanion]
 
 commands:
   arena:
