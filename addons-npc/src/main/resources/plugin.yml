@@ -1,5 +1,5 @@
 name: AddonsNPC
-version: '1.9.0'
+version: '2.0.0'
 main: dev.addons.npc.AddonsNpcPlugin
 api-version: '26.2'
 description: Configurable NPCs with shops, buyers, currency exchangers and AurumGuilds bonus traders.

@@ -79,9 +79,40 @@ public final class EconomyService {
         return current == null ? unavailable() : current.captureHold(saga.holdId(), saga.captureRequest());
     }
 
+    /**
+     * Look a hold up by the key the claim remembers.
+     *
+     * <p>Delivery captures from the snapshot Core returns, never from values it
+     * kept itself: Core refuses a capture whose from, to, currency, amount,
+     * category or metadata differ from the reservation by even one entry, and a
+     * refusal AFTER the player's money is reserved is the worst possible moment
+     * to discover a mismatch.
+     */
+    public CompletionStage<java.util.Optional<ovh.aurumgg.core.api.HoldSnapshot>> hold(String key) {
+        AurumEconomyApi current = aurum;
+        return current == null
+                ? CompletableFuture.completedFuture(java.util.Optional.empty())
+                : current.hold(key);
+    }
+
+    /** Capture exactly what was reserved, under a key stable for this claim. */
+    public CompletionStage<HoldResult> capture(ovh.aurumgg.core.api.HoldSnapshot hold, String key) {
+        AurumEconomyApi current = aurum;
+        if (current == null) return unavailable();
+        return current.captureHold(hold.id(), new ovh.aurumgg.core.api.TransactionRequest(
+                key, hold.from(), hold.to(), hold.currency().id(), hold.amount(), hold.category(),
+                hold.metadata()));
+    }
+
     public CompletionStage<HoldResult> release(NpcSaga saga) {
         AurumEconomyApi current = aurum;
         return current == null ? unavailable() : current.releaseHold(saga.holdId());
+    }
+
+    /** Release a reservation the plugin never wrote a saga for. */
+    public CompletionStage<HoldResult> release(ovh.aurumgg.core.api.HoldSnapshot hold) {
+        AurumEconomyApi current = aurum;
+        return current == null ? unavailable() : current.releaseHold(hold.id());
     }
 
     public void recover(NpcSagaRepository sagas, AurumGuildsHook guilds) {

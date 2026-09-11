@@ -22,7 +22,9 @@ import dev.addons.npc.service.BuyerService;
 import dev.addons.npc.service.AurumGuildsHook;
 import dev.addons.npc.service.GuildTraderService;
 import dev.addons.npc.service.AurumExchangeService;
+import dev.addons.npc.service.ClaimGateway;
 import dev.addons.npc.service.NpcSagaRepository;
+import dev.addons.npc.service.ShopDelivery;
 import dev.addons.npc.model.BuyerDefinition;
 import dev.addons.npc.model.BuyerOffer;
 import dev.addons.npc.model.ClickMode;
@@ -62,6 +64,8 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     private BuyerService buyerService;
     private AurumExchangeService exchangerService;
     private NpcSagaRepository sagas;
+    private ClaimGateway claims;
+    private ShopDelivery delivery;
 
     @Override
     public void onEnable() {
@@ -86,7 +90,10 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         dialogues = new DialogueService(messages);
         MannequinAdapter adapter = new MannequinAdapter(this);
         npcManager = new NpcManager(this, npcRepository, new dev.addons.npc.service.SkinService(this, adapter), adapter);
-        shopService = new ShopService(this, shopRepository, economy, messages, sagas);
+        claims = new ClaimGateway(this);
+        boolean deliveryClaims = claims.hook();
+        delivery = new ShopDelivery(this, claims, economy, messages, shopRepository);
+        shopService = new ShopService(this, shopRepository, economy, messages, delivery);
         buyerService = new BuyerService(this, buyerRepository, economy, messages, sagas);
         guildsHook = new AurumGuildsHook(this);
         GuildTraderService guildTraderService = new GuildTraderService(this, guildTraderRepository, economy,
@@ -97,6 +104,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
                 guildTraderService, exchangerService);
 
         getServer().getPluginManager().registerEvents(shopService, this);
+        getServer().getPluginManager().registerEvents(delivery, this);
         getServer().getPluginManager().registerEvents(buyerService, this);
         getServer().getPluginManager().registerEvents(guildTraderService, this);
         getServer().getPluginManager().registerEvents(exchangerService, this);
@@ -122,11 +130,19 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         long recoveryPeriod = Math.max(5L, getConfig().getLong("economy.recovery-retry-seconds", 20L)) * 20L;
         getServer().getScheduler().runTaskTimer(this,
                 () -> economy.recover(sagas, guildsHook), recoveryPeriod, recoveryPeriod);
+        // The same cadence for undelivered purchases. A claim that could not be
+        // served when Core was down has to be picked up without waiting for the
+        // player to relog.
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            if (!claims.available()) claims.hook();
+            delivery.sweep();
+        }, recoveryPeriod, recoveryPeriod);
         getLogger().info("Enabled " + npcRepository.ids().size() + " NPC(s) and " + shopRepository.ids().size()
                 + " shop(s), " + buyerRepository.ids().size() + " buyer(s), and "
                 + guildTraderRepository.ids().size() + " guild trader(s), "
                 + exchangerRepository.ids().size() + " exchanger(s). AurumCore holds: "
-                + (nativeEconomy ? "connected" : "unavailable") + "; AurumGuilds: "
+                + (nativeEconomy ? "connected" : "unavailable") + "; delivery claims: "
+                + (deliveryClaims ? "connected" : "unavailable") + "; AurumGuilds: "
                 + (guildsHook.available() ? "connected" : "unavailable") + "; Aurum exchange: "
                 + (aurumExchange ? "connected" : "unavailable"));
     }
