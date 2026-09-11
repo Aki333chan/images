@@ -198,10 +198,24 @@ final class ArenaEconomyService implements Listener {
                 TransactionCategory.REFUND, ticket.metadata()));
     }
 
-    /** Комиссия казино — реальной проводкой в казну, а не вычитанием из выплат. */
-    CompletionStage<TransactionResult> commission(String arena, UUID round, double value) {
-        return move(escrow(arena, BetTicket.Purpose.BET), AccountId.globalTreasury(), value,
-                TransactionCategory.COMMISSION, "arena-commission:" + round, arena);
+    /** Комиссия казино в казну сервера — проводкой, а не вычитанием из выплат. */
+    CompletionStage<TransactionResult> commission(String arena, UUID round, double value,
+                                                  BetTicket.Purpose source) {
+        return move(escrow(arena, source), AccountId.globalTreasury(), value,
+                TransactionCategory.COMMISSION,
+                "arena-commission:" + source.name().toLowerCase(Locale.ROOT) + ":" + round, arena);
+    }
+
+    /**
+     * Комиссия в чемпионский пул той же арены.
+     *
+     * Деньги не уходят из оборота, а переезжают между двумя счетами арены:
+     * из кассы ставок в призовой пул. Сервер на этом не зарабатывает —
+     * комиссия с обычных боёв копится и достаётся победителям финала.
+     */
+    CompletionStage<TransactionResult> commissionToChampionPool(String arena, UUID round, double value) {
+        return move(escrow(arena, BetTicket.Purpose.BET), escrow(arena, BetTicket.Purpose.FINAL), value,
+                TransactionCategory.COMMISSION, "arena-commission-pool:" + round, arena);
     }
 
     /**

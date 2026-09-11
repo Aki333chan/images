@@ -60,6 +60,20 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
     private boolean combatLogLoss;
     private boolean boundaryLoss;
     private double commissionPercent;
+    /** Куда уходит комиссия казино: в казну сервера или в чемпионский пул. */
+    private CommissionTarget commissionTarget;
+    /**
+     * Брать ли комиссию с ЧЕМПИОНСКОГО ПУЛА.
+     *
+     * По умолчанию НЕТ. Пул — это то, что игроки сами внесли на приз, и
+     * снимать с него процент по умолчанию значило бы менять смысл взноса.
+     * Возможность оставлена для серверов, где и финал считается доходной
+     * статьёй.
+     *
+     * Ставок это не касается вовсе: с них комиссия берётся всегда, и в
+     * финальном бою тоже — там идёт обычный тотализатор поверх пула.
+     */
+    private boolean commissionOnChampionPool;
     private double minBet;
     private double maxBet;
     private int maxTeamLimit;
@@ -149,6 +163,33 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         if (database != null) database.close();
     }
 
+    /**
+     * Получатель комиссии казино.
+     *
+     * Выбор есть потому, что это разные по смыслу решения. Казна — доход
+     * сервера: деньги уходят из оборота арены насовсем. Чемпионский пул —
+     * перераспределение внутри арены: комиссия с обычных боёв копится и
+     * достаётся победителям финала, и сервер на ней не зарабатывает.
+     */
+    enum CommissionTarget {
+        TREASURY("treasury"),
+        CHAMPION_POOL("champion-pool");
+
+        final String configValue;
+
+        CommissionTarget(String configValue) { this.configValue = configValue; }
+
+        static CommissionTarget parse(String raw) {
+            if (raw == null) return TREASURY;
+            String value = raw.trim().toLowerCase(Locale.ROOT).replace('_', '-');
+            for (CommissionTarget target : values()) if (target.configValue.equals(value)) return target;
+            // «champion», «champions», «pool» — то же самое: ошибиться здесь
+            // легко, а падать из-за написания настройки незачем.
+            if (value.startsWith("champion") || value.equals("pool")) return CHAMPION_POOL;
+            return TREASURY;
+        }
+    }
+
     private void loadSettings() {
         reloadConfig();
         if (locales != null) locales.reload();
@@ -162,7 +203,20 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         countdownSeconds = clamp(getConfig().getInt("settings.countdown_seconds", 5), 1, 60);
         combatLogLoss = getConfig().getBoolean("settings.combat_log_is_loss", true);
         boundaryLoss = getConfig().getBoolean("settings.boundary_leave_is_loss", true);
-        commissionPercent = finite(getConfig().getDouble("settings.casino_commission_percent", 0.0), 0.0, 0.0, 90.0);
+        // Ставка читается из нового блока, а при его отсутствии — из старого
+        // ключа: конфиги версии 1.4.0 должны продолжать работать как были.
+        double legacyPercent = getConfig().getDouble("settings.casino_commission_percent", 0.0);
+        commissionPercent = finite(getConfig().getDouble("economy.commission.percent", legacyPercent),
+                0.0, 0.0, 90.0);
+        commissionTarget = CommissionTarget.parse(getConfig().getString("economy.commission.destination"));
+        commissionOnChampionPool = getConfig().getBoolean("economy.commission.apply-to-champion-pool", false);
+        if (commissionOnChampionPool && commissionTarget == CommissionTarget.CHAMPION_POOL) {
+            // Забрать из чемпионского пула и положить обратно в него же —
+            // операция без смысла. Отключаем и говорим об этом вслух.
+            commissionOnChampionPool = false;
+            getLogger().warning("economy.commission.apply-to-champion-pool отключено: при "
+                    + "destination=champion-pool комиссия ушла бы в тот же пул, из которого взята.");
+        }
         minBet = finite(getConfig().getDouble("settings.min_bet", 0.1), 0.1, 0.01, 1_000_000_000.0);
         maxBet = finite(getConfig().getDouble("settings.max_bet_per_player", 1_000_000.0), 1_000_000.0, minBet, 1_000_000_000.0);
         maxTeamLimit = clamp(getConfig().getInt("settings.max_team_size_limit", 20), 1, 100);
@@ -433,6 +487,12 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             value.put("finalWinnerXp", String.valueOf(arena.finalWinnerExperience));
             value.put("xpMode", arena.experienceMode.configValue);
             value.put("finalPool", money(arena.finalPool));
+            // Настройки комиссии общие для всех арен, но в снимке они у
+            // каждой: AurumUI рисует карточку одной арены и не должен
+            // ходить за ними отдельным запросом.
+            value.put("commissionPercent", money(commissionPercent));
+            value.put("commissionTarget", commissionTarget.configValue);
+            value.put("commissionOnChampionPool", String.valueOf(commissionOnChampionPool));
             value.put("redPlayers", String.valueOf(arena.red.size()));
             value.put("bluePlayers", String.valueOf(arena.blue.size()));
             value.put("redBets", money(arena.redBets.values().stream().mapToDouble(Double::doubleValue).sum()));
@@ -460,6 +520,15 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
                 case "cycle_xp_mode" -> arena.experienceMode = arena.experienceMode == ExperienceMode.POINTS
                         ? ExperienceMode.LEVELS : ExperienceMode.POINTS;
                 case "set_final_pool" -> arena.finalPool = decimal(arguments, "value", 0.0, 1_000_000_000_000.0);
+                // Экономика настраивается из UI так же, как из консоли: одна
+                // и та же запись в config.yml, одно и то же перечитывание.
+                case "set_commission_percent" -> setCommission("economy.commission.percent",
+                        decimal(arguments, "value", 0.0, 90.0));
+                case "set_commission_target" -> setCommission("economy.commission.destination",
+                        CommissionTarget.parse(arguments.get("value")).configValue);
+                case "set_commission_champion_pool_rake" -> setCommission(
+                        "economy.commission.apply-to-champion-pool",
+                        Boolean.parseBoolean(arguments.getOrDefault("value", "false")));
                 case "set_radius" -> arena.radius = integer(arguments, "value", 10, 500);
                 case "set_max_players" -> arena.maxPlayers = integer(arguments, "value", 1, maxTeamLimit);
                 case "set_winner_xp" -> arena.winnerExperience = integer(arguments, "value", 0, 1_000_000);
@@ -541,6 +610,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             return true;
         }
         if (!player.hasPermission("arena.admin")) return noPermission(player);
+        if (action.equals("commission")) { commissionCommand(player, args); return true; }
         if (action.equals("recover")) {
             Player target = args.length >= 2 ? Bukkit.getPlayerExact(args[1]) : player;
             if (target == null) { send(player, "§cИгрок не найден."); return true; }
@@ -605,6 +675,66 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             default -> setTargetBlock(player, arena, action);
         }
         return true;
+    }
+
+    /** Записать настройку экономики и сразу применить её. */
+    private void setCommission(String path, Object value) {
+        getConfig().set(path, value);
+        saveConfig();
+        loadSettings();
+    }
+
+    /**
+     * Живая настройка комиссии: {@code /arena commission ...}.
+     *
+     * Пишет в config.yml и перечитывает настройки, поэтому изменение
+     * переживает перезапуск. Это временная точка входа: экономику будет
+     * настраивать AurumUI, но до него — и после него — сервер должен
+     * управляться из консоли.
+     */
+    private void commissionCommand(Player player, String[] args) {
+        if (args.length < 2) {
+            send(player, "§eКомиссия: §f" + money(commissionPercent) + "%§e, получатель §f"
+                    + commissionTarget.configValue + "§e, с чемпионского пула: §f"
+                    + (commissionOnChampionPool ? "да" : "нет"));
+            send(player, "§7/arena commission <treasury|champion-pool>");
+            send(player, "§7/arena commission percent <0..90>");
+            send(player, "§7/arena commission champion-pool-rake <on|off>");
+            return;
+        }
+        String option = args[1].toLowerCase(Locale.ROOT);
+        switch (option) {
+            case "percent" -> {
+                if (args.length < 3) { send(player, "§cУкажите процент: /arena commission percent 5"); return; }
+                double value;
+                try { value = Double.parseDouble(args[2].replace(',', '.')); }
+                catch (NumberFormatException error) { send(player, "§cНе число: " + args[2]); return; }
+                if (!Double.isFinite(value) || value < 0.0 || value > 90.0) {
+                    send(player, "§cПроцент должен быть от 0 до 90."); return;
+                }
+                getConfig().set("economy.commission.percent", value);
+            }
+            case "champion-pool-rake" -> {
+                if (args.length < 3) { send(player, "§cУкажите on или off."); return; }
+                boolean enabled = args[2].equalsIgnoreCase("on") || args[2].equalsIgnoreCase("true");
+                getConfig().set("economy.commission.apply-to-champion-pool", enabled);
+            }
+            default -> {
+                CommissionTarget target = CommissionTarget.parse(option);
+                // parse никогда не падает, поэтому опечатку ловим сравнением:
+                // иначе «/arena commission tresury» молча выбрала бы казну.
+                if (!target.configValue.equals(option) && !option.startsWith("champion") && !option.equals("pool")) {
+                    send(player, "§cНеизвестный получатель: " + option + ". Ожидается treasury или champion-pool.");
+                    return;
+                }
+                getConfig().set("economy.commission.destination", target.configValue);
+            }
+        }
+        saveConfig();
+        loadSettings();
+        send(player, "§aКомиссия: §f" + money(commissionPercent) + "%§a, получатель §f"
+                + commissionTarget.configValue + "§a, с чемпионского пула: §f"
+                + (commissionOnChampionPool ? "да" : "нет"));
     }
 
     private void sendHelp(CommandSender sender) {
@@ -921,13 +1051,14 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             if (sender.hasPermission("arena.admin")) base.addAll(List.of("create", "delete", "status", "validate", "gui", "start", "stop", "reload", "recover",
                 "setred", "setblue", "sethost", "setreset", "sethopred", "sethopblue", "setfhop", "bankomat", "unhopred", "unhopblue", "unfhop",
                 "setspawn", "spawnred1", "spawnred2", "spawnblue1", "spawnblue2", "showbar", "friendlyfire", "maxplayers", "auto", "manual",
-                "betting", "kit", "winxp", "finalxp", "xpmode", "final", "finalstats", "fstatsremove", "fstatsscale", "radius", "debug"));
+                "betting", "kit", "winxp", "finalxp", "xpmode", "final", "finalstats", "fstatsremove", "fstatsscale", "radius", "debug", "commission"));
             return filter(base, args[0]);
         }
         if (args.length == 2) return switch (args[0].toLowerCase(Locale.ROOT)) {
             case "delete", "status", "validate", "gui", "odds", "spectate" -> filter(arenas.keySet(), args[1]);
             case "stats", "recover" -> filter(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
             case "showbar" -> filter(List.of("spectators", "all", "false"), args[1]);
+            case "commission" -> filter(List.of("treasury", "champion-pool", "percent", "champion-pool-rake"), args[1]);
             case "friendlyfire", "betting", "kit" -> filter(List.of("true", "false", "toggle"), args[1]);
             case "winxp", "finalxp" -> filter(List.of("0", "10", "50", "100", "500"), args[1]);
             case "xpmode" -> filter(List.of("points", "levels"), args[1]);
@@ -1108,30 +1239,31 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
                 paidOut += payout;
                 database.recordBet(entry.getKey(), playerName, true, Math.max(0.0, payout - entry.getValue()));
             }
-            // Всё, что осталось в кассе после выплат, — комиссия казино. В
-            // Vault она просто исчезала; в ledger у денег обязан быть
-            // владелец, поэтому она уходит в казну сервера отдельной
-            // проводкой. Считаем остатком, а не процентом от пота: так
+            // Всё, что осталось в кассе ставок после выплат, — комиссия
+            // казино. В Vault она просто исчезала; в ledger у денег обязан
+            // быть владелец. Считаем остатком, а не процентом от пота: так
             // копейки округления выплат не повисают на счёте арены навсегда.
-            double rake = roundTenth(pot - paidOut);
-            if (useVault && rake > 0.0) {
-                money.commission(name, round, rake).whenComplete((result, error) -> onMain(() -> {
-                    if (!succeeded(result, error)) {
-                        getLogger().warning("Комиссия " + money(rake) + " осталась на счёте арены " + name
-                                + ": " + describe(result, error));
-                    }
-                }));
-            }
+            takeCommission(round, roundTenth(pot - paidOut), BetTicket.Purpose.BET);
             Map<UUID, Double> losingBets = winners == null ? Map.of() : (winners.equals(originalRed) ? blueBets : redBets);
             for (UUID uuid : losingBets.keySet()) database.recordBet(uuid, playerName(uuid), false, 0.0);
             double championShare = 0.0;
             if (finalMode && winners != null && !winners.isEmpty()) {
-                championShare = roundTenth(finalPool / winners.size()); lastChampions.clear();
+                // Комиссия с пула — по настройке и по умолчанию НЕТ: пул
+                // собран взносами игроков именно на приз. Ставки этого боя
+                // при этом обложены как обычно, выше.
+                double poolRake = commissionOnChampionPool
+                        ? roundTenth(finalPool * commissionPercent / 100.0) : 0.0;
+                double payable = roundTenth(finalPool - poolRake);
+                championShare = roundTenth(payable / winners.size()); lastChampions.clear();
                 for (UUID uuid : winners) {
                     String playerName = playerName(uuid); lastChampions.add(playerName);
                     if (useVault) payMoney(name, round, uuid, playerName, championShare, BetTicket.Purpose.FINAL);
                     else payOrQueue(uuid, playerName, championShare, false);
                 }
+                // Остаток пула после долей — тоже комиссия: делённое нацело
+                // редко сходится, и хвост не должен оставаться на счёте.
+                takeCommission(round, roundTenth(finalPool - championShare * winners.size()),
+                        BetTicket.Purpose.FINAL);
                 finalPool = 0.0; finalMode = false; saveArena(this);
             }
             if (winners == null) refundAllBets(); else {
@@ -1285,6 +1417,46 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             if (useVault) refundMoney(name, roundId, uuid, player.getName(), amount);
             else RecoveryStore.giveItems(player, amount, mainCurrency, subCurrency);
             send(player, "§aСтавка возвращена: " + money(amount) + currency()); updateHolograms();
+        }
+
+        /**
+         * Увести комиссию со счёта арены.
+         *
+         * Куда — решает настройка. В казну это обычный перевод. В
+         * чемпионский пул — перевод между двумя счетами самой арены плюс
+         * увеличение finalPool, и увеличивать его можно ТОЛЬКО после
+         * подтверждённого перевода: иначе показанный размер пула разъедется
+         * с тем, что на счёте, и финал попытается выплатить несуществующее.
+         *
+         * Предметный режим ledger не знает: там в казну уводить нечего и
+         * комиссия по-прежнему просто не выдаётся, а в пул она добавляется
+         * сразу — за ним никаких счетов и не стоит.
+         */
+        private void takeCommission(UUID round, double rake, BetTicket.Purpose source) {
+            if (rake <= 0.0) return;
+            if (!useVault) {
+                if (commissionTarget == CommissionTarget.CHAMPION_POOL && source != BetTicket.Purpose.FINAL) {
+                    finalPool = roundTenth(finalPool + rake); saveArena(this); updateHolograms();
+                }
+                return;
+            }
+            if (commissionTarget == CommissionTarget.CHAMPION_POOL && source != BetTicket.Purpose.FINAL) {
+                money.commissionToChampionPool(name, round, rake).whenComplete((result, error) -> onMain(() -> {
+                    if (!succeeded(result, error)) {
+                        getLogger().warning("Комиссия " + money(rake) + " осталась в кассе ставок арены "
+                                + name + ": " + describe(result, error));
+                        return;
+                    }
+                    finalPool = roundTenth(finalPool + rake); saveArena(this); updateHolograms();
+                }));
+                return;
+            }
+            money.commission(name, round, rake, source).whenComplete((result, error) -> onMain(() -> {
+                if (!succeeded(result, error)) {
+                    getLogger().warning("Комиссия " + money(rake) + " осталась на счёте арены " + name
+                            + ": " + describe(result, error));
+                }
+            }));
         }
 
         void refundAllBets() {
