@@ -31,7 +31,8 @@ import java.util.Map;
  * @param hudTitle               заголовок сайдбара
  * @param luckPermsGroupPrefix   префикс технических имён групп LuckPerms
  * @param suffixFormat           во что оборачивается тег в суффиксе
- * @param bankEnabled            разрешены ли команды банка (при наличии Vault)
+ * @param bankEnabled            разрешены ли команды банка (при наличии экономики)
+ * @param bankOnDisband          судьба общака при роспуске гильдии
  */
 public record GuildsConfig(
         String jdbcUrl,
@@ -52,7 +53,8 @@ public record GuildsConfig(
         String hudTitle,
         String luckPermsGroupPrefix,
         String suffixFormat,
-        boolean bankEnabled) {
+        boolean bankEnabled,
+        BankOnDisband bankOnDisband) {
 
     /** Префикс таблиц по умолчанию — он же запасной при негодном значении. */
     public static final String DEFAULT_PREFIX = "aurum_guilds";
@@ -103,7 +105,11 @@ public record GuildsConfig(
                 // безопасным.
                 groupPrefix(string(raw, "luckperms.group-prefix", "guild_")),
                 string(raw, "luckperms.suffix-format", "&7[&b{tag}&7]"),
-                bool(raw, "bank.enabled", true));
+                bool(raw, "bank.enabled", true),
+
+                // Разбор мягкий: опечатка здесь не должна ронять роспуск
+                // гильдии посреди удаления. См. BankOnDisband.
+                BankOnDisband.parse(string(raw, "bank.on-disband", "leader")));
     }
 
     /**
@@ -148,6 +154,17 @@ public record GuildsConfig(
 
     public String bankLogTable() {
         return tablePrefix + "_bank_log";
+    }
+
+    /**
+     * Таблица отметок о переносе банка в ledger.
+     *
+     * Отдельной таблицей, а не колонкой в гильдиях: отметка про разовое
+     * событие в истории сервера, а не про саму гильдию, и в StoredGuild ей
+     * делать нечего.
+     */
+    public String bankMigrationTable() {
+        return tablePrefix + "_bank_migrated";
     }
 
     // ------------------------------------------------------------ разбор

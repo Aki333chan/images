@@ -10,8 +10,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import ovh.aurumgg.guilds.api.BankAccess;
 import ovh.aurumgg.guilds.api.BonusType;
@@ -73,6 +75,7 @@ public final class MariaDbGuildRepository implements GuildRepository {
     private final String guilds;
     private final String members;
     private final String bankLog;
+    private final String bankMigrated;
     private final String bonuses;
     private final String regions;
 
@@ -92,6 +95,7 @@ public final class MariaDbGuildRepository implements GuildRepository {
         this.guilds = config.guildsTable();
         this.members = config.membersTable();
         this.bankLog = config.bankLogTable();
+        this.bankMigrated = config.bankMigrationTable();
         this.bonuses = config.bonusesTable();
         this.regions = config.regionsTable();
     }
@@ -198,6 +202,18 @@ public final class MariaDbGuildRepository implements GuildRepository {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
                 """.formatted(regions, guilds);
 
+        // Ни внешнего ключа, ни каскада и здесь: отметка переживает роспуск
+        // гильдии намеренно. Строка гильдии удаляется, а id больше никогда не
+        // выдаётся заново (AUTO_INCREMENT), так что висящая отметка ничему не
+        // мешает — зато её отсутствие после неудачного удаления означало бы
+        // повторный перенос уже перенесённых денег.
+        String bankMigratedDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  guild_id BIGINT    NOT NULL PRIMARY KEY,
+                  at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(bankMigrated);
+
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate(guildsDdl);
@@ -205,6 +221,7 @@ public final class MariaDbGuildRepository implements GuildRepository {
             statement.executeUpdate(bankDdl);
             statement.executeUpdate(bonusesDdl);
             statement.executeUpdate(regionsDdl);
+            statement.executeUpdate(bankMigratedDdl);
         }
     }
 
@@ -530,6 +547,26 @@ public final class MariaDbGuildRepository implements GuildRepository {
     @FunctionalInterface
     private interface Binder {
         void bind(PreparedStatement statement) throws Exception;
+    }
+
+    @Override
+    public Set<Long> migratedBanks() throws Exception {
+        Set<Long> result = new HashSet<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement =
+                        connection.prepareStatement("SELECT guild_id FROM " + bankMigrated);
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) result.add(rs.getLong("guild_id"));
+        }
+        return result;
+    }
+
+    @Override
+    public void markBankMigrated(long guildId) throws Exception {
+        // INSERT IGNORE, а не INSERT: отметка ставится и после переноса, и
+        // после решения «переносить нечего», и повтор здесь ожидаем.
+        update("INSERT IGNORE INTO " + bankMigrated + " (guild_id) VALUES (?)",
+                statement -> statement.setLong(1, guildId));
     }
 
     private void update(String sql, Binder binder) throws Exception {

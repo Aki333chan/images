@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -106,6 +107,19 @@ public final class GuildService implements AutoCloseable {
     private final Map<Long, StoredGuild> guilds = new ConcurrentHashMap<>();
     /** Игрок → его гильдия. Игрок состоит максимум в одной. */
     private final Map<UUID, Long> memberOf = new ConcurrentHashMap<>();
+    /**
+     * Гильдии, чей банк уже живёт на счёте в ledger.
+     *
+     * В памяти по той же причине, что и всё остальное здесь: принадлежность
+     * к этому множеству проверяется перед каждой операцией с банком, а
+     * заодно её спрашивает HUD. В базе множество продублировано отдельной
+     * таблицей, чтобы перенос не повторился после перезапуска.
+     *
+     * Пока за экономику отвечает Vault, множество не используется вовсе:
+     * счёта гильдии там не существует и переносить нечего.
+     */
+    private final Set<Long> bankMigrated = ConcurrentHashMap.newKeySet();
+
     /** Приглашённый → зовущие его гильдии. */
     private final Map<UUID, List<Invite>> invites = new ConcurrentHashMap<>();
     private record JoinConfirmation(long from, long to, Instant membershipSince, Instant expiresAt) {}
@@ -185,6 +199,7 @@ public final class GuildService implements AutoCloseable {
         for (GuildRegion region : repository.loadRegions()) {
             regions.computeIfAbsent(region.guildId(), key -> new ArrayList<>()).add(region);
         }
+        bankMigrated.addAll(repository.migratedBanks());
         logger.info("Загружено гильдий: " + guilds.size()
                 + ", участников: " + memberOf.size()
                 + ", бонусов: " + bonuses.values().stream().mapToInt(List::size).sum());
@@ -253,6 +268,23 @@ public final class GuildService implements AutoCloseable {
 
     public boolean bankAvailable() {
         return config.bankEnabled() && economy.available();
+    }
+
+    /**
+     * Готов ли банк ИМЕННО ЭТОЙ гильдии.
+     *
+     * За Vault ответ совпадает с {@link #bankAvailable()}: счёта гильдии там
+     * нет, банк — число в нашей таблице, и переносить нечего.
+     *
+     * За AurumCore деньги должны сначала оказаться на счёте {@code GUILD:<id>}.
+     * Пока перенос не прошёл, число в таблице и остаток на счёте — разные
+     * величины, и операция по первому из них выдала бы деньги, которых на
+     * счёте ещё нет. Поэтому до переноса банк отвечает «подождите», а не
+     * работает по старому числу.
+     */
+    public boolean bankReady(long guildId) {
+        if (!bankAvailable()) return false;
+        return !economy.guildAccounts() || bankMigrated.contains(guildId);
     }
 
     public GuildsConfig config() {
@@ -342,6 +374,14 @@ public final class GuildService implements AutoCloseable {
             guilds.put(id, guild);
             memberOf.put(player, id);
             invites.remove(player);
+
+            // Новой гильдии переносить нечего: банк пуст с первой секунды.
+            // Отметку ставим сразу, иначе её банк считался бы «ещё не
+            // перенесённым» до следующего прохода миграции.
+            if (economy.guildAccounts()) {
+                bankMigrated.add(id);
+                write(() -> repository.markBankMigrated(id), "отметить банк гильдии перенесённым");
+            }
 
             hooks.guildCreated(id, tag);
             hooks.memberJoined(id, player);
@@ -624,18 +664,21 @@ public final class GuildService implements AutoCloseable {
 
     public CompletableFuture<GuildActionResult> deposit(UUID player, double amount) {
         return async(() -> {
+            StoredGuild guild = guildOf(player).orElse(null);
+            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!bankAvailable()) return GuildActionResult.fail("guild.err.bankOff");
+            if (!bankReady(guild.id())) return GuildActionResult.fail("guild.err.bankMigrating");
             if (!(amount > 0)) return GuildActionResult.fail("guild.err.amountPositive");
 
-            StoredGuild guild = guilds.get(memberOf.get(player));
-            if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
-
             // Вкладывать может любой участник: это его собственные деньги.
-            if (!economy.withdraw(player, amount)) {
-                return GuildActionResult.fail("guild.err.notEnoughMoney");
-            }
+            //
+            // Причину отказа называет мост, а не мы. За Vault это снятие с
+            // игрока, за AurumCore — проводка «кошелёк → счёт гильдии»
+            // целиком, и отказать она может по-разному.
+            BankResult moved = economy.deposit(guild.id(), player, amount);
+            if (!moved.ok()) return GuildActionResult.fail(moved.messageKey());
 
-            double balance = guild.bank() + amount;
+            double balance = moved.balance().orElse(guild.bank() + amount);
             applyBank(guild, balance, player, true, amount);
             return GuildActionResult.ok("guild.bank.deposited", Map.of(
                     "amount", economy.format(amount), "total", economy.format(balance)));
@@ -644,36 +687,139 @@ public final class GuildService implements AutoCloseable {
 
     public CompletableFuture<GuildActionResult> withdraw(UUID player, double amount) {
         return async(() -> {
-            if (!bankAvailable()) return GuildActionResult.fail("guild.err.bankOff");
-            if (!(amount > 0)) return GuildActionResult.fail("guild.err.amountPositive");
-
-            StoredGuild guild = guilds.get(memberOf.get(player));
+            StoredGuild guild = guildOf(player).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (!bankAvailable()) return GuildActionResult.fail("guild.err.bankOff");
+            if (!bankReady(guild.id())) return GuildActionResult.fail("guild.err.bankMigrating");
+            if (!(amount > 0)) return GuildActionResult.fail("guild.err.amountPositive");
             if (!guild.settings().bankAccess().allows(rankOf(guild, player))) {
                 return GuildActionResult.fail("guild.err.bankAccess",
                         Map.of(),
                         Map.of("who", guild.settings().bankAccess().titleKey()));
             }
+
+            // Проверка по числу в нашей таблице — вежливость, а не защита: за
+            // AurumCore настоящий отказ по нехватке средств выдаёт ledger,
+            // причём атомарно с самой проводкой. Проверка нужна, чтобы
+            // человек услышал «в банке только 300», а не сухое «недостаточно
+            // средств» неизвестно у кого.
             if (guild.bank() < amount) {
                 return GuildActionResult.fail("guild.err.bankHasOnly",
                         Map.of("amount", economy.format(guild.bank())));
             }
 
-            // Сначала списываем с банка и только потом выдаём: обратный порядок
-            // при отказе выдачи оставил бы деньги и там, и там.
-            double balance = guild.bank() - amount;
-            applyBank(guild, balance, player, false, amount);
-            if (!economy.deposit(player, amount)) {
-                // Выдача не прошла — возвращаем сумму в банк ОБРАТНОЙ ЗАПИСЬЮ,
-                // а не правкой прежней. В логе банка должны остаться оба
-                // движения: «снял» и «вернулось», иначе разбор через неделю
-                // упрётся в снятие, которого на самом деле не было.
-                applyBank(guilds.get(guild.id()), guild.bank(), player, true, amount);
-                return GuildActionResult.fail("guild.err.economyRefused");
-            }
-            return GuildActionResult.ok("guild.bank.withdrawn", Map.of(
-                    "amount", economy.format(amount), "left", economy.format(balance)));
+            return economy.guildAccounts()
+                    ? ledgerWithdraw(guild, player, amount)
+                    : vaultWithdraw(guild, player, amount);
         });
+    }
+
+    /**
+     * Снятие, когда деньги лежат на счёте гильдии.
+     *
+     * Одна проводка «счёт гильдии → кошелёк игрока»: либо она прошла целиком,
+     * либо не было ничего. Списывать с банка заранее здесь не только не
+     * нужно, но и вредно — это создало бы состояние «в базе уже снято, в
+     * ledger ещё нет», которого на самом деле не бывает.
+     */
+    private GuildActionResult ledgerWithdraw(StoredGuild guild, UUID player, double amount) {
+        BankResult moved = economy.withdraw(guild.id(), player, amount);
+        if (!moved.ok()) return GuildActionResult.fail(moved.messageKey());
+
+        double balance = moved.balance().orElse(guild.bank() - amount);
+        applyBank(guild, balance, player, false, amount);
+        return GuildActionResult.ok("guild.bank.withdrawn", Map.of(
+                "amount", economy.format(amount), "left", economy.format(balance)));
+    }
+
+    /**
+     * Снятие, когда банк — это число в нашей таблице, а кошелёк игрока живёт
+     * в чужом плагине за Vault. Общей транзакции между ними нет и быть не
+     * может, поэтому порядок шагов — единственная защита.
+     */
+    private GuildActionResult vaultWithdraw(StoredGuild guild, UUID player, double amount) {
+        // Сначала списываем с банка и только потом выдаём: обратный порядок
+        // при отказе выдачи оставил бы деньги и там, и там.
+        double balance = guild.bank() - amount;
+        applyBank(guild, balance, player, false, amount);
+
+        BankResult moved = economy.withdraw(guild.id(), player, amount);
+        if (!moved.ok()) {
+            // Выдача не прошла — возвращаем сумму в банк ОБРАТНОЙ ЗАПИСЬЮ,
+            // а не правкой прежней. В логе банка должны остаться оба
+            // движения: «снял» и «вернулось», иначе разбор через неделю
+            // упрётся в снятие, которого на самом деле не было.
+            applyBank(guilds.get(guild.id()), guild.bank(), player, true, amount);
+            return GuildActionResult.fail(moved.messageKey());
+        }
+        return GuildActionResult.ok("guild.bank.withdrawn", Map.of(
+                "amount", economy.format(amount), "left", economy.format(balance)));
+    }
+
+    // ------------------------------------------- перенос банка в ledger
+
+    /**
+     * Перенести банки всех гильдий на счета в AurumCore.
+     *
+     * <h2>Это перенос, а не начисление</h2>
+     *
+     * Числа в {@code bank_balance} — не намерение и не долг, о котором никто
+     * не знает: это записанный остаток, за каждым движением которого стоит
+     * строка в журнале банка. Гильдия имеет право снять их прямо сейчас.
+     * Поэтому проводка со {@code SYSTEM_SOURCE} здесь законна и помечена
+     * категорией MIGRATION: деньги не появляются, у них появляется владелец.
+     *
+     * Тем же этим перенос отличается от долгов арены, которые сознательно
+     * НЕ начисляются: там за суммой не стоит ни одной проводки.
+     *
+     * <h2>Почему двух защит от повтора мало поодиночке</h2>
+     *
+     * Идемпотентный ключ проводки спасает от повторного вызова с той же
+     * суммой. Но после первого же вклада сумма станет другой, и второй
+     * перенос выглядел бы для ledger новой законной операцией — то есть
+     * удвоил бы банк. Поэтому решает отметка в базе, а ключ остаётся
+     * страховкой на случай падения между проводкой и отметкой.
+     *
+     * <h2>Порядок</h2>
+     *
+     * Сначала проводка, потом отметка. Обратный порядок при падении между
+     * шагами потерял бы деньги; этот — в худшем случае повторит проводку,
+     * которую ключ и отклонит как дубликат.
+     *
+     * @return сколько гильдий перенесено этим вызовом
+     */
+    public CompletableFuture<Integer> migrateBanks() {
+        return CompletableFuture.supplyAsync(() -> {
+            synchronized (this) {
+                if (!economy.guildAccounts() || !economy.available()) return 0;
+
+                int moved = 0;
+                for (StoredGuild guild : List.copyOf(guilds.values())) {
+                    if (bankMigrated.contains(guild.id())) continue;
+
+                    if (guild.bank() > 0) {
+                        BankResult result = economy.seed(guild.id(), guild.bank());
+                        if (!result.ok()) {
+                            // Молча пропускаем только эту гильдию: её банк
+                            // останется недоступен, остальные переносятся.
+                            // Следующий проход попробует снова.
+                            logger.warning("Банк гильдии «" + guild.name() + "» не перенесён в "
+                                    + "AurumCore (" + result.messageKey() + "); банк этой гильдии "
+                                    + "пока недоступен");
+                            continue;
+                        }
+                        moved++;
+                        logger.info("Банк гильдии «" + guild.name() + "» перенесён на счёт "
+                                + "гильдии: " + economy.format(guild.bank()));
+                    }
+
+                    bankMigrated.add(guild.id());
+                    write(() -> repository.markBankMigrated(guild.id()),
+                            "отметить банк гильдии " + guild.name() + " перенесённым");
+                }
+                return moved;
+            }
+        }, worker);
     }
 
     // ---------------------------------------------- вмешательство извне
@@ -1142,6 +1288,10 @@ public final class GuildService implements AutoCloseable {
     }
 
     private void deleteGuild(StoredGuild guild, String reason) {
+        // Деньги — ПЕРЕД удалением строки: после него ни счёта гильдии в
+        // ledger, ни её баланса в памяти уже не к чему привязать.
+        settleBank(guild);
+
         write(() -> repository.deleteGuild(guild.id()), "удалить гильдию " + guild.name());
         for (GuildMember member : guild.members()) {
             memberOf.remove(member.uuid(), guild.id());
@@ -1153,10 +1303,117 @@ public final class GuildService implements AutoCloseable {
         // указывали бы на несуществующую группу.
         hooks.guildDeleted(guild.id());
 
-        // Деньги банка при роспуске никуда не переводятся, и это осознанно:
-        // делить общак между бывшими участниками пришлось бы по правилу,
-        // которого никто не задавал. Запись в логе остаётся.
         logger.info("Гильдия «" + guild.name() + "» удалена: " + reason);
+    }
+
+    /**
+     * Судьба общака при роспуске.
+     *
+     * <h2>Почему этого раньше не было</h2>
+     *
+     * Пока банк был числом в нашей таблице, при роспуске строка просто
+     * удалялась — денег, которые могли бы куда-то деться, не существовало.
+     * Это было осознанное «не делим»: правила дележа никто не задавал.
+     *
+     * На счёте {@code GUILD:<id>} лежат настоящие деньги. Удалить гильдию и
+     * не тронуть счёт — значит оставить сумму на адресе, к которому больше
+     * нет ни одной команды: в денежной массе сервера она есть, достать её
+     * нельзя. Правило дележа теперь задано в config.yml, и старое возражение
+     * этим снято.
+     *
+     * <h2>Ключи проводок стабильные</h2>
+     *
+     * Роспуск может оборваться на середине списка получателей — например,
+     * если сервер упал. Повтор с теми же ключами не заплатит дважды.
+     */
+    private void settleBank(StoredGuild guild) {
+        double balance = guild.bank();
+        if (!(balance > 0)) return;
+
+        if (!economy.available() || !bankReady(guild.id())) {
+            // Ни трогать счёт, ни делать вид, что денег не было. Громко в
+            // лог: дальше это разбирает администратор командами AurumCore.
+            logger.warning("Гильдия «" + guild.name() + "» распускается, когда экономика "
+                    + "недоступна. Общак " + economy.format(balance) + " остался на счёте "
+                    + "гильдии и потребует ручного разбора");
+            return;
+        }
+
+        switch (config.bankOnDisband()) {
+            case KEEP -> logger.info("Общак гильдии «" + guild.name() + "» ("
+                    + economy.format(balance) + ") оставлен на её счёте: bank.on-disband: keep");
+            case TREASURY -> {
+                BankResult result = economy.toTreasury(
+                        guild.id(), balance, "guild-disband:" + guild.id() + ":treasury");
+                logSettlement(guild, guild.leader(), balance, balance, result, "казна сервера");
+            }
+            case LEADER -> payShare(guild, guild.leader(), balance, balance);
+            case SPLIT -> splitBank(guild, balance);
+        }
+    }
+
+    /**
+     * Поровну между участниками, остаток от деления — лидеру.
+     *
+     * Считаем в копейках целыми числами. Делить double на число участников и
+     * раздавать частное — верный способ раздать на копейку больше или меньше,
+     * чем было в банке, а расхождение в ledger не спишешь на округление.
+     */
+    private void splitBank(StoredGuild guild, double balance) {
+        List<GuildMember> members = guild.members();
+        if (members.isEmpty()) {
+            payShare(guild, guild.leader(), balance, balance);
+            return;
+        }
+
+        long cents = Math.round(balance * 100);
+        long each = cents / members.size();
+        long extra = cents - each * members.size();
+
+        double left = balance;
+        for (GuildMember member : members) {
+            boolean leader = member.uuid().equals(guild.leader());
+            long share = leader ? each + extra : each;
+            if (share <= 0) continue;
+            double amount = share / 100.0;
+            left = payShare(guild, member.uuid(), amount, left);
+        }
+    }
+
+    /**
+     * Выдать одному человеку его долю из общака.
+     *
+     * @param left сколько было в банке до этой выдачи
+     * @return сколько осталось после
+     */
+    private double payShare(StoredGuild guild, UUID recipient, double amount, double left) {
+        double after = left - amount;
+        BankResult result = economy.disburse(
+                guild.id(), recipient, amount, "guild-disband:" + guild.id() + ":" + recipient);
+        logSettlement(guild, recipient, amount, after, result, names.nameOf(recipient));
+        return after;
+    }
+
+    /**
+     * Запись о выдаче — в тот же журнал банка, что и обычные снятия.
+     *
+     * Журнал переживает роспуск (ни внешнего ключа, ни каскада), и именно он
+     * отвечает на вопрос «куда делся общак», который задают не в день
+     * роспуска, а через неделю.
+     */
+    private void logSettlement(StoredGuild guild, UUID actor, double amount, double balanceAfter,
+            BankResult result, String where) {
+        if (!result.ok()) {
+            logger.warning("Не выдать долю из общака гильдии «" + guild.name() + "» ("
+                    + where + ", " + economy.format(amount) + "): " + result.messageKey()
+                    + ". Деньги остались на счёте гильдии");
+            return;
+        }
+        GuildBankEntry entry = new GuildBankEntry(clock.get(), guild.id(), actor,
+                names.nameOf(actor), false, amount, Math.max(0, balanceAfter));
+        write(() -> repository.logBank(entry), "записать выдачу из общака гильдии " + guild.name());
+        logger.info("Общак гильдии «" + guild.name() + "»: " + economy.format(amount)
+                + " → " + where);
     }
 
     private void applyBank(

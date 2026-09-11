@@ -146,6 +146,8 @@ guild:
     notEnoughMoney: "Недостаточно средств"
     bankAccess: "Снимать из банка может {who}"
     bankHasOnly: "В банке гильдии только {amount}"
+    bankShort: "На счёте гильдии меньше, чем показано. Проверьте /guild info"
+    bankMigrating: "Банк гильдии ещё переносится на счёт AurumCore, попробуйте позже"
     economyRefused: "Плагин экономики отказал, деньги остались в банке"
     noSuchGuild: "Такой гильдии нет"
     noMemberNamed: "В гильдии «{guild}» нет игрока {player}"
@@ -171,7 +173,7 @@ guild:
     createPermission: "Создавать гильдии на этом сервере может не каждый"
     notFound: "Гильдия «{guild}» не найдена"
     notAnAmount: "«{value}» — это не сумма"
-    bankNoVault: "Банк гильдий недоступен: на сервере нет плагина экономики (Vault)"
+    bankNoVault: "Банк гильдий недоступен: на сервере нет плагина экономики"
 
   inviteReceived: "{player} зовёт вас в гильдию «{guild}». Вступить: /guild join {guild}"
   tagHint: "Тег — до {max} символов, он же будет видно рядом с ником."
