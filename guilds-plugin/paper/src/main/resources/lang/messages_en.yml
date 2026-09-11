@@ -142,6 +142,8 @@ guild:
     notEnoughMoney: "Not enough money"
     bankAccess: "Withdrawals are for {who}"
     bankHasOnly: "The guild bank only holds {amount}"
+    bankShort: "The guild account holds less than shown. Check /guild info"
+    bankMigrating: "The guild bank is still moving to its AurumCore account, try again shortly"
     economyRefused: "The economy plugin refused, the money stayed in the bank"
     noSuchGuild: "There is no such guild"
     noMemberNamed: "The guild “{guild}” has no player {player}"
@@ -167,7 +169,7 @@ guild:
     createPermission: "Not everyone on this server may found a guild"
     notFound: "Guild «{guild}» not found"
     notAnAmount: "«{value}» is not an amount"
-    bankNoVault: "The guild bank is unavailable: this server has no economy plugin (Vault)"
+    bankNoVault: "The guild bank is unavailable: this server has no economy plugin"
 
   inviteReceived: "{player} invites you to the guild «{guild}». Join with: /guild join {guild}"
   tagHint: "The tag is up to {max} characters and will show next to your name."

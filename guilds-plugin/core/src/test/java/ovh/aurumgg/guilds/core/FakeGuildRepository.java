@@ -24,6 +24,9 @@ import ovh.aurumgg.guilds.api.GuildSettings;
  */
 final class FakeGuildRepository implements GuildRepository {
 
+    /** Отметки о переносе банка в ledger — как отдельная таблица в базе. */
+    private final java.util.Set<Long> migrated = new java.util.HashSet<>();
+
     private final AtomicLong nextId = new AtomicLong(1);
     private final Map<Long, StoredGuild> guilds = new HashMap<>();
     private final List<GuildBankEntry> bankLog = new ArrayList<>();
@@ -188,6 +191,17 @@ final class FakeGuildRepository implements GuildRepository {
                 .toList());
         java.util.Collections.reverse(result);
         return result.size() > limit ? result.subList(0, limit) : result;
+    }
+
+    @Override
+    public java.util.Set<Long> migratedBanks() {
+        return java.util.Set.copyOf(migrated);
+    }
+
+    @Override
+    public void markBankMigrated(long guildId) {
+        writes++;
+        migrated.add(guildId);
     }
 
     @Override

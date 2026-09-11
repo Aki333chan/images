@@ -7,6 +7,7 @@ import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.plugin.RegisteredServiceProvider;
+import ovh.aurumgg.guilds.core.BankResult;
 import ovh.aurumgg.guilds.core.EconomyBridge;
 import ovh.aurumgg.guilds.core.HudLines;
 
@@ -80,8 +81,14 @@ final class VaultBridge implements EconomyBridge {
         return provider().isPresent();
     }
 
+    // guildAccounts() остаётся false, и это главное отличие этого моста от
+    // AurumCoreBridge: счёта гильдии за Vault не существует. Банк — число в
+    // нашей собственной таблице, а здесь только кошельки игроков.
+
     @Override
-    public boolean withdraw(UUID player, double amount) {
+    public BankResult deposit(long guildId, UUID player, double amount) {
+        // Только половина вклада: снять с игрока. Прибавить к банку —
+        // забота GuildService, общей транзакции между ними нет.
         return provider().map(economy -> {
             OfflinePlayer target = Bukkit.getOfflinePlayer(player);
             // Баланс заранее не проверяем: между проверкой и списанием игрок
@@ -89,15 +96,35 @@ final class VaultBridge implements EconomyBridge {
             // было бы способом уйти в минус. Отказ провайдера — единственный
             // надёжный ответ.
             EconomyResponse response = economy.withdrawPlayer(target, amount);
-            return response.transactionSuccess();
-        }).orElse(false);
+            return response.transactionSuccess() ? BankResult.success() : BankResult.notEnough();
+        }).orElseGet(BankResult::unavailable);
     }
 
     @Override
-    public boolean deposit(UUID player, double amount) {
+    public BankResult withdraw(long guildId, UUID player, double amount) {
+        return give(player, amount);
+    }
+
+    /**
+     * Доля из общака распущенной гильдии.
+     *
+     * ЕДИНСТВЕННОЕ МЕСТО, ГДЕ VAULT СЛАБЕЕ ПО СУЩЕСТВУ, А НЕ ПО УДОБСТВУ.
+     * Ключ здесь игнорируется, потому что идемпотентности в Vault нет:
+     * повторить ту же выдачу и получить «уже проведено» невозможно. Падение
+     * ровно между выдачей доли и удалением гильдии приведёт к тому, что при
+     * следующем роспуске той же гильдии доля будет выдана второй раз. С
+     * AurumCore такого не происходит — там ключ работает.
+     */
+    @Override
+    public BankResult disburse(long guildId, UUID player, double amount, String key) {
+        return give(player, amount);
+    }
+
+    private BankResult give(UUID player, double amount) {
         return provider().map(economy -> economy
                 .depositPlayer(Bukkit.getOfflinePlayer(player), amount)
-                .transactionSuccess()).orElse(false);
+                .transactionSuccess() ? BankResult.success() : BankResult.refused())
+                .orElseGet(BankResult::unavailable);
     }
 
     @Override

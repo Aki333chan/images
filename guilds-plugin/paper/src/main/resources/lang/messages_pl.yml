@@ -141,6 +141,8 @@ guild:
     notEnoughMoney: "Za mało środków"
     bankAccess: "Wypłacać może {who}"
     bankHasOnly: "W banku gildii jest tylko {amount}"
+    bankShort: "Na koncie gildii jest mniej, niż pokazano. Sprawdź /guild info"
+    bankMigrating: "Bank gildii jest jeszcze przenoszony na konto AurumCore, spróbuj później"
     economyRefused: "Plugin ekonomii odmówił, pieniądze zostały w banku"
     noSuchGuild: "Nie ma takiej gildii"
     noMemberNamed: "W gildii „{guild}” nie ma gracza {player}"
@@ -166,7 +168,7 @@ guild:
     createPermission: "Nie każdy na tym serwerze może założyć gildię"
     notFound: "Nie znaleziono gildii «{guild}»"
     notAnAmount: "«{value}» to nie jest kwota"
-    bankNoVault: "Bank gildii niedostępny: na serwerze nie ma pluginu ekonomii (Vault)"
+    bankNoVault: "Bank gildii niedostępny: na serwerze nie ma pluginu ekonomii"
 
   inviteReceived: "{player} zaprasza cię do gildii «{guild}». Dołącz: /guild join {guild}"
   tagHint: "Tag ma do {max} znaków i będzie widoczny przy twoim nicku."

@@ -423,6 +423,132 @@ class GuildServiceTest {
         assertEquals(3, repository.allBankEntries().size());
     }
 
+    // ------------------------------------------ банк на счетах AurumCore
+    //
+    // Те же сценарии, но деньги гильдии лежат на её собственном счёте, а не
+    // числом в нашей таблице. Разницу между режимами видно ровно здесь.
+
+    @Test
+    @DisplayName("На счетах AurumCore вклад и снятие двигают именно счёт гильдии")
+    void банкНаСчетеГильдии() {
+        economy.guildAccounts = true;
+        buildGuild();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+        economy.give(MEMBER, 500);
+
+        assertTrue(service.deposit(MEMBER, 300).join().ok());
+        assertEquals(200, economy.balance(MEMBER));
+        assertEquals(300, economy.vault(id), "деньги ушли на счёт гильдии");
+        assertEquals(300, service.byName("Драконы").orElseThrow().bank(), "зеркало сошлось");
+
+        assertTrue(service.withdraw(LEADER, 100).join().ok());
+        assertEquals(100, economy.balance(LEADER));
+        assertEquals(200, economy.vault(id));
+        assertEquals(200, service.byName("Драконы").orElseThrow().bank());
+    }
+
+    @Test
+    @DisplayName("Новой гильдии переносить нечего — банк доступен сразу")
+    void новаяГильдияНеЖдётПереноса() {
+        economy.guildAccounts = true;
+        buildGuild();
+
+        assertTrue(service.bankReady(service.guildOf(LEADER).orElseThrow().id()));
+    }
+
+    @Test
+    @DisplayName("Старый баланс переносится на счёт гильдии ровно один раз")
+    void переносБанкаНеУдваивает() {
+        // Гильдия жила на Vault: банк — число в нашей таблице, счёта нет.
+        buildGuild();
+        economy.give(MEMBER, 300);
+        service.deposit(MEMBER, 300).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+        assertEquals(0, economy.vault(id));
+
+        // На сервере появился AurumCore.
+        economy.guildAccounts = true;
+        assertFalse(service.bankReady(id), "до переноса банк этой гильдии недоступен");
+        assertFalse(service.withdraw(LEADER, 10).join().ok());
+
+        assertEquals(1, service.migrateBanks().join());
+        assertTrue(service.bankReady(id));
+        assertEquals(300, economy.vault(id));
+
+        // Повтор — и после того, как баланс успел измениться: именно здесь
+        // одного идемпотентного ключа проводки было бы мало.
+        service.withdraw(LEADER, 100).join();
+        assertEquals(0, service.migrateBanks().join());
+        assertEquals(200, economy.vault(id), "второй перенос не состоялся");
+    }
+
+    @Test
+    @DisplayName("При роспуске общак уходит лидеру")
+    void роспускОтдаётОбщакЛидеру() {
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 300);
+        service.deposit(MEMBER, 300).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+
+        assertTrue(service.disband(LEADER).join().ok());
+        assertEquals(300, economy.balance(LEADER));
+        assertEquals(0, economy.vault(id), "на счёте распущенной гильдии не осталось денег");
+        // Куда делся общак, видно в журнале банка: он переживает роспуск.
+        var last = repository.allBankEntries().get(repository.allBankEntries().size() - 1);
+        assertFalse(last.deposit());
+        assertEquals(300, last.amount());
+    }
+
+    @Test
+    @DisplayName("Настройка split делит общак между участниками, остаток лидеру")
+    void роспускДелитОбщакПоровну() {
+        service.applyConfig(GuildsConfig.fromMap(Map.of("bank.on-disband", "split")));
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 100);
+        // Трое участников и сумма, которая на троих не делится нацело.
+        service.deposit(MEMBER, 100).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+
+        assertTrue(service.disband(LEADER).join().ok());
+        assertEquals(33.34, economy.balance(LEADER), 1e-9, "остаток от деления — лидеру");
+        assertEquals(33.33, economy.balance(OFFICER), 1e-9);
+        assertEquals(33.33, economy.balance(MEMBER), 1e-9);
+        assertEquals(0, economy.vault(id), 1e-9);
+    }
+
+    @Test
+    @DisplayName("Настройка treasury уводит общак в казну сервера")
+    void роспускУводитОбщакВКазну() {
+        service.applyConfig(GuildsConfig.fromMap(Map.of("bank.on-disband", "treasury")));
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 250);
+        service.deposit(MEMBER, 250).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+
+        assertTrue(service.disband(LEADER).join().ok());
+        assertEquals(250, economy.treasury);
+        assertEquals(0, economy.vault(id));
+        assertEquals(0, economy.balance(LEADER), "лидер ничего не получил");
+    }
+
+    @Test
+    @DisplayName("Настройка keep оставляет общак на счёте распущенной гильдии")
+    void роспускМожетОставитьОбщакНаСчете() {
+        service.applyConfig(GuildsConfig.fromMap(Map.of("bank.on-disband", "keep")));
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 250);
+        service.deposit(MEMBER, 250).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+
+        assertTrue(service.disband(LEADER).join().ok());
+        assertEquals(250, economy.vault(id), "деньги остались там, где были");
+        assertEquals(0, economy.balance(LEADER));
+    }
+
     @Test
     @DisplayName("Без Vault банк недоступен, а гильдии работают")
     void безVaultБанкаНет() {

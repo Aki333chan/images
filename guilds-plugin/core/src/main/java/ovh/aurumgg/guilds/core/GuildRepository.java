@@ -95,6 +95,21 @@ public interface GuildRepository extends AutoCloseable {
 
     void logBank(GuildBankEntry entry) throws Exception;
 
+    // ------------------------------------------- перенос банка в ledger
+
+    /**
+     * Гильдии, чей банк уже перенесён на счёт в AurumCore.
+     *
+     * Отметка нужна ровно затем, чтобы перенос не повторился. Идемпотентного
+     * ключа проводки для этого мало: ключ защищает от повтора той же суммы, а
+     * после первого же вклада сумма станет другой — и второй перенос выглядел
+     * бы для ledger новой, законной операцией.
+     */
+    java.util.Set<Long> migratedBanks() throws Exception;
+
+    /** Отметить, что банк этой гильдии перенесён. Повтор безвреден. */
+    void markBankMigrated(long guildId) throws Exception;
+
     /** Операции с банком, новые сверху. */
     List<GuildBankEntry> bankHistory(long guildId, int limit) throws Exception;
 

@@ -161,13 +161,13 @@ public final class AurumGuildsPlugin extends JavaPlugin {
                 luckPerms ? luckPermsBridge : GuildHooks.noop(),
                 worldGuardFound ? new RegionSyncHooks(this, () -> this.guilds, worldGuard) : GuildHooks.noop());
 
-        // А ВОТ С VAULT ТАК НЕЛЬЗЯ, И ЗДЕСЬ БЫЛА ОШИБКА.
+        // А ВОТ С ЭКОНОМИКОЙ ТАК НЕЛЬЗЯ, И ЗДЕСЬ БЫЛА ОШИБКА.
         //
-        // Vault сам денег не хранит — это шина. Провайдера экономики
-        // регистрирует ТРЕТИЙ плагин (EssentialsX, CMI, любой другой), и его в
-        // нашем softdepend нет и быть не может: мы не знаем, какой именно
-        // стоит на сервере. Значит, его onEnable вполне может пройти позже
-        // нашего, и на момент старта провайдера ещё нет.
+        // Провайдера экономики регистрирует ТРЕТИЙ плагин — за Vault это
+        // EssentialsX, CMI или любой другой, и его в нашем softdepend нет и
+        // быть не может: мы не знаем, какой именно стоит на сервере. Значит,
+        // его onEnable вполне может пройти позже нашего, и на момент старта
+        // провайдера ещё нет.
         //
         // Прежний код спрашивал об этом ровно один раз и, не увидев
         // провайдера, навсегда подставлял заглушку: банк оставался выключенным
@@ -175,10 +175,10 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         // и жаловались.
         //
         // VaultBridge и так спрашивает провайдера при каждом обращении —
-        // достаточно перестать решать за него заранее. Нет Vault вообще →
-        // available() честно вернёт false, и банк просто не работает; появился
-        // провайдер через минуту после старта → банк заработает сам.
-        EconomyBridge economy = config.bankEnabled() ? new VaultBridge() : EconomyBridge.unavailable();
+        // достаточно перестать решать за него заранее. С AurumCore то же
+        // самое решает GuildEconomy: он ловит появление сервиса Core событием
+        // и переводит банк на счета гильдий, когда бы Core ни поднялся.
+        EconomyBridge vault = config.bankEnabled() ? new VaultBridge() : EconomyBridge.unavailable();
 
         MariaDbGuildRepository repository;
         try {
@@ -195,6 +195,14 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         }
 
         PlayerNames names = new PlayerNames();
+
+        // Ссылка на сервис, а не сам сервис: GuildEconomy создаётся раньше
+        // GuildService, потому что тот берёт мост в конструкторе, а перенос
+        // балансов — это уже работа готового сервиса.
+        GuildEconomy economy = new GuildEconomy(this, vault, () -> {
+            if (guilds != null) guilds.migrateBanks();
+        });
+
         guilds = new GuildService(config, repository, hooks, economy, names, getLogger(), Instant::now);
         try {
             guilds.load();
@@ -203,6 +211,12 @@ public final class AurumGuildsPlugin extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+
+        // Порядок важен: гильдии уже прочитаны из базы, значит переносить
+        // есть что. Событие на случай, если AurumCore поднимется позже нас,
+        // подписываем в любом случае.
+        getServer().getPluginManager().registerEvents(economy, this);
+        if (config.bankEnabled()) economy.tryLedger();
         parties = new PartyService(
                 Instant::now, names, config.maxPartyMembers(), config.partyInviteTtl());
 
