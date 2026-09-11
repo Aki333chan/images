@@ -12,6 +12,8 @@ public interface ExchangeRepository {
     List<ExchangeRevision> history(String id, int limit, Map<String, CurrencySpec> currencies) throws SQLException;
     long saveRule(ExchangeRule rule, Map<String, CurrencySpec> currencies,
                   String actor, String reason) throws SQLException;
+    Optional<ExchangeCommit> findByIdempotency(String key, CurrencySpec fromCurrency,
+                                               CurrencySpec toCurrency) throws SQLException;
     ExchangeCommit execute(ExchangePlan plan, CurrencySpec fromCurrency,
                            CurrencySpec toCurrency) throws SQLException;
 }

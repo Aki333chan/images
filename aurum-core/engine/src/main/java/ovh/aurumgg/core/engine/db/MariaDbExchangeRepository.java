@@ -118,7 +118,8 @@ public final class MariaDbExchangeRepository implements ExchangeRepository {
             try {
                 if (!insertPendingExchange(connection, exchangeId, plan)) {
                     connection.rollback();
-                    return findDuplicateInstance(plan.request().idempotencyKey(), from, to);
+                    return findByIdempotency(plan.request().idempotencyKey(), from, to)
+                            .orElseThrow(() -> new SQLException("Duplicate exchange disappeared"));
                 }
                 List<Map.Entry<CurrencyAccountKey, BigDecimal>> ordered = plan.postings().entrySet().stream()
                         .filter(entry -> entry.getValue().signum() != 0)
@@ -315,14 +316,15 @@ public final class MariaDbExchangeRepository implements ExchangeRepository {
         }
     }
 
-    private ExchangeCommit findDuplicateInstance(String key, CurrencySpec from, CurrencySpec to)
+    @Override
+    public Optional<ExchangeCommit> findByIdempotency(String key, CurrencySpec from, CurrencySpec to)
             throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT * FROM aurum_exchanges WHERE idempotency_key = ?")) {
             statement.setString(1, key);
             try (ResultSet result = statement.executeQuery()) {
-                if (!result.next()) throw new SQLException("Duplicate exchange disappeared");
+                if (!result.next()) return Optional.empty();
                 AccountId account = new AccountId(AccountType.valueOf(result.getString("account_type")),
                         result.getString("account_reference"));
                 Instant created = result.getTimestamp("created_at").toInstant();
@@ -332,11 +334,33 @@ public final class MariaDbExchangeRepository implements ExchangeRepository {
                         result.getBigDecimal("converted_amount"), result.getBigDecimal("target_amount"),
                         created, created.plusSeconds(1));
                 boolean committed = "COMMITTED".equals(result.getString("status"));
-                return new ExchangeCommit(committed ? ExchangeCommit.Status.DUPLICATE
-                        : ExchangeCommit.Status.REJECTED, quote, Map.of(),
-                        committed ? "Existing exchange already committed" : result.getString("failure_reason"));
+                Map<CurrencyAccountKey, BigDecimal> balances = committed
+                        ? playerBalances(connection, account, from, to) : Map.of();
+                return Optional.of(new ExchangeCommit(committed ? ExchangeCommit.Status.DUPLICATE
+                        : ExchangeCommit.Status.REJECTED, quote, balances,
+                        committed ? "Existing exchange already committed" : result.getString("failure_reason")));
             }
         }
+    }
+
+    private static Map<CurrencyAccountKey, BigDecimal> playerBalances(Connection connection, AccountId account,
+                                                                       CurrencySpec from, CurrencySpec to)
+            throws SQLException {
+        Map<CurrencyAccountKey, BigDecimal> values = new LinkedHashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT currency_id, balance FROM aurum_accounts
+                WHERE account_type=? AND reference_id=? AND currency_id IN (?, ?)
+                """)) {
+            statement.setString(1, account.type().name());
+            statement.setString(2, account.reference());
+            statement.setString(3, from.id());
+            statement.setString(4, to.id());
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) values.put(new CurrencyAccountKey(result.getString("currency_id"), account),
+                        result.getBigDecimal("balance").setScale(currency(result.getString("currency_id"), from, to).scale()));
+            }
+        }
+        return Map.copyOf(values);
     }
 
     private static Map<String, CurrencySpec> currencies(CurrencySpec from, CurrencySpec to) {

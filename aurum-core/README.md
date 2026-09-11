@@ -1,4 +1,4 @@
-# AurumCore 0.6.0
+# AurumCore 0.6.1
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -12,7 +12,7 @@ them into the dormant ledger, verifies every balance and exports rollback CSV.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.6.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.6.1.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.

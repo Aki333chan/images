@@ -49,6 +49,14 @@ public final class ExchangeService {
         return CompletableFuture.supplyAsync(() -> {
             synchronized (mutationLock) {
                 try {
+                    CurrencySpec requestedFrom = currencies.get(request.fromCurrencyId());
+                    CurrencySpec requestedTo = currencies.get(request.toCurrencyId());
+                    if (requestedFrom == null || requestedTo == null) {
+                        return rejected(request, "Unknown exchange currency");
+                    }
+                    Optional<ExchangeCommit> existing = repository.findByIdempotency(
+                            request.idempotencyKey(), requestedFrom, requestedTo);
+                    if (existing.isPresent()) return result(request, existing.get());
                     if (!Instant.now(clock).isBefore(request.quoteExpiresAt())) {
                         return rejected(request, "Exchange quote expired; request a new quote");
                     }
@@ -66,16 +74,7 @@ public final class ExchangeService {
                                     && value.revision() == quote.ruleRevision()).findFirst().orElseThrow();
                     ExchangeCommit commit = repository.execute(ExchangePlanner.plan(request, quote,
                             rule.settlement()), quote.fromCurrency(), quote.toCurrency());
-                    if (commit.status() == ExchangeCommit.Status.COMMITTED) {
-                        economy.applyCommittedBalances(commit.balancesAfter());
-                    }
-                    ExchangeResult.Status status = switch (commit.status()) {
-                        case COMMITTED -> ExchangeResult.Status.SUCCESS;
-                        case DUPLICATE -> ExchangeResult.Status.DUPLICATE;
-                        case REJECTED -> ExchangeResult.Status.REJECTED;
-                    };
-                    return new ExchangeResult(status, request.idempotencyKey(), Optional.of(commit.quote()),
-                            commit.message());
+                    return result(request, commit);
                 } catch (PolicyRejectedException exception) {
                     return rejected(request, exception.getMessage());
                 } catch (Exception exception) {
@@ -84,6 +83,19 @@ public final class ExchangeService {
                 }
             }
         }, executor);
+    }
+
+    private ExchangeResult result(ExchangeRequest request, ExchangeCommit commit) {
+        if (commit.status() == ExchangeCommit.Status.COMMITTED
+                || commit.status() == ExchangeCommit.Status.DUPLICATE) {
+            economy.applyCommittedBalances(commit.balancesAfter());
+        }
+        ExchangeResult.Status status = switch (commit.status()) {
+            case COMMITTED -> ExchangeResult.Status.SUCCESS;
+            case DUPLICATE -> ExchangeResult.Status.DUPLICATE;
+            case REJECTED -> ExchangeResult.Status.REJECTED;
+        };
+        return new ExchangeResult(status, request.idempotencyKey(), Optional.of(commit.quote()), commit.message());
     }
 
     private Optional<ExchangeQuote> quoteNow(AccountId account, String fromId, String toId,
