@@ -1520,7 +1520,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         }
 
         void exchange(Player player) {
-            if (useVault) { send(player, "§eПри Vault размен не нужен."); return; }
+            if (useVault) { send(player, "§eПри деньгах размен не нужен."); return; }
             ItemStack hand = player.getInventory().getItemInMainHand();
             if (hand.getType() == mainCurrency && hand.getAmount() >= 1) { hand.setAmount(hand.getAmount() - 1); giveMaterial(player, subCurrency, 10); }
             else if (hand.getType() == subCurrency && hand.getAmount() >= 10) { hand.setAmount(hand.getAmount() - 10); giveMaterial(player, mainCurrency, 1); }

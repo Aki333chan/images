@@ -3,7 +3,7 @@ messages:
   prefix: "&6[Arena] &r"
   no-permission: "&cNie masz uprawnień."
   database-unavailable: "&cStatystyki są chwilowo niedostępne. Zakłady i walki nadal działają."
-  vault-unavailable: "&cVault lub dostawca ekonomii jest niedostępny. Operacje finansowe zostały zablokowane."
+  vault-unavailable: "&cEkonomia AurumCore jest niedostępna. Operacje pieniężne są zablokowane."
   final-stats: "&6&l🏆 PULA MISTRZOWSKA 🏆\n\n&ePula: &f%pool% %currency%\n\n&c&lPoprzedni mistrzowie:\n%champions%"
 help:
   player:
@@ -27,7 +27,6 @@ replacements:
   - {from: "§cНельзя восстанавливать инвентарь активному участнику арены.", to: "§cNie można przywrócić ekwipunku aktywnemu uczestnikowi areny."}
   - {from: " нет сохранённой резервной копии.", to: " nie ma zapisanej kopii ekwipunku."}
   - {from: "§aВаш инвентарь восстановлен администратором.", to: "§aTwój ekwipunek został przywrócony przez administratora."}
-  - {from: "§aКонфигурация, Vault и база данных перезагружены.", to: "§aKonfiguracja, Vault i baza danych zostały przeładowane."}
   - {from: "§cВы не в радиусе арены.", to: "§cNie znajdujesz się w zasięgu areny."}
   - {from: "§cРежим комплекта меняется только на пустой ожидающей арене.", to: "§cTryb zestawu można zmienić tylko na pustej oczekującej arenie."}
   - {from: "Автостарт включён", to: "Automatyczny start włączony"}
@@ -41,7 +40,6 @@ replacements:
   - {from: "Режим опыта: ", to: "Tryb doświadczenia: "}
   - {from: "BossBar: ", to: "Pasek bossa: "}
   - {from: "Friendly fire: ", to: "Obrażenia sojusznicze: "}
-  - {from: "Vault Economy недоступен", to: "Ekonomia Vault jest niedostępna"}
   - {from: "§cИспользование: /arena create <имя>", to: "§cUżycie: /arena create <nazwa>"}
   - {from: "§cИспользование: /arena delete <арена>", to: "§cUżycie: /arena delete <arena>"}
   - {from: "§cИспользование: /arena ", to: "§cUżycie: /arena "}
@@ -136,7 +134,7 @@ replacements:
   - {from: "§aСтавка возвращена: ", to: "§aZakład zwrócony: "}
   - {from: "§cФинальная касса заблокирована.", to: "§cPula finałowa jest zablokowana."}
   - {from: "§aВзнос принят. Пул: ", to: "§aWpłata przyjęta. Pula: "}
-  - {from: "§eПри Vault размен не нужен.", to: "§eW trybie Vault nie trzeba rozmieniać waluty."}
+  - {from: "§eПри деньгах размен не нужен.", to: "§eWymiana nie jest potrzebna w trybie pieniężnym."}
   - {from: "§cНужен 1 основной или 10 мелких предметов валюты.", to: "§cPotrzeba 1 głównego albo 10 drobnych przedmiotów waluty."}
   - {from: "До закрытия ставок: ", to: "Do zamknięcia zakładów: "}
   - {from: "До боя: ", to: "Do walki: "}
@@ -178,8 +176,6 @@ replacements:
   - {from: "§eФинальный режим выключен.", to: "§eTryb finału wyłączony."}
   - {from: "§cВозьмите валюту в основную руку.", to: "§cTrzymaj walutę w głównej ręce."}
   - {from: "§cНедостаточно средств: нужно ", to: "§cZa mało środków; potrzeba: "}
-  - {from: "§cПлатёж отклонён: ", to: "§cPłatność odrzucona: "}
-  - {from: "§eVault недоступен; выплата сохранена.", to: "§eVault jest niedostępny; wypłata została zapisana."}
   - {from: "§aПолучена отложенная выплата: ", to: "§aOtrzymano oczekującą wypłatę: "}
   - {from: "§aПолучена отложенная награда: §e", to: "§aOtrzymano oczekującą nagrodę: §e"}
   - {from: " очков опыта§a, §e", to: " punktów doświadczenia§a, §e"}
@@ -210,3 +206,22 @@ replacements:
   - {from: "нет", to: "brak"}
   - {from: " с.", to: " s."}
   - {from: " с", to: " s"}
+  - {from: "§aКонфигурация, экономика и база данных перезагружены.", to: "§aKonfiguracja, ekonomia i baza danych zostały przeładowane."}
+  - {from: "экономика AurumCore недоступна", to: "ekonomia AurumCore jest niedostępna"}
+  - {from: "§cПлатёж отклонён.", to: "§cPłatność odrzucona."}
+  - {from: "§eСтавка уже обрабатывается.", to: "§eTwój zakład jest już przetwarzany."}
+  - {from: "§eВзнос уже обрабатывается.", to: "§eTwoja wpłata jest już przetwarzana."}
+  - {from: "§cСтавки закрылись раньше, чем прошёл платёж. Деньги возвращены.", to: "§cZakłady zamknięto, zanim płatność przeszła. Pieniądze zwrócono."}
+  - {from: "§cСтавки закрылись раньше, чем прошёл платёж.", to: "§cZakłady zamknięto, zanim płatność przeszła."}
+  - {from: "§eКомиссия: §f", to: "§eProwizja: §f"}
+  - {from: "§aКомиссия: §f", to: "§aProwizja: §f"}
+  - {from: "§e, получатель §f", to: "§e, odbiorca §f"}
+  - {from: "§a, получатель §f", to: "§a, odbiorca §f"}
+  - {from: "§e, с чемпионского пула: §f", to: "§e, z puli mistrzów: §f"}
+  - {from: "§a, с чемпионского пула: §f", to: "§a, z puli mistrzów: §f"}
+  - {from: "§cУкажите процент: /arena commission percent 5", to: "§cPodaj procent: /arena commission percent 5"}
+  - {from: "§cНе число: ", to: "§cTo nie liczba: "}
+  - {from: "§cПроцент должен быть от 0 до 90.", to: "§cProcent musi być od 0 do 90."}
+  - {from: "§cУкажите on или off.", to: "§cPodaj on albo off."}
+  - {from: "§cНеизвестный получатель: ", to: "§cNieznany odbiorca: "}
+  - {from: ". Ожидается treasury или champion-pool.", to: ". Oczekiwano treasury albo champion-pool."}
