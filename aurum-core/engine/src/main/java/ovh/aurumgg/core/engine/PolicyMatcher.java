@@ -8,10 +8,24 @@ public final class PolicyMatcher {
     private PolicyMatcher() {}
 
     public static boolean matches(FinancialRule rule, TransactionRequest request, Instant now) {
+        return matches(rule, request, now, request.currencyId());
+    }
+
+    public static boolean matches(FinancialRule rule, TransactionRequest request, Instant now,
+                                  String primaryCurrencyId) {
         if (!rule.activeFor(request.category(), now)) return false;
-        return accountMatches(rule, "source", request.from())
+        return currencyMatches(rule, request.currencyId(), primaryCurrencyId)
+                && accountMatches(rule, "source", request.from())
                 && accountMatches(rule, "target", request.to())
                 && metadataMatches(rule, request);
+    }
+
+    private static boolean currencyMatches(FinancialRule rule, String currencyId, String primaryCurrencyId) {
+        String configured = rule.definition().get("currencies");
+        if (configured == null || configured.isBlank()) return currencyId.equalsIgnoreCase(primaryCurrencyId);
+        if (configured.equals("*")) return true;
+        return java.util.Arrays.stream(configured.split(","))
+                .anyMatch(value -> value.trim().equalsIgnoreCase(currencyId));
     }
 
     private static boolean accountMatches(FinancialRule rule, String side, AccountId account) {

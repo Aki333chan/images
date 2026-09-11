@@ -19,6 +19,7 @@ public enum TransactionCategory {
     CASHBACK,
     TRADE_HOLD,
     TRADE_SETTLEMENT,
+    CURRENCY_EXCHANGE,
     REFUND,
     PROCUREMENT,
     SUBSIDY,

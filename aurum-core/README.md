@@ -1,4 +1,4 @@
-# AurumCore 0.5.0
+# AurumCore 0.6.0
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -12,7 +12,7 @@ them into the dormant ledger, verifies every balance and exports rollback CSV.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.5.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.6.0.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
@@ -30,14 +30,15 @@ deliberately fresh, empty ledger; a non-empty unverified ledger is rejected.
 
 ## Commands and permissions
 
-- `/aurum balance [player]`, short form `/abal` — `aurum.balance`; viewing
+- `/aurum balance [player] [currency]`, short form `/abal [currency]` — `aurum.balance`; viewing
   another online player also requires `aurum.balance.others`.
 - `/pay <player> <amount> [reason]`, conflict-free `/apay` — `aurum.pay`.
-- `/aurum treasury`, short form `/atreasury` — `aurum.admin`.
-- `/aurum economy give|take|set <player> <amount> [reason]`, short form
+- `/aurum treasury [currency]`, short form `/atreasury [currency]` — `aurum.admin`.
+- `/aurum economy give|take|set <player> <amount> [currency:<id>] [reason]`, short form
   `/aeco ...` — `aurum.admin.economy`.
 - `/aurum migrate ...`, short form `/amigrate ...` — `aurum.admin.migrate`.
 - `/aurum policy ...`, short form `/apolicy ...` — `aurum.admin.policy`.
+- `/aurum exchange ...`, short form `/aexchange ...` — `aurum.admin.exchange`.
 
 The top-level commands `give`, `take` and `set` are intentionally not
 registered. Commands have context-aware tab completion. Player names are
@@ -60,6 +61,25 @@ deposits/withdrawals, migration, refunds and administrative adjustments are
 protected from policies; our game plugins receive policy processing when they
 move to `AurumEconomyApi` categories.
 
+## Multiple currencies and exchange
+
+`economy.currencies` defines up to 16 enabled currencies, while
+`economy.primary-currency` selects the only currency exposed through Vault.
+Native Aurum plugins can query and transfer every currency explicitly through
+`AurumEconomyApi`. Exchange is a single MariaDB transaction: debit, fee,
+settlement and credit either all commit or all roll back. A quote records the
+rule revision, exact output and expiry; execution recalculates and rejects a
+stale or changed quote.
+
+Rules support fixed rates, percentage fees paid to the global treasury,
+minimum/maximum input, time windows, priorities and account/metadata
+conditions. `MINT_BURN` is convenient for centrally managed currencies;
+`RESERVE` requires target liquidity and never creates it during exchange.
+Fund or withdraw that liquidity with
+`/aexchange reserve <rule> <currency> <give|take> <amount>`.
+
+See `../docs/aurum-multi-currency.md` for the full command and API contract.
+
 ## Runtime behavior
 
 Balance and PlaceholderAPI reads use authoritative memory snapshots and never
@@ -71,6 +91,9 @@ rate-limited warning emitted when a Vault write takes 50 ms or more.
 Placeholders: `%aurum_balance%`, `%aurum_balance_raw%`, `%aurum_currency%`,
 `%aurum_currency_symbol%`, `%aurum_treasury_balance%`,
 `%aurum_money_supply%`, `%aurum_taxes_collected%`.
+Currency-specific variants include `%aurum_balance_tokens%`,
+`%aurum_balance_raw_tokens%`, `%aurum_treasury_balance_tokens%`,
+`%aurum_money_supply_tokens%` and `%aurum_currency_tokens_symbol%`.
 
 See `../docs/aurum-core-architecture.md` and
 `../docs/aurum-policy-engine.md` for commands, configuration and semantics.

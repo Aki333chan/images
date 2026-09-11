@@ -2,6 +2,8 @@ package ovh.aurumgg.core.paper;
 
 import java.math.BigDecimal;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.bukkit.configuration.file.FileConfiguration;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.engine.db.MariaDbSettings;
@@ -10,6 +12,7 @@ record CoreSettings(
         String language,
         String configuredMode,
         CurrencySpec currency,
+        Map<String, CurrencySpec> currencies,
         int refreshTicks,
         int migrationPlayersPerTick,
         boolean requireVerifiedMigration,
@@ -19,18 +22,18 @@ record CoreSettings(
         BigDecimal paymentMaximum,
         int paymentCooldownSeconds,
         PolicyConfiguration policies,
+        ExchangeConfiguration exchange,
         boolean databaseEnabled,
         MariaDbSettings database
 ) {
     static CoreSettings read(FileConfiguration config) {
         String language = config.getString("language", "en").toLowerCase(Locale.ROOT);
         String mode = config.getString("economy.mode", "passive").toLowerCase(Locale.ROOT);
-        CurrencySpec currency = new CurrencySpec(
-                config.getString("economy.currency.id", "coins"),
-                config.getString("economy.currency.display-name", "Coins"),
-                config.getString("economy.currency.symbol", "$"),
-                config.getInt("economy.currency.scale", 2)
-        );
+        Map<String, CurrencySpec> currencies = readCurrencies(config);
+        String primaryId = config.getString("economy.primary-currency",
+                config.getString("economy.currency.id", "coins")).toLowerCase(Locale.ROOT);
+        CurrencySpec currency = currencies.get(primaryId);
+        if (currency == null) throw new IllegalArgumentException("Primary currency is not enabled: " + primaryId);
         int refresh = Math.max(20, config.getInt("passive.refresh-ticks", 100));
         int migrationPlayersPerTick = Math.max(1, Math.min(200,
                 config.getInt("migration.players-per-tick", 20)));
@@ -47,6 +50,7 @@ record CoreSettings(
         int paymentCooldownSeconds = Math.max(0, Math.min(3600,
                 config.getInt("payments.cooldown-seconds", 2)));
         PolicyConfiguration policies = PolicyConfiguration.read(config, currency);
+        ExchangeConfiguration exchange = ExchangeConfiguration.read(config, currencies);
         boolean enabled = config.getBoolean("database.enabled", false);
         MariaDbSettings database = new MariaDbSettings(
                 config.getString("database.jdbc-url", "jdbc:mariadb://127.0.0.1:3306/aurum_core"),
@@ -54,8 +58,33 @@ record CoreSettings(
                 config.getString("database.password", "change-me"),
                 Math.max(1, Math.min(16, config.getInt("database.pool-size", 3)))
         );
-        return new CoreSettings(language, mode, currency, refresh, migrationPlayersPerTick,
+        return new CoreSettings(language, mode, currency, currencies, refresh, migrationPlayersPerTick,
                 requireVerifiedMigration, globalRefreshTicks, paymentsEnabled, paymentMinimum,
-                paymentMaximum, paymentCooldownSeconds, policies, enabled, database);
+                paymentMaximum, paymentCooldownSeconds, policies, exchange, enabled, database);
+    }
+
+    private static Map<String, CurrencySpec> readCurrencies(FileConfiguration config) {
+        var root = config.getConfigurationSection("economy.currencies");
+        Map<String, CurrencySpec> values = new LinkedHashMap<>();
+        if (root != null) {
+            for (String key : root.getKeys(false)) {
+                var section = root.getConfigurationSection(key);
+                if (section == null || !section.getBoolean("enabled", true)) continue;
+                CurrencySpec spec = new CurrencySpec(key,
+                        section.getString("display-name", key), section.getString("symbol", ""),
+                        section.getInt("scale", 2));
+                values.put(spec.id(), spec);
+            }
+        }
+        if (values.isEmpty()) {
+            CurrencySpec legacy = new CurrencySpec(
+                    config.getString("economy.currency.id", "coins"),
+                    config.getString("economy.currency.display-name", "Coins"),
+                    config.getString("economy.currency.symbol", "$"),
+                    config.getInt("economy.currency.scale", 2));
+            values.put(legacy.id(), legacy);
+        }
+        if (values.size() > 16) throw new IllegalArgumentException("At most 16 currencies are supported");
+        return Map.copyOf(values);
     }
 }

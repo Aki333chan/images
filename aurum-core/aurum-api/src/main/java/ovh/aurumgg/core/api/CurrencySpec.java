@@ -15,7 +15,9 @@ public record CurrencySpec(String id, String displayName, String symbol, int sca
         if (!id.matches("[a-z0-9][a-z0-9_-]{0,31}")) {
             throw new IllegalArgumentException("Invalid currency id");
         }
-        if (displayName.isEmpty() || scale < 0 || scale > 8) {
+        if (displayName.isEmpty() || displayName.length() > 64 || symbol.length() > 16
+                || displayName.chars().anyMatch(Character::isISOControl)
+                || symbol.chars().anyMatch(Character::isISOControl) || scale < 0 || scale > 8) {
             throw new IllegalArgumentException("Invalid currency specification");
         }
     }

@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import ovh.aurumgg.core.engine.LedgerRepository;
 import ovh.aurumgg.core.engine.PolicyRepository;
+import ovh.aurumgg.core.engine.ExchangeRepository;
 import ovh.aurumgg.core.engine.migration.MigrationRepository;
 
 public final class MariaDbManager implements AutoCloseable {
@@ -53,6 +54,10 @@ public final class MariaDbManager implements AutoCloseable {
 
     public PolicyRepository policyRepository() {
         return new MariaDbPolicyRepository(dataSource);
+    }
+
+    public ExchangeRepository exchangeRepository() {
+        return new MariaDbExchangeRepository(dataSource);
     }
 
     @Override

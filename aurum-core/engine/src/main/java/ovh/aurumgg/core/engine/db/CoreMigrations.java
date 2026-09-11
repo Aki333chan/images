@@ -237,6 +237,78 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> currencyExchange = List.of(
+                """
+                CREATE TABLE IF NOT EXISTS aurum_exchange_rules (
+                    id VARCHAR(64) PRIMARY KEY,
+                    from_currency_id VARCHAR(32) NOT NULL,
+                    to_currency_id VARCHAR(32) NOT NULL,
+                    rate DECIMAL(36,18) NOT NULL,
+                    fee_rate DECIMAL(18,12) NOT NULL DEFAULT 0,
+                    minimum_source DECIMAL(24,8) NULL,
+                    maximum_source DECIMAL(24,8) NULL,
+                    settlement VARCHAR(24) NOT NULL,
+                    conditions_json JSON NOT NULL,
+                    priority INT NOT NULL DEFAULT 0,
+                    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    effective_from TIMESTAMP(6) NULL,
+                    effective_until TIMESTAMP(6) NULL,
+                    revision BIGINT UNSIGNED NOT NULL,
+                    updated_by VARCHAR(128) NOT NULL,
+                    update_reason VARCHAR(255) NOT NULL,
+                    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+                    KEY ix_aurum_exchange_pair (from_currency_id, to_currency_id, enabled, priority),
+                    CONSTRAINT fk_aurum_exchange_from FOREIGN KEY (from_currency_id) REFERENCES aurum_currencies(id),
+                    CONSTRAINT fk_aurum_exchange_to FOREIGN KEY (to_currency_id) REFERENCES aurum_currencies(id)
+                ) ENGINE=InnoDB
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_exchange_rule_revisions (
+                    rule_id VARCHAR(64) NOT NULL,
+                    revision BIGINT UNSIGNED NOT NULL,
+                    from_currency_id VARCHAR(32) NOT NULL,
+                    to_currency_id VARCHAR(32) NOT NULL,
+                    rate DECIMAL(36,18) NOT NULL,
+                    fee_rate DECIMAL(18,12) NOT NULL,
+                    minimum_source DECIMAL(24,8) NULL,
+                    maximum_source DECIMAL(24,8) NULL,
+                    settlement VARCHAR(24) NOT NULL,
+                    conditions_json JSON NOT NULL,
+                    priority INT NOT NULL,
+                    enabled BOOLEAN NOT NULL,
+                    effective_from TIMESTAMP(6) NULL,
+                    effective_until TIMESTAMP(6) NULL,
+                    changed_by VARCHAR(128) NOT NULL,
+                    change_reason VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    PRIMARY KEY (rule_id, revision)
+                ) ENGINE=InnoDB
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_exchanges (
+                    id CHAR(36) PRIMARY KEY,
+                    idempotency_key VARCHAR(191) NOT NULL UNIQUE,
+                    rule_id VARCHAR(64) NOT NULL,
+                    rule_revision BIGINT UNSIGNED NOT NULL,
+                    account_type VARCHAR(32) NOT NULL,
+                    account_reference VARCHAR(128) NOT NULL,
+                    from_currency_id VARCHAR(32) NOT NULL,
+                    to_currency_id VARCHAR(32) NOT NULL,
+                    source_amount DECIMAL(24,8) NOT NULL,
+                    fee_amount DECIMAL(24,8) NOT NULL,
+                    converted_amount DECIMAL(24,8) NOT NULL,
+                    target_amount DECIMAL(24,8) NOT NULL,
+                    settlement VARCHAR(24) NOT NULL,
+                    status VARCHAR(24) NOT NULL,
+                    metadata_json JSON NULL,
+                    failure_reason VARCHAR(255) NULL,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    committed_at TIMESTAMP(6) NULL,
+                    KEY ix_aurum_exchange_account (account_type, account_reference, created_at),
+                    KEY ix_aurum_exchange_pair_time (from_currency_id, to_currency_id, created_at)
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -247,7 +319,9 @@ public final class CoreMigrations {
                 new SchemaMigration(4, "authoritative runtime cutover state",
                         checksum(runtimeState), runtimeState),
                 new SchemaMigration(5, "versioned financial policy audit",
-                        checksum(policyRevisions), policyRevisions)
+                        checksum(policyRevisions), policyRevisions),
+                new SchemaMigration(6, "multi-currency exchange rates and atomic exchanges",
+                        checksum(currencyExchange), currencyExchange)
         );
     }
 

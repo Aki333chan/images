@@ -48,6 +48,9 @@ record PolicyConfiguration(boolean enabled, boolean bootstrapOnEmpty, int maxRul
                 "recipient-type", "recipient-id", "funding-type", "funding-id",
                 "condition-source-type", "condition-source-id", "condition-target-type",
                 "condition-target-id", "condition-metadata-key", "condition-metadata-value");
+        List<String> currencies = section.getStringList("currencies");
+        if (!currencies.isEmpty()) values.put("currencies", String.join(",", currencies));
+        else if (section.contains("currencies")) values.put("currencies", section.getString("currencies", ""));
         if (kind == PolicyKind.EXEMPTION) {
             List<String> kinds = section.getStringList("kinds");
             if (!kinds.isEmpty()) values.put("kinds", String.join(",", kinds));

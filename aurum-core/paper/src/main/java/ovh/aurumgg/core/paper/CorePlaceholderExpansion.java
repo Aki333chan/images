@@ -23,6 +23,30 @@ final class CorePlaceholderExpansion extends PlaceholderExpansion {
     @Override
     public @Nullable String onRequest(OfflinePlayer player, @NotNull String params) {
         String key = params.toLowerCase(Locale.ROOT);
+        if (key.startsWith("currency_") && key.endsWith("_symbol")) {
+            String id = key.substring("currency_".length(), key.length() - "_symbol".length());
+            var currency = plugin.settings().currencies().get(id);
+            return currency == null ? null : currency.symbol();
+        }
+        if (key.startsWith("treasury_balance_")) {
+            String id = key.substring("treasury_balance_".length());
+            return plugin.cachedGlobalSnapshot(id).filter(it -> it.authoritative())
+                    .map(it -> raw(it.treasuryBalance())).orElse("");
+        }
+        if (key.startsWith("money_supply_")) {
+            String id = key.substring("money_supply_".length());
+            return plugin.cachedGlobalSnapshot(id).filter(it -> it.authoritative())
+                    .map(it -> raw(it.moneySupply())).orElse("");
+        }
+        if (player != null && (key.startsWith("balance_") || key.startsWith("balance_raw_"))) {
+            boolean raw = key.startsWith("balance_raw_");
+            String id = key.substring(raw ? "balance_raw_".length() : "balance_".length());
+            var currency = plugin.settings().currencies().get(id);
+            if (currency == null) return null;
+            return plugin.cachedBalance(AccountId.player(player.getUniqueId()), id)
+                    .map(snapshot -> raw ? raw(snapshot.balance())
+                            : raw(snapshot.balance()) + currency.symbol()).orElse("");
+        }
         if (key.equals("currency")) return plugin.settings().currency().displayName();
         if (key.equals("currency_symbol")) return plugin.settings().currency().symbol();
         if (key.equals("treasury_balance")) {

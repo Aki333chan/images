@@ -8,10 +8,12 @@ import ovh.aurumgg.core.api.TransactionRequest;
 
 public final class PolicyRegistry implements FinancialRuleResolver {
     private final boolean enabled;
+    private final String primaryCurrencyId;
     private final AtomicReference<List<FinancialRule>> rules = new AtomicReference<>(List.of());
 
-    public PolicyRegistry(boolean enabled) {
+    public PolicyRegistry(boolean enabled, String primaryCurrencyId) {
         this.enabled = enabled;
+        this.primaryCurrencyId = primaryCurrencyId;
     }
 
     public void replace(List<FinancialRule> updated) {
@@ -26,6 +28,7 @@ public final class PolicyRegistry implements FinancialRuleResolver {
     @Override
     public List<FinancialRule> select(TransactionRequest request, Instant now) {
         if (!enabled) return List.of();
-        return rules.get().stream().filter(rule -> PolicyMatcher.matches(rule, request, now)).toList();
+        return rules.get().stream()
+                .filter(rule -> PolicyMatcher.matches(rule, request, now, primaryCurrencyId)).toList();
     }
 }

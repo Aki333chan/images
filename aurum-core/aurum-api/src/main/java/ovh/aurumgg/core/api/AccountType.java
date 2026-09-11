@@ -6,6 +6,7 @@ public enum AccountType {
     TREASURY,
     ARENA_ESCROW,
     TRADE_ESCROW,
+    EXCHANGE_RESERVE,
     NPC_SHOP,
     NPC_BUYER,
     SLOTS,

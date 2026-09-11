@@ -33,11 +33,15 @@
 - [x] Policy engine 0.5.0: цепочка TAX/FEE/COMMISSION/CASHBACK/SUBSIDY,
   LIMIT и EXEMPTION; расписание и условия, YAML bootstrap/import, управление
   командами, неизменяемые DB revisions и атомарный аудит сумм каждого правила.
+- [x] Multi-currency и exchange engine 0.6.0: до 16 валют, одна primary-валюта
+  для Vault, native API для остальных, курсы/комиссии/лимиты/расписания/условия,
+  ревизии котировок и атомарный MINT_BURN либо обеспеченный резервом обмен.
 
 ## Осталось — в порядке выполнения
 
 1. [ ] По одному перевести AddonsNPC, AurumSlots, AurumArena и AurumGuilds на
    AurumEconomyApi, сохраняя recovery и возможность отката на каждом шаге.
+   Для NPC также добавить GUI обменщиков поверх quote/exchange API Core.
 2. [ ] Реализовать гарантированный player trade: GUI, деньги и предметы,
    повторное подтверждение, рестарт/recovery и claim-хранилище.
 3. [ ] Подключить AurumUI: баланс, переводы, сделки, казна и админские формы.

@@ -9,7 +9,7 @@ class CoreMigrationsTest {
     @Test
     void initialSchemaContainsFinancialSafetyPrimitives() {
         var migrations = CoreMigrations.all();
-        assertEquals(5, migrations.size());
+        assertEquals(6, migrations.size());
         String sql = migrations.stream().flatMap(it -> it.statements().stream())
                 .reduce("", (left, right) -> left + "\n" + right);
         assertTrue(sql.contains("aurum_ledger_entries"));
@@ -24,6 +24,9 @@ class CoreMigrationsTest {
         assertTrue(sql.contains("aurum_runtime_state"));
         assertTrue(sql.contains("aurum_financial_rule_revisions"));
         assertTrue(sql.contains("policy_amounts_json"));
+        assertTrue(sql.contains("aurum_exchange_rules"));
+        assertTrue(sql.contains("aurum_exchange_rule_revisions"));
+        assertTrue(sql.contains("aurum_exchanges"));
         assertEquals(64, migrations.getFirst().checksum().length());
         assertEquals(64, migrations.getLast().checksum().length());
     }

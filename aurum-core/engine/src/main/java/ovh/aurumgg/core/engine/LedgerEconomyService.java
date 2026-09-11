@@ -29,17 +29,24 @@ public final class LedgerEconomyService implements AurumEconomyApi {
     private final FinancialRuleResolver policies;
     private final Executor executor;
     private final Clock clock;
-    private final Object mutationLock = new Object();
+    private final Object mutationLock;
     private final ConcurrentMap<AccountId, BigDecimal> balanceCache = new ConcurrentHashMap<>();
     private final AtomicReference<GlobalEconomySnapshot> globalCache = new AtomicReference<>();
 
     public LedgerEconomyService(CurrencySpec currency, LedgerRepository repository,
                                 FinancialRuleResolver policies, Executor executor, Clock clock) {
+        this(currency, repository, policies, executor, clock, new Object());
+    }
+
+    public LedgerEconomyService(CurrencySpec currency, LedgerRepository repository,
+                                FinancialRuleResolver policies, Executor executor, Clock clock,
+                                Object mutationLock) {
         this.currency = currency;
         this.repository = repository;
         this.policies = policies;
         this.executor = executor;
         this.clock = clock;
+        this.mutationLock = java.util.Objects.requireNonNull(mutationLock, "mutationLock");
     }
 
     @Override public EconomyMode mode() { return EconomyMode.ACTIVE; }
@@ -168,6 +175,10 @@ public final class LedgerEconomyService implements AurumEconomyApi {
 
     public void cacheZeroIfAbsent(AccountId account) {
         balanceCache.putIfAbsent(account, BigDecimal.ZERO.setScale(currency.scale()));
+    }
+
+    public void applyCommittedBalance(AccountId account, BigDecimal balance) {
+        balanceCache.put(account, currency.requireAmount(balance));
     }
 
     private BalanceSnapshot snapshot(AccountId account, BigDecimal value) {

@@ -3,6 +3,7 @@ package ovh.aurumgg.core.paper;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -24,6 +25,10 @@ import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 import ovh.aurumgg.core.engine.LedgerEconomyService;
 import ovh.aurumgg.core.engine.LedgerRepository;
+import ovh.aurumgg.core.engine.ExchangeRegistry;
+import ovh.aurumgg.core.engine.ExchangeRepository;
+import ovh.aurumgg.core.engine.ExchangeService;
+import ovh.aurumgg.core.engine.MultiCurrencyEconomyService;
 import ovh.aurumgg.core.engine.PassiveEconomyService;
 import ovh.aurumgg.core.engine.PolicyRegistry;
 import ovh.aurumgg.core.engine.PolicyRepository;
@@ -39,7 +44,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private LanguageBundle messages;
     private volatile AurumEconomyApi economy;
     private PassiveEconomyService passiveEconomy;
-    private volatile LedgerEconomyService activeEconomy;
+    private volatile MultiCurrencyEconomyService activeEconomy;
     private volatile AurumVaultEconomy vaultEconomy;
     private BalanceObserver vault;
     private volatile DatabaseState databaseState = DatabaseState.DISABLED;
@@ -48,6 +53,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile MigrationCoordinator migrations;
     private volatile PolicyRegistry policyRegistry;
     private volatile PolicyCoordinator policies;
+    private volatile ExchangeRegistry exchangeRegistry;
+    private volatile ExchangeCoordinator exchanges;
 
     @Override
     public void onEnable() {
@@ -86,7 +93,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
 
         AurumCommand command = new AurumCommand(this);
         for (String commandName : new String[] {
-                "aurum", "abal", "atreasury", "amigrate", "aeco", "apolicy", "pay", "apay"}) {
+                "aurum", "abal", "atreasury", "amigrate", "aeco", "apolicy", "aexchange", "pay", "apay"}) {
             var registered = getCommand(commandName);
             if (registered != null) {
                 registered.setExecutor(command);
@@ -118,7 +125,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                 MariaDbManager opened = new MariaDbManager(settings.database());
                 opened.migrate();
                 LedgerRepository ledger = opened.ledgerRepository(Clock.systemUTC());
-                ledger.initialize(settings.currency());
+                for (var currency : settings.currencies().values()) ledger.initialize(currency);
                 if (!isEnabled()) {
                     opened.close();
                     return;
@@ -126,6 +133,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                 database = opened;
                 MigrationRepository migrationRepository = opened.migrationRepository();
                 initializePolicies(opened.policyRepository());
+                initializeExchanges(opened.exchangeRepository());
                 if (settings.configuredMode().equals("shadow")) {
                     migrations = new MigrationCoordinator(this, vault, settings.currency(), migrationRepository,
                             new MigrationService(settings.currency(), migrationRepository, ledger),
@@ -134,12 +142,24 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                     getLogger().info("MariaDB schema is ready. Migration tools are available; Vault remains live.");
                 } else if (settings.configuredMode().equals("active")) {
                     validateActiveCutover(opened.stateRepository(), migrationRepository);
-                    LedgerEconomyService service = new LedgerEconomyService(settings.currency(), ledger,
-                            policyRegistry, databaseExecutor, Clock.systemUTC());
-                    Map<AccountId, BigDecimal> seeds = new HashMap<>();
-                    migrationRepository.allPlayerBalances(settings.currency()).forEach(row ->
-                            seeds.put(AccountId.player(row.playerId()), row.balance()));
-                    service.seedBalances(seeds);
+                    Map<String, LedgerEconomyService> services = new HashMap<>();
+                    Object mutationLock = new Object();
+                    for (var currency : settings.currencies().values()) {
+                        LedgerEconomyService service = new LedgerEconomyService(currency, ledger,
+                                policyRegistry, databaseExecutor, Clock.systemUTC(), mutationLock);
+                        Map<AccountId, BigDecimal> seeds = new HashMap<>();
+                        migrationRepository.allPlayerBalances(currency).forEach(row ->
+                                seeds.put(AccountId.player(row.playerId()), row.balance()));
+                        service.seedBalances(seeds);
+                        services.put(currency.id(), service);
+                    }
+                    MultiCurrencyEconomyService service = new MultiCurrencyEconomyService(
+                            settings.currency(), services);
+                    if (settings.exchange().enabled()) {
+                        service.attachExchangeService(new ExchangeService(settings.currencies(), exchangeRegistry,
+                                opened.exchangeRepository(), service, databaseExecutor, Clock.systemUTC(),
+                                Duration.ofSeconds(settings.exchange().quoteTtlSeconds()), mutationLock));
+                    }
                     activeEconomy = service;
                     economy = service;
                     if (getServer().isPrimaryThread()) enableActiveServices();
@@ -164,22 +184,54 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     }
 
     private void initializePolicies(PolicyRepository repository) throws java.sql.SQLException {
-        PolicyRegistry registry = new PolicyRegistry(settings.policies().enabled());
+        PolicyRegistry registry = new PolicyRegistry(settings.policies().enabled(), settings.currency().id());
         var stored = repository.list(settings.currency());
         if (stored.size() > settings.policies().maxRules()) {
             throw new java.sql.SQLException("Stored policy count exceeds financial-policies.max-rules");
         }
+        for (var rule : stored) validatePolicyCurrencies(rule);
         if (stored.isEmpty() && settings.policies().bootstrapOnEmpty()
                 && !settings.policies().bootstrapRules().isEmpty()) {
             repository.saveAll(settings.policies().bootstrapRules(), settings.currency(),
                     "config", "initial config bootstrap");
             stored = repository.list(settings.currency());
+            for (var rule : stored) validatePolicyCurrencies(rule);
         }
         registry.replace(stored);
         policyRegistry = registry;
         policies = new PolicyCoordinator(this, repository, registry, databaseExecutor);
         getLogger().info("Loaded " + stored.size() + " financial policies; execution is "
                 + (settings.policies().enabled() ? "enabled" : "disabled"));
+    }
+
+    private void validatePolicyCurrencies(ovh.aurumgg.core.engine.FinancialRule rule)
+            throws java.sql.SQLException {
+        String configured = rule.definition().get("currencies");
+        if (configured == null || configured.isBlank() || configured.equals("*")) return;
+        for (String id : configured.split(",")) {
+            if (!settings.currencies().containsKey(id.trim().toLowerCase(java.util.Locale.ROOT))) {
+                throw new java.sql.SQLException("Policy " + rule.id() + " uses unknown currency: " + id.trim());
+            }
+        }
+    }
+
+    private void initializeExchanges(ExchangeRepository repository) throws java.sql.SQLException {
+        ExchangeRegistry registry = new ExchangeRegistry();
+        var stored = repository.listRules(settings.currencies());
+        if (stored.size() > settings.exchange().maxRules()) {
+            throw new java.sql.SQLException("Stored exchange rule count exceeds exchange.max-rules");
+        }
+        if (stored.isEmpty() && settings.exchange().bootstrapOnEmpty()) {
+            for (var rule : settings.exchange().bootstrapRules()) {
+                repository.saveRule(rule, settings.currencies(), "config", "initial config bootstrap");
+            }
+            stored = repository.listRules(settings.currencies());
+        }
+        registry.replace(stored);
+        exchangeRegistry = registry;
+        exchanges = new ExchangeCoordinator(this, repository, registry, databaseExecutor);
+        getLogger().info("Loaded " + stored.size() + " exchange rules; execution is "
+                + (settings.exchange().enabled() ? "enabled" : "disabled"));
     }
 
     private void validateActiveCutover(MariaDbStateRepository state, MigrationRepository migrationRepository)
@@ -210,14 +262,15 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         if (!isEnabled() || activeEconomy == null) return;
         getServer().getServicesManager().register(AurumEconomyApi.class, activeEconomy,
                 this, ServicePriority.Highest);
-        vaultEconomy = new AurumVaultEconomy(this, activeEconomy, settings.currency());
+        vaultEconomy = new AurumVaultEconomy(this, activeEconomy.primaryService(), settings.currency());
         getServer().getServicesManager().register(Economy.class, vaultEconomy,
                 this, ServicePriority.Highest);
         databaseState = DatabaseState.READY;
         registerPlaceholders();
-        activeEconomy.globalSnapshot();
+        settings.currencies().keySet().forEach(activeEconomy::globalSnapshot);
         getServer().getScheduler().runTaskTimer(this,
-                () -> activeEconomy.globalSnapshot(), settings.globalRefreshTicks(), settings.globalRefreshTicks());
+                () -> settings.currencies().keySet().forEach(activeEconomy::globalSnapshot),
+                settings.globalRefreshTicks(), settings.globalRefreshTicks());
         getLogger().info("Active economy is authoritative. AurumCore registered as the highest-priority Vault provider.");
     }
 
@@ -280,6 +333,12 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                 "key", "policies", "value", policyRegistry == null ? "UNAVAILABLE"
                         : (settings.policies().enabled() ? "ENABLED:" : "DISABLED:")
                         + policyRegistry.snapshot().size())));
+        sender.sendMessage(messages.component("status-line", Map.of(
+                "key", "currencies", "value", Integer.toString(settings.currencies().size()))));
+        sender.sendMessage(messages.component("status-line", Map.of(
+                "key", "exchange", "value", exchangeRegistry == null ? "UNAVAILABLE"
+                        : (settings.exchange().enabled() ? "ENABLED:" : "DISABLED:")
+                        + exchangeRegistry.snapshot().size())));
         sender.sendMessage(messages.component("status-line", Map.of("key", "writes", "value",
                 settings.configuredMode().equals("active") && activeReady() ? "ENABLED"
                         : settings.configuredMode().equals("shadow") ? "MIGRATION_LEDGER_ONLY" : "DISABLED")));
@@ -309,17 +368,28 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     boolean activeReady() { return activeMode() && databaseState == DatabaseState.READY && activeEconomy != null; }
     MigrationCoordinator migrations() { return migrations; }
     CoreSettings settings() { return settings; }
-    LedgerEconomyService activeEconomy() { return activeEconomy; }
+    MultiCurrencyEconomyService activeEconomy() { return activeEconomy; }
     PolicyCoordinator policies() { return policies; }
+    ExchangeCoordinator exchanges() { return exchanges; }
     Optional<BalanceSnapshot> cachedBalance(AccountId account) {
         if (activeEconomy != null) return activeEconomy.cachedBalance(account);
         return passiveEconomy == null ? Optional.empty() : passiveEconomy.cachedBalance(account);
+    }
+    Optional<BalanceSnapshot> cachedBalance(AccountId account, String currencyId) {
+        if (activeEconomy != null) return activeEconomy.cachedBalance(account, currencyId);
+        return settings.currency().id().equalsIgnoreCase(currencyId) ? cachedBalance(account) : Optional.empty();
     }
     GlobalEconomySnapshot cachedGlobalSnapshot() {
         if (activeEconomy != null) return activeEconomy.cachedGlobalSnapshot();
         BigDecimal zero = BigDecimal.ZERO.setScale(settings.currency().scale());
         return new GlobalEconomySnapshot(settings.currency(), zero, zero, zero,
                 Instant.now(), false, false);
+    }
+    Optional<GlobalEconomySnapshot> cachedGlobalSnapshot(String currencyId) {
+        if (activeEconomy == null || !settings.currencies().containsKey(currencyId.toLowerCase(java.util.Locale.ROOT))) {
+            return Optional.empty();
+        }
+        return Optional.of(activeEconomy.cachedGlobalSnapshot(currencyId));
     }
     private int accountCount() {
         if (activeEconomy != null) return activeEconomy.cachedAccountCount();

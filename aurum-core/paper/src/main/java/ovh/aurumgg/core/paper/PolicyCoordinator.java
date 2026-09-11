@@ -55,6 +55,7 @@ final class PolicyCoordinator {
                 case "condition" -> condition(sender, args);
                 case "range" -> range(sender, args);
                 case "exempt" -> exempt(sender, args);
+                case "currency" -> currency(sender, args);
                 default -> usage(sender);
             };
         } catch (RuntimeException exception) {
@@ -309,6 +310,24 @@ final class PolicyCoordinator {
             return copy(rule, definition, rule.priority(), rule.enabled(),
                     rule.effectiveFrom(), rule.effectiveUntil());
         }, reason(args, 4, "exempted kinds changed"));
+    }
+
+    private boolean currency(CommandSender sender, String[] args) {
+        if (args.length < 4) return usage(sender);
+        String value = args[3];
+        if (!value.equals("*")) {
+            for (String id : value.split(",")) {
+                if (!plugin.settings().currencies().containsKey(id.toLowerCase(Locale.ROOT))) {
+                    throw new IllegalArgumentException("Unknown currency: " + id);
+                }
+            }
+        }
+        return mutate(sender, args[2], rule -> {
+            Map<String, String> definition = new LinkedHashMap<>(rule.definition());
+            definition.put("currencies", value.toLowerCase(Locale.ROOT));
+            return copy(rule, definition, rule.priority(), rule.enabled(),
+                    rule.effectiveFrom(), rule.effectiveUntil());
+        }, reason(args, 4, "currencies changed"));
     }
 
     private boolean mutate(CommandSender sender, String id, UnaryOperator<FinancialRule> operation, String reason) {
