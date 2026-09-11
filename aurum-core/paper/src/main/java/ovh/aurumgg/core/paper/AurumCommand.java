@@ -110,6 +110,14 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             }
             return plugin.policies().execute(sender, args);
         }
+        if (args[0].equalsIgnoreCase("claims")) {
+            if (!sender.hasPermission("aurum.admin.claims")) return deny(sender);
+            if (plugin.claimCommands() == null) {
+                sender.sendMessage(plugin.messages().component("claims-unavailable"));
+                return true;
+            }
+            return plugin.claimCommands().execute(sender, args);
+        }
         if (args[0].equalsIgnoreCase("exchange")) {
             if (!sender.hasPermission("aurum.admin.exchange")) return deny(sender);
             if (plugin.exchanges() == null) {
@@ -380,7 +388,7 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                  @NotNull String alias, @NotNull String[] args) {
         String[] values = normalized(command.getName(), args);
-        if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy", "policy", "exchange").stream()
+        if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy", "policy", "exchange", "claims").stream()
                 .filter(it -> it.startsWith(values[0].toLowerCase())).toList();
         if (values.length == 2 && values[0].equalsIgnoreCase("balance")
                 && sender.hasPermission("aurum.balance.others")) {
@@ -394,6 +402,11 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         if (values.length == 4 && values[0].equalsIgnoreCase("migrate")
                 && values[1].equalsIgnoreCase("import")) {
             return "CONFIRM".startsWith(values[3]) ? List.of("CONFIRM") : List.of();
+        }
+        if (values.length == 2 && values[0].equalsIgnoreCase("claims")
+                && sender.hasPermission("aurum.admin.claims")) {
+            return List.of("list", "inspect", "retry", "drop").stream()
+                    .filter(it -> it.startsWith(values[1].toLowerCase())).toList();
         }
         if (values.length == 2 && values[0].equalsIgnoreCase("economy")) {
             return List.of("give", "take", "set").stream()

@@ -20,6 +20,7 @@ import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import net.milkbowl.vault.economy.Economy;
 import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.AurumClaimApi;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
@@ -28,6 +29,7 @@ import ovh.aurumgg.core.engine.LedgerRepository;
 import ovh.aurumgg.core.engine.ExchangeRegistry;
 import ovh.aurumgg.core.engine.ExchangeRepository;
 import ovh.aurumgg.core.engine.ExchangeService;
+import ovh.aurumgg.core.engine.ClaimService;
 import ovh.aurumgg.core.engine.HoldService;
 import ovh.aurumgg.core.engine.MultiCurrencyEconomyService;
 import ovh.aurumgg.core.engine.PassiveEconomyService;
@@ -56,6 +58,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile PolicyCoordinator policies;
     private volatile ExchangeRegistry exchangeRegistry;
     private volatile ExchangeCoordinator exchanges;
+    private volatile ClaimService claims;
+    private volatile ClaimCoordinator claimCommands;
 
     @Override
     public void onEnable() {
@@ -164,6 +168,14 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                                 opened.exchangeRepository(), service, databaseExecutor, Clock.systemUTC(),
                                 Duration.ofSeconds(settings.exchange().quoteTtlSeconds()), mutationLock));
                     }
+                    // Claims live alongside holds and for the same reason: a hold
+                    // protects the money half of an operation, a claim the half
+                    // that happens in Minecraft. Both need the database, so both
+                    // only exist in active mode.
+                    claims = new ClaimService(opened.claimRepository(), databaseExecutor,
+                            Clock.systemUTC(), Duration.ofSeconds(settings.claimMaxLeaseSeconds()),
+                            settings.claimMaxAttempts());
+                    claimCommands = new ClaimCoordinator(this, claims);
                     activeEconomy = service;
                     economy = service;
                     if (getServer().isPrimaryThread()) enableActiveServices();
@@ -266,6 +278,13 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         if (!isEnabled() || activeEconomy == null) return;
         getServer().getServicesManager().register(AurumEconomyApi.class, activeEconomy,
                 this, ServicePriority.Highest);
+        // A separate service, not a corner of AurumEconomyApi: delivery is not
+        // money, and a plugin that only delivers has no business holding an
+        // interface that can move balances.
+        if (claims != null) {
+            getServer().getServicesManager().register(AurumClaimApi.class, claims,
+                    this, ServicePriority.Highest);
+        }
         vaultEconomy = new AurumVaultEconomy(this, activeEconomy.primaryService(), settings.currency());
         getServer().getServicesManager().register(Economy.class, vaultEconomy,
                 this, ServicePriority.Highest);
@@ -375,6 +394,10 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     MultiCurrencyEconomyService activeEconomy() { return activeEconomy; }
     PolicyCoordinator policies() { return policies; }
     ExchangeCoordinator exchanges() { return exchanges; }
+
+    ClaimCoordinator claimCommands() {
+        return claimCommands;
+    }
     Optional<BalanceSnapshot> cachedBalance(AccountId account) {
         if (activeEconomy != null) return activeEconomy.cachedBalance(account);
         return passiveEconomy == null ? Optional.empty() : passiveEconomy.cachedBalance(account);

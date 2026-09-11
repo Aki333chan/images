@@ -50,6 +50,7 @@ permissions:
       aurum.admin.economy: true
       aurum.admin.policy: true
       aurum.admin.exchange: true
+      aurum.admin.claims: true
   aurum.admin.migrate:
     description: Create, import, verify and export economy migration snapshots
     default: op
@@ -61,4 +62,7 @@ permissions:
     default: op
   aurum.admin.exchange:
     description: Create, inspect and change currency exchange rules
+    default: op
+  aurum.admin.claims:
+    description: Inspect, retry and drop quarantined delivery claims
     default: op
