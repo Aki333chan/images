@@ -80,6 +80,10 @@ public final class LedgerEconomyService implements AurumEconomyApi {
 
     /** Vault is synchronous, so its adapter calls this and receives a definitive database result. */
     public TransactionResult transferBlocking(TransactionRequest request) throws Exception {
+        return transferBlocking(request, null);
+    }
+
+    TransactionResult transferBlocking(TransactionRequest request, java.util.UUID excludedHold) throws Exception {
         synchronized (mutationLock) {
             TransactionPlan plan;
             try {
@@ -91,23 +95,39 @@ public final class LedgerEconomyService implements AurumEconomyApi {
                         request.idempotencyKey(), amount, amount,
                         BigDecimal.ZERO.setScale(currency.scale()), "POLICY:" + exception.getMessage());
             }
-            LedgerCommit commit = repository.commit(plan, currency);
-            if (commit.status() == LedgerCommit.Status.COMMITTED) {
-                if (commit.balancesAfter().isEmpty()) {
-                    balanceCache.put(request.from(), commit.sourceBalance());
-                    balanceCache.put(request.to(), commit.targetBalance());
-                } else {
-                    balanceCache.putAll(commit.balancesAfter());
-                }
-            }
-            TransactionResult.Status status = switch (commit.status()) {
-                case COMMITTED -> TransactionResult.Status.SUCCESS;
-                case DUPLICATE -> TransactionResult.Status.DUPLICATE;
-                case INSUFFICIENT_FUNDS, REJECTED -> TransactionResult.Status.REJECTED;
-            };
-            return new TransactionResult(status, request.idempotencyKey(), commit.grossAmount(),
-                    commit.netAmount(), commit.taxAmount(), commit.message());
+            return commitPlanned(plan, excludedHold);
         }
+    }
+
+    /** Caller must hold the shared mutation lock. */
+    TransactionResult commitPlanned(TransactionPlan plan, java.util.UUID excludedHold) throws Exception {
+        TransactionRequest request = plan.request();
+        LedgerCommit commit = repository.commit(plan, currency, excludedHold);
+        if (commit.status() == LedgerCommit.Status.COMMITTED) {
+            if (commit.balancesAfter().isEmpty()) {
+                balanceCache.put(request.from(), commit.sourceBalance());
+                balanceCache.put(request.to(), commit.targetBalance());
+            } else {
+                balanceCache.putAll(commit.balancesAfter());
+            }
+        }
+        TransactionResult.Status status = switch (commit.status()) {
+            case COMMITTED -> TransactionResult.Status.SUCCESS;
+            case DUPLICATE -> TransactionResult.Status.DUPLICATE;
+            case INSUFFICIENT_FUNDS, REJECTED -> TransactionResult.Status.REJECTED;
+        };
+        return new TransactionResult(status, request.idempotencyKey(), commit.grossAmount(),
+                commit.netAmount(), commit.taxAmount(), commit.message());
+    }
+
+    /** Caller must hold the shared mutation lock. */
+    boolean transactionCommitted(String idempotencyKey) throws Exception {
+        return repository.transactionCommitted(idempotencyKey);
+    }
+
+    TransactionPlan planFor(TransactionRequest request) {
+        return TransactionPlanner.plan(request, currency,
+                policies.select(request, Instant.now(clock)), Instant.now(clock));
     }
 
     /** Serialized compare-and-adjust used by the administrative set command. */

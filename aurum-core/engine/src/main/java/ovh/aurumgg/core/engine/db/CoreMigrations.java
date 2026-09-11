@@ -309,6 +309,20 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> durableHolds = List.of(
+                """
+                ALTER TABLE aurum_holds
+                    ADD COLUMN IF NOT EXISTS target_account_type VARCHAR(32) NULL AFTER expires_at,
+                    ADD COLUMN IF NOT EXISTS target_reference_id VARCHAR(128) NULL AFTER target_account_type,
+                    ADD COLUMN IF NOT EXISTS request_amount DECIMAL(24,8) NULL AFTER target_reference_id,
+                    ADD COLUMN IF NOT EXISTS transaction_category VARCHAR(48) NULL AFTER request_amount,
+                    ADD COLUMN IF NOT EXISTS metadata_json JSON NULL AFTER transaction_category
+                """,
+                """
+                ALTER TABLE aurum_holds
+                    ADD INDEX IF NOT EXISTS ix_aurum_holds_expiry (status, expires_at)
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -321,7 +335,9 @@ public final class CoreMigrations {
                 new SchemaMigration(5, "versioned financial policy audit",
                         checksum(policyRevisions), policyRevisions),
                 new SchemaMigration(6, "multi-currency exchange rates and atomic exchanges",
-                        checksum(currencyExchange), currencyExchange)
+                        checksum(currencyExchange), currencyExchange),
+                new SchemaMigration(7, "durable cross-system hold intents",
+                        checksum(durableHolds), durableHolds)
         );
     }
 

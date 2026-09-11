@@ -21,6 +21,7 @@ public final class MultiCurrencyEconomyService implements AurumEconomyApi {
     private final CurrencySpec primary;
     private final Map<String, LedgerEconomyService> services;
     private volatile ExchangeService exchangeService;
+    private volatile HoldService holdService;
 
     public MultiCurrencyEconomyService(CurrencySpec primary, Map<String, LedgerEconomyService> services) {
         this.primary = primary;
@@ -63,6 +64,29 @@ public final class MultiCurrencyEconomyService implements AurumEconomyApi {
                 request.idempotencyKey(), zero, zero, zero, "Unknown currency: " + request.currencyId()));
     }
 
+    @Override public CompletionStage<ovh.aurumgg.core.api.HoldResult> createHold(
+            ovh.aurumgg.core.api.HoldRequest request) {
+        HoldService current = holdService;
+        return current == null ? AurumEconomyApi.super.createHold(request) : current.create(request);
+    }
+
+    @Override public CompletionStage<ovh.aurumgg.core.api.HoldResult> captureHold(
+            java.util.UUID holdId, TransactionRequest request) {
+        HoldService current = holdService;
+        return current == null ? AurumEconomyApi.super.captureHold(holdId, request)
+                : current.capture(holdId, request);
+    }
+
+    @Override public CompletionStage<ovh.aurumgg.core.api.HoldResult> releaseHold(java.util.UUID holdId) {
+        HoldService current = holdService;
+        return current == null ? AurumEconomyApi.super.releaseHold(holdId) : current.release(holdId);
+    }
+
+    @Override public CompletionStage<Optional<ovh.aurumgg.core.api.HoldSnapshot>> hold(String key) {
+        HoldService current = holdService;
+        return current == null ? AurumEconomyApi.super.hold(key) : current.find(key);
+    }
+
     @Override public CompletionStage<Optional<ovh.aurumgg.core.api.ExchangeQuote>> quoteExchange(
             AccountId account, String fromCurrencyId, String toCurrencyId, BigDecimal sourceAmount,
             Map<String, String> metadata) {
@@ -78,6 +102,7 @@ public final class MultiCurrencyEconomyService implements AurumEconomyApi {
     }
 
     public void attachExchangeService(ExchangeService service) { this.exchangeService = service; }
+    public void attachHoldService(HoldService service) { this.holdService = service; }
 
     public CompletionStage<TransactionResult> setPlayerBalance(AccountId account, String currencyId,
                                                                 BigDecimal target, String key,

@@ -1,4 +1,4 @@
-# AurumCore 0.6.1
+# AurumCore 0.7.0
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -12,7 +12,7 @@ them into the dormant ledger, verifies every balance and exports rollback CSV.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.6.1.jar` to `plugins/`.
+2. Copy `AurumCore-0.7.0.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
@@ -79,6 +79,20 @@ Fund or withdraw that liquidity with
 `/aexchange reserve <rule> <currency> <give|take> <amount>`.
 
 See `../docs/aurum-multi-currency.md` for the full command and API contract.
+
+## Durable holds
+
+Version 0.7.0 adds asynchronous `createHold`, `captureHold`, `releaseHold` and
+`hold` methods to `AurumEconomyApi`. A hold reserves the complete payer debit,
+including ADDED policies, without moving money before the game-side action is
+ready. Every ordinary ledger debit respects active holds. Capture commits the
+original category and policies exactly once; release restores available balance
+because reserved funds never left the account.
+
+Hold lifetime is capped by `holds.max-ttl-seconds` (300 by default, 10..3600).
+Expired holds stop reducing available balance. Database failures fail closed,
+and a capture retry after a lost response resumes through its stable transaction
+key instead of charging twice. See `../docs/aurum-holds.md` for the lifecycle.
 
 ## Runtime behavior
 

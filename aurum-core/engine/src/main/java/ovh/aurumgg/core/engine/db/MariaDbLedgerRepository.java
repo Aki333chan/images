@@ -128,6 +128,11 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
 
     @Override
     public LedgerCommit commit(TransactionPlan plan, CurrencySpec currency) throws SQLException {
+        return commit(plan, currency, null);
+    }
+
+    @Override
+    public LedgerCommit commit(TransactionPlan plan, CurrencySpec currency, UUID capturedHold) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             connection.setAutoCommit(false);
@@ -152,7 +157,11 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                 for (LedgerPosting posting : ordered) {
                     LockedAccount account = locked.get(posting.account());
                     BigDecimal after = account.balance().add(posting.amount()).setScale(currency.scale());
-                    if (after.signum() < 0 && posting.account().type() != AccountType.SYSTEM_SOURCE) {
+                    BigDecimal reserved = posting.amount().signum() < 0
+                            ? MariaDbHoldRepository.activeHeld(connection, account.id(), currency.id(), capturedHold)
+                            : BigDecimal.ZERO;
+                    if (after.subtract(reserved).signum() < 0
+                            && posting.account().type() != AccountType.SYSTEM_SOURCE) {
                         String reason = "Insufficient funds in " + posting.account().stableKey();
                         markRejected(connection, transactionId, reason);
                         connection.commit();
@@ -195,6 +204,20 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
             } catch (RuntimeException exception) {
                 try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
                 throw exception;
+            }
+        }
+    }
+
+    @Override
+    public boolean transactionCommitted(String idempotencyKey) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT 1 FROM aurum_transactions
+                     WHERE idempotency_key = ? AND status = 'COMMITTED'
+                     """)) {
+            statement.setString(1, idempotencyKey);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next();
             }
         }
     }
@@ -378,6 +401,7 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
         LockedAccount value = locked.get(account);
         return value == null ? BigDecimal.ZERO.setScale(currency.scale()) : value.balance().setScale(currency.scale());
     }
+
 
     private static String jsonArray(List<String> values) {
         return "[" + values.stream().map(value -> "\"" + jsonEscape(value) + "\"")

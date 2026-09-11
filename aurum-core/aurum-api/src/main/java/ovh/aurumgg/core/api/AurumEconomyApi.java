@@ -37,6 +37,25 @@ public interface AurumEconomyApi {
 
     CompletionStage<TransactionResult> transfer(TransactionRequest request);
 
+    default CompletionStage<HoldResult> createHold(HoldRequest request) {
+        return java.util.concurrent.CompletableFuture.completedFuture(new HoldResult(
+                HoldResult.Status.UNAVAILABLE, Optional.empty(), "Holds are unavailable"));
+    }
+
+    default CompletionStage<HoldResult> captureHold(java.util.UUID holdId, TransactionRequest request) {
+        return java.util.concurrent.CompletableFuture.completedFuture(new HoldResult(
+                HoldResult.Status.UNAVAILABLE, Optional.empty(), "Holds are unavailable"));
+    }
+
+    default CompletionStage<HoldResult> releaseHold(java.util.UUID holdId) {
+        return java.util.concurrent.CompletableFuture.completedFuture(new HoldResult(
+                HoldResult.Status.UNAVAILABLE, Optional.empty(), "Holds are unavailable"));
+    }
+
+    default CompletionStage<Optional<HoldSnapshot>> hold(String idempotencyKey) {
+        return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
+    }
+
     default CompletionStage<Optional<ExchangeQuote>> quoteExchange(
             AccountId account, String fromCurrencyId, String toCurrencyId,
             BigDecimal sourceAmount, Map<String, String> metadata) {

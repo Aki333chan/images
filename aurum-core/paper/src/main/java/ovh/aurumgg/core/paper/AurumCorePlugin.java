@@ -28,6 +28,7 @@ import ovh.aurumgg.core.engine.LedgerRepository;
 import ovh.aurumgg.core.engine.ExchangeRegistry;
 import ovh.aurumgg.core.engine.ExchangeRepository;
 import ovh.aurumgg.core.engine.ExchangeService;
+import ovh.aurumgg.core.engine.HoldService;
 import ovh.aurumgg.core.engine.MultiCurrencyEconomyService;
 import ovh.aurumgg.core.engine.PassiveEconomyService;
 import ovh.aurumgg.core.engine.PolicyRegistry;
@@ -155,6 +156,9 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                     }
                     MultiCurrencyEconomyService service = new MultiCurrencyEconomyService(
                             settings.currency(), services);
+                    service.attachHoldService(new HoldService(settings.currencies(), opened.holdRepository(),
+                            service, databaseExecutor, Clock.systemUTC(), mutationLock,
+                            Duration.ofSeconds(settings.holdMaxTtlSeconds())));
                     if (settings.exchange().enabled()) {
                         service.attachExchangeService(new ExchangeService(settings.currencies(), exchangeRegistry,
                                 opened.exchangeRepository(), service, databaseExecutor, Clock.systemUTC(),

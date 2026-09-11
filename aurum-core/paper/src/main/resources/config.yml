@@ -107,6 +107,10 @@ payments:
   maximum: "1000000.00"
   cooldown-seconds: 2
 
+holds:
+  # Maximum lifetime requested by Arena, Slots, NPC or future trade sagas.
+  max-ttl-seconds: 300
+
 trading:
   enabled: false
   invite-timeout-seconds: 30
