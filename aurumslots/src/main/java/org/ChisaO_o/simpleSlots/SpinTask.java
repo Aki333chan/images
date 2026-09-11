@@ -1,6 +1,5 @@
 package org.ChisaO_o.simpleSlots;
 
-import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
@@ -23,13 +22,15 @@ final class SpinTask extends BukkitRunnable {
     private final SimpleSlots plugin;
     private final SlotMachine machine;
     private final Player player;
+    private final SpinRecord paidSpin;
     private final Material[] slots = new Material[3];
     private int ticks;
 
-    SpinTask(SimpleSlots plugin, SlotMachine machine, Player player) {
+    SpinTask(SimpleSlots plugin, SlotMachine machine, Player player, SpinRecord paidSpin) {
         this.plugin = plugin;
         this.machine = machine;
         this.player = player;
+        this.paidSpin = paidSpin;
         machine.isSpinning = true;
     }
 
@@ -62,6 +63,7 @@ final class SpinTask extends BukkitRunnable {
             plugin.getLogger().log(java.util.logging.Level.SEVERE,
                     "Slot spin failed for machine '" + machine.id + "' and player " + player.getName(), exception);
             player.sendMessage(plugin.getMsg("spin_error"));
+            plugin.recoverSpin(paidSpin);
         }
     }
 
@@ -110,15 +112,25 @@ final class SpinTask extends BukkitRunnable {
     private void calculatePayout() {
         int multiplier = calculateMultiplier();
         if (multiplier <= 0) {
+            plugin.completeSpin(paidSpin);
             player.sendMessage(plugin.getMsg("lose"));
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
             return;
         }
 
         double winnings = machine.bet * multiplier;
-        if (!giveWinnings(winnings)) return;
+        if (paidSpin != null) {
+            plugin.payWinnings(paidSpin, winnings,
+                    credited -> announceWin(credited.doubleValue(), multiplier));
+            return;
+        }
+        giveItemWinnings(winnings);
+        announceWin(winnings, multiplier);
+    }
+
+    private void announceWin(double winnings, int multiplier) {
         String symbol = plugin.getConfig().getString("vault_symbol", "$");
-        String winningsText = plugin.isVaultRequested()
+        String winningsText = paidSpin != null
                 ? plugin.formatNumber(winnings) + symbol
                 : plugin.formatNumber(winnings) + plugin.getMsg("item_amount_suffix");
         player.sendMessage(plugin.getMsg("win")
@@ -144,20 +156,7 @@ final class SpinTask extends BukkitRunnable {
         };
     }
 
-    private boolean giveWinnings(double amount) {
-        if (plugin.isVaultRequested()) {
-            if (!plugin.isVaultReady()) {
-                player.sendMessage(plugin.getMsg("vault_deposit_failed"));
-                return false;
-            }
-            EconomyResponse response = plugin.getEconomy().depositPlayer(player, amount);
-            if (!response.transactionSuccess()) {
-                plugin.reportVaultDepositFailure(player, response);
-                return false;
-            }
-            return true;
-        }
-
+    private void giveItemWinnings(double amount) {
         int itemAmount = (int) amount;
         Material main = plugin.getMainCurrency();
         Material sub = plugin.getSubCurrency();
@@ -167,7 +166,6 @@ final class SpinTask extends BukkitRunnable {
         } else {
             giveItem(sub, itemAmount);
         }
-        return true;
     }
 
     private void giveItem(Material material, int amount) {

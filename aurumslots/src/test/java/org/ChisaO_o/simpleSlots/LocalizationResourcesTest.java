@@ -17,6 +17,9 @@ class LocalizationResourcesTest {
             assertNotNull(locale.getString("messages.no_permission"));
             assertNotNull(locale.getString("hologram.bet"));
             assertNotNull(locale.getString("status.items"));
+            assertNotNull(locale.getString("status.aurum-unavailable"));
+            assertNotNull(locale.getString("messages.payment_failed"));
+            assertNotNull(locale.getString("messages.payout_pending"));
         }
     }
 

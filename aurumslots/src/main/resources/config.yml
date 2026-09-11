@@ -1,11 +1,11 @@
 # Interface language: en, pl or ru. Existing installations with the old LANGUAGE key are migrated at runtime.
 language: en
 
-# true: списывать и выдавать деньги через Vault.
-# Если Vault или поставщик экономики недоступен, игра блокируется и НЕ переходит на золото.
+# true: денежный режим через native API AurumCore. Имя ключа сохранено для совместимости.
+# Если AurumCore не активен, игра блокируется и НЕ переходит на золото.
 use_vault: true
 
-# Используется только для отображения цены и выигрыша в режиме Vault.
+# Используется только для отображения цены и выигрыша в денежном режиме.
 vault_symbol: "$"
 
 # Размер надписи над воронкой. Рекомендуемый диапазон: 0.25–2.0.
@@ -18,3 +18,7 @@ CURRENCY: GOLD_INGOT
 # Служебные данные.
 banned_players: []
 machines: {}
+
+economy:
+  hold-ttl-seconds: 300
+  recovery-retry-seconds: 20

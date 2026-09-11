@@ -9,6 +9,7 @@ final class SlotMachine {
     double bet = 1.0;
     int pool = 0;
     boolean isSpinning = false;
+    boolean paymentPending = false;
     Location shelfLoc;
     Location buttonLoc;
     Location hopperLoc;

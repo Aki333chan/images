@@ -1,9 +1,9 @@
 name: AurumSlots
-version: '1.3.0'
+version: '1.4.0'
 main: org.ChisaO_o.simpleSlots.SimpleSlots
 api-version: '26.2'
 description: Плагин на кастомные слот-машины через полки
-softdepend: [Vault, VaultUnlocked]
+softdepend: [AurumCore]
 
 commands:
   slots:

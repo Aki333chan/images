@@ -1,11 +1,11 @@
 locale-name: English
 status:
   items: "items"
-  vault-unavailable: "Vault (unavailable)"
+  aurum-unavailable: "AurumCore (unavailable)"
   none: "none"
 hologram:
   bet: "&eBet: &a%bet%"
-  vault-unavailable: "&c[Vault unavailable]"
+  aurum-unavailable: "&c[AurumCore unavailable]"
   legacy-prefixes: ["Bet:", "Zakład:", "Ставка:"]
 messages:
   no_permission: "&cYou do not have permission."
@@ -35,11 +35,12 @@ messages:
   no_bet: "&cNo bet has been deposited."
   bet_accepted: "&aBet accepted."
   not_enough: "&cNot enough currency. Required: %req% items."
-  not_enough_vault: "&cYour balance is too low."
-  vault_unavailable: "&cVault mode is enabled, but no economy provider is available. Contact an administrator."
-  vault_hopper: "&eIn Vault mode, press the machine button; the bet is taken from your balance."
-  vault_withdraw_failed: "&cVault could not withdraw the bet. No money was accepted."
-  vault_deposit_failed: "&cVault could not deposit your winnings. Contact an administrator."
+  not_enough_money: "&cYour available balance is too low."
+  aurum_unavailable: "&cMoney mode is enabled, but AurumCore is unavailable. Contact an administrator."
+  money_hopper: "&eIn money mode, press the machine button; the bet is reserved from your balance."
+  payment_pending: "&eYour previous payment request is still being processed."
+  payment_failed: "&cThe bet could not be accepted. No completed payment will be lost."
+  payout_pending: "&eYour winnings are saved and will be credited automatically when the economy is available."
   exchange: "&cThe bet requires change or is not divisible by 10."
   wrong_currency: "&cWrong currency."
   win: "&aYou won %win%! (x%multi%)"

@@ -51,8 +51,10 @@ class RebrandingTest {
             assertNotNull(stream);
             var metadata = YamlConfiguration.loadConfiguration(new InputStreamReader(stream, StandardCharsets.UTF_8));
             assertEquals("AurumSlots", metadata.getString("name"));
+            assertEquals("1.4.0", metadata.getString("version"));
             assertEquals("org.ChisaO_o.simpleSlots.SimpleSlots", metadata.getString("main"));
             assertTrue(metadata.getStringList("commands.slots.aliases").contains("aurumslots"));
+            assertTrue(metadata.getStringList("softdepend").contains("AurumCore"));
         }
     }
 }

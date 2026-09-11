@@ -1,11 +1,11 @@
 locale-name: Polski
 status:
   items: "przedmioty"
-  vault-unavailable: "Vault (niedostępny)"
+  aurum-unavailable: "AurumCore (niedostępny)"
   none: "brak"
 hologram:
   bet: "&eZakład: &a%bet%"
-  vault-unavailable: "&c[Vault niedostępny]"
+  aurum-unavailable: "&c[AurumCore niedostępny]"
   legacy-prefixes: ["Bet:", "Zakład:", "Ставка:"]
 messages:
   no_permission: "&cNie masz uprawnień."
@@ -35,11 +35,12 @@ messages:
   no_bet: "&cNie wpłacono zakładu."
   bet_accepted: "&aZakład został przyjęty."
   not_enough: "&cZa mało waluty. Potrzeba %req% przedmiotów."
-  not_enough_vault: "&cMasz za mało środków."
-  vault_unavailable: "&cTryb Vault jest włączony, ale dostawca ekonomii jest niedostępny. Skontaktuj się z administratorem."
-  vault_hopper: "&eW trybie Vault naciśnij przycisk maszyny; stawka zostanie pobrana z salda."
-  vault_withdraw_failed: "&cNie udało się pobrać stawki przez Vault. Pieniądze nie zostały przyjęte."
-  vault_deposit_failed: "&cNie udało się wypłacić wygranej przez Vault. Skontaktuj się z administratorem."
+  not_enough_money: "&cMasz za mało dostępnych środków."
+  aurum_unavailable: "&cTryb pieniężny jest włączony, ale AurumCore jest niedostępny. Skontaktuj się z administratorem."
+  money_hopper: "&eW trybie pieniężnym naciśnij przycisk maszyny; stawka zostanie zarezerwowana z salda."
+  payment_pending: "&ePoprzednie żądanie płatności jest nadal przetwarzane."
+  payment_failed: "&cNie udało się przyjąć stawki. Żadna zakończona płatność nie zostanie utracona."
+  payout_pending: "&eWygrana została zapisana i będzie wypłacona automatycznie po odzyskaniu ekonomii."
   exchange: "&cStawka wymaga rozmienienia albo nie jest podzielna przez 10."
   wrong_currency: "&cNieprawidłowa waluta."
   win: "&aWygrywasz %win%! (x%multi%)"

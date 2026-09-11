@@ -1,11 +1,11 @@
 locale-name: Русский
 status:
   items: "предметы"
-  vault-unavailable: "Vault (недоступен)"
+  aurum-unavailable: "AurumCore (недоступен)"
   none: "нет"
 hologram:
   bet: "&eСтавка: &a%bet%"
-  vault-unavailable: "&c[Vault недоступен]"
+  aurum-unavailable: "&c[AurumCore недоступен]"
   legacy-prefixes: ["Bet:", "Zakład:", "Ставка:"]
 messages:
   no_permission: "&cНет прав."
@@ -35,11 +35,12 @@ messages:
   no_bet: "&cСтавка не внесена."
   bet_accepted: "&aСтавка принята."
   not_enough: "&cНедостаточно валюты. Нужно %req% предметов."
-  not_enough_vault: "&cНедостаточно средств на балансе."
-  vault_unavailable: "&cРежим Vault включён, но провайдер экономики недоступен. Сообщите администратору."
-  vault_hopper: "&eВ режиме Vault нажмите кнопку автомата; ставка будет списана с баланса."
-  vault_withdraw_failed: "&cНе удалось списать ставку через Vault. Деньги не были приняты."
-  vault_deposit_failed: "&cНе удалось зачислить выигрыш через Vault. Сообщите администратору."
+  not_enough_money: "&cНедостаточно доступных средств на балансе."
+  aurum_unavailable: "&cДенежный режим включён, но AurumCore недоступен. Сообщите администратору."
+  money_hopper: "&eВ денежном режиме нажмите кнопку автомата; ставка будет зарезервирована с баланса."
+  payment_pending: "&eПредыдущий платёжный запрос ещё обрабатывается."
+  payment_failed: "&cНе удалось принять ставку. Ни один завершённый платёж не будет потерян."
+  payout_pending: "&eВыигрыш сохранён и будет начислен автоматически после восстановления экономики."
   exchange: "&cСтавка требует размена или не кратна 10."
   wrong_currency: "&cНеверная валюта."
   win: "&aВы выиграли %win%! (x%multi%)"

@@ -1,7 +1,5 @@
 package org.ChisaO_o.simpleSlots;
 
-import net.milkbowl.vault.economy.Economy;
-import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -28,13 +26,10 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.server.ServiceRegisterEvent;
-import org.bukkit.event.server.ServiceUnregisterEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
@@ -52,6 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class SimpleSlots extends JavaPlugin implements CommandExecutor, TabCompleter, Listener {
     private final Map<String, SlotMachine> machines = new HashMap<>();
@@ -62,8 +58,9 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
     private Material subCurrency = Material.GOLD_NUGGET;
     private Material mainCurrency = Material.GOLD_INGOT;
     private boolean vaultRequested;
-    private boolean startupVaultCheckComplete;
-    private Economy economy;
+    private boolean startupEconomyCheckComplete;
+    private SpinJournal spinJournal;
+    private SlotEconomyService slotEconomy;
     private NamespacedKey hologramMarkerKey;
     private NamespacedKey hologramMachineKey;
     private boolean configurationLoaded;
@@ -98,7 +95,9 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         slotsCommand.setExecutor(this);
         slotsCommand.setTabCompleter(this);
         getServer().getPluginManager().registerEvents(this, this);
-        getServer().getScheduler().runTask(this, this::refreshVaultAfterStartup);
+        getServer().getScheduler().runTask(this, this::refreshEconomyAfterStartup);
+        long recoveryTicks = Math.max(100L, getConfig().getLong("economy.recovery-retry-seconds", 20L) * 20L);
+        getServer().getScheduler().runTaskTimer(this, this::recoverTransactions, recoveryTicks, recoveryTicks);
     }
 
     @Override
@@ -126,27 +125,19 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         return mainCurrency;
     }
 
-    public boolean isVaultRequested() {
-        return vaultRequested;
-    }
-
     public boolean isVaultReady() {
-        return vaultRequested && economy != null;
-    }
-
-    public Economy getEconomy() {
-        return economy;
+        return vaultRequested && slotEconomy != null && slotEconomy.available();
     }
 
     public String getPaymentModeDescription() {
         if (!vaultRequested) {
             return locales.get("status.items");
         }
-        return economy == null ? locales.get("status.vault-unavailable") : "Vault";
+        return !isVaultReady() ? locales.get("status.aurum-unavailable") : "AurumCore";
     }
 
     public String getEconomyProviderName() {
-        return economy == null ? locales.get("status.none") : economy.getName();
+        return isVaultReady() ? "AurumCore" : locales.get("status.none");
     }
 
     /** Read-only machine cards for the AurumUI administration screen. */
@@ -242,46 +233,42 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
 
     private void configurePaymentMode() {
         vaultRequested = getConfig().getBoolean("use_vault", false);
-        economy = null;
 
         if (!vaultRequested) {
             getLogger().info("Payment mode: items.");
             return;
         }
-        if (setupEconomy()) {
-            getLogger().info("Payment mode: Vault (provider: " + economy.getName() + ").");
-        } else if (!startupVaultCheckComplete) {
-            getLogger().info("use_vault is enabled; waiting for the economy provider to finish loading.");
+        if (Bukkit.getPluginManager().getPlugin("AurumCore") == null) {
+            getLogger().severe("Money mode is enabled, but AurumCore is not installed. Slot payments are blocked.");
+            return;
+        }
+        if (spinJournal == null) spinJournal = new SpinJournal(this);
+        if (slotEconomy == null) {
+            slotEconomy = new SlotEconomyService(this, spinJournal);
+            getServer().getPluginManager().registerEvents(slotEconomy, this);
+        }
+        if (slotEconomy.hook()) {
+            getLogger().info("Payment mode: AurumCore native economy.");
+        } else if (!startupEconomyCheckComplete) {
+            getLogger().info("Money mode is enabled; waiting for AurumCore to finish loading.");
         } else {
-            getLogger().severe("use_vault is enabled, but no Vault economy provider is registered. Slot payments are blocked; the plugin will not fall back to items.");
+            getLogger().severe("Money mode is enabled, but active AurumCore is unavailable. Slot payments are blocked; the plugin will not fall back to items.");
         }
     }
 
-    private boolean setupEconomy() {
-        RegisteredServiceProvider<Economy> registration = getServer().getServicesManager().getRegistration(Economy.class);
-        if (registration == null) {
-            economy = null;
-            return false;
-        }
-        economy = registration.getProvider();
-        return economy != null;
-    }
-
-    private void refreshVaultAfterStartup() {
+    private void refreshEconomyAfterStartup() {
         if (!isEnabled()) {
             return;
         }
-        startupVaultCheckComplete = true;
+        startupEconomyCheckComplete = true;
         if (!vaultRequested) {
             return;
         }
-        Economy previous = economy;
-        if (setupEconomy()) {
-            if (previous != economy) {
-                getLogger().info("Vault economy provider confirmed after server startup: " + economy.getName());
-            }
+        if (slotEconomy != null && slotEconomy.hook()) {
+            getLogger().info("AurumCore economy confirmed after server startup.");
+            slotEconomy.recover();
         } else {
-            getLogger().severe("Vault economy provider is still unavailable after server startup.");
+            getLogger().severe("AurumCore economy is still unavailable after server startup.");
         }
         updateCache();
     }
@@ -366,8 +353,8 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         String price;
         if (vaultRequested) {
             price = formatNumber(machine.bet) + getConfig().getString("vault_symbol", "$");
-            if (economy == null && startupVaultCheckComplete) {
-                price += " " + locales.get("hologram.vault-unavailable");
+            if (!isVaultReady() && startupEconomyCheckComplete) {
+                price += " " + locales.get("hologram.aurum-unavailable");
             }
         } else {
             price = formatNumber(machine.bet) + " " + subCurrency.name();
@@ -706,7 +693,7 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             event.setUseInteractedBlock(Event.Result.DENY);
             event.setCancelled(true);
             if (vaultRequested) {
-                player.sendMessage(economy == null ? getMsg("vault_unavailable") : getMsg("vault_hopper"));
+                player.sendMessage(!isVaultReady() ? getMsg("aurum_unavailable") : getMsg("money_hopper"));
             } else {
                 handlePhysicalBet(player, machine);
             }
@@ -725,7 +712,7 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             return;
         }
         if (vaultRequested) {
-            takeVaultBetAndStart(player, machine);
+            takeAurumBetAndStart(player, machine);
             return;
         }
         int bet = (int) machine.bet;
@@ -735,26 +722,19 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         }
         machine.pool -= bet;
         saveConfigAfterPoolChange();
-        startSpin(machine, player);
+        startSpin(machine, player, null);
     }
 
-    private void takeVaultBetAndStart(Player player, SlotMachine machine) {
-        if (economy == null) {
-            player.sendMessage(getMsg("vault_unavailable"));
-            return;
-        }
-        if (!economy.has(player, machine.bet)) {
-            player.sendMessage(getMsg("not_enough_vault"));
-            return;
-        }
+    private void recoverTransactions() {
+        if (slotEconomy != null) slotEconomy.recover();
+    }
 
-        EconomyResponse response = economy.withdrawPlayer(player, machine.bet);
-        if (!response.transactionSuccess()) {
-            player.sendMessage(getMsg("vault_withdraw_failed"));
-            getLogger().warning("Vault withdrawal failed for " + player.getName() + ": " + response.errorMessage);
+    private void takeAurumBetAndStart(Player player, SlotMachine machine) {
+        if (!isVaultReady()) {
+            player.sendMessage(getMsg("aurum_unavailable"));
             return;
         }
-        startSpin(machine, player);
+        slotEconomy.requestSpin(player, machine);
     }
 
     private void handlePhysicalBet(Player player, SlotMachine machine) {
@@ -797,14 +777,40 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         pendingPoolSave = null;
     }
 
-    private void startSpin(SlotMachine machine, Player player) {
-        SpinTask task = new SpinTask(this, machine, player);
+    private void startSpin(SlotMachine machine, Player player, SpinRecord record) {
+        SpinTask task = new SpinTask(this, machine, player, record);
         activeSpins.add(task);
         task.runTaskTimer(this, 0L, 5L);
     }
 
     public void removeTask(SpinTask task) {
         activeSpins.remove(task);
+    }
+
+    void startMoneySpin(SlotMachine machine, Player player, SpinRecord record) {
+        startSpin(machine, player, record);
+    }
+
+    boolean isCurrentMachine(SlotMachine machine) {
+        return machines.get(machine.id) == machine;
+    }
+
+    void refreshPaymentDisplay() {
+        updateCache();
+    }
+
+    public void completeSpin(SpinRecord record) {
+        if (record != null) slotEconomy.complete(record);
+    }
+
+    public void recoverSpin(SpinRecord record) {
+        if (record != null) {
+            slotEconomy.abort(record);
+        }
+    }
+
+    public void payWinnings(SpinRecord record, double winnings, Consumer<BigDecimal> success) {
+        slotEconomy.payWinnings(record, winnings, success);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -841,31 +847,4 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         return key != null && locationCache.containsKey(key);
     }
 
-    @EventHandler
-    public void onServiceRegister(ServiceRegisterEvent event) {
-        if (!vaultRequested || economy != null || event.getProvider().getService() != Economy.class) {
-            return;
-        }
-        if (setupEconomy()) {
-            getLogger().info("Vault economy provider became available: " + economy.getName());
-            updateCache();
-        }
-    }
-
-    @EventHandler
-    public void onServiceUnregister(ServiceUnregisterEvent event) {
-        if (!vaultRequested || economy == null || event.getProvider().getService() != Economy.class) {
-            return;
-        }
-        if (event.getProvider().getProvider() == economy) {
-            getLogger().severe("Vault economy provider was unregistered. Slot payments are blocked.");
-            economy = null;
-            updateCache();
-        }
-    }
-
-    public void reportVaultDepositFailure(Player player, EconomyResponse response) {
-        player.sendMessage(getMsg("vault_deposit_failed"));
-        getLogger().severe("Vault deposit failed for " + player.getName() + ": " + response.errorMessage);
-    }
 }
