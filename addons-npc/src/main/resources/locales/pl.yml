@@ -6,6 +6,7 @@ messages:
   npc-not-found: "&cNie znaleziono NPC '&f{id}&c'."
   shop-not-found: "&cNie znaleziono sklepu '&f{shop}&c'."
   buyer-not-found: "&cNie znaleziono skupu '&f{buyer}&c'."
+  exchanger-not-found: "&cNie znaleziono kantoru '&f{exchanger}&c'."
   cooldown: "&7Odczekaj &e{seconds}s &7przed ponownym użyciem tego NPC."
   vault-unavailable: "&cEkonomia jest niedostępna. Zainstaluj Vault oraz dostawcę ekonomii."
   insufficient-funds: "&cPotrzebujesz &e{price}&c. Twoje saldo: &e{balance}&c."
@@ -30,6 +31,12 @@ messages:
   guild-purchase-success: "&aBonus gildii został kupiony."
   guild-purchase-failed: "&cNie przyznano bonusu. Płatność została zwrócona. Powód: &f{reason}"
   guild-purchase-refund-failed: "&4Nie przyznano bonusu i automatyczny zwrot się nie powiódł. Natychmiast skontaktuj się z administratorem."
+  aurum-exchange-unavailable: "&cWymiana walut jest niedostępna, ponieważ AurumCore nie jest aktywny."
+  exchange-quote-unavailable: "&cTa oferta wymiany jest obecnie niedostępna."
+  exchange-quote-changed: "&eKurs się zmienił. Sprawdź odświeżoną ofertę przed potwierdzeniem."
+  exchange-failed: "&cNie udało się potwierdzić wymiany. Możesz bezpiecznie spróbować ponownie."
+  exchange-rejected: "&cWymiana została odrzucona: &f{reason}"
+  exchange-success: "&aWymieniono &f{source} &ana &f{receive}&a. Opłata: &f{fee}&a."
   unknown-error: "nieznany błąd"
 common: {none: "brak"}
 gui:
@@ -68,6 +75,23 @@ gui:
     replaces: "&cZakup zastąpi obecny bonus."
     required-rank: "&cWymagana ranga: &f{rank}"
     click-to-buy: "&eKliknij, aby kupić dla gildii &f{guild}&e."
+  exchanger:
+    default-title: "&8Wymiana walut"
+    confirm-title: "&8Potwierdź wymianę"
+    confirm: "&a&lPotwierdź"
+    confirm-hint: "&7Kliknij, aby wykonać wymianę"
+    cancel: "&cAnuluj"
+    cancel-hint: "&7Wróć do kantoru"
+    processing: "&ePrzetwarzanie..."
+    retry: "&a&lSpróbuj bezpiecznie ponownie"
+    loading: "&7Pobieranie aktualnego kursu..."
+    unavailable: "&cTa para walut jest niedostępna"
+    give: "&7Oddajesz: &f{source}"
+    receive: "&7Otrzymujesz: &f{receive}"
+    rate: "&7Kurs efektywny: &f{rate}"
+    fee: "&7Opłata: &f{fee}"
+    review: "&eSprawdź i potwierdź w ciągu &f{seconds}s"
+    click: "&eKliknij, aby sprawdzić wymianę"
 time:
   expired: "wygasł"
   until-disabled: "do wyłączenia"
@@ -104,6 +128,7 @@ command-help:
   - "&e/npc shop <create|delete|list|open|offer|quantity|discount|remove> ..."
   - "&e/npc buyer <create|delete|list|open|title|size|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ..."
   - "&e/npc guildtrader <create|delete|list|open|title|size|rank|offer|price|icon|name|lore|permission|remove> ..."
+  - "&e/npc exchanger <create|delete|list|open|title|size|offer|pair|amount|icon|name|lore|permission|remove> ..."
   - "&e/npc list &7/ &e/npc info <id> &7/ &e/npc reload"
 tab:
   dialogue-examples: ["&eWitaj,{player}!", "&7Kliknij_ponownie...", "{npc}"]
@@ -112,6 +137,7 @@ tab:
   buyer-lore-examples: ["&7Cena:_{unit_price}", "&7Hurtowo:_{bulk_amount}_za_{bulk_price}"]
   buyer-command-examples: ["say_{player}_sprzedał_{amount}_{item}_za_{price}"]
   guild-lore-examples: ["&7Bonus:_{bonus_value}", "&7Czas:_{duration}", "&6Cena:_{price}"]
+  exchange-lore-examples: ["&7Oddajesz:_{source}", "&7Otrzymujesz:_{receive}", "&7Opłata:_{fee}"]
 literal-replacements:
   - {from: "Skin lookup started; it will be applied asynchronously.", to: "Rozpoczęto pobieranie skórki; zostanie zastosowana asynchronicznie."}
   - {from: "Updated NPC skin.", to: "Zmieniono skórkę NPC."}

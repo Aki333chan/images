@@ -1,0 +1,4 @@
+# Currency exchange menus backed by AurumCore. Link one with:
+# /npc action add <npc> exchanger <exchanger-id>
+schema-version: 1
+exchangers: {}

@@ -6,6 +6,7 @@ messages:
   npc-not-found: "&cNPC '&f{id}&c' was not found."
   shop-not-found: "&cShop '&f{shop}&c' was not found."
   buyer-not-found: "&cBuyer '&f{buyer}&c' was not found."
+  exchanger-not-found: "&cExchanger '&f{exchanger}&c' was not found."
   cooldown: "&7Please wait &e{seconds}s &7before using this NPC again."
   vault-unavailable: "&cEconomy is unavailable. Install Vault and an economy provider."
   insufficient-funds: "&cYou need &e{price}&c. Your balance: &e{balance}&c."
@@ -30,6 +31,12 @@ messages:
   guild-purchase-success: "&aGuild bonus purchased successfully."
   guild-purchase-failed: "&cThe bonus was not granted. Your payment was returned. Reason: &f{reason}"
   guild-purchase-refund-failed: "&4The bonus was not granted and the automatic refund failed. Contact an administrator immediately."
+  aurum-exchange-unavailable: "&cCurrency exchange is unavailable because AurumCore is not active."
+  exchange-quote-unavailable: "&cThis exchange offer is currently unavailable."
+  exchange-quote-changed: "&eThe exchange rate changed. Review the refreshed quote before confirming."
+  exchange-failed: "&cThe exchange could not be confirmed. You can safely retry."
+  exchange-rejected: "&cThe exchange was rejected: &f{reason}"
+  exchange-success: "&aExchanged &f{source} &afor &f{receive}&a. Fee: &f{fee}&a."
   unknown-error: "unknown error"
 common:
   none: "none"
@@ -69,6 +76,23 @@ gui:
     replaces: "&cThis purchase will replace the current boost."
     required-rank: "&cRequired rank: &f{rank}"
     click-to-buy: "&eClick to purchase for &f{guild}&e."
+  exchanger:
+    default-title: "&8Currency exchange"
+    confirm-title: "&8Confirm exchange"
+    confirm: "&a&lConfirm"
+    confirm-hint: "&7Click to execute this exchange"
+    cancel: "&cCancel"
+    cancel-hint: "&7Return to the exchanger"
+    processing: "&eProcessing..."
+    retry: "&a&lRetry safely"
+    loading: "&7Loading current rate..."
+    unavailable: "&cThis exchange pair is unavailable"
+    give: "&7You give: &f{source}"
+    receive: "&7You receive: &f{receive}"
+    rate: "&7Effective rate: &f{rate}"
+    fee: "&7Fee: &f{fee}"
+    review: "&eReview and confirm within &f{seconds}s"
+    click: "&eClick to review this exchange"
 time:
   expired: "expired"
   until-disabled: "until disabled"
@@ -108,6 +132,7 @@ command-help:
   - "&e/npc shop <create|delete|list|open|offer|quantity|discount|remove> ..."
   - "&e/npc buyer <create|delete|list|open|title|size|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ..."
   - "&e/npc guildtrader <create|delete|list|open|title|size|rank|offer|price|icon|name|lore|permission|remove> ..."
+  - "&e/npc exchanger <create|delete|list|open|title|size|offer|pair|amount|icon|name|lore|permission|remove> ..."
   - "&e/npc list &7/ &e/npc info <id> &7/ &e/npc reload"
 tab:
   dialogue-examples: ["&eHello,{player}!", "&7Click_again...", "{npc}"]
@@ -116,4 +141,5 @@ tab:
   buyer-lore-examples: ["&7Price:_{unit_price}", "&7Bulk:_{bulk_amount}_for_{bulk_price}"]
   buyer-command-examples: ["say_{player}_sold_{amount}_{item}_for_{price}"]
   guild-lore-examples: ["&7Boost:_{bonus_value}", "&7Duration:_{duration}", "&6Price:_{price}"]
+  exchange-lore-examples: ["&7Give:_{source}", "&7Receive:_{receive}", "&7Fee:_{fee}"]
 literal-replacements: []

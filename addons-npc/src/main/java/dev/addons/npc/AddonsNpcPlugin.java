@@ -5,6 +5,7 @@ import dev.addons.npc.config.NpcRepository;
 import dev.addons.npc.config.ShopRepository;
 import dev.addons.npc.config.BuyerRepository;
 import dev.addons.npc.config.GuildTraderRepository;
+import dev.addons.npc.config.ExchangerRepository;
 import dev.addons.npc.listener.InteractionListener;
 import dev.addons.npc.listener.ProtectionListener;
 import dev.addons.npc.listener.NpcSpawnBypassListener;
@@ -20,6 +21,7 @@ import dev.addons.npc.service.ShopService;
 import dev.addons.npc.service.BuyerService;
 import dev.addons.npc.service.AurumGuildsHook;
 import dev.addons.npc.service.GuildTraderService;
+import dev.addons.npc.service.AurumExchangeService;
 import dev.addons.npc.model.BuyerDefinition;
 import dev.addons.npc.model.BuyerOffer;
 import dev.addons.npc.model.ClickMode;
@@ -49,6 +51,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     private ShopRepository shopRepository;
     private BuyerRepository buyerRepository;
     private GuildTraderRepository guildTraderRepository;
+    private ExchangerRepository exchangerRepository;
     private EconomyService economy;
     private MessageService messages;
     private DialogueService dialogues;
@@ -56,6 +59,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     private AurumGuildsHook guildsHook;
     private ShopService shopService;
     private BuyerService buyerService;
+    private AurumExchangeService exchangerService;
 
     @Override
     public void onEnable() {
@@ -66,10 +70,12 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         shopRepository = new ShopRepository(this);
         buyerRepository = new BuyerRepository(this);
         guildTraderRepository = new GuildTraderRepository(this);
+        exchangerRepository = new ExchangerRepository(this);
         npcRepository.load();
         shopRepository.load();
         buyerRepository.load();
         guildTraderRepository.load();
+        exchangerRepository.load();
 
         messages = new MessageService(this);
         economy = new EconomyService(this);
@@ -81,11 +87,15 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         buyerService = new BuyerService(this, buyerRepository, economy, messages);
         guildsHook = new AurumGuildsHook(this);
         GuildTraderService guildTraderService = new GuildTraderService(this, guildTraderRepository, economy, messages, guildsHook);
-        ActionExecutor actionExecutor = new ActionExecutor(messages, shopService, buyerService, guildTraderService);
+        exchangerService = new AurumExchangeService(this, exchangerRepository, messages);
+        boolean aurumExchange = exchangerService.hook();
+        ActionExecutor actionExecutor = new ActionExecutor(messages, shopService, buyerService,
+                guildTraderService, exchangerService);
 
         getServer().getPluginManager().registerEvents(shopService, this);
         getServer().getPluginManager().registerEvents(buyerService, this);
         getServer().getPluginManager().registerEvents(guildTraderService, this);
+        getServer().getPluginManager().registerEvents(exchangerService, this);
         getServer().getPluginManager().registerEvents(
                 new InteractionListener(this, npcManager, dialogues, actionExecutor, economy, messages), this);
         getServer().getPluginManager().registerEvents(new ProtectionListener(this, npcManager), this);
@@ -97,8 +107,9 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         if (command == null) {
             throw new IllegalStateException("Command 'npc' is missing from plugin.yml");
         }
-        NpcCommand handler = new NpcCommand(this, npcRepository, shopRepository, buyerRepository, guildTraderRepository,
-                npcManager, shopService, buyerService, guildTraderService, messages);
+        NpcCommand handler = new NpcCommand(this, npcRepository, shopRepository, buyerRepository,
+                guildTraderRepository, exchangerRepository, npcManager, shopService, buyerService,
+                guildTraderService, exchangerService, messages);
         command.setExecutor(handler);
         command.setTabCompleter(handler);
 
@@ -106,9 +117,11 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         getServer().getScheduler().runTaskLater(this, npcManager::start, startupDelay);
         getLogger().info("Enabled " + npcRepository.ids().size() + " NPC(s) and " + shopRepository.ids().size()
                 + " shop(s), " + buyerRepository.ids().size() + " buyer(s), and "
-                + guildTraderRepository.ids().size() + " guild trader(s). Vault economy: "
+                + guildTraderRepository.ids().size() + " guild trader(s), "
+                + exchangerRepository.ids().size() + " exchanger(s). Vault economy: "
                 + (vault ? "connected" : "unavailable") + "; AurumGuilds: "
-                + (guildsHook.available() ? "connected" : "unavailable"));
+                + (guildsHook.available() ? "connected" : "unavailable") + "; Aurum exchange: "
+                + (aurumExchange ? "connected" : "unavailable"));
     }
 
     @Override
@@ -117,6 +130,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         if (shopRepository != null) shopRepository.save();
         if (buyerRepository != null) buyerRepository.save();
         if (guildTraderRepository != null) guildTraderRepository.save();
+        if (exchangerRepository != null) exchangerRepository.save();
         if (npcManager != null) npcManager.stop();
     }
 
@@ -127,8 +141,10 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         shopRepository.load();
         buyerRepository.load();
         guildTraderRepository.load();
+        exchangerRepository.load();
         dialogues.clear();
         economy.hook();
+        exchangerService.hook();
         npcManager.syncAll();
     }
 

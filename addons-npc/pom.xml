@@ -6,7 +6,7 @@
 
     <groupId>dev.addons</groupId>
     <artifactId>addons-npc</artifactId>
-    <version>1.7.0</version>
+    <version>1.8.0</version>
     <name>AddonsNPC</name>
     <description>Configurable interactive mannequin NPCs for Paper and Spigot 26.2</description>
 
@@ -18,6 +18,10 @@
 
     <repositories>
         <repository>
+            <id>aurum-local-api</id>
+            <url>file://${project.basedir}/local-repo</url>
+        </repository>
+        <repository>
             <id>spigotmc-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
         </repository>
@@ -28,6 +32,12 @@
     </repositories>
 
     <dependencies>
+        <dependency>
+            <groupId>ovh.aurumgg</groupId>
+            <artifactId>aurum-api</artifactId>
+            <version>0.6.1</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>

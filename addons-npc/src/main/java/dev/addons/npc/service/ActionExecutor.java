@@ -11,12 +11,15 @@ public final class ActionExecutor {
     private final ShopService shops;
     private final BuyerService buyers;
     private final GuildTraderService guildTraders;
+    private final AurumExchangeService exchangers;
 
-    public ActionExecutor(MessageService messages, ShopService shops, BuyerService buyers, GuildTraderService guildTraders) {
+    public ActionExecutor(MessageService messages, ShopService shops, BuyerService buyers,
+                          GuildTraderService guildTraders, AurumExchangeService exchangers) {
         this.messages = messages;
         this.shops = shops;
         this.buyers = buyers;
         this.guildTraders = guildTraders;
+        this.exchangers = exchangers;
     }
 
     public void execute(Player player, NpcDefinition npc, ActionDefinition action, Map<String, ?> placeholders) {
@@ -28,6 +31,7 @@ public final class ActionExecutor {
             case SHOP -> shops.open(player, value);
             case BUYER -> buyers.open(player, value);
             case GUILD_TRADER -> guildTraders.open(player, value);
+            case EXCHANGER -> exchangers.open(player, value);
             case SOUND -> playSound(player, value);
             case TITLE -> showTitle(player, value);
         }

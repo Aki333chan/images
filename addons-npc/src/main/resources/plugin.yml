@@ -1,13 +1,14 @@
 name: AddonsNPC
-version: '1.7.0'
+version: '1.8.0'
 main: dev.addons.npc.AddonsNpcPlugin
 api-version: '26.2'
-description: Configurable NPCs with shops, buyers and AurumGuilds bonus traders.
+description: Configurable NPCs with shops, buyers, currency exchangers and AurumGuilds bonus traders.
 authors: [addons]
+depend: [AurumCore]
 softdepend: [Vault, WorldGuard, AurumGuilds]
 commands:
   npc:
-    description: Manage AddonsNPC NPCs, shops, buyers and guild traders
+    description: Manage AddonsNPC NPCs, shops, buyers, exchangers and guild traders
     usage: /npc help
     aliases: [addnpc, anpc]
 permissions:
@@ -25,4 +26,7 @@ permissions:
     default: true
   addonsnpc.guildtrader:
     description: Allows purchases from AurumGuilds bonus traders
+    default: true
+  addonsnpc.exchanger:
+    description: Allows currency exchange through configured NPC exchangers
     default: true

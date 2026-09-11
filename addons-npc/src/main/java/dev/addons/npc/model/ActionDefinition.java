@@ -10,6 +10,7 @@ public record ActionDefinition(Type type, String value) {
         SHOP,
         BUYER,
         GUILD_TRADER,
+        EXCHANGER,
         SOUND,
         TITLE
     }

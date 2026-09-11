@@ -6,6 +6,7 @@ messages:
   npc-not-found: "&cNPC '&f{id}&c' не найден."
   shop-not-found: "&cМагазин '&f{shop}&c' не найден."
   buyer-not-found: "&cСкупщик '&f{buyer}&c' не найден."
+  exchanger-not-found: "&cОбменник '&f{exchanger}&c' не найден."
   cooldown: "&7Подождите &e{seconds} с &7перед повторным использованием этого NPC."
   vault-unavailable: "&cЭкономика недоступна. Установите Vault и провайдер экономики."
   insufficient-funds: "&cНужно &e{price}&c. Ваш баланс: &e{balance}&c."
@@ -30,6 +31,12 @@ messages:
   guild-purchase-success: "&aУсиление гильдии успешно куплено."
   guild-purchase-failed: "&cУсиление не выдано. Платёж возвращён. Причина: &f{reason}"
   guild-purchase-refund-failed: "&4Усиление не выдано, автоматический возврат не удался. Немедленно обратитесь к администратору."
+  aurum-exchange-unavailable: "&cОбмен валют недоступен, потому что AurumCore не активен."
+  exchange-quote-unavailable: "&cЭто предложение обмена сейчас недоступно."
+  exchange-quote-changed: "&eКурс изменился. Проверьте обновлённое предложение перед подтверждением."
+  exchange-failed: "&cНе удалось подтвердить обмен. Повторная попытка безопасна."
+  exchange-rejected: "&cОбмен отклонён: &f{reason}"
+  exchange-success: "&aОбменено &f{source} &aна &f{receive}&a. Комиссия: &f{fee}&a."
   unknown-error: "неизвестная ошибка"
 common: {none: "нет"}
 gui:
@@ -68,6 +75,23 @@ gui:
     replaces: "&cПокупка заменит текущее усиление."
     required-rank: "&cТребуемый ранг: &f{rank}"
     click-to-buy: "&eНажмите, чтобы купить для &f{guild}&e."
+  exchanger:
+    default-title: "&8Обмен валют"
+    confirm-title: "&8Подтверждение обмена"
+    confirm: "&a&lПодтвердить"
+    confirm-hint: "&7Нажмите, чтобы выполнить обмен"
+    cancel: "&cОтмена"
+    cancel-hint: "&7Вернуться в обменник"
+    processing: "&eОбработка..."
+    retry: "&a&lБезопасно повторить"
+    loading: "&7Загрузка актуального курса..."
+    unavailable: "&cЭта валютная пара недоступна"
+    give: "&7Вы отдаёте: &f{source}"
+    receive: "&7Вы получаете: &f{receive}"
+    rate: "&7Эффективный курс: &f{rate}"
+    fee: "&7Комиссия: &f{fee}"
+    review: "&eПроверьте и подтвердите в течение &f{seconds} с"
+    click: "&eНажмите для проверки обмена"
 time:
   expired: "истекло"
   until-disabled: "до отключения"
@@ -104,6 +128,7 @@ command-help:
   - "&e/npc shop <create|delete|list|open|offer|quantity|discount|remove> ..."
   - "&e/npc buyer <create|delete|list|open|title|size|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ..."
   - "&e/npc guildtrader <create|delete|list|open|title|size|rank|offer|price|icon|name|lore|permission|remove> ..."
+  - "&e/npc exchanger <create|delete|list|open|title|size|offer|pair|amount|icon|name|lore|permission|remove> ..."
   - "&e/npc list &7/ &e/npc info <id> &7/ &e/npc reload"
 tab:
   dialogue-examples: ["&eПривет,{player}!", "&7Нажмите_ещё_раз...", "{npc}"]
@@ -112,6 +137,7 @@ tab:
   buyer-lore-examples: ["&7Цена:_{unit_price}", "&7Оптом:_{bulk_amount}_за_{bulk_price}"]
   buyer-command-examples: ["say_{player}_продал_{amount}_{item}_за_{price}"]
   guild-lore-examples: ["&7Бонус:_{bonus_value}", "&7Срок:_{duration}", "&6Цена:_{price}"]
+  exchange-lore-examples: ["&7Отдаёте:_{source}", "&7Получаете:_{receive}", "&7Комиссия:_{fee}"]
 literal-replacements:
   - {from: "Skin lookup started; it will be applied asynchronously.", to: "Загрузка скина начата; он будет применён асинхронно."}
   - {from: "Updated NPC skin.", to: "Скин NPC изменён."}

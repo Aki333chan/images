@@ -13,9 +13,21 @@ class GuildTraderMetadataTest {
         try (var stream = getClass().getResourceAsStream("/plugin.yml")) {
             assertNotNull(stream);
             var yaml = YamlConfiguration.loadConfiguration(new InputStreamReader(stream, StandardCharsets.UTF_8));
-            assertEquals("1.7.0", yaml.getString("version"));
+            assertEquals("1.8.0", yaml.getString("version"));
+            assertTrue(yaml.getStringList("depend").contains("AurumCore"));
             assertTrue(yaml.getStringList("softdepend").contains("AurumGuilds"));
             assertTrue(yaml.isConfigurationSection("permissions.addonsnpc.guildtrader"));
+            assertTrue(yaml.isConfigurationSection("permissions.addonsnpc.exchanger"));
+        }
+    }
+
+    @Test
+    void defaultExchangerRepositoryResourceIsPresent() throws Exception {
+        try (var stream = getClass().getResourceAsStream("/exchangers.yml")) {
+            assertNotNull(stream);
+            var yaml = YamlConfiguration.loadConfiguration(new InputStreamReader(stream, StandardCharsets.UTF_8));
+            assertEquals(1, yaml.getInt("schema-version"));
+            assertTrue(yaml.isConfigurationSection("exchangers"));
         }
     }
 

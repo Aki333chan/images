@@ -182,7 +182,7 @@ GUI показывает обычную и повышенную выплату, 
 операции получают одинаковый процентный бонус. Если срок или размер бонуса изменился после
 открытия меню, предложение сначала обновится и потребует повторного клика.
 
-При попытке создать `shop offer`, `buyer offer` или `guildtrader offer` в занятом слоте первая корректная команда
+При попытке создать `shop offer`, `buyer offer`, `guildtrader offer` или `exchanger offer` в занятом слоте первая корректная команда
 ничего не заменяет. Для подтверждения необходимо повторить ту же команду в течение 30 секунд;
 другая команда отменяет ожидающее подтверждение.
 
@@ -261,6 +261,48 @@ guild-traders:
 
 Плейсхолдеры lore: `{guild}`, `{guild_tag}`, `{bonus}`, `{bonus_type}`, `{bonus_value}`,
 `{magnitude}`, `{duration}`, `{price}`, `{current_value}`, `{current_remaining}`.
+
+## `exchangers.yml`
+
+Обменники используют активные направленные правила AurumCore и не дублируют курс в NPC-конфиге:
+
+```yaml
+schema-version: 1
+exchangers:
+  city_bank:
+    title: "&8Городской банк"
+    size: 27
+    offers:
+      11:
+        from: coins
+        to: gems
+        amount: "100"
+        icon: EMERALD
+        display-name: "&aОбменять монеты"
+        lore:
+          - "&7Отдаёте: &f{source}"
+          - "&7Получаете: &f{receive}"
+          - "&7Комиссия: &f{fee}"
+        permission: ""
+```
+
+`amount` — положительная сумма входной валюты с точностью до 8 знаков. Пара должна иметь
+действующее правило AurumCore; отсутствие правила отображается барьером. Доступны плейсхолдеры
+`{from}`, `{to}`, `{source}`, `{receive}`, `{fee}`, `{rate}` и `{seconds}`. Настройка командами:
+
+```text
+/npc exchanger create city_bank &8Городской банк
+/npc exchanger offer city_bank 11 coins gems 100 EMERALD &aОбменять монеты
+/npc exchanger pair city_bank 11 coins gems
+/npc exchanger amount city_bank 11 250
+/npc exchanger lore city_bank 11 add &7Курс:_{rate}
+/npc exchanger permission city_bank 11 bank.vip
+/npc action add banker exchanger city_bank
+```
+
+AddonsNPC 1.8.0 требует AurumCore 0.6.1+. Vault не может заменить Core в обменнике,
+поскольку его API представляет только одну primary-валюту. Сами магазины, скупщики и
+гильдейские торговцы на этом этапе продолжают использовать Vault-мост AurumCore.
 
 ### Переход с 1.0
 

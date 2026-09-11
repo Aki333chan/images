@@ -19,6 +19,9 @@ class LocalizationResourcesTest {
             assertNotNull(locale.getString("gui.shop.price"));
             assertNotNull(locale.getString("gui.buyer.unit-price"));
             assertNotNull(locale.getString("gui.guild-trader.price"));
+            assertNotNull(locale.getString("gui.exchanger.confirm"));
+            assertNotNull(locale.getString("messages.exchange-success"));
+            assertNotNull(locale.getStringList("tab.exchange-lore-examples"));
             assertNotNull(locale.getStringList("command-help"));
         }
     }

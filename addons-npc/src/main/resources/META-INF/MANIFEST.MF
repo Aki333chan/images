@@ -1,4 +1,4 @@
 Manifest-Version: 1.0
 Implementation-Title: AddonsNPC
-Implementation-Version: 1.7.0
+Implementation-Version: 1.8.0
 Built-For: Minecraft 26.2

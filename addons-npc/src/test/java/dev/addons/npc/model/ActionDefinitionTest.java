@@ -37,4 +37,12 @@ class ActionDefinitionTest {
         assertEquals(ActionDefinition.Type.GUILD_TRADER, ActionDefinition.parse("guildshop:boosts").type());
         assertEquals(ActionDefinition.Type.GUILD_TRADER, ActionDefinition.parse("guild_trader:boosts").type());
     }
+
+    @Test
+    void parsesExchangerAction() {
+        ActionDefinition action = ActionDefinition.parse("exchanger:bank");
+        assertEquals(ActionDefinition.Type.EXCHANGER, action.type());
+        assertEquals("bank", action.value());
+        assertEquals("exchanger:bank", action.serialize());
+    }
 }

@@ -5,6 +5,7 @@ import dev.addons.npc.config.NpcRepository;
 import dev.addons.npc.config.ShopRepository;
 import dev.addons.npc.config.BuyerRepository;
 import dev.addons.npc.config.GuildTraderRepository;
+import dev.addons.npc.config.ExchangerRepository;
 import dev.addons.npc.model.ActionDefinition;
 import dev.addons.npc.model.ClickMode;
 import dev.addons.npc.model.BuyerDefinition;
@@ -21,11 +22,15 @@ import dev.addons.npc.model.GuildBonusOffer;
 import dev.addons.npc.model.GuildBonusType;
 import dev.addons.npc.model.GuildRankRequirement;
 import dev.addons.npc.model.GuildTraderDefinition;
+import dev.addons.npc.model.ExchangerDefinition;
+import dev.addons.npc.model.ExchangeOffer;
 import dev.addons.npc.service.MessageService;
 import dev.addons.npc.service.NpcManager;
 import dev.addons.npc.service.ShopService;
 import dev.addons.npc.service.BuyerService;
 import dev.addons.npc.service.GuildTraderService;
+import dev.addons.npc.service.AurumExchangeService;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -50,25 +55,31 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     private final ShopRepository shops;
     private final BuyerRepository buyers;
     private final GuildTraderRepository guildTraders;
+    private final ExchangerRepository exchangers;
     private final NpcManager manager;
     private final ShopService shopService;
     private final BuyerService buyerService;
     private final GuildTraderService guildTraderService;
+    private final AurumExchangeService exchangerService;
     private final MessageService messages;
     private final Map<String, PendingReplacement> pendingReplacements = new HashMap<>();
 
     public NpcCommand(AddonsNpcPlugin plugin, NpcRepository npcs, ShopRepository shops, BuyerRepository buyers,
-                      GuildTraderRepository guildTraders, NpcManager manager, ShopService shopService,
-                      BuyerService buyerService, GuildTraderService guildTraderService, MessageService messages) {
+                      GuildTraderRepository guildTraders, ExchangerRepository exchangers,
+                      NpcManager manager, ShopService shopService, BuyerService buyerService,
+                      GuildTraderService guildTraderService, AurumExchangeService exchangerService,
+                      MessageService messages) {
         this.plugin = plugin;
         this.npcs = npcs;
         this.shops = shops;
         this.buyers = buyers;
         this.guildTraders = guildTraders;
+        this.exchangers = exchangers;
         this.manager = manager;
         this.shopService = shopService;
         this.buyerService = buyerService;
         this.guildTraderService = guildTraderService;
+        this.exchangerService = exchangerService;
         this.messages = messages;
     }
 
@@ -106,6 +117,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 case "shop" -> shop(sender, args);
                 case "buyer" -> buyer(sender, args);
                 case "guildtrader", "guildshop" -> guildTrader(sender, args);
+                case "exchanger", "exchange" -> exchanger(sender, args);
                 case "reload" -> reload(sender);
                 default -> {
                     help(sender);
@@ -851,11 +863,122 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         guildTraders.save(); ok(sender, "Removed guild bonus offer."); return true;
     }
 
+    private boolean exchanger(CommandSender sender, String[] args) {
+        require(args, 2, "/npc exchanger <create|delete|list|open|title|size|offer|pair|amount|icon|name|lore|permission|remove> ...");
+        return switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "list" -> {
+                messages.localizedRaw(sender, messages.prefix() + "&6Exchangers: &e"
+                        + String.join("&7, &e", exchangers.ids()), Map.of());
+                yield true;
+            }
+            case "create" -> {
+                require(args, 3, "/npc exchanger create <id> [title]");
+                String id = NpcDefinition.normalizeId(args[2]);
+                if (exchangers.get(id) != null) throw new IllegalArgumentException("Exchanger already exists.");
+                exchangers.put(new ExchangerDefinition(id,
+                        args.length > 3 ? join(args, 3) : messages.text("gui.exchanger.default-title"), 27));
+                exchangers.save(); ok(sender, "Created exchanger &e" + id + "&a."); yield true;
+            }
+            case "delete" -> {
+                require(args, 3, "/npc exchanger delete <id>");
+                if (exchangers.remove(args[2]) == null) throw new IllegalArgumentException("Exchanger was not found.");
+                exchangers.save(); ok(sender, "Deleted exchanger &e" + args[2] + "&a."); yield true;
+            }
+            case "open" -> {
+                require(args, 3, "/npc exchanger open <id>");
+                exchangerService.open(requirePlayer(sender), args[2]); yield true;
+            }
+            case "title" -> {
+                require(args, 4, "/npc exchanger title <id> <title>");
+                requireExchanger(args[2]).title(join(args, 3));
+                exchangers.save(); ok(sender, "Updated exchanger title."); yield true;
+            }
+            case "size" -> {
+                require(args, 4, "/npc exchanger size <id> <9|18|27|36|45|54>");
+                requireExchanger(args[2]).size(integer(args[3], "size"));
+                exchangers.save(); ok(sender, "Updated exchanger menu size."); yield true;
+            }
+            case "offer" -> exchangerOffer(sender, args);
+            case "pair" -> {
+                require(args, 6, "/npc exchanger pair <id> <slot> <from> <to>");
+                requireExchangeOffer(args[2], args[3]).currencies(args[4], args[5]);
+                exchangers.save(); ok(sender, "Updated exchange currency pair."); yield true;
+            }
+            case "amount" -> {
+                require(args, 5, "/npc exchanger amount <id> <slot> <source-amount>");
+                requireExchangeOffer(args[2], args[3]).amount(positiveBigDecimal(args[4], "source amount"));
+                exchangers.save(); ok(sender, "Updated exchange amount."); yield true;
+            }
+            case "icon" -> {
+                require(args, 5, "/npc exchanger icon <id> <slot> <material>");
+                Material material = Material.matchMaterial(args[4]);
+                requireExchangeOffer(args[2], args[3]).icon(material);
+                exchangers.save(); ok(sender, "Updated exchange icon."); yield true;
+            }
+            case "name" -> {
+                require(args, 5, "/npc exchanger name <id> <slot> <display-name>");
+                requireExchangeOffer(args[2], args[3]).displayName(join(args, 4));
+                exchangers.save(); ok(sender, "Updated exchange offer name."); yield true;
+            }
+            case "lore" -> exchangerLore(sender, args);
+            case "permission" -> {
+                require(args, 5, "/npc exchanger permission <id> <slot> <permission|none>");
+                requireExchangeOffer(args[2], args[3]).permission(args[4].equalsIgnoreCase("none") ? "" : args[4]);
+                exchangers.save(); ok(sender, "Updated exchange offer permission."); yield true;
+            }
+            case "remove" -> {
+                require(args, 4, "/npc exchanger remove <id> <slot>");
+                if (requireExchanger(args[2]).offers().remove(integer(args[3], "slot")) == null)
+                    throw new IllegalArgumentException("Exchange offer was not found.");
+                exchangers.save(); ok(sender, "Removed exchange offer."); yield true;
+            }
+            default -> throw new IllegalArgumentException("Unknown exchanger operation. Use /npc help.");
+        };
+    }
+
+    private boolean exchangerOffer(CommandSender sender, String[] args) {
+        require(args, 8, "/npc exchanger offer <id> <slot> <from> <to> <amount> <icon> [display-name]");
+        ExchangerDefinition exchanger = requireExchanger(args[2]);
+        int slot = integer(args[3], "slot");
+        if (slot < 0 || slot >= exchanger.size()) throw new IllegalArgumentException("Slot is outside the exchanger menu.");
+        ExchangeOffer offer = new ExchangeOffer(slot, args[4], args[5], positiveBigDecimal(args[6], "source amount"));
+        Material icon = Material.matchMaterial(args[7]);
+        offer.icon(icon);
+        if (args.length > 8) offer.displayName(join(args, 8));
+        if (exchanger.offers().containsKey(slot) && !replacementConfirmed(sender, slot, args)) return true;
+        exchanger.offers().put(slot, offer);
+        exchangers.save(); ok(sender, "Saved exchange offer in &e" + exchanger.id() + "&a."); return true;
+    }
+
+    private boolean exchangerLore(CommandSender sender, String[] args) {
+        require(args, 5, "/npc exchanger lore <id> <slot> <add|remove|clear|list> [text|index]");
+        List<String> lore = requireExchangeOffer(args[2], args[3]).lore();
+        switch (args[4].toLowerCase(Locale.ROOT)) {
+            case "add" -> { require(args, 6, "/npc exchanger lore <id> <slot> add <text>"); lore.add(join(args, 5)); }
+            case "remove" -> {
+                require(args, 6, "/npc exchanger lore <id> <slot> remove <index>");
+                int index = integer(args[5], "index") - 1;
+                if (index < 0 || index >= lore.size()) throw new IllegalArgumentException("Lore index is out of range.");
+                lore.remove(index);
+            }
+            case "clear" -> lore.clear();
+            case "list" -> {
+                messages.localizedRaw(sender, "&6Exchange offer lore:", Map.of());
+                for (int index = 0; index < lore.size(); index++)
+                    messages.raw(sender, "&e" + (index + 1) + ". &f" + lore.get(index), Map.of());
+                return true;
+            }
+            default -> throw new IllegalArgumentException("Operation must be add, remove, clear or list.");
+        }
+        exchangers.save(); ok(sender, "Updated exchange offer lore."); return true;
+    }
+
     private boolean reload(CommandSender sender) {
         plugin.reloadEverything();
-        ok(sender, "Reloaded config, NPCs, shops, buyers and guild traders. Vault: &e"
+        ok(sender, "Reloaded config, NPCs, shops, buyers, guild traders and exchangers. Vault: &e"
                 + (plugin.economy().available() ? "connected" : "unavailable") + "&a, AurumGuilds: &e"
-                + (plugin.guildsAvailable() ? "connected" : "unavailable"));
+                + (plugin.guildsAvailable() ? "connected" : "unavailable") + "&a, Aurum exchange: &e"
+                + (exchangerService.available() ? "connected" : "unavailable"));
         return true;
     }
 
@@ -902,6 +1025,18 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         GuildBonusOffer offer = requireGuildTrader(traderId).offers().get(integer(rawSlot, "slot"));
         if (offer == null) throw new IllegalArgumentException("Guild bonus offer was not found.");
         return offer;
+    }
+
+    private ExchangerDefinition requireExchanger(String id) {
+        ExchangerDefinition value = exchangers.get(id);
+        if (value == null) throw new IllegalArgumentException("Exchanger '" + id + "' was not found.");
+        return value;
+    }
+
+    private ExchangeOffer requireExchangeOffer(String exchangerId, String rawSlot) {
+        ExchangeOffer value = requireExchanger(exchangerId).offers().get(integer(rawSlot, "slot"));
+        if (value == null) throw new IllegalArgumentException("Exchange offer was not found.");
+        return value;
     }
 
     private static ItemStack requireHeldItem(Player player) {
@@ -1015,6 +1150,16 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         return parsed;
     }
 
+    private static BigDecimal positiveBigDecimal(String value, String name) {
+        try {
+            BigDecimal parsed = new BigDecimal(value);
+            if (parsed.signum() <= 0 || parsed.precision() > 24 || parsed.scale() > 8) throw new NumberFormatException();
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("Invalid " + name + ": " + value);
+        }
+    }
+
     private static boolean bool(String value) {
         if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("on")) return true;
         if (value.equalsIgnoreCase("false") || value.equalsIgnoreCase("off")) return false;
@@ -1031,7 +1176,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (!sender.hasPermission("addonsnpc.admin")) return List.of();
         if (args.length == 1) return filter(List.of("help", "create", "delete", "cleanup", "list", "info", "move", "tp",
-                "enable", "disable", "name", "description", "type", "skin", "equipment", "rotation", "message", "action", "set", "shop", "buyer", "guildtrader", "reload"), args[0]);
+                "enable", "disable", "name", "description", "type", "skin", "equipment", "rotation", "message", "action", "set", "shop", "buyer", "guildtrader", "exchanger", "reload"), args[0]);
         String root = args[0].toLowerCase(Locale.ROOT);
         if (root.equals("cleanup") && args.length == 2) {
             List<String> targets = new ArrayList<>();
@@ -1073,7 +1218,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 return filter(messages.lines("tab.dialogue-examples"), args[3]);
         }
         if (root.equals("action") && args.length == 4 && args[1].equalsIgnoreCase("add"))
-            return filter(List.of("message", "console", "player", "shop", "buyer", "guildtrader", "sound", "title"), args[3]);
+            return filter(List.of("message", "console", "player", "shop", "buyer", "guildtrader", "exchanger", "sound", "title"), args[3]);
         if (root.equals("action") && args.length == 4 && args[1].equalsIgnoreCase("remove")) {
             NpcDefinition npc = npcs.get(args[2]);
             if (npc != null) return filter(indexes(npc.actions().size()), args[3]);
@@ -1083,6 +1228,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 case "shop" -> filter(shops.ids(), args[4]);
                 case "buyer" -> filter(buyers.ids(), args[4]);
                 case "guildtrader", "guildshop" -> filter(guildTraders.ids(), args[4]);
+                case "exchanger", "exchange" -> filter(exchangers.ids(), args[4]);
                 case "sound" -> filter(List.of("entity.villager.yes|1|1", "entity.player.levelup|1|1",
                         "block.note_block.pling|1|1", "entity.enderman.teleport|1|1"), args[4]);
                 case "title" -> filter(messages.lines("tab.title-examples"), args[4]);
@@ -1226,6 +1372,41 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             if (operation.equals("lore") && args.length == 6 && args[4].equalsIgnoreCase("add"))
                 return filter(messages.lines("tab.guild-lore-examples"), args[5]);
         }
+        if (root.equals("exchanger") || root.equals("exchange")) {
+            if (args.length == 2) return filter(List.of("create", "delete", "list", "open", "title", "size",
+                    "offer", "pair", "amount", "icon", "name", "lore", "permission", "remove"), args[1]);
+            String operation = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
+            if (args.length == 3 && List.of("delete", "open", "title", "size", "offer", "pair", "amount",
+                    "icon", "name", "lore", "permission", "remove").contains(operation))
+                return filter(exchangers.ids(), args[2]);
+            ExchangerDefinition exchanger = args.length > 2 ? exchangers.get(args[2]) : null;
+            if (args.length == 4 && exchanger != null) {
+                if (operation.equals("offer")) return filter(allSlots(exchanger.size()), args[3]);
+                if (operation.equals("size")) return filter(List.of("9", "18", "27", "36", "45", "54"), args[3]);
+                if (List.of("pair", "amount", "icon", "name", "lore", "permission", "remove").contains(operation))
+                    return filter(exchangeSlots(exchanger), args[3]);
+            }
+            if (operation.equals("offer")) {
+                if (args.length == 5 || args.length == 6) return filter(exchangerService.currencyIds(), args[args.length - 1]);
+                if (args.length == 7) return filter(List.of("1", "10", "50", "100", "500", "1000"), args[6]);
+                if (args.length == 8) return filter(materialNames(), args[7]);
+            }
+            if (operation.equals("pair") && (args.length == 5 || args.length == 6))
+                return filter(exchangerService.currencyIds(), args[args.length - 1]);
+            if (operation.equals("amount") && args.length == 5)
+                return filter(List.of("1", "10", "50", "100", "500", "1000"), args[4]);
+            if (operation.equals("icon") && args.length == 5) return filter(materialNames(), args[4]);
+            if (operation.equals("permission") && args.length == 5) return filter(permissionNames(), args[4]);
+            if (operation.equals("lore") && args.length == 5)
+                return filter(List.of("add", "remove", "clear", "list"), args[4]);
+            if (operation.equals("lore") && args.length == 6 && args[4].equalsIgnoreCase("add"))
+                return filter(messages.lines("tab.exchange-lore-examples"), args[5]);
+            if (operation.equals("lore") && args.length == 6 && args[4].equalsIgnoreCase("remove")
+                    && exchanger != null) {
+                ExchangeOffer offer = exchanger.offers().get(integerOrMinusOne(args[3]));
+                if (offer != null) return filter(indexes(offer.lore().size()), args[5]);
+            }
+        }
         return List.of();
     }
 
@@ -1302,6 +1483,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             if (occupiedOnly == occupied) result.add(Integer.toString(slot));
         }
         return result;
+    }
+
+    private static List<String> exchangeSlots(ExchangerDefinition exchanger) {
+        return exchanger.offers().keySet().stream().sorted().map(String::valueOf).toList();
     }
 
     private static List<String> allSlots(int size) {
