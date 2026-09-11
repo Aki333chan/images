@@ -46,12 +46,26 @@ class RebrandingTest {
         assertFalse(Files.exists(root.resolve("AurumArena")));
     }
 
+    /** Версия из pom.xml: первый <version> после <artifactId>AurumArena. */
+    private static String pomVersion() throws Exception {
+        String pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
+        var matcher = java.util.regex.Pattern
+                .compile("<artifactId>AurumArena</artifactId>\\s*<version>([^<]+)</version>")
+                .matcher(pom);
+        assertTrue(matcher.find(), "в pom.xml не найдена версия AurumArena");
+        return matcher.group(1);
+    }
+
     @Test void pluginMetadataUsesTheNewBrandAndPreservesOldCommands() throws Exception {
         try (var stream = getClass().getResourceAsStream("/plugin.yml")) {
             assertNotNull(stream);
             var metadata = YamlConfiguration.loadConfiguration(new InputStreamReader(stream, StandardCharsets.UTF_8));
             assertEquals("AurumArena", metadata.getString("name"));
-            assertEquals("1.4.0", metadata.getString("version"));
+            // Версия сверяется с pom, а не с константой в тесте. Так проверка
+            // ловит то, что действительно ломается, — расхождение между тем,
+            // что собрано, и тем, что плагин о себе сообщает: панель ставит
+            // аддоны по тегу <name>-v<version> и берёт версию отсюда.
+            assertEquals(pomVersion(), metadata.getString("version"));
             assertEquals("org.ChisaO_o.gladiatorArena.GladiatorArena", metadata.getString("main"));
             assertTrue(metadata.getStringList("commands.arena.aliases").contains("aurumarena"));
         }

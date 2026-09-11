@@ -3,7 +3,7 @@ messages:
   prefix: "&6[Арена] &r"
   no-permission: "&cНедостаточно прав."
   database-unavailable: "&cСтатистика временно недоступна. Ставки и матчи продолжают работать."
-  vault-unavailable: "&cVault или провайдер экономики недоступен. Денежные операции заблокированы."
+  vault-unavailable: "&cЭкономика AurumCore недоступна. Денежные операции заблокированы."
   final-stats: "&6&l🏆 ЧЕМПИОНСКИЙ ПУЛ 🏆\n\n&eФонд: &f%pool% %currency%\n\n&c&lПрошлые чемпионы:\n%champions%"
 help:
   player:

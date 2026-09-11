@@ -3,7 +3,7 @@ messages:
   prefix: "&6[Arena] &r"
   no-permission: "&cYou do not have permission."
   database-unavailable: "&cStatistics are temporarily unavailable. Bets and matches continue to work."
-  vault-unavailable: "&cVault or its economy provider is unavailable. Money operations are blocked."
+  vault-unavailable: "&cThe AurumCore economy is unavailable. Money operations are blocked."
   final-stats: "&6&l🏆 CHAMPIONSHIP POOL 🏆\n\n&ePool: &f%pool% %currency%\n\n&c&lPrevious champions:\n%champions%"
 help:
   player:
@@ -27,7 +27,6 @@ replacements:
   - {from: "§cНельзя восстанавливать инвентарь активному участнику арены.", to: "§cAn active arena participant's inventory cannot be recovered."}
   - {from: " нет сохранённой резервной копии.", to: " has no saved recovery snapshot."}
   - {from: "§aВаш инвентарь восстановлен администратором.", to: "§aYour inventory was restored by an administrator."}
-  - {from: "§aКонфигурация, Vault и база данных перезагружены.", to: "§aConfiguration, Vault, and the database were reloaded."}
   - {from: "§cВы не в радиусе арены.", to: "§cYou are outside every arena."}
   - {from: "§cРежим комплекта меняется только на пустой ожидающей арене.", to: "§cKit mode can only be changed while an empty arena is waiting."}
   - {from: "Автостарт включён", to: "Automatic start enabled"}
@@ -39,7 +38,6 @@ replacements:
   - {from: "Опыт за бой: ", to: "Fight experience: "}
   - {from: "Опыт за финал: ", to: "Final experience: "}
   - {from: "Режим опыта: ", to: "Experience mode: "}
-  - {from: "Vault Economy недоступен", to: "Vault Economy is unavailable"}
   - {from: "§cИспользование: /arena create <имя>", to: "§cUsage: /arena create <name>"}
   - {from: "§cИспользование: /arena delete <арена>", to: "§cUsage: /arena delete <arena>"}
   - {from: "§cИспользование: /arena ", to: "§cUsage: /arena "}
@@ -134,7 +132,7 @@ replacements:
   - {from: "§aСтавка возвращена: ", to: "§aBet refunded: "}
   - {from: "§cФинальная касса заблокирована.", to: "§cThe final pool is locked."}
   - {from: "§aВзнос принят. Пул: ", to: "§aContribution accepted. Pool: "}
-  - {from: "§eПри Vault размен не нужен.", to: "§eChange is not needed in Vault mode."}
+  - {from: "§eПри деньгах размен не нужен.", to: "§eChange is not needed in money mode."}
   - {from: "§cНужен 1 основной или 10 мелких предметов валюты.", to: "§cYou need 1 main or 10 small currency items."}
   - {from: "До закрытия ставок: ", to: "Betting closes in: "}
   - {from: "До боя: ", to: "Fight starts in: "}
@@ -176,8 +174,6 @@ replacements:
   - {from: "§eФинальный режим выключен.", to: "§eFinal mode disabled."}
   - {from: "§cВозьмите валюту в основную руку.", to: "§cHold the currency in your main hand."}
   - {from: "§cНедостаточно средств: нужно ", to: "§cInsufficient funds; required: "}
-  - {from: "§cПлатёж отклонён: ", to: "§cPayment declined: "}
-  - {from: "§eVault недоступен; выплата сохранена.", to: "§eVault is unavailable; the payout was saved."}
   - {from: "§aПолучена отложенная выплата: ", to: "§aReceived a pending payout: "}
   - {from: "§aПолучена отложенная награда: §e", to: "§aReceived a pending reward: §e"}
   - {from: " очков опыта§a, §e", to: " experience points§a, §e"}
@@ -208,3 +204,22 @@ replacements:
   - {from: "нет", to: "none"}
   - {from: " с.", to: " s."}
   - {from: " с", to: " s"}
+  - {from: "§aКонфигурация, экономика и база данных перезагружены.", to: "§aConfiguration, economy, and the database were reloaded."}
+  - {from: "экономика AurumCore недоступна", to: "the AurumCore economy is unavailable"}
+  - {from: "§cПлатёж отклонён.", to: "§cPayment declined."}
+  - {from: "§eСтавка уже обрабатывается.", to: "§eYour bet is already being processed."}
+  - {from: "§eВзнос уже обрабатывается.", to: "§eYour contribution is already being processed."}
+  - {from: "§cСтавки закрылись раньше, чем прошёл платёж. Деньги возвращены.", to: "§cBetting closed before the payment went through. The money was returned."}
+  - {from: "§cСтавки закрылись раньше, чем прошёл платёж.", to: "§cBetting closed before the payment went through."}
+  - {from: "§eКомиссия: §f", to: "§eCommission: §f"}
+  - {from: "§aКомиссия: §f", to: "§aCommission: §f"}
+  - {from: "§e, получатель §f", to: "§e, recipient §f"}
+  - {from: "§a, получатель §f", to: "§a, recipient §f"}
+  - {from: "§e, с чемпионского пула: §f", to: "§e, from the champion pool: §f"}
+  - {from: "§a, с чемпионского пула: §f", to: "§a, from the champion pool: §f"}
+  - {from: "§cУкажите процент: /arena commission percent 5", to: "§cSpecify a percentage: /arena commission percent 5"}
+  - {from: "§cНе число: ", to: "§cNot a number: "}
+  - {from: "§cПроцент должен быть от 0 до 90.", to: "§cThe percentage must be between 0 and 90."}
+  - {from: "§cУкажите on или off.", to: "§cSpecify on or off."}
+  - {from: "§cНеизвестный получатель: ", to: "§cUnknown recipient: "}
+  - {from: ". Ожидается treasury или champion-pool.", to: ". Expected treasury or champion-pool."}
