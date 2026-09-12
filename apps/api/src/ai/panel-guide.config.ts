@@ -115,8 +115,13 @@ export const PANEL_GUIDE: PanelGuideEntry[] = [
   },
   {
     what: 'баланс игрока и экономика сервера',
-    where: 'вкладка «Игроки» → игрок → блок «Валюта»; общий баланс — на карточке сервера',
+    where: 'вкладка «Игроки» → игрок → блок «Валюта»; аудит сервера — вкладка «Экономика» (нужен AurumCore)',
     permission: MINECRAFT_PERMISSIONS.economyView,
+  },
+  {
+    what: 'налоги, комиссии и курсы обмена AurumCore',
+    where: 'страница сервера → вкладка «Экономика» → редактор правил',
+    permission: MINECRAFT_PERMISSIONS.economyAdmin,
   },
   {
     what: 'сбросить игроку пароль от игрового аккаунта',

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { ServerDto } from '@aurum/shared';
+import type { MinecraftPluginsDto, ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Dot, Select, Spinner, Tabs } from '../components/ui';
@@ -14,9 +14,7 @@ import {
 } from '../components/icons';
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { ServerStats } from '../components/ServerStats';
-import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
-import { EconomyAuditPanel } from '../modules/minecraft/EconomyAuditPanel';
-import { EconomyRulesEditor } from '../modules/minecraft/EconomyRulesEditor';
+import { hasEnabledPlugin, PluginsPanel } from '../modules/minecraft/PluginsPanel';
 import { AddonsModal, useServerAddons } from '../components/AddonsModal';
 import { ServerAddress } from '../components/ServerAddress';
 import { Modal } from '../components/Modal';
@@ -46,6 +44,15 @@ export function ServerDetailPage() {
   const [error, setError] = useState('');
   /** Отказ Pterodactyl по кнопке питания: молча его терять нельзя. */
   const [powerError, setPowerError] = useState('');
+  /** Живой/допустимо запомненный снимок уже рисуемого списка плагинов. */
+  const [minecraftPlugins, setMinecraftPlugins] = useState<{
+    serverId: string;
+    data: MinecraftPluginsDto;
+  } | null>(null);
+
+  const rememberMinecraftPlugins = useCallback((data: MinecraftPluginsDto) => {
+    setMinecraftPlugins({ serverId, data });
+  }, [serverId]);
 
   // canSeeServer в зависимостях: если ГМ отвяжет этот сервер, доступ пропадёт
   // на лету и пользователя вернёт к списку.
@@ -105,6 +112,10 @@ export function ServerDetailPage() {
           const tab = resolveTab(manifest.id, capability);
           if (!tab) return [];
           if (tab.permission && !hasPermission(tab.permission)) return [];
+          if (tab.requiresPlugin && !hasEnabledPlugin(
+            minecraftPlugins?.serverId === serverId ? minecraftPlugins.data : null,
+            tab.requiresPlugin,
+          )) return [];
           // id как string: ниже к списку добавляются вкладки, которых в
           // перечислении capability нет.
           return [{ id: capability as string, label: t(tab.labelKey), component: tab.component, state }];
@@ -131,7 +142,7 @@ export function ServerDetailPage() {
     }));
 
     return [...moduleTabs, ...coreTabs];
-  }, [manifest, hasPermission, t]);
+  }, [manifest, hasPermission, minecraftPlugins, serverId, t]);
 
   /** Виджет модуля на дашборде сервера (напр. быстрые команды Minecraft). */
   const dashboard = useMemo(() => {
@@ -321,14 +332,6 @@ export function ServerDetailPage() {
         canSeePerformance={hasPermission('minecraft.players.view')}
       />
 
-      {manifest?.id === 'minecraft' && hasPermission('minecraft.economy.view') && (
-        <EconomyAuditPanel serverId={server.id} />
-      )}
-
-      {manifest?.id === 'minecraft' && hasPermission('minecraft.economy.admin') && (
-        <EconomyRulesEditor serverId={server.id} />
-      )}
-
       {manifest && DashboardWidget && (
         <DashboardWidget serverId={server.id} moduleId={manifest.id} capabilityState={true} />
       )}
@@ -361,14 +364,18 @@ export function ServerDetailPage() {
               capabilityState={active.state}
             />
           )}
-          {/* Под вкладками, а не внутри одной из них: список отвечает на
-              вопрос «почему у меня нет такой-то кнопки», который возникает
-              на любой вкладке. */}
-          {/* Управление установленными плагинами живёт во вкладке настроек:
-              здесь достаточно списка поддерживаемых, а все файлы сервера
-              открываются в нём по кнопке «Показать все плагины сервера». */}
-          {manifest.id === 'minecraft' && <PluginsPanel serverId={server.id} />}
         </>
+      )}
+      {/* Под вкладками, а не внутри одной из них: список отвечает на вопрос
+          «почему у меня нет такой-то кнопки». Он монтируется даже когда
+          доступной вкладки пока нет — иначе plugin-gated вкладка никогда не
+          получила бы первый снимок и возникла циклическая блокировка. */}
+      {manifest?.id === 'minecraft' && (
+        <PluginsPanel
+          key={server.id}
+          serverId={server.id}
+          onData={rememberMinecraftPlugins}
+        />
       )}
     </div>
   );

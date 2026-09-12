@@ -86,7 +86,14 @@ export function rememberedFits(kept: Remembered, bootAt: number | null): boolean
 const RETRY_WINDOW_MS = 5 * 60_000;
 const MAX_RETRIES = Math.ceil(RETRY_WINDOW_MS / RUNTIME_POLL_MS);
 
-export function PluginsPanel({ serverId }: { serverId: string }) {
+export function PluginsPanel({
+  serverId,
+  onData,
+}: {
+  serverId: string;
+  /** Делит тот же снимок с меню вкладок, не создавая второй запрос к серверу. */
+  onData?: (data: MinecraftPluginsDto) => void;
+}) {
   const t = useT();
   const apiText = useApiText();
   const runtime = useServerRuntime(serverId);
@@ -98,6 +105,10 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
   const [showAll, setShowAll] = useState(false);
   /** Сколько раз подряд companion не ответил на этом запуске сервера. */
   const retriesRef = useRef(0);
+
+  useEffect(() => {
+    if (data) onData?.(data);
+  }, [data, onData]);
 
   const load = useCallback(
     async (bootAt: number | null) => {
@@ -239,4 +250,11 @@ export function PluginsPanel({ serverId }: { serverId: string }) {
       )}
     </Card>
   );
+}
+
+/** Проверка требования вкладки по тому же снимку, который показывает список. */
+export function hasEnabledPlugin(data: MinecraftPluginsDto | null, pluginId: string): boolean {
+  if (!data?.available) return false;
+  return data.known.some((plugin) =>
+    plugin.id.toLowerCase() === pluginId.toLowerCase() && plugin.installed);
 }

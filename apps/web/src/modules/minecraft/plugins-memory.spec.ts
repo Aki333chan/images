@@ -1,5 +1,6 @@
 import type { MinecraftPluginsDto } from '@aurum/shared';
-import { rememberedFits, type Remembered } from './PluginsPanel';
+import { hasEnabledPlugin, rememberedFits, type Remembered } from './PluginsPanel';
+import { MODULE_REGISTRY } from '../registry';
 
 const DATA = { available: true, installed: [], known: [] } as unknown as MinecraftPluginsDto;
 const kept = (bootAt: number | null): Remembered => ({ data: DATA, bootAt });
@@ -34,5 +35,27 @@ describe('память списка плагинов', () => {
     // неизвестно, тот ли это запуск. Привязку дописывает отдельный эффект,
     // как только Pterodactyl отвечает.
     expect(rememberedFits(kept(null), 1_700_000_000_000)).toBe(false);
+  });
+});
+
+describe('зависимые от плагинов вкладки', () => {
+  const plugins = (available: boolean, installed: boolean): MinecraftPluginsDto => ({
+    available,
+    installed: installed ? [{ name: 'AurumCore', version: '0.15.0', enabled: true }] : [],
+    known: [{
+      id: 'AurumCore', displayName: 'AurumCore', givesKey: 'mc.plugin.gives.aurumcore',
+      installed, version: installed ? '0.15.0' : null,
+    }],
+  });
+
+  it('экономика объявлена модулем как вкладка, зависящая от AurumCore', () => {
+    expect(MODULE_REGISTRY.minecraft!.tabs.economy?.requiresPlugin).toBe('AurumCore');
+  });
+
+  it('вкладка появляется только по живому включённому AurumCore', () => {
+    expect(hasEnabledPlugin(null, 'AurumCore')).toBe(false);
+    expect(hasEnabledPlugin(plugins(false, false), 'AurumCore')).toBe(false);
+    expect(hasEnabledPlugin(plugins(true, false), 'AurumCore')).toBe(false);
+    expect(hasEnabledPlugin(plugins(true, true), 'aurumcore')).toBe(true);
   });
 });

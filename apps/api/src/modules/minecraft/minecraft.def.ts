@@ -23,6 +23,10 @@ export const minecraftManifest: GameModuleManifest = {
     // Гильдии дают только плагин AurumGuilds: без него вкладка показывает,
     // чего не хватает, — так же, как вкладка инвентаря без companion.
     guilds: 'requires-plugin',
+    // Нативная экономика существует только на Paper и приходит через связку
+    // Companion -> AurumCore. Frontend дополнительно скрывает вкладку, пока
+    // в живом списке поддерживаемых плагинов нет включённого AurumCore.
+    economy: 'requires-plugin',
   },
   permissions: [
     {

@@ -60,6 +60,7 @@ describe('манифесты загрузчиков', () => {
   it('у Paper инвентарь по-прежнему есть — общий слой его не забрал', () => {
     expect(minecraftManifest.capabilities.inventory).toBe('requires-plugin');
     expect(minecraftManifest.capabilities.tickets).toBe(true);
+    expect(minecraftManifest.capabilities.economy).toBe('requires-plugin');
   });
 });
 

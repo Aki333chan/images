@@ -8,7 +8,9 @@ API: a preview is revision-guarded and actor-bound, while apply consumes its
 short-lived token and requires an audit reason. There is no YAML/SQL write,
 arbitrary command transport or Vault fallback. HTTP workers wait for Core's
 existing database executor; the Paper thread is never blocked and no polling
-was added.
+was added. In the panel these tools live in the Minecraft module's Economy tab;
+the tab is omitted when the shared supported-plugin snapshot has no enabled
+AurumCore.
 
 ## Release 0.9.0
 

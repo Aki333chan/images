@@ -21,6 +21,7 @@ import {
   MinecraftWhitelistTab,
 } from './minecraft/tabs';
 import { MinecraftGuildsTab } from './minecraft/GuildsTab';
+import { MinecraftEconomyTab } from './minecraft/EconomyTab';
 import { MinecraftSettingsTab } from './minecraft/SettingsTab';
 import {
   PalworldBansTab,
@@ -54,6 +55,8 @@ export interface CapabilityTab {
   labelKey: string;
   /** Право, необходимое для показа вкладки (null — достаточно servers.view). */
   permission: string | null;
+  /** Вкладка отсутствует, пока этот поддерживаемый Bukkit-плагин не включён. */
+  requiresPlugin?: string;
   component: ComponentType<ModuleTabProps>;
 }
 
@@ -103,6 +106,12 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
         labelKey: 'tab.guilds',
         permission: 'minecraft.guilds.view',
         component: MinecraftGuildsTab,
+      },
+      economy: {
+        labelKey: 'tab.economy',
+        permission: MINECRAFT_PERMISSIONS.economyView,
+        requiresPlugin: 'AurumCore',
+        component: MinecraftEconomyTab,
       },
     },
     dashboard: {

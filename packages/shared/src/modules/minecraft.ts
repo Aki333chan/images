@@ -343,7 +343,7 @@ export interface MinecraftConfigStatusDto {
 }
 
 /**
- * Сторонние плагины, с которыми панель умеет работать.
+ * Плагины игрового сервера, с которыми панель умеет работать через Companion.
  *
  * id — имя, под которым плагин регистрируется в Bukkit, и оно совпадает не
  * всегда: EssentialsX зовётся Essentials (наследие старого Essentials),
@@ -389,6 +389,13 @@ export const KNOWN_PLUGINS = [
     id: 'AurumGuilds',
     displayName: 'AurumGuilds',
     givesKey: 'mc.plugin.gives.aurumguilds',
+  },
+  {
+    // Авторитетная экономика Aurum: без активного плагина нативный аудит и
+    // редактор версионированных финансовых правил недоступны.
+    id: 'AurumCore',
+    displayName: 'AurumCore',
+    givesKey: 'mc.plugin.gives.aurumcore',
   },
 ] as const;
 
