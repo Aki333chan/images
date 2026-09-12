@@ -78,6 +78,7 @@ final class EconomyUiBridge {
             Optional<BalanceSnapshot> balance =
                     plugin.cachedBalance(AccountId.player(viewer.getUniqueId()), currency.id());
             objects.add(object("balance:" + currency.id(), "balance", currency.displayName(), Map.of(
+                    "titleKey", "screen.aurumui.economy.balance",
                     "currency", currency.id(),
                     "symbol", currency.symbol(),
                     // Пустая строка, а не ноль: «мы ещё не знаем» и «у тебя
@@ -88,6 +89,7 @@ final class EconomyUiBridge {
         // Коридор и задержка нужны форме перевода: она обязана показать границы
         // до отправки, а не отвечать отказом после.
         objects.add(object("limits", "limits", "", Map.of(
+                "titleKey", "screen.aurumui.economy.transfer",
                 "enabled", Boolean.toString(plugin.settings().paymentsEnabled() && viewer.hasPermission("aurum.pay")),
                 "minimum", plain(plugin.settings().paymentMinimum()),
                 "maximum", plain(plugin.settings().paymentMaximum()),
@@ -107,6 +109,7 @@ final class EconomyUiBridge {
         if (snapshot.isPresent()) {
             GlobalEconomySnapshot global = snapshot.get();
             objects.add(object("treasury", "treasury", currency.displayName(), Map.of(
+                    "titleKey", "screen.aurumui.economy.treasury",
                     "currency", currency.id(),
                     "symbol", currency.symbol(),
                     "treasury", plain(global.treasuryBalance()),
@@ -118,10 +121,14 @@ final class EconomyUiBridge {
         }
         for (CurrencySpec value : plugin.settings().currencies().values()) {
             objects.add(object("currency:" + value.id(), "currency", value.displayName(), Map.of(
+                    "titleKey", "screen.aurumui.economy.currency",
                     "currency", value.id(),
                     "symbol", value.symbol(),
                     "selected", Boolean.toString(value.id().equals(currency.id())))));
         }
+        // «Найти игрока» — отдельная строка, а не действие на казне: казны
+        // может не быть (валюта без глобального снимка), а искать надо всегда.
+        objects.add(object("find", "find", "", Map.of("titleKey", "screen.aurumui.economy.find")));
         if (session.targetUuid != null) {
             objects.add(object("target", "target", session.targetName, Map.of(
                     "uuid", session.targetUuid.toString(),
@@ -145,13 +152,18 @@ final class EconomyUiBridge {
      */
     Object action(Player viewer, String id, String action, Map<String, String> arguments) {
         if (!plugin.activeReady()) return remember(viewer, unavailable());
-        if (ADMIN_SCOPE.equals(id) || id.startsWith(ADMIN_SCOPE + ":")) return adminAction(viewer, action, arguments);
-        if (PLAYER_SCOPE.equals(id) || id.startsWith(PLAYER_SCOPE + ":")) return playerAction(viewer, action, arguments);
-        return "error.unknown_action";
+        // Разбор идёт по действию, а не по id объекта: id приходит от клиента и
+        // ничего не удостоверяет. Право на каждое действие проверяется в своей
+        // ветке, поэтому назвать чужой id бесполезно.
+        return switch (action) {
+            case "pay" -> playerAction(viewer, arguments);
+            case "select", "find", "clear", "currency", "give", "take", "set" ->
+                    adminAction(viewer, action, arguments);
+            default -> "error.unknown_action";
+        };
     }
 
-    private Object playerAction(Player viewer, String action, Map<String, String> arguments) {
-        if (!"pay".equals(action)) return "error.unknown_action";
+    private Object playerAction(Player viewer, Map<String, String> arguments) {
         if (!viewer.hasPermission("aurum.pay")) return remember(viewer, denied());
         OfflinePlayer target = lookup(arguments.get("player"));
         if (target == null) return remember(viewer, new Outcome(false, "player-unknown", Map.of()));
@@ -167,7 +179,7 @@ final class EconomyUiBridge {
         if (!viewer.hasPermission("aurum.admin.economy")) return remember(viewer, denied());
         Session session = session(viewer.getUniqueId());
         switch (action) {
-            case "select" -> {
+            case "select", "find" -> {
                 OfflinePlayer target = lookup(arguments.get("player"));
                 if (target == null) return remember(viewer, new Outcome(false, "player-unknown", Map.of()));
                 return selectTarget(viewer, session, target);
@@ -261,7 +273,15 @@ final class EconomyUiBridge {
         fields.put("title", "");
         fields.put("message", outcome == null ? "" : outcome.key());
         fields.put("success", Boolean.toString(outcome == null || outcome.success()));
-        if (outcome != null) outcome.placeholders().forEach((key, value) -> fields.put("arg." + key, value));
+        if (outcome != null) {
+            // Подстановки в переводе позиционные, а карта порядка не имеет.
+            // Поэтому порядок объявляется явно — по алфавиту имён — и едет
+            // рядом с самими значениями: клиенту нечего угадывать.
+            List<String> names = new ArrayList<>(outcome.placeholders().keySet());
+            names.sort(String::compareTo);
+            fields.put("args", String.join(",", names));
+            names.forEach(name -> fields.put("arg." + name, outcome.placeholders().get(name)));
+        }
         return Map.copyOf(fields);
     }
 

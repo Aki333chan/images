@@ -12,11 +12,15 @@ import java.util.Map;
 
 final class WireProtocol {
     static final int MAGIC = 0x4155524D;
-    static final short VERSION = 3;
+    static final short VERSION = 4;
     static final int ADMIN_ARENA = 1;
     static final int ADMIN_NPC = 1 << 1;
     static final int ADMIN_SLOTS = 1 << 2;
     static final int SOCIAL = 1 << 3;
+    /** Own balance and transfers. Server protocol 4 and newer. */
+    static final int ECONOMY = 1 << 4;
+    /** Balance adjustments and treasury. Server protocol 4 and newer. */
+    static final int ADMIN_ECONOMY = 1 << 5;
 
     private WireProtocol() {}
 
@@ -103,9 +107,12 @@ final class WireProtocol {
     static AdminState adminState(byte[] bytes) throws IOException {
         if (bytes == null || bytes.length > 30_000) throw new IOException("Invalid admin state size");
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            if (input.readInt() != MAGIC || input.readUnsignedShort() != VERSION) {
-                throw new IOException("Unsupported admin state");
-            }
+            if (input.readInt() != MAGIC) throw new IOException("Unsupported admin state");
+            // Не равенство, а «не новее нас»: сервер отвечает согласованной
+            // версией, и требовать ровно свою значило бы ломаться о любой
+            // сервер, который ещё не обновили.
+            int protocol = input.readUnsignedShort();
+            if (protocol < 1 || protocol > VERSION) throw new IOException("Unsupported admin protocol " + protocol);
             long revision = input.readLong();
             String scope = input.readUTF();
             boolean success = input.readBoolean();

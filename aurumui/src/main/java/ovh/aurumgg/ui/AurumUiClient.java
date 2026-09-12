@@ -15,7 +15,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
 
 public final class AurumUiClient implements ClientModInitializer {
-    static final String VERSION = "0.5.0";
+    static final String VERSION = "0.6.0";
     private static final UiSettings SETTINGS = UiSettings.load();
     private static volatile List<UiPanel> panels = List.of();
     private static volatile long revision = -1;
@@ -112,7 +112,12 @@ public final class AurumUiClient implements ClientModInitializer {
 
     private static void sendHello() {
         if (ClientPlayNetworking.canSend(HelloPayload.TYPE)) {
+            // Сервер отвергает версию новее своей и запоминает наибольшую из
+            // принятых, поэтому здороваемся по убыванию. Пропустить ступень
+            // нельзя: сервер протокола 3 не понял бы 4 и откатился бы на 2, а
+            // вместе с этим потерял бы все админские вкладки.
             ClientPlayNetworking.send(new HelloPayload(WireProtocol.hello(VERSION)));
+            ClientPlayNetworking.send(new HelloPayload(WireProtocol.hello((short) 3, VERSION)));
             ClientPlayNetworking.send(new HelloPayload(WireProtocol.hello((short) 2, VERSION)));
             ClientPlayNetworking.send(new HelloPayload(WireProtocol.hello((short) 1, VERSION)));
         }

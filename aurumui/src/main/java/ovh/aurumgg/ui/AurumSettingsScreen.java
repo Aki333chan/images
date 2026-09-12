@@ -22,6 +22,7 @@ final class AurumSettingsScreen extends Screen {
     private Tab tab = Tab.HUD;
     private String npcScope = "npc";
     private String socialScope = "guild";
+    private String economyScope = "";
     private String requestedScope = "";
     private long requestedAt;
     private String selectedId = "";
@@ -53,6 +54,7 @@ final class AurumSettingsScreen extends Screen {
         if (has(WireProtocol.ADMIN_ARENA)) available.add(Tab.ARENA);
         if (has(WireProtocol.ADMIN_NPC)) available.add(Tab.NPC);
         if (has(WireProtocol.ADMIN_SLOTS)) available.add(Tab.SLOTS);
+        if (has(WireProtocol.ECONOMY) || has(WireProtocol.ADMIN_ECONOMY)) available.add(Tab.ECONOMY);
         if (!available.contains(tab)) tab = Tab.HUD;
         int each = Math.min(92, (contentWidth() - GAP * (available.size() - 1)) / available.size());
         int total = each * available.size() + GAP * (available.size() - 1);
@@ -107,6 +109,11 @@ final class AurumSettingsScreen extends Screen {
                     .bounds(left() + 134, top, contentWidth() - 134, 20).build());
             top += 26;
         }
+        if (tab == Tab.ECONOMY && has(WireProtocol.ECONOMY) && has(WireProtocol.ADMIN_ECONOMY)) {
+            addEconomyScope("economy", "screen.aurumui.economy.mine", top, 0);
+            addEconomyScope("economy-admin", "screen.aurumui.economy.manage", top, 1);
+            top += 26;
+        }
         if (social()) {
             addRenderableWidget(Button.builder(Component.translatable("screen.aurumui.action.back"), ignored -> {
                 socialScope = tab == Tab.GUILD ? "guild" : "party"; changeScope();
@@ -120,7 +127,11 @@ final class AurumSettingsScreen extends Screen {
             requestedAt = System.currentTimeMillis();
             AurumUiClient.requestAdmin(scope);
         }
-        List<WireProtocol.AdminObject> objects = scope.equals(adminState.scope()) ? adminState.objects() : List.of();
+        // Строка состояния — не строка списка: она рисуется отдельно под
+        // заголовком, и выбирать её как объект нечего.
+        List<WireProtocol.AdminObject> objects = scope.equals(adminState.scope())
+                ? adminState.objects().stream().filter(object -> !object.kind().equals("status")).toList()
+                : List.of();
         if (!selectedId.isBlank() && objects.stream().noneMatch(object -> object.id().equals(selectedId))) selectedId = "";
         if (selectedId.isBlank() && !objects.isEmpty()) selectedId = objects.getFirst().id();
         int footer = height - 26;
@@ -130,7 +141,7 @@ final class AurumSettingsScreen extends Screen {
         int start = listPage * rows;
         for (int row = 0; row < rows && start + row < objects.size(); row++) {
             WireProtocol.AdminObject object = objects.get(start + row);
-            Button button = Button.builder(Component.literal(clean(object.title())), ignored -> {
+            Button button = Button.builder(label(object), ignored -> {
                 selectedId = object.id(); actionPage = 0; rebuildWidgets();
             }).bounds(left(), top + row * 24, 126, 20).build();
             button.active = !object.id().equals(selectedId);
@@ -161,6 +172,28 @@ final class AurumSettingsScreen extends Screen {
                 .bounds(left() + index * (each + GAP), y, each, 20).build();
         button.active = !npcScope.equals(scope);
         addRenderableWidget(button);
+    }
+
+    private void addEconomyScope(String scope, String key, int y, int index) {
+        int each = (contentWidth() - GAP) / 2;
+        Button button = Button.builder(Component.translatable(key), ignored -> { economyScope = scope; changeScope(); })
+                .bounds(left() + index * (each + GAP), y, each, 20).build();
+        button.active = !economyScope().equals(scope);
+        addRenderableWidget(button);
+    }
+
+    /**
+     * Подпись строки списка.
+     *
+     * <p>Экономика присылает ключ перевода, а не готовый текст: сервер не знает
+     * языка клиента, а «Баланс» на языке сервера в чужом интерфейсе выглядит
+     * ошибкой. Всё остальное по-прежнему подписывается тем, что пришло.</p>
+     */
+    private Component label(WireProtocol.AdminObject object) {
+        String key = object.get("titleKey");
+        return key.isBlank()
+                ? Component.literal(clean(object.title()))
+                : Component.translatable(key, clean(object.title()));
     }
 
     private void addObjectActions(WireProtocol.AdminObject object, int top) {
@@ -204,6 +237,13 @@ final class AurumSettingsScreen extends Screen {
             case "shopOffer" -> shopOfferActions(result, object);
             case "buyerOffer" -> buyerOfferActions(result, object);
             case "social" -> socialActions(result, object);
+            case "limits" -> payAction(result, object);
+            case "find" -> action(result, "screen.aurumui.economy.find", () -> form(object, "find", List.of(
+                    new AurumFormScreen.Field("player", "screen.aurumui.field.player", "", 16))));
+            case "currency" -> action(result, "screen.aurumui.economy.select", () ->
+                    AurumUiClient.adminAction(scope(), object.id(), "currency",
+                            Map.of("id", object.get("currency"))));
+            case "target" -> targetActions(result, object);
             default -> { }
         }
         return result;
@@ -249,6 +289,29 @@ final class AurumSettingsScreen extends Screen {
                 }
             });
         }
+    }
+
+    private void payAction(List<UiAction> list, WireProtocol.AdminObject o) {
+        // Переводы могут быть выключены настройкой сервера или закрыты правом:
+        // в обоих случаях кнопка не показывается, а не отвечает отказом после.
+        if (!o.bool("enabled")) return;
+        action(list, "screen.aurumui.economy.pay", () -> form(o, "pay", List.of(
+                new AurumFormScreen.Field("player", "screen.aurumui.field.player", "", 16),
+                new AurumFormScreen.Field("amount", "screen.aurumui.social.amount", "", 24),
+                new AurumFormScreen.Field("reason", "screen.aurumui.field.reason", "", 64))));
+    }
+
+    private void targetActions(List<UiAction> list, WireProtocol.AdminObject o) {
+        adjust(list, o, "give", "screen.aurumui.economy.give");
+        adjust(list, o, "take", "screen.aurumui.economy.take");
+        adjust(list, o, "set", "screen.aurumui.economy.set");
+        action(list, "screen.aurumui.economy.clear", () -> send(o, "clear"));
+    }
+
+    private void adjust(List<UiAction> list, WireProtocol.AdminObject o, String action, String key) {
+        action(list, key, () -> form(o, action, List.of(
+                new AurumFormScreen.Field("amount", "screen.aurumui.social.amount", "", 24),
+                new AurumFormScreen.Field("reason", "screen.aurumui.field.reason", "", 64))));
     }
 
     private void arenaActions(List<UiAction> list, WireProtocol.AdminObject o) {
@@ -431,7 +494,12 @@ final class AurumSettingsScreen extends Screen {
                 .bounds(left() + refreshWidth + GAP, height - 26, contentWidth() - refreshWidth - GAP, 20).build());
     }
     private boolean has(int capability) { return (capabilities & capability) != 0; }
-    private String scope() { return switch (tab) { case GUILD, PARTY -> socialScope; case ARENA -> "arena"; case NPC -> npcScope; case SLOTS -> "slots"; default -> ""; }; }
+    private String scope() { return switch (tab) { case GUILD, PARTY -> socialScope; case ARENA -> "arena"; case NPC -> npcScope; case SLOTS -> "slots"; case ECONOMY -> economyScope(); default -> ""; }; }
+    /** Свой счёт по умолчанию; если его смотреть нельзя — сразу управление. */
+    private String economyScope() {
+        if (!economyScope.isBlank()) return economyScope;
+        return has(WireProtocol.ECONOMY) ? "economy" : "economy-admin";
+    }
     private int contentWidth() { return Math.min(430, width - 20); }
     private int left() { return (width - contentWidth()) / 2; }
     private int tabsY() { return height < 220 ? 31 : 42; }
@@ -449,6 +517,14 @@ final class AurumSettingsScreen extends Screen {
         if (tab != Tab.HUD && serverProtocol >= 3 && scope().equals(adminState.scope()) && adminState.objects().isEmpty()) {
             graphics.centeredText(font, Component.translatable("screen.aurumui.empty"), width / 2,
                     contentTop() + 52, 0xFFAAAAAA);
+        }
+        // Строка состояния экономики: последний ответ сервера остаётся на экране,
+        // а не гаснет вместе с всплывающей подписью над горячей панелью.
+        if (tab == Tab.ECONOMY) {
+            adminState.objects().stream().filter(object -> object.kind().equals("status")).findFirst()
+                    .filter(object -> !object.get("message").isBlank())
+                    .ifPresent(object -> graphics.centeredText(font, statusMessage(object), width / 2,
+                            contentTop() - 12, object.bool("success") ? 0xFF77DD88 : 0xFFFF7777));
         }
         if (tab != Tab.HUD && !selectedId.isBlank()) {
             adminState.objects().stream().filter(o -> o.id().equals(selectedId)).findFirst().ifPresent(object -> {
@@ -476,6 +552,21 @@ final class AurumSettingsScreen extends Screen {
         }
     }
 
+    /**
+     * Ответ сервера, переведённый вместе с числами.
+     *
+     * <p>Подстановки в переводе позиционные, а сервер присылает их по именам.
+     * Порядок он объявляет сам в поле {@code args} — угадывать его здесь было
+     * бы способом однажды поменять местами сумму и остаток.</p>
+     */
+    private Component statusMessage(WireProtocol.AdminObject object) {
+        String declared = object.get("args");
+        if (declared.isBlank()) return Component.translatable("message.aurumui." + object.get("message"));
+        Object[] arguments = java.util.Arrays.stream(declared.split(","))
+                .map(name -> object.get("arg." + name.trim())).toArray();
+        return Component.translatable("message.aurumui." + object.get("message"), arguments);
+    }
+
     private String summary(WireProtocol.AdminObject object) {
         return switch (object.kind()) {
             case "social" -> object.get("summary");
@@ -484,10 +575,32 @@ final class AurumSettingsScreen extends Screen {
             case "slots" -> object.get("payment") + (object.bool("spinning") ? " · spinning" : "");
             case "npc" -> object.get("entityType") + " · " + object.get("location");
             case "shop", "buyer" -> object.get("offers") + " offers";
+            case "balance", "target" -> money(object, "amount");
+            case "limits" -> money(object, "minimum") + " — " + money(object, "maximum");
+            case "treasury" -> money(object, "treasury") + " · " + money(object, "supply")
+                    + " · " + money(object, "taxes");
+            case "currency", "find" -> "";
             default -> object.get("material") + " · slot " + object.get("slot");
         };
     }
-    private int adminObjectsTop() { return contentTop() + (tab == Tab.NPC || social() ? 26 : 0); }
+    /**
+     * Сумма с символом валюты; пусто — значит не знаем, а не ноль.
+     *
+     * <p>Баланс офлайн-игрока приходит вторым ответом, и до него поле пустое.
+     * Нарисовать там ноль значило бы сказать, что у человека ничего нет.</p>
+     */
+    private String money(WireProtocol.AdminObject object, String field) {
+        String value = object.get(field);
+        return value.isBlank() ? "…" : value + " " + object.get("symbol");
+    }
+
+    private int adminObjectsTop() {
+        return contentTop() + (tab == Tab.NPC || social() || economyScopeRow() ? 26 : 0);
+    }
+
+    private boolean economyScopeRow() {
+        return tab == Tab.ECONOMY && has(WireProtocol.ECONOMY) && has(WireProtocol.ADMIN_ECONOMY);
+    }
     private Component connectionStatus() {
         if (serverProtocol == 0) return Component.translatable("screen.aurumui.connection.waiting");
         if (serverProtocol == 1) return Component.translatable("screen.aurumui.connection.legacy", activePanels);
@@ -501,7 +614,8 @@ final class AurumSettingsScreen extends Screen {
     private enum Tab {
         HUD("screen.aurumui.tab.hud"), ARENA("screen.aurumui.tab.arena"),
         GUILD("screen.aurumui.guilds"), PARTY("screen.aurumui.party"),
-        NPC("screen.aurumui.tab.npc"), SLOTS("screen.aurumui.tab.slots");
+        NPC("screen.aurumui.tab.npc"), SLOTS("screen.aurumui.tab.slots"),
+        ECONOMY("screen.aurumui.tab.economy");
         final String translation;
         Tab(String translation) { this.translation = translation; }
     }
