@@ -15,12 +15,12 @@ import { Modal } from './Modal';
  * ОДНО ОКНО НА ДВА ПОВОДА. Открывается оно само при первом заходе на сервер,
  * где чего-то не хватает, и вручную — кнопкой «Рекомендуемые плагины». Второе
  * важнее, чем кажется: после «не предлагать» кнопка остаётся единственным
- * способом вернуться к выбору, и разводить эти два случая по разным окнам
+ * способом вернуться к пакету, и разводить эти два случая по разным окнам
  * значило бы поддерживать две копии одного списка.
  *
- * ОБЯЗАТЕЛЬНЫЙ COMPANION СЮДА НЕ ПОПАДАЕТ. Его панель ставит молча и без
- * галочки: без него она не видит ни инвентарей, ни экономики, ни списка
- * плагинов, и предлагать выбор там, где выбора нет, — обман.
+ * Это один логический пакет, хотя на диск ложатся отдельные jar: так можно
+ * независимо обновлять и диагностировать компоненты, не оставляя человеку
+ * возможность случайно собрать несовместимую половину экосистемы.
  */
 export function AddonsModal({
   serverId,
@@ -37,46 +37,46 @@ export function AddonsModal({
 }) {
   const t = useT();
   const apiText = useApiText();
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<AddonInstallResultDto[] | null>(null);
 
-  const missing = state.optional.filter((a) => !a.installed);
+  const packageAddons = state.required ? [state.required, ...state.optional] : state.optional;
+  const missing = packageAddons.filter((addon) => !addon.installed);
 
   return (
     <Modal title={t('addons.title')} size="lg" onClose={onClose}>
       <div className="space-y-4">
         <p className="text-xs text-muted">{t('addons.intro')}</p>
+        {state.vaultBridgeInstalled === false && (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {t('addons.vaultNote')}
+          </p>
+        )}
 
         <ul className="space-y-1">
-          {state.optional.map((addon) => (
+          {packageAddons.map((addon) => (
             <li key={addon.id}>
-              {/* Вся строка — цель нажатия: попасть пальцем в галочку 13×13
-                  на телефоне нельзя, а список тут для того и стоит. */}
-              <label
-                className={
-                  '-mx-2 flex items-start gap-3 rounded-md px-2 py-2 ' +
-                  (addon.installed ? 'opacity-60' : 'cursor-pointer hover:bg-white/5')
-                }
+              <div
+                className={'-mx-2 rounded-md px-2 py-2 ' + (addon.installed ? 'opacity-60' : '')}
               >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
-                  checked={addon.installed || chosen.has(addon.id)}
-                  // Установленный не снять и не поставить заново: галочка
-                  // рядом с ним — не выбор, а сообщение «уже есть».
-                  disabled={addon.installed || busy}
-                  onChange={(e) => toggle(addon.id, e.target.checked)}
-                />
                 <span className="min-w-0 text-sm">
                   <span className="font-medium">{addon.displayName}</span>
                   {addon.installed && (
                     <span className="ml-2 text-xs text-emerald-400">{t('addons.installed')}</span>
                   )}
                   <span className="mt-0.5 block text-xs text-muted">{t(addon.aboutKey)}</span>
+                  {addon.requires.length > 0 && (
+                    <span className="mt-0.5 block text-xs text-sky-300">
+                      {t('addons.requires', {
+                        names: addon.requires
+                          .map((dependency) => dependency.displayName)
+                          .join(', '),
+                      })}
+                    </span>
+                  )}
                 </span>
-              </label>
+              </div>
             </li>
           ))}
         </ul>
@@ -117,38 +117,20 @@ export function AddonsModal({
     </Modal>
   );
 
-  function toggle(id: string, on: boolean) {
-    setChosen((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
-
-  /**
-   * Ничего не отмечено — просто закрываем.
-   *
-   * Так и задумано: «Установить выбранное» без единой галочки — это «я
-   * посмотрел и ничего не хочу», и отвечать на это ошибкой было бы придиркой.
-   */
   async function install() {
-    if (chosen.size === 0) {
-      onClose();
-      return;
-    }
     setBusy(true);
     setError('');
     try {
-      const response = await api<AddonInstallResponseDto>(`/api/servers/${serverId}/addons/install`, {
-        method: 'POST',
-        body: JSON.stringify({ ids: [...chosen] }),
-      });
+      const response = await api<AddonInstallResponseDto>(
+        `/api/servers/${serverId}/addons/install`,
+        {
+          method: 'POST',
+        },
+      );
       setResults(response.results);
-      setChosen(new Set());
       // Состояние перечитываем, а не досочиняем по ответу: часть строк могла
-      // не поставиться, и галочка «уже есть» должна стоять только у тех, кто
-      // правда лёг на диск.
+      // не поставиться, и отметка «уже есть» должна стоять только у тех, кто
+      // действительно лёг на диск.
       onDone(await api<ServerAddonsDto>(`/api/servers/${serverId}/addons`));
     } catch (e) {
       setError((e as Error).message);

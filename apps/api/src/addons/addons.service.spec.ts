@@ -32,12 +32,7 @@ function makeService(over: {
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
 
-  return new AddonsService(
-    prisma as never,
-    settings as never,
-    plugins as never,
-    audit as never,
-  );
+  return new AddonsService(prisma as never, settings as never, plugins as never, audit as never);
 }
 
 describe('когда панель сама предлагает наши плагины', () => {
@@ -53,6 +48,10 @@ describe('когда панель сама предлагает наши пла�
       'aurum-slots',
     ]);
     expect(state.required?.id).toBe('aurum-companion');
+    expect(state.vaultBridgeInstalled).toBe(false);
+    expect(state.optional.find((addon) => addon.id === 'addons-npc')?.requires).toEqual([
+      { id: 'aurum-core', displayName: 'AurumCore' },
+    ]);
   });
 
   it('не предлагает без права на установку', async () => {
@@ -70,7 +69,7 @@ describe('когда панель сама предлагает наши пла�
   it('не предлагает после «не предлагать» для этого сервера', async () => {
     const state = await makeService({ dismissed: true }).state('srv-1', true);
     expect(state.canOffer).toBe(false);
-    // Список при этом отдаётся: кнопка «Рекомендуемые плагины» остаётся
+    // Список при этом отдаётся: кнопка «Экосистема Aurum» остаётся
     // единственным способом вернуться к выбору.
     expect(state.optional.length).toBeGreaterThan(0);
   });
@@ -101,6 +100,12 @@ describe('когда панель сама предлагает наши пла�
     const state = await makeService({ files: null }).state('srv-1', true);
     expect(state.canOffer).toBe(false);
     expect(state.filesAvailable).toBe(false);
+    expect(state.vaultBridgeInstalled).toBeNull();
+  });
+
+  it('распознаёт VaultUnlocked как внешний мост совместимости', async () => {
+    const state = await makeService({ files: ['VaultUnlocked-2.20.2.jar'] }).state('srv-1', true);
+    expect(state.vaultBridgeInstalled).toBe(true);
   });
 
   it('не предлагает для модуля без своих плагинов', async () => {
@@ -181,43 +186,102 @@ describe('обязательный аддон', () => {
   });
 });
 
-describe('установка выбранного', () => {
-  it('ставит только то, что положено этому модулю', async () => {
+describe('установка пакета', () => {
+  it('ставит полный комплект модуля в объявленном порядке', async () => {
     const service = makeService({});
     const install = jest
       .spyOn(service as never, 'installOne' as never)
       .mockResolvedValue({ restartRequired: false } as never);
 
-    // «minecraft-mod» никакому модулю не принадлежит: id приходит из
-    // браузера, и ставить по нему что попало из репозитория нельзя.
-    const results = await service.install('srv-1', ['aurum-auth', 'minecraft-mod'], 'user-1');
+    const results = await service.install('srv-1', 'user-1');
 
-    expect(results.map((r) => r.id)).toEqual(['aurum-auth']);
-    expect(install).toHaveBeenCalledTimes(1);
+    expect(results.map((result) => result.id)).toEqual([
+      'aurum-companion',
+      'aurum-core',
+      'aurum-auth',
+      'aurum-guilds',
+      'addons-npc',
+      'aurum-arena',
+      'aurum-slots',
+    ]);
+    expect(install).toHaveBeenCalledTimes(7);
   });
 
-  it('неудача одного не отменяет остальных', async () => {
+  it('неудача независимого компонента не отменяет остальные', async () => {
     const service = makeService({});
     jest
       .spyOn(service as never, 'installOne' as never)
       .mockRejectedValueOnce(new Error('нет релиза') as never)
-      .mockResolvedValueOnce({ restartRequired: false } as never);
+      .mockResolvedValue({ restartRequired: false } as never);
 
-    const results = await service.install('srv-1', ['aurum-auth', 'aurum-guilds'], 'user-1');
+    const results = await service.install('srv-1', 'user-1');
 
-    expect(results.map((r) => r.ok)).toEqual([false, true]);
+    expect(results[0]).toMatchObject({ id: 'aurum-companion', ok: false });
+    expect(results.slice(1).every((result) => result.ok)).toBe(true);
   });
 
-  it('пустой список — не ошибка, просто ничего не ставится', async () => {
-    const service = makeService({});
+  it('не ставит NPC, если установка Core не удалась', async () => {
+    const service = makeService({ files: ['AurumCompanion-0.9.0.jar'] });
+    const install = jest
+      .spyOn(service as never, 'installOne' as never)
+      .mockRejectedValueOnce(new Error('нет релиза') as never)
+      .mockResolvedValue({ restartRequired: false } as never);
+
+    const results = await service.install('srv-1', 'user-1');
+
+    expect(results.find((result) => result.id === 'aurum-core')).toMatchObject({ ok: false });
+    expect(results.find((result) => result.id === 'addons-npc')).toMatchObject({
+      ok: false,
+      message: 'addons.err.dependencyFailed',
+    });
+    // Auth, Guilds, Arena и Slots от Core жёстко не зависят и всё равно
+    // устанавливаются; вызова installOne для NPC нет.
+    expect(install.mock.calls.map((call) => (call[1] as { id: string }).id)).not.toContain(
+      'addons-npc',
+    );
+  });
+
+  it('не скачивает уже установленную зависимость повторно', async () => {
+    const service = makeService({
+      files: [
+        'AurumCompanion-0.9.0.jar',
+        'AurumCore-0.14.0.jar',
+        'AurumAuth-0.1.0.jar',
+        'AurumGuilds-0.1.0.jar',
+        'AurumArena-1.1.4.jar',
+        'AurumSlots-1.1.1.jar',
+      ],
+    });
+    const install = jest
+      .spyOn(service as never, 'installOne' as never)
+      .mockResolvedValue({ restartRequired: true } as never);
+
+    const results = await service.install('srv-1', 'user-1');
+
+    expect(results.map((result) => result.id)).toEqual(['addons-npc']);
+    expect(install).toHaveBeenCalledTimes(1);
+  });
+
+  it('полностью установленный пакет не скачивается повторно', async () => {
+    const service = makeService({
+      files: [
+        'AurumCompanion.jar',
+        'AurumCore.jar',
+        'AurumAuth.jar',
+        'AurumGuilds.jar',
+        'AddonsNPC.jar',
+        'AurumArena.jar',
+        'AurumSlots.jar',
+      ],
+    });
     const install = jest.spyOn(service as never, 'installOne' as never);
 
-    await expect(service.install('srv-1', [], 'user-1')).resolves.toEqual([]);
+    await expect(service.install('srv-1', 'user-1')).resolves.toEqual([]);
     expect(install).not.toHaveBeenCalled();
   });
 
   it('при выключенной фиче установка отклоняется', async () => {
     const service = makeService({ featureEnabled: false });
-    await expect(service.install('srv-1', ['aurum-auth'], 'user-1')).rejects.toThrow();
+    await expect(service.install('srv-1', 'user-1')).rejects.toThrow();
   });
 });

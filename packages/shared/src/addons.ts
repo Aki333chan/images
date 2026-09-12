@@ -16,7 +16,7 @@
 
 /** Один наш плагин в репозитории аддонов. */
 export interface AurumAddon {
-  /** Стабильный id для API и чекбоксов. Не меняется никогда. */
+  /** Стабильный id для API, результатов и зависимостей. Не меняется никогда. */
   id: string;
   /**
    * Имя плагина, под которым он приходит от сервера и лежит в файле.
@@ -35,6 +35,13 @@ export interface AurumAddon {
    * различать их релизы надо по тегу, а не по порядку публикации.
    */
   tagPrefix: string;
+  /**
+   * Жёсткие зависимости внутри нашего каталога.
+   *
+   * Это именно условие загрузки плагина, а не рекомендация интеграции:
+   * панель включает зависимости в пакет и ставит раньше зависимого jar.
+   */
+  requires?: string[];
 }
 
 /** Что панель ставит на сервер этого модуля. */
@@ -49,7 +56,7 @@ export interface ModuleAddons {
    * null — у модуля своего плагина нет, и автоустановка для него выключена.
    */
   required: AurumAddon | null;
-  /** Предлагаются поп-апом и кнопкой «Рекомендуемые плагины». */
+  /** Компоненты единого предлагаемого пакета. */
   optional: AurumAddon[];
 }
 
@@ -107,6 +114,7 @@ export const ADDONS_NPC: AurumAddon = {
   displayName: 'AddonsNPC',
   aboutKey: 'addons.about.npc',
   tagPrefix: 'npc-v',
+  requires: ['aurum-core'],
 };
 
 /**
@@ -151,6 +159,8 @@ export interface ServerAddonDto {
   aboutKey: string;
   /** true — файл плагина уже лежит в plugins/. */
   installed: boolean;
+  /** Жёсткие зависимости из этого же списка, уже с именами для интерфейса. */
+  requires: Array<{ id: string; displayName: string }>;
 }
 
 /**
@@ -172,6 +182,8 @@ export interface ServerAddonsDto {
   canInstall: boolean;
   /** Файловый API Pterodactyl ответил: без него состояние неизвестно. */
   filesAvailable: boolean;
+  /** null — папку не удалось прочитать; false — Vault/VaultUnlocked не найден. */
+  vaultBridgeInstalled: boolean | null;
   required: ServerAddonDto | null;
   optional: ServerAddonDto[];
   /**
@@ -194,7 +206,7 @@ export interface ServerAddonsDto {
   requiredError?: string;
 }
 
-/** Итог установки выбранных аддонов. */
+/** Итог установки одного компонента пакета. */
 export interface AddonInstallResultDto {
   id: string;
   displayName: string;

@@ -349,5 +349,9 @@
   "addons.err.disabled": "Предложение наших плагинов выключено в настройках панели",
   "addons.err.noRelease": "У плагина «{name}» пока нет выпущенной версии",
   "addons.err.releasesUnavailable": "Не удалось получить список версий с GitHub ({status})",
-  "addons.err.installFailed": "Установка не удалась"
+  "addons.err.installFailed": "Установка не удалась",
+  "addons.err.filesUnavailable": "Не удалось прочитать папку плагинов сервера",
+  "addons.err.dependencyFailed": "Не удалось установить обязательный плагин {name}",
+  "addons.err.dependencyMissing": "Зависимость {name} отсутствует в каталоге аддонов",
+  "addons.err.dependencyCycle": "В каталоге аддонов обнаружен цикл зависимостей"
 }

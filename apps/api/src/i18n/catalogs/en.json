@@ -341,5 +341,9 @@
   "addons.err.disabled": "Offering our plugins is switched off in the panel settings",
   "addons.err.noRelease": "«{name}» has no released version yet",
   "addons.err.releasesUnavailable": "Could not fetch the version list from GitHub ({status})",
-  "addons.err.installFailed": "The installation failed"
+  "addons.err.installFailed": "The installation failed",
+  "addons.err.filesUnavailable": "Could not read the server plugins directory",
+  "addons.err.dependencyFailed": "Required plugin {name} could not be installed",
+  "addons.err.dependencyMissing": "Dependency {name} is missing from the addon catalog",
+  "addons.err.dependencyCycle": "The addon catalog contains a dependency cycle"
 }

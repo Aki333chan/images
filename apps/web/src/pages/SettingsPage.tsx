@@ -313,7 +313,7 @@ function AccountRules() {
       </p>
 
       {/* Одна галочка на всю фичу: и на молчаливую установку companion, и на
-          поп-ап с необязательными. Тот, кто её снимает, снимает целиком. */}
+          предложение полного пакета. Тот, кто её снимает, снимает целиком. */}
       <label className="-mx-2 flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-white/5">
         <input
           type="checkbox"

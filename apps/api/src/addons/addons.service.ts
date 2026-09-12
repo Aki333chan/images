@@ -84,19 +84,25 @@ export class AddonsService {
     const featureEnabled = await this.settings.addonsOfferEnabled();
     const { required, optional } = addonsForModule(server.moduleId);
 
-    // Файлы читаем один раз на все аддоны сразу: их до трёх, а листинг
+    // Файлы читаем один раз на весь пакет, а листинг
     // папки — сетевой запрос в Pterodactyl.
-    const files = allAddons(server.moduleId).length > 0
-      ? await this.plugins.pluginFileNames(serverId)
-      : [];
+    const files =
+      allAddons(server.moduleId).length > 0 ? await this.plugins.pluginFileNames(serverId) : [];
     const filesAvailable = files !== null;
     const known = files ?? [];
 
+    const available = allAddons(server.moduleId);
     const describe = (addon: AurumAddon): ServerAddonDto => ({
       id: addon.id,
       displayName: addon.displayName,
       aboutKey: addon.aboutKey,
       installed: isInstalled(addon.pluginName, known),
+      requires: (addon.requires ?? []).map((id) => {
+        const dependency = available.find((candidate) => candidate.id === id);
+        // Ошибка реестра должна обнаруживаться на сервере, но состояние всё
+        // равно остаётся читаемым: пустое имя хуже, чем стабильный id.
+        return { id, displayName: dependency?.displayName ?? id };
+      }),
     });
 
     const optionalState = optional.map(describe);
@@ -107,6 +113,7 @@ export class AddonsService {
       dismissed: server.addonsDismissed,
       canInstall,
       filesAvailable,
+      vaultBridgeInstalled: filesAvailable ? isInstalled('Vault', known) : null,
       required: required ? describe(required) : null,
       optional: optionalState,
       // Все шесть условий сразу и в одном месте. Разложи их по фронтенду — и
@@ -135,7 +142,11 @@ export class AddonsService {
    * В аудите исполнитель — панель, но рядом записан тот, при чьём заходе это
    * случилось: «сделала система» без единого имени рядом — плохая запись.
    */
-  async bootstrap(serverId: string, viewerId: string, canInstall: boolean): Promise<ServerAddonsDto> {
+  async bootstrap(
+    serverId: string,
+    viewerId: string,
+    canInstall: boolean,
+  ): Promise<ServerAddonsDto> {
     const state = await this.state(serverId, canInstall);
     if (!state.featureEnabled) return state;
     if (!state.required || state.required.installed || !state.filesAvailable) return state;
@@ -161,20 +172,16 @@ export class AddonsService {
     }
   }
 
-  // ------------------------------------------------ выбранные вручную
+  // ------------------------------------------------ пакет вручную
 
   /**
-   * Поставить выбранные в поп-апе аддоны.
+   * Поставить полный пакет аддонов этого модуля.
    *
    * Неудача одного не отменяет остальных: список выдают целиком, и «ничего не
    * поставилось, потому что у одного не нашёлся релиз» — худший из возможных
    * ответов. По строке на каждый, как в выдаче предметов.
    */
-  async install(
-    serverId: string,
-    ids: string[],
-    actorId: string,
-  ): Promise<AddonInstallResultDto[]> {
+  async install(serverId: string, actorId: string): Promise<AddonInstallResultDto[]> {
     const server = await this.prisma.server.findUnique({
       where: { id: serverId },
       select: { moduleId: true },
@@ -184,17 +191,43 @@ export class AddonsService {
       throw new BadRequestException('addons.err.disabled');
     }
 
-    // Ставим только то, что этому модулю вообще положено: id приходит из
-    // браузера, и принимать по нему что угодно из репозитория нельзя.
+    // Состав пакета определяется только сервером. Браузер не выбирает id и
+    // потому не может случайно получить несовместимый неполный комплект.
     const allowed = allAddons(server.moduleId);
-    const chosen = ids
-      .map((id) => allowed.find((a) => a.id === id))
-      .filter((a): a is AurumAddon => a !== undefined);
+    const chosen = resolveInstallOrder(
+      allowed.map((addon) => addon.id),
+      allowed,
+    );
+    const files = await this.plugins.pluginFileNames(serverId);
+    if (files === null) throw new BadRequestException('addons.err.filesUnavailable');
+    const installed = new Set(
+      allowed.filter((addon) => isInstalled(addon.pluginName, files)).map((addon) => addon.id),
+    );
 
     const results: AddonInstallResultDto[] = [];
     for (const addon of chosen) {
+      // Зависимость уже может стоять на сервере. Не скачиваем поверх неё и не
+      // выдаём фиктивный результат установки; зависимый плагин всё равно
+      // будет поставлен дальше.
+      if (installed.has(addon.id)) continue;
+
+      const failedDependency = (addon.requires ?? []).find((id) => !installed.has(id));
+      if (failedDependency) {
+        const dependency = allowed.find((candidate) => candidate.id === failedDependency);
+        results.push({
+          id: addon.id,
+          displayName: addon.displayName,
+          ok: false,
+          restartRequired: false,
+          message: 'addons.err.dependencyFailed',
+          messageValues: { name: dependency?.displayName ?? failedDependency },
+        });
+        continue;
+      }
+
       try {
         const done = await this.installOne(serverId, addon, actorId, false);
+        installed.add(addon.id);
         results.push({
           id: addon.id,
           displayName: addon.displayName,
@@ -310,6 +343,44 @@ export class AddonsService {
     this.releases = { at: Date.now(), data };
     return data;
   }
+}
+
+/**
+ * Добавить транзитивные зависимости и вернуть порядок «сначала основание».
+ *
+ * Состав пакета приходит из серверного реестра. Этот отдельный проход нужен,
+ * чтобы новые зависимости нельзя было случайно поставить после потребителя.
+ * Неизвестная зависимость и цикл — ошибка нашей
+ * сборки каталога, поэтому установка останавливается до записи первого jar.
+ */
+export function resolveInstallOrder(ids: string[], allowed: AurumAddon[]): AurumAddon[] {
+  const byId = new Map(allowed.map((addon) => [addon.id, addon]));
+  const requested = [...new Set(ids)].map((id) => byId.get(id)).filter(Boolean) as AurumAddon[];
+  const ordered: AurumAddon[] = [];
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (addon: AurumAddon) => {
+    if (visited.has(addon.id)) return;
+    if (visiting.has(addon.id)) throw new BadRequestException('addons.err.dependencyCycle');
+    visiting.add(addon.id);
+    for (const dependencyId of addon.requires ?? []) {
+      const dependency = byId.get(dependencyId);
+      if (!dependency) {
+        throw new BadRequestException({
+          message: 'addons.err.dependencyMissing',
+          i18nValues: { name: dependencyId },
+        });
+      }
+      visit(dependency);
+    }
+    visiting.delete(addon.id);
+    visited.add(addon.id);
+    ordered.push(addon);
+  };
+
+  requested.forEach(visit);
+  return ordered;
 }
 
 /** Ключ словаря из брошенного исключения; чужая ошибка — общей формулировкой. */

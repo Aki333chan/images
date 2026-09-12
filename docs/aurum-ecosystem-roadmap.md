@@ -24,8 +24,13 @@
   import в неактивный ledger, verify и rollback CSV. Essentials/Vault остаются
   рабочим провайдером и не изменяются.
 - [x] Публикационный контракт экосистемы: исходники и каталог панели находятся
-  в `Images`, готовые JAR — в `Addons`, а установка панелью идёт только из
-  GitHub Releases с отдельными тегами `<name>-v<version>`.
+      в `Images`, готовые JAR — в `Addons`, а установка панелью идёт только из
+      GitHub Releases с отдельными тегами `<name>-v<version>`.
+- [x] Единый пакет установки `Aurum Ecosystem` в панели: без ручного выбора,
+      с пропуском уже установленных JAR, серверным графом зависимостей, установкой
+      Core перед AddonsNPC и предупреждением об отсутствующем Vault/VaultUnlocked.
+      Компоненты остаются отдельными JAR и релизами; Legacy-матрица записана в
+      `docs/aurum-plugin-compatibility.md`.
 - [x] Active economy 0.4.0: AurumCore — авторитетный MariaDB ledger и
   VaultUnlocked-провайдер; безопасный cutover gate, кэшированные чтения,
   атомарные записи, `/pay`/`/apay`, баланс, казна, give/take/set, права,

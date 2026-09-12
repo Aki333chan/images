@@ -349,5 +349,9 @@
   "addons.err.disabled": "Proponowanie naszych pluginów jest wyłączone w ustawieniach panelu",
   "addons.err.noRelease": "Plugin «{name}» nie ma jeszcze wydanej wersji",
   "addons.err.releasesUnavailable": "Nie udało się pobrać listy wersji z GitHuba ({status})",
-  "addons.err.installFailed": "Instalacja się nie powiodła"
+  "addons.err.installFailed": "Instalacja się nie powiodła",
+  "addons.err.filesUnavailable": "Nie udało się odczytać katalogu pluginów serwera",
+  "addons.err.dependencyFailed": "Nie udało się zainstalować wymaganego pluginu {name}",
+  "addons.err.dependencyMissing": "Brakuje zależności {name} w katalogu dodatków",
+  "addons.err.dependencyCycle": "Katalog dodatków zawiera cykl zależności"
 }

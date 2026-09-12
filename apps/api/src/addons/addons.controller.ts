@@ -1,5 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { ArrayMaxSize, IsArray, IsString, MaxLength } from 'class-validator';
+import { Controller, Get, Param, Post } from '@nestjs/common';
 import {
   PLUGIN_PERMISSIONS,
   type AddonInstallResponseDto,
@@ -7,23 +6,8 @@ import {
 } from '@aurum/shared';
 import { AuthUser, CurrentPermissions, CurrentUser } from '../auth/decorators';
 import type { EffectivePermissions } from '../rbac/permissions.service';
-import { ServerScoped } from '../rbac/rbac.decorators';
+import { RequirePermission, ServerScoped } from '../rbac/rbac.decorators';
 import { AddonsService } from './addons.service';
-
-class InstallAddonsDto {
-  /**
-   * Пусто — допустимо и не ошибка.
-   *
-   * В поп-апе можно не отметить ни одного плагина и нажать «Установить
-   * выбранное»: человек передумал уже у кнопки. Отвечать на это ошибкой
-   * значило бы требовать от него вернуться и нажать другую кнопку.
-   */
-  @IsArray()
-  @ArrayMaxSize(10)
-  @IsString({ each: true })
-  @MaxLength(64, { each: true })
-  ids!: string[];
-}
 
 /**
  * Наши собственные плагины на игровом сервере.
@@ -37,7 +21,7 @@ export class AddonsController {
   constructor(private readonly addons: AddonsService) {}
 
   /**
-   * Состояние без побочных действий — для кнопки «Рекомендуемые плагины».
+   * Состояние без побочных действий — для кнопки «Экосистема Aurum».
    *
    * Права на установку здесь не требуется: состояние читает каждый, у кого
    * есть доступ к серверу, а вот кнопка установки в поп-апе появится только
@@ -71,21 +55,21 @@ export class AddonsController {
     return this.addons.bootstrap(serverId, user.id, canInstall(perms));
   }
 
-  /** Поставить отмеченное в поп-апе. Право то же, что у маркета. */
+  /** Поставить полный совместимый пакет. Право то же, что у маркета. */
   @Post('install')
+  @RequirePermission(PLUGIN_PERMISSIONS.install)
   @ServerScoped('serverId')
   async install(
     @Param('serverId') serverId: string,
-    @Body() dto: InstallAddonsDto,
     @CurrentUser() user: AuthUser,
   ): Promise<AddonInstallResponseDto> {
-    return { results: await this.addons.install(serverId, dto.ids, user.id) };
+    return { results: await this.addons.install(serverId, user.id) };
   }
 
   /**
    * «Закрыть и не предлагать» — навсегда для этого сервера.
    *
-   * Вернуться к выбору можно кнопкой «Рекомендуемые плагины»: она видна
+   * Вернуться к пакету можно кнопкой «Экосистема Aurum»: она видна
    * всегда и этим флагом не гасится. Иначе решение, принятое в одну секунду
    * и, возможно, не тем человеком, оказалось бы окончательным.
    */
