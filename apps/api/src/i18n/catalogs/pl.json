@@ -353,5 +353,8 @@
   "addons.err.filesUnavailable": "Nie udało się odczytać katalogu pluginów serwera",
   "addons.err.dependencyFailed": "Nie udało się zainstalować wymaganego pluginu {name}",
   "addons.err.dependencyMissing": "Brakuje zależności {name} w katalogu dodatków",
-  "addons.err.dependencyCycle": "Katalog dodatków zawiera cykl zależności"
+  "addons.err.dependencyCycle": "Katalog dodatków zawiera cykl zależności",
+  "mc.err.economyRuleType": "Nieznany typ reguły finansowej",
+  "mc.err.economyRulesUnavailable": "Edytor reguł finansowych wymaga aktywnego AurumCore 0.15 lub nowszego oraz AurumCompanion 0.10 lub nowszego",
+  "mc.err.economyRuleFields": "Pola reguły muszą być małym obiektem tekst–tekst"
 }

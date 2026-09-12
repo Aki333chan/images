@@ -22,6 +22,7 @@ import net.milkbowl.vault.economy.Economy;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumClaimApi;
 import ovh.aurumgg.core.api.AurumAuditApi;
+import ovh.aurumgg.core.api.AurumRulesAdminApi;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
@@ -38,6 +39,7 @@ import ovh.aurumgg.core.engine.MultiCurrencyEconomyService;
 import ovh.aurumgg.core.engine.PassiveEconomyService;
 import ovh.aurumgg.core.engine.PolicyRegistry;
 import ovh.aurumgg.core.engine.PolicyRepository;
+import ovh.aurumgg.core.engine.RulesAdminService;
 import ovh.aurumgg.core.engine.db.MariaDbManager;
 import ovh.aurumgg.core.engine.db.MariaDbStateRepository;
 import ovh.aurumgg.core.engine.migration.MigrationRepository;
@@ -63,6 +65,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile ExchangeCoordinator exchanges;
     private volatile ClaimService claims;
     private volatile EconomyAuditService audit;
+    private volatile RulesAdminService rulesAdmin;
     private volatile ClaimCoordinator claimCommands;
     private volatile ClaimsUiBridge claimsUi;
     private volatile TradeCoordinator tradeCommands;
@@ -148,8 +151,10 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                 }
                 database = opened;
                 MigrationRepository migrationRepository = opened.migrationRepository();
-                initializePolicies(opened.policyRepository());
-                initializeExchanges(opened.exchangeRepository());
+                PolicyRepository policyRepository = opened.policyRepository();
+                ExchangeRepository exchangeRepository = opened.exchangeRepository();
+                initializePolicies(policyRepository);
+                initializeExchanges(exchangeRepository);
                 if (settings.configuredMode().equals("shadow")) {
                     migrations = new MigrationCoordinator(this, vault, settings.currency(), migrationRepository,
                             new MigrationService(settings.currency(), migrationRepository, ledger),
@@ -190,6 +195,10 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                             settings.claimMaxAttempts());
                     audit = new EconomyAuditService(settings.currency(), settings.currencies(), ledger, holdRepository,
                             claimRepository, policyRegistry, exchangeRegistry, databaseExecutor, Clock.systemUTC());
+                    rulesAdmin = new RulesAdminService(settings.currency(), settings.currencies(),
+                            policyRepository, exchangeRepository, policyRegistry, exchangeRegistry,
+                            databaseExecutor, Clock.systemUTC(), Duration.ofMinutes(5),
+                            settings.policies().maxRules(), settings.exchange().maxRules());
                     claimCommands = new ClaimCoordinator(this, claims);
                     claimsUi = new ClaimsUiBridge(this, claims);
                     if (settings.tradingEnabled()) {
@@ -315,6 +324,10 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         }
         if (audit != null) {
             getServer().getServicesManager().register(AurumAuditApi.class, audit,
+                    this, ServicePriority.Highest);
+        }
+        if (rulesAdmin != null) {
+            getServer().getServicesManager().register(AurumRulesAdminApi.class, rulesAdmin,
                     this, ServicePriority.Highest);
         }
         if (tradeDelivery != null) {

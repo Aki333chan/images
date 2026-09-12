@@ -8,6 +8,9 @@ import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleApply;
+import ovh.aurumgg.companion.core.model.EconomyRuleInfo;
+import ovh.aurumgg.companion.core.model.EconomyRulePreview;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildBonusInfo;
@@ -208,6 +211,43 @@ public final class PayloadWriter {
         }
         root.put("records", Json.array(records));
         return Json.object(root);
+    }
+
+    public static String economyRules(List<EconomyRuleInfo> values) {
+        List<String> rules = new ArrayList<>(values.size());
+        for (EconomyRuleInfo value : values) rules.add(economyRule(value));
+        return Json.object(Map.of("rules", Json.array(rules)));
+    }
+
+    public static String economyRulePreview(EconomyRulePreview value) {
+        Map<String, String> root = new LinkedHashMap<>();
+        root.put("status", Json.string(value.status()));
+        root.put("token", Json.string(value.token()));
+        root.put("current", value.current() == null ? "null" : economyRule(value.current()));
+        root.put("proposed", value.proposed() == null ? "null" : economyRule(value.proposed()));
+        List<String> warnings = new ArrayList<>(value.warnings().size());
+        value.warnings().forEach(warning -> warnings.add(Json.string(warning)));
+        root.put("warnings", Json.array(warnings));
+        root.put("message", Json.string(value.message()));
+        root.put("expiresAt", Json.number(value.expiresAt()));
+        return Json.object(root);
+    }
+
+    public static String economyRuleApply(EconomyRuleApply value) {
+        Map<String, String> root = new LinkedHashMap<>();
+        root.put("status", Json.string(value.status()));
+        root.put("current", value.current() == null ? "null" : economyRule(value.current()));
+        root.put("message", Json.string(value.message()));
+        return Json.object(root);
+    }
+
+    private static String economyRule(EconomyRuleInfo value) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("type", Json.string(value.type()));
+        fields.put("id", Json.string(value.id()));
+        fields.put("revision", Json.number(value.revision()));
+        fields.put("fields", stringMap(value.fields()));
+        return Json.object(fields);
     }
 
     private static String stringMap(Map<String, String> values) {

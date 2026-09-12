@@ -120,7 +120,8 @@ public final class EconomyAuditService implements AurumAuditApi {
     private EconomyAuditPage policies(CurrencySpec currency) {
         List<EconomyAuditRecord> records = policies.snapshot().stream().map(rule -> new EconomyAuditRecord(
                 "policy", fields(
-                "id", rule.id(), "kind", rule.kind().name(), "handler", Integer.toString(rule.handlerVersion()),
+                "id", rule.id(), "revision", Long.toString(rule.revision()),
+                "kind", rule.kind().name(), "handler", Integer.toString(rule.handlerVersion()),
                 "categories", shorten(rule.categories().stream().map(Enum::name).sorted()
                         .collect(Collectors.joining(",")), 1_800),
                 "definition", shorten(pairs(rule.definition()), 1_800), "priority", Integer.toString(rule.priority()),

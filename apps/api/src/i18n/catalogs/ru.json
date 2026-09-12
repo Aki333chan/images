@@ -353,5 +353,8 @@
   "addons.err.filesUnavailable": "Не удалось прочитать папку плагинов сервера",
   "addons.err.dependencyFailed": "Не удалось установить обязательный плагин {name}",
   "addons.err.dependencyMissing": "Зависимость {name} отсутствует в каталоге аддонов",
-  "addons.err.dependencyCycle": "В каталоге аддонов обнаружен цикл зависимостей"
+  "addons.err.dependencyCycle": "В каталоге аддонов обнаружен цикл зависимостей",
+  "mc.err.economyRuleType": "Неизвестный тип финансового правила",
+  "mc.err.economyRulesUnavailable": "Для редактора финансовых правил нужны активный AurumCore 0.15 или новее и AurumCompanion 0.10 или новее",
+  "mc.err.economyRuleFields": "Поля правила должны быть небольшим объектом из строковых ключей и значений"
 }

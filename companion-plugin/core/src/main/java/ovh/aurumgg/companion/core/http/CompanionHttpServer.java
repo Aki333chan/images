@@ -23,6 +23,10 @@ import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.EconomyRuleApply;
+import ovh.aurumgg.companion.core.model.EconomyRuleInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleMutation;
+import ovh.aurumgg.companion.core.model.EconomyRulePreview;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildInfo;
@@ -446,6 +450,48 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // Two-phase financial rule editor. Preview validates an exact full
+        // replacement and returns a one-use token; apply never accepts fields.
+        if (parts.length == 3 && parts[0].equals("economy") && parts[1].equals("rules")
+                && method.equals("GET")) {
+            requireRuleType(parts[2]);
+            Optional<List<EconomyRuleInfo>> rules = bridge.economyRules(parts[2]);
+            if (rules.isEmpty()) {
+                respondRulesUnavailable(exchange);
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.economyRules(rules.get()));
+            return;
+        }
+
+        if (parts.length == 4 && parts[0].equals("economy") && parts[1].equals("rules")
+                && parts[3].equals("preview") && method.equals("POST")) {
+            requireRuleType(parts[2]);
+            EconomyRuleMutation mutation = parseRuleMutation(parts[2], readBody(exchange));
+            Optional<EconomyRulePreview> preview = bridge.previewEconomyRule(mutation);
+            if (preview.isEmpty()) {
+                respondRulesUnavailable(exchange);
+                return;
+            }
+            respond(exchange, rulePreviewStatus(preview.get().status()),
+                    PayloadWriter.economyRulePreview(preview.get()));
+            return;
+        }
+
+        if (parts.length == 3 && parts[0].equals("economy") && parts[1].equals("rules")
+                && parts[2].equals("apply") && method.equals("POST")) {
+            RuleApplyRequest request = parseRuleApply(readBody(exchange));
+            Optional<EconomyRuleApply> applied = bridge.applyEconomyRule(
+                    request.token(), request.actor(), request.reason());
+            if (applied.isEmpty()) {
+                respondRulesUnavailable(exchange);
+                return;
+            }
+            respond(exchange, ruleApplyStatus(applied.get().status()),
+                    PayloadWriter.economyRuleApply(applied.get()));
+            return;
+        }
+
         // GET /economy/audit/{section} — один bounded read-only срез AurumCore.
         // Секции раздельны намеренно: открытие истории не тащит holds, claims
         // и правила одним тяжёлым запросом.
@@ -751,6 +797,68 @@ public final class CompanionHttpServer {
         if (value < 1) throw new IllegalArgumentException("Параметр limit должен быть положительным");
         return Math.min(value, 200);
     }
+
+    static EconomyRuleMutation parseRuleMutation(String type, String body) {
+        Map<String, Object> parsed = JsonParser.parseObject(body);
+        String id = stringField(parsed, "id");
+        String actor = stringField(parsed, "actor");
+        Object rawRevision = parsed.get("expectedRevision");
+        if (!(rawRevision instanceof Double revision) || !Double.isFinite(revision)
+                || revision < 0 || revision != Math.rint(revision) || revision > Long.MAX_VALUE) {
+            throw new IllegalArgumentException("expectedRevision must be a non-negative integer");
+        }
+        Object rawFields = parsed.get("fields");
+        if (!(rawFields instanceof Map<?, ?> input)) {
+            throw new IllegalArgumentException("fields must be an object");
+        }
+        Map<String, String> fields = new java.util.LinkedHashMap<>();
+        for (var entry : input.entrySet()) {
+            if (!(entry.getKey() instanceof String key) || !(entry.getValue() instanceof String value)) {
+                throw new IllegalArgumentException("fields must contain strings only");
+            }
+            fields.put(key, value);
+        }
+        return new EconomyRuleMutation(type, id, revision.longValue(), fields, actor);
+    }
+
+    private static void requireRuleType(String type) {
+        if (!type.equals("policy") && !type.equals("exchange")) {
+            throw new IllegalArgumentException("Unknown financial rule type");
+        }
+    }
+
+    static RuleApplyRequest parseRuleApply(String body) {
+        Map<String, Object> parsed = JsonParser.parseObject(body);
+        return new RuleApplyRequest(stringField(parsed, "token"), stringField(parsed, "actor"),
+                stringField(parsed, "reason"));
+    }
+
+    private static int rulePreviewStatus(String status) {
+        return switch (status) {
+            case "ready" -> 200;
+            case "conflict" -> 409;
+            case "invalid" -> 400;
+            default -> 503;
+        };
+    }
+
+    private static int ruleApplyStatus(String status) {
+        return switch (status) {
+            case "applied" -> 200;
+            case "applied_reload_failed" -> 202;
+            case "conflict" -> 409;
+            case "expired" -> 410;
+            case "invalid" -> 400;
+            default -> 503;
+        };
+    }
+
+    private void respondRulesUnavailable(HttpExchange exchange) throws IOException {
+        respond(exchange, 503, PayloadWriter.error(
+                "AurumCore rule editor is unavailable", "economy-rules-unavailable"));
+    }
+
+    record RuleApplyRequest(String token, String actor, String reason) {}
 
     /**
      * Экономики нет — но причины две, и панели важно, какая именно: без Vault

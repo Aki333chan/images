@@ -1,5 +1,15 @@
 # Aurum Companion
 
+## Release 0.10.0
+
+The web panel can now list, preview and apply versioned AurumCore financial
+policies and exchange rules. Companion exposes only the typed two-phase Core
+API: a preview is revision-guarded and actor-bound, while apply consumes its
+short-lived token and requires an audit reason. There is no YAML/SQL write,
+arbitrary command transport or Vault fallback. HTTP workers wait for Core's
+existing database executor; the Paper thread is never blocked and no polling
+was added.
+
 ## Release 0.9.0
 
 The panel can now request one bounded AurumCore audit section at a time:
@@ -115,6 +125,9 @@ are rate-limited, and allow only one outstanding mutation per player.
 | `POST /players/{uuid}/balance/withdraw` | списать сумму | AurumCore, иначе Vault |
 | `GET /economy?top=N` | деньги сервера целиком и доска богатства | AurumCore, иначе Vault |
 | `GET /economy/audit/{section}` | один ограниченный срез ledger/правил/holds/claims | только active AurumCore |
+| `GET /economy/rules/{policy\|exchange}` | актуальные ревизии финансовых правил | только active AurumCore |
+| `POST /economy/rules/{policy\|exchange}/preview` | проверить полную новую ревизию и получить одноразовый токен | только active AurumCore |
+| `POST /economy/rules/apply` | применить подтверждённую ревизию с причиной | только active AurumCore |
 | `POST /webtoken/{code}` | обменять одноразовый код игрока на его UUID и ник | AurumAuth |
 | `POST /auth/reset/{ник}` | выдать игроку одноразовый токен сброса пароля | AurumAuth |
 

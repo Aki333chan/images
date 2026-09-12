@@ -9,6 +9,7 @@ import ovh.aurumgg.core.api.TransactionCategory;
 /** Persisted, versioned rule envelope interpreted by a PolicyKind handler. */
 public record FinancialRule(
         String id,
+        long revision,
         PolicyKind kind,
         int handlerVersion,
         Set<TransactionCategory> categories,
@@ -23,7 +24,7 @@ public record FinancialRule(
         Objects.requireNonNull(kind, "kind");
         categories = Set.copyOf(Objects.requireNonNull(categories, "categories"));
         definition = Map.copyOf(Objects.requireNonNull(definition, "definition"));
-        if (!id.matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}")
+        if (!id.matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}") || revision < 1
                 || handlerVersion < 1 || categories.isEmpty() || definition.size() > 16
                 || definition.entrySet().stream().anyMatch(entry -> entry.getKey().isBlank()
                 || entry.getKey().length() > 64 || entry.getValue().length() > 256)) {

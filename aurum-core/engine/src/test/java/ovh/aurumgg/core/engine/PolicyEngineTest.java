@@ -50,7 +50,7 @@ class PolicyEngineTest {
 
     @Test
     void limitRejectsBeforeLedgerMutation() {
-        FinancialRule limit = new FinancialRule("cap", PolicyKind.LIMIT, 1,
+        FinancialRule limit = new FinancialRule("cap", 1, PolicyKind.LIMIT, 1,
                 Set.of(TransactionCategory.PLAYER_PAYMENT), Map.of("maximum", "50.00"),
                 100, true, null, null);
         assertThrows(PolicyRejectedException.class,
@@ -59,7 +59,7 @@ class PolicyEngineTest {
 
     @Test
     void exemptionSkipsNamedPolicyFamily() {
-        FinancialRule exemption = new FinancialRule("no-tax", PolicyKind.EXEMPTION, 1,
+        FinancialRule exemption = new FinancialRule("no-tax", 1, PolicyKind.EXEMPTION, 1,
                 Set.of(TransactionCategory.PLAYER_PAYMENT), Map.of("kinds", "TAX"),
                 100, true, null, null);
         TransactionPlan plan = TransactionPlanner.plan(request("100.00"), COINS,
@@ -72,7 +72,7 @@ class PolicyEngineTest {
 
     @Test
     void accountAndMetadataConditionsTargetOnlyMatchingTransactions() {
-        FinancialRule targeted = new FinancialRule("targeted", PolicyKind.TAX, 1,
+        FinancialRule targeted = new FinancialRule("targeted", 1, PolicyKind.TAX, 1,
                 Set.of(TransactionCategory.PLAYER_PAYMENT), Map.of(
                         "rate", "0.10", "mode", "INCLUDED",
                         "condition-source-id", FROM.reference(),
@@ -91,10 +91,10 @@ class PolicyEngineTest {
 
     @Test
     void systemMintAndTechnicalVaultCategoriesCannotBeConfiguredAsPolicyBackdoors() {
-        FinancialRule vaultTax = new FinancialRule("vault-tax", PolicyKind.TAX, 1,
+        FinancialRule vaultTax = new FinancialRule("vault-tax", 1, PolicyKind.TAX, 1,
                 Set.of(TransactionCategory.VAULT_DEPOSIT), Map.of("rate", "0.10"),
                 1, false, null, null);
-        FinancialRule mintedCashback = new FinancialRule("mint", PolicyKind.CASHBACK, 1,
+        FinancialRule mintedCashback = new FinancialRule("mint", 1, PolicyKind.CASHBACK, 1,
                 Set.of(TransactionCategory.PLAYER_PAYMENT), Map.of(
                         "rate", "0.10", "funding-type", "SYSTEM_SOURCE", "funding-id", "global"),
                 1, false, null, null);
@@ -107,7 +107,7 @@ class PolicyEngineTest {
                                             String mode, int priority) {
         Map<String, String> definition = mode == null ? Map.of("rate", rate)
                 : Map.of("rate", rate, "mode", mode);
-        return new FinancialRule(id, kind, 1, Set.of(TransactionCategory.PLAYER_PAYMENT),
+        return new FinancialRule(id, 1, kind, 1, Set.of(TransactionCategory.PLAYER_PAYMENT),
                 definition, priority, true, null, null);
     }
 

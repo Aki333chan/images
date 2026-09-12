@@ -12,6 +12,10 @@ import type {
   MinecraftEconomyDto,
   MinecraftEconomyAuditDto,
   MinecraftEconomyAuditSection,
+  MinecraftEconomyRuleApplyDto,
+  MinecraftEconomyRuleDto,
+  MinecraftEconomyRulePreviewDto,
+  MinecraftEconomyRuleType,
   MinecraftGiveItemDto,
   MinecraftGiveResponse,
   MinecraftGuildBonusDto,
@@ -981,6 +985,47 @@ export class CompanionService {
     };
   }
 
+  async getEconomyRules(
+    serverId: string,
+    type: MinecraftEconomyRuleType,
+  ): Promise<MinecraftEconomyRuleDto[] | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<{ rules?: RawEconomyRule[] }>(
+      serverId,
+      `/economy/rules/${type}`,
+      { timeoutMs: 8_000 },
+    );
+    if (!result.ok || !Array.isArray(result.body.rules)) return null;
+    return result.body.rules.map(toEconomyRule).filter((rule): rule is MinecraftEconomyRuleDto => rule !== null);
+  }
+
+  async previewEconomyRule(
+    serverId: string,
+    type: MinecraftEconomyRuleType,
+    input: { id: string; expectedRevision: number; fields: Record<string, string>; actor: string },
+  ): Promise<MinecraftEconomyRulePreviewDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<RawEconomyRulePreview>(
+      serverId,
+      `/economy/rules/${type}/preview`,
+      { method: 'POST', body: input, timeoutMs: 8_000 },
+    );
+    return toRulePreview(result.body);
+  }
+
+  async applyEconomyRule(
+    serverId: string,
+    input: { token: string; actor: string; reason: string },
+  ): Promise<MinecraftEconomyRuleApplyDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<RawEconomyRuleApply>(serverId, '/economy/rules/apply', {
+      method: 'POST',
+      body: input,
+      timeoutMs: 8_000,
+    });
+    return toRuleApply(result.body);
+  }
+
   // ------------------------------------------------------------- Тюрьмы
 
   /**
@@ -1231,11 +1276,75 @@ interface RawEconomyAudit {
   records?: RawEconomyAuditRecord[];
 }
 
+interface RawEconomyRule {
+  type?: unknown;
+  id?: unknown;
+  revision?: unknown;
+  fields?: unknown;
+}
+
+interface RawEconomyRulePreview {
+  status?: unknown;
+  token?: unknown;
+  current?: unknown;
+  proposed?: unknown;
+  warnings?: unknown;
+  message?: unknown;
+  expiresAt?: unknown;
+}
+
+interface RawEconomyRuleApply {
+  status?: unknown;
+  current?: unknown;
+  message?: unknown;
+}
+
 function stringRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(
     Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
   );
+}
+
+function toEconomyRule(value: unknown): MinecraftEconomyRuleDto | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as RawEconomyRule;
+  if ((raw.type !== 'policy' && raw.type !== 'exchange') || typeof raw.id !== 'string'
+      || typeof raw.revision !== 'number' || !Number.isSafeInteger(raw.revision) || raw.revision < 0) {
+    return null;
+  }
+  return { type: raw.type, id: raw.id, revision: raw.revision, fields: stringRecord(raw.fields) };
+}
+
+function toRulePreview(value: unknown): MinecraftEconomyRulePreviewDto | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as RawEconomyRulePreview;
+  if (!['ready', 'conflict', 'invalid', 'unavailable'].includes(String(raw.status))) return null;
+  return {
+    status: raw.status as MinecraftEconomyRulePreviewDto['status'],
+    token: typeof raw.token === 'string' ? raw.token : '',
+    current: toEconomyRule(raw.current),
+    proposed: toEconomyRule(raw.proposed),
+    warnings: Array.isArray(raw.warnings)
+      ? raw.warnings.filter((warning): warning is string => typeof warning === 'string')
+      : [],
+    message: typeof raw.message === 'string' ? raw.message : '',
+    expiresAt: typeof raw.expiresAt === 'number' && raw.expiresAt > 0
+      ? new Date(raw.expiresAt).toISOString()
+      : null,
+  };
+}
+
+function toRuleApply(value: unknown): MinecraftEconomyRuleApplyDto | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as RawEconomyRuleApply;
+  if (!['applied', 'applied_reload_failed', 'conflict', 'invalid', 'expired', 'unavailable']
+      .includes(String(raw.status))) return null;
+  return {
+    status: raw.status as MinecraftEconomyRuleApplyDto['status'],
+    current: toEconomyRule(raw.current),
+    message: typeof raw.message === 'string' ? raw.message : '',
+  };
 }
 
 /**

@@ -779,6 +779,66 @@ class CompanionHttpServerTest {
     }
 
     @Test
+    @DisplayName("Редактор правил закрыт токеном и возвращает текущие ревизии")
+    void listsVersionedEconomyRules() throws Exception {
+        bridge.rulesAvailable = true;
+        bridge.rules.add(new ovh.aurumgg.companion.core.model.EconomyRuleInfo(
+                "policy", "sales-tax", 4, Map.of("kind", "TAX", "definition.rate", "0.1")));
+
+        assertEquals(401, get("/economy/rules/policy", null).statusCode());
+        Map<String, Object> body = JsonParser.parseObject(get("/economy/rules/policy", TOKEN).body());
+        Map<?, ?> rule = (Map<?, ?>) ((List<?>) body.get("rules")).getFirst();
+        assertEquals("sales-tax", rule.get("id"));
+        assertEquals(4.0, rule.get("revision"));
+        assertEquals("0.1", ((Map<?, ?>) rule.get("fields")).get("definition.rate"));
+    }
+
+    @Test
+    @DisplayName("Preview принимает полную форму, а apply только токен, автора и причину")
+    void previewsAndAppliesEconomyRule() throws Exception {
+        bridge.rulesAvailable = true;
+        var proposed = new ovh.aurumgg.companion.core.model.EconomyRuleInfo(
+                "policy", "sales-tax", 4, Map.of("kind", "TAX"));
+        bridge.nextRulePreview = new ovh.aurumgg.companion.core.model.EconomyRulePreview(
+                "ready", "preview-1", null, proposed, List.of("high-rate"), "ready", 123456L);
+
+        HttpResponse<String> preview = post("/economy/rules/policy/preview", TOKEN,
+                "{\"id\":\"sales-tax\",\"expectedRevision\":4,"
+                        + "\"fields\":{\"kind\":\"TAX\"},\"actor\":\"panel:alice\"}");
+        assertEquals(200, preview.statusCode(), preview.body());
+        assertEquals(4, bridge.lastRuleMutation.expectedRevision());
+        assertEquals("panel:alice", bridge.lastRuleMutation.actor());
+        assertEquals("preview-1", JsonParser.parseObject(preview.body()).get("token"));
+
+        bridge.nextRuleApply = new ovh.aurumgg.companion.core.model.EconomyRuleApply(
+                "applied", new ovh.aurumgg.companion.core.model.EconomyRuleInfo(
+                        "policy", "sales-tax", 5, Map.of("kind", "TAX")), "applied");
+        HttpResponse<String> apply = post("/economy/rules/apply", TOKEN,
+                "{\"token\":\"preview-1\",\"actor\":\"panel:alice\","
+                        + "\"reason\":\"adjust sales tax\"}");
+        assertEquals(200, apply.statusCode(), apply.body());
+        assertEquals("preview-1:panel:alice:adjust sales tax", bridge.lastRuleApply);
+        assertEquals(5.0, ((Map<?, ?>) JsonParser.parseObject(apply.body()).get("current")).get("revision"));
+    }
+
+    @Test
+    @DisplayName("Конфликт и протухший preview имеют окончательные HTTP-коды")
+    void mapsEconomyRuleConflictsAndExpiry() throws Exception {
+        bridge.rulesAvailable = true;
+        bridge.nextRulePreview = new ovh.aurumgg.companion.core.model.EconomyRulePreview(
+                "conflict", "", null, null, List.of(), "revision-conflict", 0);
+        HttpResponse<String> conflict = post("/economy/rules/policy/preview", TOKEN,
+                "{\"id\":\"tax\",\"expectedRevision\":0,\"fields\":{},\"actor\":\"a\"}");
+        assertEquals(409, conflict.statusCode());
+
+        bridge.nextRuleApply = new ovh.aurumgg.companion.core.model.EconomyRuleApply(
+                "expired", null, "preview-expired");
+        HttpResponse<String> expired = post("/economy/rules/apply", TOKEN,
+                "{\"token\":\"old\",\"actor\":\"a\",\"reason\":\"valid reason\"}");
+        assertEquals(410, expired.statusCode());
+    }
+
+    @Test
     @DisplayName("денежная запись требует ключ, автора и причину")
     void balanceMutationRequiresAuditIdentity() throws Exception {
         bridge.install("Vault");

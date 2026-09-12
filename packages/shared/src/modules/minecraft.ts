@@ -570,6 +570,39 @@ export interface MinecraftEconomyAuditDto {
   records: { type: string; fields: Record<string, string> }[];
 }
 
+export type MinecraftEconomyRuleType = 'policy' | 'exchange';
+
+/** Canonical full rule document; revision is used for optimistic writes. */
+export interface MinecraftEconomyRuleDto {
+  type: MinecraftEconomyRuleType;
+  id: string;
+  revision: number;
+  fields: Record<string, string>;
+}
+
+export interface MinecraftEconomyRulePreviewDto {
+  status: 'ready' | 'conflict' | 'invalid' | 'unavailable';
+  token: string;
+  current: MinecraftEconomyRuleDto | null;
+  proposed: MinecraftEconomyRuleDto | null;
+  warnings: string[];
+  message: string;
+  /** ISO timestamp, null when no confirmation token was issued. */
+  expiresAt: string | null;
+}
+
+export interface MinecraftEconomyRuleApplyDto {
+  status:
+    | 'applied'
+    | 'applied_reload_failed'
+    | 'conflict'
+    | 'invalid'
+    | 'expired'
+    | 'unavailable';
+  current: MinecraftEconomyRuleDto | null;
+  message: string;
+}
+
 /**
  * Гильдия в панели.
  *

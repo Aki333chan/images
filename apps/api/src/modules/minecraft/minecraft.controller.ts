@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -10,6 +11,7 @@ import {
   Post,
   Put,
   Query,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   MINECRAFT_PERMISSIONS,
@@ -23,6 +25,10 @@ import {
   type MinecraftEconomyDto,
   type MinecraftEconomyAuditDto,
   type MinecraftEconomyAuditSection,
+  type MinecraftEconomyRuleApplyDto,
+  type MinecraftEconomyRuleDto,
+  type MinecraftEconomyRulePreviewDto,
+  type MinecraftEconomyRuleType,
   type MinecraftGiveResponse,
   type MinecraftGuildBonusDto,
   type MinecraftGuildDto,
@@ -48,6 +54,8 @@ import {
   BalanceChangeDto,
   BanDto,
   CompanionConfigDto,
+  EconomyRuleApplyDto as EconomyRuleApplyRequestDto,
+  EconomyRulePreviewDto as EconomyRulePreviewRequestDto,
   GiveItemsDto,
   GuildBonusGrantDto,
   GuildRemoveMemberDto,
@@ -605,6 +613,55 @@ export class MinecraftController {
     return this.minecraft.getEconomyAudit(serverId, section, currency ?? '', account ?? '', limit);
   }
 
+  @Get('economy/rules/:type')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  async economyRules(
+    @Param('serverId') serverId: string,
+    @Param('type') rawType: string,
+  ): Promise<MinecraftEconomyRuleDto[]> {
+    const rules = await this.companion.getEconomyRules(serverId, economyRuleType(rawType));
+    if (!rules) throw rulesUnavailable();
+    return rules;
+  }
+
+  @Post('economy/rules/:type/preview')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
+  @ServerScoped('serverId')
+  async previewEconomyRule(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('type') rawType: string,
+    @Body() dto: EconomyRulePreviewRequestDto,
+  ): Promise<MinecraftEconomyRulePreviewDto> {
+    const result = await this.companion.previewEconomyRule(serverId, economyRuleType(rawType), {
+      id: dto.id,
+      expectedRevision: dto.expectedRevision,
+      fields: economyRuleFields(dto.fields),
+      actor: `panel:${await this.actorName(user.id)}`,
+    });
+    if (!result || result.status === 'unavailable') throw rulesUnavailable();
+    return result;
+  }
+
+  @Post('economy/rules/apply')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
+  @ServerScoped('serverId')
+  @AuditRedactBody()
+  async applyEconomyRule(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Body() dto: EconomyRuleApplyRequestDto,
+  ): Promise<MinecraftEconomyRuleApplyDto> {
+    const result = await this.companion.applyEconomyRule(serverId, {
+      token: dto.token,
+      reason: dto.reason,
+      actor: `panel:${await this.actorName(user.id)}`,
+    });
+    if (!result || result.status === 'unavailable') throw rulesUnavailable();
+    return result;
+  }
+
   @Post('quick-commands/:commandId')
   @RequirePermission(MINECRAFT_PERMISSIONS.quickCommands)
   @ServerScoped('serverId')
@@ -764,6 +821,31 @@ export class MinecraftController {
     await this.config.setCompanion(serverId, dto.baseUrl ?? null, dto.token ?? null);
     return { ok: true, configured: await this.companion.isConfigured(serverId) };
   }
+}
+
+function economyRuleType(raw: string): MinecraftEconomyRuleType {
+  if (raw === 'policy' || raw === 'exchange') return raw;
+  throw new BadRequestException('mc.err.economyRuleType');
+}
+
+function economyRuleFields(input: Record<string, string>): Record<string, string> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new BadRequestException('mc.err.economyRuleFields');
+  }
+  const entries = Object.entries(input);
+  if (entries.length > 48 || entries.some(([key, value]) =>
+    typeof value !== 'string' || !key || key.length > 96 || value.length > 512
+    || /[\u0000-\u001f\u007f]/.test(key) || /[\u0000-\u001f\u007f]/.test(value))) {
+    throw new BadRequestException('mc.err.economyRuleFields');
+  }
+  return Object.fromEntries(entries);
+}
+
+function rulesUnavailable(): ServiceUnavailableException {
+  return new ServiceUnavailableException({
+    message: 'mc.err.economyRulesUnavailable',
+    code: 'economy-rules-unavailable',
+  });
 }
 
 /**

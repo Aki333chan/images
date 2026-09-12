@@ -13,7 +13,7 @@ class FinancialRuleTest {
     @Test
     void versionedRuleHonoursCategoryAndTimeWindow() {
         FinancialRule rule = new FinancialRule(
-                "market-fee", PolicyKind.FEE, 1, Set.of(TransactionCategory.PLAYER_PAYMENT),
+                "market-fee", 1, PolicyKind.FEE, 1, Set.of(TransactionCategory.PLAYER_PAYMENT),
                 Map.of("rate", "0.02"), 50, true,
                 Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2027-01-01T00:00:00Z"));
         assertTrue(rule.activeFor(TransactionCategory.PLAYER_PAYMENT, Instant.parse("2026-09-10T00:00:00Z")));

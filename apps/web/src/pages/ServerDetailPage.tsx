@@ -16,6 +16,7 @@ import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registr
 import { ServerStats } from '../components/ServerStats';
 import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
 import { EconomyAuditPanel } from '../modules/minecraft/EconomyAuditPanel';
+import { EconomyRulesEditor } from '../modules/minecraft/EconomyRulesEditor';
 import { AddonsModal, useServerAddons } from '../components/AddonsModal';
 import { ServerAddress } from '../components/ServerAddress';
 import { Modal } from '../components/Modal';
@@ -322,6 +323,10 @@ export function ServerDetailPage() {
 
       {manifest?.id === 'minecraft' && hasPermission('minecraft.economy.view') && (
         <EconomyAuditPanel serverId={server.id} />
+      )}
+
+      {manifest?.id === 'minecraft' && hasPermission('minecraft.economy.admin') && (
+        <EconomyRulesEditor serverId={server.id} />
       )}
 
       {manifest && DashboardWidget && (

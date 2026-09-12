@@ -655,6 +655,23 @@ public final class BukkitGameBridge implements GameBridge {
         return aurumEconomy == null ? Optional.empty() : aurumEconomy.audit(section, currency, account, limit);
     }
 
+    @Override
+    public Optional<java.util.List<ovh.aurumgg.companion.core.model.EconomyRuleInfo>> economyRules(String type) {
+        return aurumEconomy == null ? Optional.empty() : aurumEconomy.rules(type);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.EconomyRulePreview> previewEconomyRule(
+            ovh.aurumgg.companion.core.model.EconomyRuleMutation mutation) {
+        return aurumEconomy == null ? Optional.empty() : aurumEconomy.preview(mutation);
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.EconomyRuleApply> applyEconomyRule(
+            String token, String actor, String reason) {
+        return aurumEconomy == null ? Optional.empty() : aurumEconomy.apply(token, actor, reason);
+    }
+
     /**
      * Токен сброса пароля — через публичный API AurumAuth.
      *

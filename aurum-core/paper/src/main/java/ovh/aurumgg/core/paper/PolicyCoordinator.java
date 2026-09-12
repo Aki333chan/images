@@ -179,7 +179,7 @@ final class PolicyCoordinator {
             case CUSTOM -> throw new IllegalArgumentException("CUSTOM needs a registered handler");
         }
         Set<TransactionCategory> categories = parseCategories(args[5]);
-        FinancialRule rule = PolicyValidator.validate(new FinancialRule(id, kind, 1, categories,
+        FinancialRule rule = PolicyValidator.validate(new FinancialRule(id, 1, kind, 1, categories,
                 definition, 0, false, null, null), plugin.settings().currency());
         executor.execute(() -> {
             try {
@@ -218,7 +218,7 @@ final class PolicyCoordinator {
     private boolean categories(CommandSender sender, String[] args) {
         if (args.length < 4) return usage(sender);
         Set<TransactionCategory> categories = parseCategories(args[3]);
-        return mutate(sender, args[2], rule -> new FinancialRule(rule.id(), rule.kind(), rule.handlerVersion(),
+        return mutate(sender, args[2], rule -> new FinancialRule(rule.id(), rule.revision(), rule.kind(), rule.handlerVersion(),
                 categories, rule.definition(), rule.priority(), rule.enabled(), rule.effectiveFrom(),
                 rule.effectiveUntil()), reason(args, 4, "categories changed"));
     }
@@ -397,7 +397,7 @@ final class PolicyCoordinator {
 
     private static FinancialRule copy(FinancialRule rule, Map<String, String> definition,
                                       int priority, boolean enabled, Instant from, Instant until) {
-        return new FinancialRule(rule.id(), rule.kind(), rule.handlerVersion(), rule.categories(),
+        return new FinancialRule(rule.id(), rule.revision(), rule.kind(), rule.handlerVersion(), rule.categories(),
                 definition, priority, enabled, from, until);
     }
 

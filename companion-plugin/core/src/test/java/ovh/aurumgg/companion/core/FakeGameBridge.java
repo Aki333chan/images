@@ -13,6 +13,10 @@ import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleApply;
+import ovh.aurumgg.companion.core.model.EconomyRuleInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleMutation;
+import ovh.aurumgg.companion.core.model.EconomyRulePreview;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.InventorySelection;
@@ -354,6 +358,12 @@ public final class FakeGameBridge implements GameBridge {
 
     public boolean auditAvailable;
     public String auditAccount = "";
+    public boolean rulesAvailable;
+    public final List<EconomyRuleInfo> rules = new ArrayList<>();
+    public EconomyRuleMutation lastRuleMutation;
+    public EconomyRulePreview nextRulePreview;
+    public String lastRuleApply = "";
+    public EconomyRuleApply nextRuleApply;
 
     @Override
     public Optional<EconomyAuditInfo> economyAudit(
@@ -364,6 +374,24 @@ public final class FakeGameBridge implements GameBridge {
                 1_700_000_000_000L, Map.of("turnover", "125.5", "transactions", "3"),
                 List.of(new EconomyAuditInfo.Record("transaction",
                         Map.of("id", "tx-1", "status", "COMMITTED")))));
+    }
+
+    @Override
+    public Optional<List<EconomyRuleInfo>> economyRules(String type) {
+        return rulesAvailable ? Optional.of(rules.stream().filter(rule -> rule.type().equals(type)).toList())
+                : Optional.empty();
+    }
+
+    @Override
+    public Optional<EconomyRulePreview> previewEconomyRule(EconomyRuleMutation mutation) {
+        lastRuleMutation = mutation;
+        return rulesAvailable ? Optional.ofNullable(nextRulePreview) : Optional.empty();
+    }
+
+    @Override
+    public Optional<EconomyRuleApply> applyEconomyRule(String token, String actor, String reason) {
+        lastRuleApply = token + ":" + actor + ":" + reason;
+        return rulesAvailable ? Optional.ofNullable(nextRuleApply) : Optional.empty();
     }
 
     // -------------------------------------------------------- сброс пароля

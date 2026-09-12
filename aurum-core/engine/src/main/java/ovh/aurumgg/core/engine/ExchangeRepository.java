@@ -12,6 +12,11 @@ public interface ExchangeRepository {
     List<ExchangeRevision> history(String id, int limit, Map<String, CurrencySpec> currencies) throws SQLException;
     long saveRule(ExchangeRule rule, Map<String, CurrencySpec> currencies,
                   String actor, String reason) throws SQLException;
+    /** Atomic compare-and-save; expectedRevision=0 creates only when absent. */
+    default long saveRuleIfRevision(ExchangeRule rule, Map<String, CurrencySpec> currencies,
+                                    long expectedRevision, String actor, String reason) throws SQLException {
+        throw new UnsupportedOperationException("Optimistic exchange writes are not implemented");
+    }
     Optional<ExchangeCommit> findByIdempotency(String key, CurrencySpec fromCurrency,
                                                CurrencySpec toCurrency) throws SQLException;
     ExchangeCommit execute(ExchangePlan plan, CurrencySpec fromCurrency,

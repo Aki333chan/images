@@ -98,7 +98,7 @@ class LedgerEconomyServiceTest {
 
     @Test
     void selectedTaxRuleCreditsGlobalTreasuryInSamePlan() {
-        FinancialRule rule = new FinancialRule("income-tax", PolicyKind.TAX, 1,
+        FinancialRule rule = new FinancialRule("income-tax", 1, PolicyKind.TAX, 1,
                 Set.of(TransactionCategory.PLAYER_PAYMENT),
                 Map.of("rate", "0.10", "mode", "INCLUDED"), 10, true, null, null);
         LedgerEconomyService service = service((ignored, now) -> List.of(rule));

@@ -30,6 +30,7 @@ import ovh.aurumgg.core.engine.ExchangeRepository;
 import ovh.aurumgg.core.engine.ExchangeRevision;
 import ovh.aurumgg.core.engine.ExchangeRule;
 import ovh.aurumgg.core.engine.ExchangeSettlement;
+import ovh.aurumgg.core.engine.StaleRuleRevisionException;
 
 public final class MariaDbExchangeRepository implements ExchangeRepository {
     private static final Gson JSON = new Gson();
@@ -104,6 +105,38 @@ public final class MariaDbExchangeRepository implements ExchangeRepository {
                 return revision;
             } catch (SQLException | RuntimeException exception) {
                 rollback(connection, exception);
+                throw exception;
+            }
+        }
+    }
+
+    @Override
+    public long saveRuleIfRevision(ExchangeRule input, Map<String, CurrencySpec> currencies,
+                                   long expectedRevision, String actor, String reason) throws SQLException {
+        if (expectedRevision < 0) throw new IllegalArgumentException("Expected revision cannot be negative");
+        validateText(actor, 128, "actor");
+        validateText(reason, 255, "reason");
+        validateRule(input, currencies);
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                long current = lockRevision(connection, input.id());
+                if (current != expectedRevision) {
+                    throw new StaleRuleRevisionException(expectedRevision, current);
+                }
+                long revision = current + 1;
+                ExchangeRule rule = withRevision(input, revision);
+                if (current == 0) insertRule(connection, rule, actor, reason);
+                else upsertRule(connection, rule, actor, reason);
+                insertRevision(connection, rule, actor, reason);
+                connection.commit();
+                return revision;
+            } catch (SQLException | RuntimeException exception) {
+                rollback(connection, exception);
+                if (expectedRevision == 0 && exception instanceof SQLException sql
+                        && "23000".equals(sql.getSQLState())) {
+                    throw new StaleRuleRevisionException(0, 1);
+                }
                 throw exception;
             }
         }
@@ -241,6 +274,22 @@ public final class MariaDbExchangeRepository implements ExchangeRepository {
                     priority=VALUES(priority), enabled=VALUES(enabled), effective_from=VALUES(effective_from),
                     effective_until=VALUES(effective_until), revision=VALUES(revision),
                     updated_by=VALUES(updated_by), update_reason=VALUES(update_reason)
+                """)) {
+            bindRule(statement, rule, 1, true);
+            statement.setString(15, actor);
+            statement.setString(16, reason);
+            statement.executeUpdate();
+        }
+    }
+
+    /** Create-only path used by the optimistic editor; never overwrites a racing create. */
+    private static void insertRule(Connection connection, ExchangeRule rule, String actor, String reason)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO aurum_exchange_rules(id, from_currency_id, to_currency_id, rate, fee_rate,
+                    minimum_source, maximum_source, settlement, conditions_json, priority, enabled,
+                    effective_from, effective_until, revision, updated_by, update_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             bindRule(statement, rule, 1, true);
             statement.setString(15, actor);

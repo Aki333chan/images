@@ -32,7 +32,7 @@ record PolicyConfiguration(boolean enabled, boolean bootstrapOnEmpty, int maxRul
             PolicyKind kind = PolicyKind.valueOf(section.getString("kind", "").toUpperCase(Locale.ROOT));
             Set<TransactionCategory> categories = categories(section.getStringList("categories"));
             Map<String, String> definition = definition(section, kind);
-            FinancialRule rule = new FinancialRule(id, kind, section.getInt("handler-version", 1),
+            FinancialRule rule = new FinancialRule(id, 1, kind, section.getInt("handler-version", 1),
                     categories, definition, section.getInt("priority", 0),
                     section.getBoolean("enabled", false), instant(section.getString("effective-from")),
                     instant(section.getString("effective-until")));

@@ -7,6 +7,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUrl,
@@ -98,6 +99,31 @@ export class BalanceChangeDto {
   @IsString()
   @MinLength(1)
   @MaxLength(200)
+  reason!: string;
+}
+
+/** Exact full replacement; partial patches are deliberately unsupported. */
+export class EconomyRulePreviewDto {
+  @IsString()
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/)
+  id!: string;
+
+  @IsInt()
+  @Min(0)
+  expectedRevision!: number;
+
+  @IsObject()
+  fields!: Record<string, string>;
+}
+
+/** Apply cannot carry fields: it consumes only the exact proposal Core signed. */
+export class EconomyRuleApplyDto {
+  @IsUUID()
+  token!: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
   reason!: string;
 }
 

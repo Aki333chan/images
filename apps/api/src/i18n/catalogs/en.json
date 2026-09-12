@@ -345,5 +345,8 @@
   "addons.err.filesUnavailable": "Could not read the server plugins directory",
   "addons.err.dependencyFailed": "Required plugin {name} could not be installed",
   "addons.err.dependencyMissing": "Dependency {name} is missing from the addon catalog",
-  "addons.err.dependencyCycle": "The addon catalog contains a dependency cycle"
+  "addons.err.dependencyCycle": "The addon catalog contains a dependency cycle",
+  "mc.err.economyRuleType": "Unknown financial rule type",
+  "mc.err.economyRulesUnavailable": "The financial rule editor requires active AurumCore 0.15 or newer and AurumCompanion 0.10 or newer",
+  "mc.err.economyRuleFields": "Rule fields must be a small string-to-string object"
 }

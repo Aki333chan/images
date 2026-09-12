@@ -8,6 +8,10 @@ import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleApply;
+import ovh.aurumgg.companion.core.model.EconomyRuleInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleMutation;
+import ovh.aurumgg.companion.core.model.EconomyRulePreview;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildBonusInfo;
@@ -225,6 +229,21 @@ public interface GameBridge {
     /** Bounded native AurumCore audit section; unavailable on Vault fallback. */
     default Optional<EconomyAuditInfo> economyAudit(
             String section, String currency, String account, int limit) {
+        return Optional.empty();
+    }
+
+    /** Current versioned financial rules; unavailable outside active AurumCore. */
+    default Optional<List<EconomyRuleInfo>> economyRules(String type) {
+        return Optional.empty();
+    }
+
+    /** Validate an exact replacement and issue a short-lived one-use token. */
+    default Optional<EconomyRulePreview> previewEconomyRule(EconomyRuleMutation mutation) {
+        return Optional.empty();
+    }
+
+    /** Consume a preview token. Core compares the expected revision atomically. */
+    default Optional<EconomyRuleApply> applyEconomyRule(String token, String actor, String reason) {
         return Optional.empty();
     }
 

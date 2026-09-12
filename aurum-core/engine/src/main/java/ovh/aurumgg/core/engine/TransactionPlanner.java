@@ -24,7 +24,7 @@ public final class TransactionPlanner {
     public static TransactionPlan plan(TransactionRequest request, CurrencySpec currency,
                                        Optional<TaxRule> selectedRule) {
         List<FinancialRule> rules = selectedRule.map(rule -> List.of(new FinancialRule(
-                rule.id(), PolicyKind.TAX, 1, rule.categories(), Map.of(
+                rule.id(), 1, PolicyKind.TAX, 1, rule.categories(), Map.of(
                         "rate", rule.rate().toPlainString(),
                         "mode", rule.mode().name(),
                         "recipient-type", rule.recipient().type().name(),

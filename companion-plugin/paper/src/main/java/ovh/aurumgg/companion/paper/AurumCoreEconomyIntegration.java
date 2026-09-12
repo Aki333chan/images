@@ -12,15 +12,23 @@ import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleApply;
+import ovh.aurumgg.companion.core.model.EconomyRuleInfo;
+import ovh.aurumgg.companion.core.model.EconomyRuleMutation;
+import ovh.aurumgg.companion.core.model.EconomyRulePreview;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.AurumAuditApi;
 import ovh.aurumgg.core.api.AurumEconomyApi;
+import ovh.aurumgg.core.api.AurumRulesAdminApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.EconomyAuditSection;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
+import ovh.aurumgg.core.api.RuleMutationRequest;
+import ovh.aurumgg.core.api.RuleResource;
+import ovh.aurumgg.core.api.RuleType;
 import ovh.aurumgg.core.api.TransactionCategory;
 import ovh.aurumgg.core.api.TransactionRequest;
 import ovh.aurumgg.core.api.TransactionResult;
@@ -54,6 +62,7 @@ final class AurumCoreEconomyIntegration {
 
     private final AurumEconomyApi economy;
     private final AurumAuditApi audit;
+    private final AurumRulesAdminApi rules;
     private final Function<UUID, String> playerName;
 
     /** Constructed by BukkitGameBridge on the main thread during onEnable. */
@@ -61,6 +70,7 @@ final class AurumCoreEconomyIntegration {
         this.playerName = playerName;
         this.economy = findApi(plugin);
         this.audit = findAudit(plugin);
+        this.rules = findRules(plugin);
     }
 
     /** Есть ли Core и ведёт ли он экономику сам, а не в режиме наблюдателя. */
@@ -97,6 +107,17 @@ final class AurumCoreEconomyIntegration {
         try {
             RegisteredServiceProvider<AurumAuditApi> registration =
                     plugin.getServer().getServicesManager().getRegistration(AurumAuditApi.class);
+            return registration == null ? null : registration.getProvider();
+        } catch (NoClassDefFoundError | Exception unavailable) {
+            return null;
+        }
+    }
+
+    private static AurumRulesAdminApi findRules(org.bukkit.plugin.Plugin plugin) {
+        if (plugin.getServer().getPluginManager().getPlugin(PLUGIN_NAME) == null) return null;
+        try {
+            RegisteredServiceProvider<AurumRulesAdminApi> registration =
+                    plugin.getServer().getServicesManager().getRegistration(AurumRulesAdminApi.class);
             return registration == null ? null : registration.getProvider();
         } catch (NoClassDefFoundError | Exception unavailable) {
             return null;
@@ -212,6 +233,50 @@ final class AurumCoreEconomyIntegration {
                         page.currencyId(), page.generatedAt().toEpochMilli(), page.summary(),
                         page.records().stream().map(record ->
                                 new EconomyAuditInfo.Record(record.type(), record.fields())).toList()));
+    }
+
+    Optional<List<EconomyRuleInfo>> rules(String rawType) {
+        RuleType type = type(rawType);
+        if (economy == null || rules == null || type == null) return Optional.empty();
+        return await(rules.list(type)).flatMap(value -> value)
+                .map(values -> values.stream().map(AurumCoreEconomyIntegration::rule).toList());
+    }
+
+    Optional<EconomyRulePreview> preview(EconomyRuleMutation mutation) {
+        RuleType type = type(mutation.type());
+        if (economy == null || rules == null || type == null) return Optional.empty();
+        RuleMutationRequest request;
+        try {
+            request = new RuleMutationRequest(type, mutation.id(), mutation.expectedRevision(), mutation.fields());
+        } catch (RuntimeException invalid) {
+            return Optional.of(new EconomyRulePreview("invalid", "", null, null,
+                    List.of(), invalid.getMessage(), 0));
+        }
+        return await(rules.preview(request, mutation.actor())).map(value -> new EconomyRulePreview(
+                value.status().name().toLowerCase(java.util.Locale.ROOT), value.token(),
+                value.current() == null ? null : rule(value.current()),
+                value.proposed() == null ? null : rule(value.proposed()), value.warnings(), value.message(),
+                value.expiresAt() == null ? 0 : value.expiresAt().toEpochMilli()));
+    }
+
+    Optional<EconomyRuleApply> apply(String token, String actor, String reason) {
+        if (economy == null || rules == null) return Optional.empty();
+        return await(rules.apply(token, actor, reason)).map(value -> new EconomyRuleApply(
+                value.status().name().toLowerCase(java.util.Locale.ROOT),
+                value.current() == null ? null : rule(value.current()), value.message()));
+    }
+
+    private static RuleType type(String raw) {
+        try {
+            return RuleType.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (RuntimeException invalid) {
+            return null;
+        }
+    }
+
+    private static EconomyRuleInfo rule(RuleResource value) {
+        return new EconomyRuleInfo(value.type().name().toLowerCase(java.util.Locale.ROOT),
+                value.id(), value.revision(), value.fields());
     }
 
     private static UUID playerOf(AccountId account) {

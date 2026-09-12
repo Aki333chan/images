@@ -25,6 +25,7 @@ import ovh.aurumgg.core.engine.PolicyKind;
 import ovh.aurumgg.core.engine.PolicyRepository;
 import ovh.aurumgg.core.engine.PolicyRevision;
 import ovh.aurumgg.core.engine.PolicyValidator;
+import ovh.aurumgg.core.engine.StaleRuleRevisionException;
 
 public final class MariaDbPolicyRepository implements PolicyRepository {
     private static final Gson JSON = new Gson();
@@ -39,7 +40,7 @@ public final class MariaDbPolicyRepository implements PolicyRepository {
     public List<FinancialRule> list(CurrencySpec currency) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT id, rule_kind, handler_version, categories_json, definition_json,
+                     SELECT id, revision, rule_kind, handler_version, categories_json, definition_json,
                          priority, enabled, effective_from, effective_until
                      FROM aurum_financial_rules ORDER BY priority DESC, id
                      """);
@@ -57,7 +58,7 @@ public final class MariaDbPolicyRepository implements PolicyRepository {
         validateText(id, 64, "rule id");
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT id, rule_kind, handler_version, categories_json, definition_json,
+                     SELECT id, revision, rule_kind, handler_version, categories_json, definition_json,
                          priority, enabled, effective_from, effective_until
                      FROM aurum_financial_rules WHERE id = ?
                      """)) {
@@ -73,6 +74,39 @@ public final class MariaDbPolicyRepository implements PolicyRepository {
     @Override
     public long save(FinancialRule input, CurrencySpec currency, String actor, String reason) throws SQLException {
         return saveAll(List.of(input), currency, actor, reason).get(input.id());
+    }
+
+    @Override
+    public long saveIfRevision(FinancialRule input, CurrencySpec currency, long expectedRevision,
+                               String actor, String reason) throws SQLException {
+        FinancialRule rule = PolicyValidator.validate(input, currency);
+        if (expectedRevision < 0) throw new IllegalArgumentException("Expected revision cannot be negative");
+        validateText(actor, 128, "actor");
+        validateText(reason, 255, "reason");
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                long current = lockRevision(connection, rule.id());
+                if (current != expectedRevision) {
+                    throw new StaleRuleRevisionException(expectedRevision, current);
+                }
+                long revision = current + 1;
+                if (current == 0) insertCurrent(connection, rule, revision, actor, reason);
+                else upsertCurrent(connection, rule, revision, actor, reason);
+                insertRevision(connection, rule, revision, actor, reason);
+                connection.commit();
+                return revision;
+            } catch (SQLException | RuntimeException exception) {
+                try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+                // Concurrent create of the same id can surface as a unique-key
+                // conflict because there was no existing row to lock.
+                if (expectedRevision == 0 && exception instanceof SQLException sql
+                        && "23000".equals(sql.getSQLState())) {
+                    throw new StaleRuleRevisionException(0, 1);
+                }
+                throw exception;
+            }
+        }
     }
 
     @Override
@@ -166,6 +200,24 @@ public final class MariaDbPolicyRepository implements PolicyRepository {
         }
     }
 
+    /** Create-only path used by the optimistic editor; never overwrites a racing create. */
+    private static void insertCurrent(Connection connection, FinancialRule rule, long revision,
+                                      String actor, String reason) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO aurum_financial_rules(id, rule_kind, handler_version, categories_json,
+                    definition_json, priority, enabled, effective_from, effective_until,
+                    revision, updated_by, update_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """)) {
+            statement.setString(1, rule.id());
+            bindRule(statement, rule, 2);
+            statement.setLong(10, revision);
+            statement.setString(11, actor);
+            statement.setString(12, reason);
+            statement.executeUpdate();
+        }
+    }
+
     private static void insertRevision(Connection connection, FinancialRule rule, long revision,
                                        String actor, String reason) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
@@ -201,7 +253,8 @@ public final class MariaDbPolicyRepository implements PolicyRepository {
         Arrays.stream(names).map(TransactionCategory::valueOf).forEach(categories::add);
         Map<String, String> definition = JSON.fromJson(result.getString("definition_json"), STRING_MAP);
         FinancialRule rule = new FinancialRule(
-                result.getString(idColumn), PolicyKind.valueOf(result.getString("rule_kind")),
+                result.getString(idColumn), result.getLong("revision"),
+                PolicyKind.valueOf(result.getString("rule_kind")),
                 result.getInt("handler_version"), categories, definition,
                 result.getInt("priority"), result.getBoolean("enabled"),
                 instant(result, "effective_from"), instant(result, "effective_until"));
