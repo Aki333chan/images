@@ -50,4 +50,19 @@ final class LanguageBundle {
     Component component(String key) {
         return component(key, Map.of());
     }
+
+    /**
+     * The same text without the chat prefix.
+     *
+     * <p>For window titles and item names: a prefix belongs in front of a chat
+     * line, not on the label of a button.
+     */
+    Component label(String key, Map<String, String> replacements) {
+        String value = messages.getString(key, "Missing language key: " + key);
+        for (Map.Entry<String, String> entry : replacements.entrySet()) {
+            value = value.replace("%" + entry.getKey() + "%", entry.getValue());
+        }
+        return LegacyComponentSerializer.legacyAmpersand().deserialize(value)
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+    }
 }
