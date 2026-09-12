@@ -49,8 +49,13 @@ public final class HoldService {
                 Instant now = Instant.now(clock);
                 if (currency == null) return rejected("Unknown hold currency");
                 Optional<HoldSnapshot> existing = repository.find(request.idempotencyKey(), currency);
-                if (existing.isPresent()) return new HoldResult(HoldResult.Status.DUPLICATE, existing,
-                        "Existing hold");
+                if (existing.isPresent()) {
+                    if (!sameReservation(existing.get(), request)) {
+                        return new HoldResult(HoldResult.Status.REJECTED, existing,
+                                "Idempotency key belongs to a different hold intent");
+                    }
+                    return new HoldResult(HoldResult.Status.DUPLICATE, existing, "Existing hold");
+                }
                 if (!request.expiresAt().isAfter(now)
                         || request.expiresAt().isAfter(now.plus(maxTtl))) {
                     return rejected("Hold expiry exceeds the configured maximum");
@@ -120,7 +125,17 @@ public final class HoldService {
             synchronized (mutationLock) {
                 for (CurrencySpec currency : currencies.values()) {
                     Optional<HoldSnapshot> hold = repository.find(id, currency);
-                    if (hold.isPresent()) return repository.resolve(id, HoldSnapshot.Status.RELEASED, currency);
+                    if (hold.isEmpty()) continue;
+                    if (hold.get().status() == HoldSnapshot.Status.RELEASED
+                            || hold.get().status() == HoldSnapshot.Status.EXPIRED) {
+                        return new HoldResult(HoldResult.Status.DUPLICATE, hold,
+                                "Hold is already released");
+                    }
+                    if (hold.get().status() != HoldSnapshot.Status.HELD) {
+                        return new HoldResult(HoldResult.Status.REJECTED, hold,
+                                "Captured holds cannot be released; use an explicit refund");
+                    }
+                    return repository.resolve(id, HoldSnapshot.Status.RELEASED, currency);
                 }
                 return new HoldResult(HoldResult.Status.NOT_FOUND, Optional.empty(), "Hold was not found");
             }
@@ -143,6 +158,15 @@ public final class HoldService {
         return hold.from().equals(request.from()) && hold.to().equals(request.to())
                 && hold.currency().id().equals(request.currencyId()) && hold.category() == request.category()
                 && hold.amount().compareTo(request.amount()) == 0 && hold.metadata().equals(request.metadata());
+    }
+    private static boolean sameReservation(HoldSnapshot hold, HoldRequest request) {
+        return hold.from().equals(request.from()) && hold.to().equals(request.to())
+                && hold.currency().id().equals(request.currencyId()) && hold.category() == request.category()
+                && hold.amount().compareTo(request.amount()) == 0
+                && hold.purpose().equals(request.purpose())
+                && hold.referenceId().equals(request.referenceId())
+                && hold.expiresAt().equals(request.expiresAt())
+                && hold.metadata().equals(request.metadata());
     }
     private static HoldResult rejected(String message) {
         return new HoldResult(HoldResult.Status.REJECTED, Optional.empty(), message);

@@ -1,5 +1,6 @@
 package ovh.aurumgg.core.engine;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.HoldRequest;
 import ovh.aurumgg.core.api.HoldResult;
 import ovh.aurumgg.core.api.HoldSnapshot;
@@ -40,21 +42,20 @@ import ovh.aurumgg.core.api.TransactionRequest;
  *
  * <h2>Why holds and not two transfers</h2>
  *
- * Both sides may be offering money. Two plain transfers can half-succeed, and
- * unwinding the first one is a refund posting nobody asked for. Reserving both
- * first turns "can this trade pay for itself" into a question answered before
- * anything moves — which is exactly what a hold is.
+ * Both sides may be offering money. Two plain transfers can half-succeed, so
+ * offers in one currency are netted into one payment and that payment is
+ * reserved before capture. One ledger transaction has no half-settled side.
  */
 public final class TradeService {
 
     private final TradeRepository repository;
-    private final MultiCurrencyEconomyService economy;
+    private final AurumEconomyApi economy;
     private final Executor executor;
     private final Clock clock;
     private final Duration inviteTimeout;
     private final Duration sessionTimeout;
 
-    public TradeService(TradeRepository repository, MultiCurrencyEconomyService economy,
+    public TradeService(TradeRepository repository, AurumEconomyApi economy,
                         Executor executor, Clock clock, Duration inviteTimeout, Duration sessionTimeout) {
         this.repository = repository;
         this.economy = economy;
@@ -199,39 +200,37 @@ public final class TradeService {
     public CompletionStage<TradeResult> settleMoney(UUID tradeId) {
         return operation(() -> {
             Instant now = Instant.now(clock);
-            Optional<TradeSession> settling =
-                    repository.transition(tradeId, TradeState.CONFIRMED, TradeState.SETTLING, true, now);
+            Optional<TradeSession> current = repository.find(tradeId);
+            if (current.isEmpty()) return notFound();
+            if (current.get().state() == TradeState.SETTLING) {
+                return new TradeResult(TradeResult.Status.SUCCESS, current, "Settlement resumed");
+            }
+            Optional<TradeSession> settling = repository.transition(
+                    tradeId, TradeState.CONFIRMED, TradeState.SETTLING, true, now);
             if (settling.isEmpty()) {
-                Optional<TradeSession> current = repository.find(tradeId);
-                return current.isEmpty() ? notFound() : conflict(current, "The trade is not ready to settle");
+                return conflict(repository.find(tradeId), "The trade is not ready to settle");
             }
-            TradeSession trade = settling.get();
-            List<TradeOffer> offers = repository.offers(tradeId);
-
-            List<HoldSnapshot> reserved = new java.util.ArrayList<>();
-            for (TradeOffer offer : offers) {
-                if (!offer.hasMoney()) continue;
-                HoldResult held = reserve(trade, offer, now);
-                if (held.status() != HoldResult.Status.SUCCESS || held.hold().isEmpty()) {
-                    // Nothing has moved yet. Let the other reservation go and put
-                    // the trade back on the table.
-                    reserved.forEach(hold -> economy.releaseHold(hold.id()));
-                    repository.transition(tradeId, TradeState.SETTLING, TradeState.OPEN, false, now);
-                    return new TradeResult(TradeResult.Status.INSUFFICIENT_FUNDS, repository.find(tradeId),
-                            "A side could not cover its offer");
+            return new TradeResult(TradeResult.Status.SUCCESS, settling, "Settlement started");
+        }).thenCompose(started -> {
+            if (!started.ok() || started.trade().isEmpty()) return completed(started);
+            TradeSession trade = started.trade().orElseThrow();
+            return settlementOffers(trade.id()).thenCompose(offers -> {
+                if (offers == null) return completed(unavailable(trade, "Trade offers unavailable"));
+                List<TradeOffer> payments = netPayment(trade, offers);
+                if (payments == null) {
+                    return operation(() -> {
+                        Optional<TradeSession> reopened = repository.reopen(trade.id(), Instant.now(clock));
+                        return new TradeResult(TradeResult.Status.CONFLICT,
+                                reopened.isPresent() ? reopened : repository.find(trade.id()),
+                                "Money in different currencies cannot be settled atomically");
+                    });
                 }
-                reserved.add(held.hold().orElseThrow());
-            }
-
-            for (HoldSnapshot hold : reserved) {
-                // Capture cannot fail for lack of money: that is what the
-                // reservation just settled. Anything else is a storage problem,
-                // and the hold's own recovery finishes it.
-                economy.captureHold(hold.id(), new TransactionRequest(
-                        "trade-capture:" + hold.idempotencyKey(), hold.from(), hold.to(),
-                        hold.currency().id(), hold.amount(), hold.category(), hold.metadata()));
-            }
-            return new TradeResult(TradeResult.Status.SUCCESS, Optional.of(trade), "Money settled");
+                return reserveAll(trade, payments, 0, new java.util.ArrayList<>())
+                        .thenCompose(batch -> {
+                            if (!batch.ready()) return reservationFailed(trade, batch);
+                            return captureAll(trade, batch.holds(), 0);
+                        });
+            });
         });
     }
 
@@ -253,6 +252,14 @@ public final class TradeService {
         }, executor).exceptionally(exception -> List.of());
     }
 
+    /** Settlements that must be resumed after a restart or a transient failure. */
+    public CompletionStage<List<TradeSession>> settling(int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            try { return repository.settling(limit); }
+            catch (Exception exception) { throw new CompletionException(exception); }
+        }, executor).exceptionally(exception -> List.of());
+    }
+
     public CompletionStage<Optional<TradeSession>> activeFor(UUID player) {
         return CompletableFuture.supplyAsync(() -> {
             try { return repository.activeFor(player); }
@@ -269,19 +276,153 @@ public final class TradeService {
 
     // ------------------------------------------------------------- служебное
 
-    private HoldResult reserve(TradeSession trade, TradeOffer offer, Instant now) {
+    private HoldRequest reservation(TradeSession trade, TradeOffer offer) {
         String currency = offer.currencyId().orElseThrow();
-        HoldRequest request = new HoldRequest(
-                "trade:" + trade.id() + ":" + offer.owner(),
+        return new HoldRequest(
+                "trade:" + trade.id() + ":" + trade.revision() + ":" + offer.owner(),
                 AccountId.player(offer.owner()),
                 AccountId.player(trade.other(offer.owner())),
                 currency, offer.money(), TransactionCategory.TRADE_SETTLEMENT, "trade",
                 trade.id().toString(),
-                // Short: this reservation exists only for the moment between
-                // "can both sides pay" and "both have paid".
-                now.plusSeconds(60),
+                // Deterministic for retries. A changed expiry would make the
+                // same idempotency key describe a different reservation.
+                trade.updatedAt().plusSeconds(60),
                 Map.of("trade", trade.id().toString(), "revision", Long.toString(trade.revision())));
-        return economy.createHold(request).toCompletableFuture().join();
+    }
+
+    /**
+     * Collapse both offers in one currency into one net payment.
+     *
+     * <p>Two independent captures can half-succeed across a database failure.
+     * A net transfer is economically identical and commits as one ledger
+     * transaction, so there is no half-settled monetary state to compensate.
+     */
+    private static List<TradeOffer> netPayment(TradeSession trade, List<TradeOffer> offers) {
+        TradeOffer first = offers.stream().filter(value -> value.owner().equals(trade.first()))
+                .findFirst().orElse(null);
+        TradeOffer second = offers.stream().filter(value -> value.owner().equals(trade.second()))
+                .findFirst().orElse(null);
+        BigDecimal firstMoney = first == null ? BigDecimal.ZERO : first.money();
+        BigDecimal secondMoney = second == null ? BigDecimal.ZERO : second.money();
+        String firstCurrency = first == null ? null : first.currencyId().orElse(null);
+        String secondCurrency = second == null ? null : second.currencyId().orElse(null);
+        if (firstMoney.signum() > 0 && secondMoney.signum() > 0
+                && !java.util.Objects.equals(firstCurrency, secondCurrency)) return null;
+        String currency = firstMoney.signum() > 0 ? firstCurrency : secondCurrency;
+        BigDecimal net = firstMoney.subtract(secondMoney);
+        if (net.signum() == 0) return List.of();
+        UUID payer = net.signum() > 0 ? trade.first() : trade.second();
+        return List.of(new TradeOffer(trade.id(), payer, Optional.ofNullable(currency), net.abs(), null, 1));
+    }
+
+    private CompletionStage<List<TradeOffer>> settlementOffers(UUID tradeId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try { return repository.offers(tradeId); }
+            catch (Exception exception) { throw new CompletionException(exception); }
+        }, executor).exceptionally(exception -> null);
+    }
+
+    private CompletionStage<ReservationBatch> reserveAll(TradeSession trade, List<TradeOffer> offers,
+                                                           int index, List<HoldSnapshot> holds) {
+        if (economy == null) return completed(ReservationBatch.failed(holds, HoldResult.Status.UNAVAILABLE));
+        if (index >= offers.size()) return completed(ReservationBatch.ready(holds));
+        TradeOffer offer = offers.get(index);
+        if (!offer.hasMoney()) return reserveAll(trade, offers, index + 1, holds);
+        HoldRequest request = reservation(trade, offer);
+        return economy.createHold(request).handle((result, error) -> error == null ? result : null)
+                .thenCompose(result -> {
+                    if (result == null || result.hold().isEmpty()) {
+                        HoldResult.Status status = result == null ? HoldResult.Status.UNAVAILABLE : result.status();
+                        return completed(ReservationBatch.failed(holds, status));
+                    }
+                    HoldSnapshot hold = result.hold().orElseThrow();
+                    boolean accepted = (result.status() == HoldResult.Status.SUCCESS
+                            || result.status() == HoldResult.Status.DUPLICATE)
+                            && (hold.status() == HoldSnapshot.Status.HELD
+                            || hold.status() == HoldSnapshot.Status.CAPTURED);
+                    if (!accepted) return completed(ReservationBatch.failed(holds, result.status()));
+                    holds.add(hold);
+                    return reserveAll(trade, offers, index + 1, holds);
+                });
+    }
+
+    private CompletionStage<TradeResult> reservationFailed(TradeSession trade, ReservationBatch batch) {
+        // Once one side was captured the settlement is a durable in-progress
+        // operation. Reopening would let the paid side edit the table and make
+        // reconciliation impossible; leave it for the recovery sweep instead.
+        if (batch.holds().stream().anyMatch(hold -> hold.status() == HoldSnapshot.Status.CAPTURED)) {
+            return completed(unavailable(trade, "Settlement is waiting for hold recovery"));
+        }
+        return releaseAll(batch.holds(), 0).thenCompose(ignored -> operation(() -> {
+            Optional<TradeSession> reopened = repository.reopen(trade.id(), Instant.now(clock));
+            TradeResult.Status status = batch.failure() == HoldResult.Status.INSUFFICIENT_FUNDS
+                    ? TradeResult.Status.INSUFFICIENT_FUNDS : TradeResult.Status.UNAVAILABLE;
+            return new TradeResult(status, reopened.isPresent() ? reopened : repository.find(trade.id()),
+                    status == TradeResult.Status.INSUFFICIENT_FUNDS
+                            ? "A side could not cover its offer" : "Hold storage unavailable");
+        }));
+    }
+
+    private CompletionStage<Void> releaseAll(List<HoldSnapshot> holds, int index) {
+        if (index >= holds.size()) return CompletableFuture.completedFuture(null);
+        HoldSnapshot hold = holds.get(index);
+        if (hold.status() != HoldSnapshot.Status.HELD) return releaseAll(holds, index + 1);
+        return economy.releaseHold(hold.id()).handle((ignored, error) -> null)
+                .thenCompose(ignored -> releaseAll(holds, index + 1));
+    }
+
+    private CompletionStage<TradeResult> captureAll(TradeSession trade, List<HoldSnapshot> holds, int index) {
+        if (index >= holds.size()) {
+            return completed(new TradeResult(TradeResult.Status.SUCCESS, Optional.of(trade), "Money settled"));
+        }
+        HoldSnapshot hold = holds.get(index);
+        if (hold.status() == HoldSnapshot.Status.CAPTURED) return captureAll(trade, holds, index + 1);
+        TransactionRequest request = new TransactionRequest(
+                "trade-capture:" + hold.idempotencyKey(), hold.from(), hold.to(),
+                hold.currency().id(), hold.amount(), hold.category(), hold.metadata());
+        return economy.captureHold(hold.id(), request).handle((result, error) -> error == null ? result : null)
+                .thenCompose(result -> {
+                    boolean captured = result != null && (result.status() == HoldResult.Status.SUCCESS
+                            || result.status() == HoldResult.Status.DUPLICATE)
+                            && result.hold().map(value -> value.status() == HoldSnapshot.Status.CAPTURED)
+                                    .orElse(false);
+                    if (!captured) {
+                        boolean terminalWithoutCapture = result != null && result.hold()
+                                .map(value -> value.status() == HoldSnapshot.Status.EXPIRED
+                                        || value.status() == HoldSnapshot.Status.RELEASED
+                                        || value.status() == HoldSnapshot.Status.REJECTED)
+                                .orElse(false);
+                        if (result != null && (result.status() == HoldResult.Status.REJECTED
+                                || terminalWithoutCapture)) {
+                            HoldSnapshot latest = result.hold().orElse(hold);
+                            return reservationFailed(trade,
+                                    ReservationBatch.failed(List.of(latest), HoldResult.Status.REJECTED));
+                        }
+                        return completed(unavailable(trade,
+                                result == null ? "Hold capture unavailable" : result.message()));
+                    }
+                    return captureAll(trade, holds, index + 1);
+                });
+    }
+
+    private static TradeResult unavailable(TradeSession trade, String message) {
+        return new TradeResult(TradeResult.Status.UNAVAILABLE, Optional.of(trade), message);
+    }
+
+    private static <T> CompletionStage<T> completed(T value) {
+        return CompletableFuture.completedFuture(value);
+    }
+
+    private record ReservationBatch(boolean ready, List<HoldSnapshot> holds, HoldResult.Status failure) {
+        private ReservationBatch {
+            holds = List.copyOf(holds);
+        }
+        static ReservationBatch ready(List<HoldSnapshot> holds) {
+            return new ReservationBatch(true, holds, HoldResult.Status.SUCCESS);
+        }
+        static ReservationBatch failed(List<HoldSnapshot> holds, HoldResult.Status failure) {
+            return new ReservationBatch(false, holds, failure);
+        }
     }
 
     /**

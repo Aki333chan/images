@@ -43,7 +43,7 @@ public interface ClaimRepository {
      * Record progress. Only moves the cursor forward and only while this worker
      * still holds the lease.
      */
-    Optional<ClaimSnapshot> advance(UUID id, String worker, int completedSteps, Instant now)
+    Optional<ClaimSnapshot> advance(UUID id, String worker, int completedSteps, Duration lease, Instant now)
             throws SQLException;
 
     /**

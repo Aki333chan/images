@@ -8,12 +8,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import ovh.aurumgg.core.api.CurrencySpec;
+import ovh.aurumgg.core.api.ClaimResult;
 import ovh.aurumgg.core.api.TradeOffer;
 import ovh.aurumgg.core.api.TradeResult;
 import ovh.aurumgg.core.api.TradeSession;
@@ -49,6 +52,8 @@ final class TradeCoordinator {
     private final TradeDelivery delivery;
     /** Players with a command in flight; two clicks must not race one table. */
     private final Set<UUID> busy = ConcurrentHashMap.newKeySet();
+    /** Trades whose durable settlement pipeline is already running on this server. */
+    private final Set<UUID> settling = ConcurrentHashMap.newKeySet();
     /**
      * Кому сообщать, что стол изменился.
      *
@@ -245,34 +250,69 @@ final class TradeCoordinator {
      * that survives a restart.
      */
     private void settle(TradeSession trade) {
-        trades.lock(trade.id()).whenComplete((locked, lockError) -> onMain(() -> {
-            if (locked == null || !locked.ok()) return;
-            trades.settleMoney(trade.id()).whenComplete((paid, payError) -> onMain(() -> {
-                if (paid == null || !paid.ok()) {
-                    announce(trade, paid != null
-                            && paid.status() == TradeResult.Status.INSUFFICIENT_FUNDS
-                            ? "trade-insufficient" : "trade-failed", Map.of());
+        if (!settling.add(trade.id())) return;
+        CompletionStage<TradeResult> locked = trade.state() == TradeState.SETTLING
+                ? CompletableFuture.completedFuture(new TradeResult(TradeResult.Status.SUCCESS,
+                        Optional.of(trade), "Settlement resumed"))
+                : trades.lock(trade.id());
+        locked.thenCompose(result -> result != null && result.ok()
+                        ? trades.settleMoney(trade.id()) : CompletableFuture.completedFuture(result))
+                .whenComplete((paid, payError) -> onMain(() -> {
+            if (payError != null || paid == null || !paid.ok()) {
+                settling.remove(trade.id());
+                announce(paid != null && paid.trade().isPresent() ? paid.trade().orElseThrow() : trade,
+                        paid != null && paid.status() == TradeResult.Status.INSUFFICIENT_FUNDS
+                                ? "trade-insufficient" : "trade-failed", Map.of());
+                return;
+            }
+            createSettlementClaims(paid.trade().orElse(trade));
+        }));
+    }
+
+    /** Money may already be captured; all item debts must exist before the trade is final. */
+    private void createSettlementClaims(TradeSession trade) {
+        trades.offers(trade.id()).whenComplete((offers, offersError) -> {
+            if (offersError != null || offers == null) {
+                settlementFailed(trade, offersError, "could not load offers");
+                return;
+            }
+            List<CompletionStage<ClaimResult>> writes = new ArrayList<>();
+            for (TradeOffer offer : offers) {
+                if (offer.items() == null || offer.items().length == 0) continue;
+                UUID recipient = trade.other(offer.owner());
+                writes.add(delivery.owe("trade-settle:" + trade.id() + ":" + offer.owner(), recipient,
+                        trade.id(), offer.items(), offer.itemsFormatVersion(),
+                        "trade goods from " + name(offer.owner())));
+            }
+            CompletableFuture<?>[] futures = writes.stream()
+                    .map(stage -> stage.toCompletableFuture()).toArray(CompletableFuture[]::new);
+            CompletableFuture.allOf(futures).whenComplete((ignored, claimError) -> onMain(() -> {
+                boolean durable = claimError == null && writes.stream().allMatch(stage -> {
+                    ClaimResult result = stage.toCompletableFuture().getNow(null);
+                    return result != null && result.ok() && result.claim().isPresent();
+                });
+                if (!durable) {
+                    settlementFailed(trade, claimError, "could not persist every item claim");
                     return;
                 }
-                trades.offers(trade.id()).whenComplete((offers, offersError) -> onMain(() -> {
-                    if (offers == null) return;
-                    for (TradeOffer offer : offers) {
-                        if (offer.items() == null || offer.items().length == 0) continue;
-                        UUID recipient = trade.other(offer.owner());
-                        // Stable per trade and per giver: settling twice must not
-                        // hand the same table over twice.
-                        delivery.owe("trade-settle:" + trade.id() + ":" + offer.owner(), recipient,
-                                trade.id(), offer.items(), offer.itemsFormatVersion(),
-                                "trade goods from " + name(offer.owner()));
+                trades.settled(trade.id()).whenComplete((done, doneError) -> onMain(() -> {
+                    settling.remove(trade.id());
+                    if (doneError != null || done == null || !done.ok()) {
+                        settlementFailed(trade, doneError, "could not finalize trade");
+                        return;
                     }
-                    trades.settled(trade.id()).whenComplete((done, doneError) -> onMain(() -> {
-                        announce(trade, "trade-settled", Map.of());
-                        deliverTo(trade.first());
-                        deliverTo(trade.second());
-                    }));
+                    announce(done.trade().orElse(trade), "trade-settled", Map.of());
+                    deliverTo(trade.first());
+                    deliverTo(trade.second());
                 }));
             }));
-        }));
+        });
+    }
+
+    private void settlementFailed(TradeSession trade, Throwable error, String reason) {
+        settling.remove(trade.id());
+        plugin.getLogger().warning("Trade " + trade.id() + " remains SETTLING: " + reason
+                + (error == null ? "" : " (" + error.getMessage() + ")"));
     }
 
     /** Call a trade off and give both tables back. */
@@ -299,6 +339,10 @@ final class TradeCoordinator {
         trades.timedOut(50).whenComplete((expired, error) -> onMain(() -> {
             if (expired == null) return;
             for (TradeSession trade : expired) cancel(trade, "timed out");
+        }));
+        trades.settling(50).whenComplete((pending, error) -> onMain(() -> {
+            if (pending == null) return;
+            for (TradeSession trade : pending) settle(trade);
         }));
         delivery.sweep();
     }

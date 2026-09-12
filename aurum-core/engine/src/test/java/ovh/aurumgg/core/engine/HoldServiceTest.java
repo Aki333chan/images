@@ -64,6 +64,19 @@ class HoldServiceTest {
     }
 
     @Test
+    void idempotencyKeyCannotBeReusedForAnotherReservation() {
+        MemoryLedger ledger = new MemoryLedger(); ledger.balances.put(PLAYER, amount("100"));
+        HoldService service = new HoldService(Map.of("coins", COINS), new MemoryHolds(), economy(ledger),
+                Runnable::run, Clock.fixed(NOW, ZoneOffset.UTC), new Object(),
+                java.time.Duration.ofMinutes(5));
+
+        assertEquals(HoldResult.Status.SUCCESS,
+                service.create(request("npc:shop:same-key", "10")).toCompletableFuture().join().status());
+        assertEquals(HoldResult.Status.REJECTED,
+                service.create(request("npc:shop:same-key", "11")).toCompletableFuture().join().status());
+    }
+
+    @Test
     void captureRetryFinishesHoldAfterTransactionWasCommitted() {
         MemoryLedger ledger = new MemoryLedger(); ledger.balances.put(PLAYER, amount("100"));
         MemoryHolds holds = new MemoryHolds(); holds.failNextCaptureResolution = true;

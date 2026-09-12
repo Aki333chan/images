@@ -52,7 +52,9 @@ final class TradeDelivery implements Listener {
         this.plugin = plugin;
         this.claims = claims;
         this.messages = messages;
-        this.worker = "trade@" + plugin.getServer().getPort();
+        this.worker = "trade@" + (plugin.getServer().getWorlds().isEmpty()
+                ? plugin.getServer().getName() + ":" + plugin.getServer().getPort()
+                : plugin.getServer().getWorlds().getFirst().getUID());
     }
 
     /**

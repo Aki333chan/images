@@ -49,6 +49,22 @@ class ClaimServiceTest {
     }
 
     @Test
+    void claimKeyCannotPromiseDifferentPayload() {
+        MemoryClaims claims = new MemoryClaims();
+        ClaimService service = service(claims, NOW);
+        ClaimRequest original = request("npc-shop:fixed");
+        ClaimRequest changed = new ClaimRequest(original.idempotencyKey(), original.plugin(),
+                original.owner(), original.kind(), original.stepCount(), original.summary(),
+                "{\"items\":[\"different\"]}");
+
+        assertEquals(ClaimResult.Status.SUCCESS,
+                service.promise(original).toCompletableFuture().join().status());
+        assertEquals(ClaimResult.Status.CONFLICT,
+                service.promise(changed).toCompletableFuture().join().status());
+        assertEquals(1, claims.rows.size());
+    }
+
+    @Test
     void onlyOneWorkerCanHoldAClaim() {
         MemoryClaims claims = new MemoryClaims();
         ClaimService service = service(claims, NOW);
@@ -99,6 +115,10 @@ class ClaimServiceTest {
         service.advance(id, "server-a", 1).toCompletableFuture().join();
         assertEquals(2, claims.rows.get(id).stepCursor());
 
+        assertEquals(ClaimResult.Status.CONFLICT,
+                service.settle(id, "server-a").toCompletableFuture().join().status(),
+                "a partial delivery cannot be declared settled");
+        service.advance(id, "server-a", 3).toCompletableFuture().join();
         service.settle(id, "server-a").toCompletableFuture().join();
         assertEquals(ClaimStatus.SETTLED, claims.rows.get(id).status());
         assertTrue(claims.rows.get(id).complete());
@@ -128,6 +148,35 @@ class ClaimServiceTest {
     }
 
     @Test
+    void neutralPauseDoesNotSpendAnAttempt() {
+        MemoryClaims claims = new MemoryClaims();
+        ClaimService service = service(claims, NOW);
+        UUID id = promised(service);
+        service.take(id, "server-a", Duration.ofMinutes(1)).toCompletableFuture().join();
+
+        assertEquals(ClaimResult.Status.SUCCESS,
+                service.pause(id, "server-a", "player left").toCompletableFuture().join().status());
+        assertEquals(ClaimStatus.PENDING, claims.rows.get(id).status());
+        assertEquals(0, claims.rows.get(id).attempts());
+    }
+
+    @Test
+    void expiredWorkerAndAdministratorCannotStealActiveLease() {
+        MemoryClaims claims = new MemoryClaims();
+        MutableClock clock = new MutableClock(NOW);
+        ClaimService service = new ClaimService(claims, Runnable::run, clock, Duration.ofMinutes(5), 3);
+        UUID id = promised(service);
+        service.take(id, "server-a", Duration.ofMinutes(1)).toCompletableFuture().join();
+
+        assertEquals(ClaimResult.Status.CONFLICT,
+                service.drop(id, "admin raced delivery").toCompletableFuture().join().status());
+        clock.advance(Duration.ofMinutes(2));
+        assertEquals(ClaimResult.Status.CONFLICT,
+                service.defer(id, "server-a", "late result").toCompletableFuture().join().status());
+        assertEquals(ClaimStatus.CLAIMED, claims.rows.get(id).status());
+    }
+
+    @Test
     void anAdministratorCanPutAQuarantinedClaimBack() {
         MemoryClaims claims = new MemoryClaims();
         ClaimService service = service(claims, NOW);
@@ -147,6 +196,7 @@ class ClaimServiceTest {
         ClaimService service = service(claims, NOW);
         UUID id = promised(service);
         service.take(id, "server-a", Duration.ofMinutes(1)).toCompletableFuture().join();
+        service.advance(id, "server-a", 3).toCompletableFuture().join();
         service.settle(id, "server-a").toCompletableFuture().join();
 
         assertEquals(ClaimResult.Status.CONFLICT,
@@ -254,7 +304,8 @@ class ClaimServiceTest {
         }
 
         @Override
-        public Optional<ClaimSnapshot> advance(UUID id, String worker, int completedSteps, Instant now) {
+        public Optional<ClaimSnapshot> advance(UUID id, String worker, int completedSteps,
+                                               Duration lease, Instant now) {
             ClaimSnapshot claim = rows.get(id);
             if (claim == null || claim.status() != ClaimStatus.CLAIMED
                     || !claim.claimedBy().map(worker::equals).orElse(false)
@@ -263,7 +314,7 @@ class ClaimServiceTest {
             }
             int cursor = Math.min(claim.stepCount(), Math.max(claim.stepCursor(), completedSteps));
             return Optional.of(put(with(claim, claim.status(), cursor, claim.attempts(), claim.lastError(),
-                    claim.claimedBy(), Optional.of(now.plus(Duration.ofMinutes(2))), now)));
+                    claim.claimedBy(), Optional.of(now.plus(lease)), now)));
         }
 
         @Override
@@ -271,11 +322,16 @@ class ClaimServiceTest {
                                               boolean countAttempt, Instant now) {
             ClaimSnapshot claim = rows.get(id);
             if (claim == null) return Optional.empty();
-            if (claim.status() != ClaimStatus.PENDING && claim.status() != ClaimStatus.CLAIMED
-                    && claim.status() != ClaimStatus.QUARANTINED) {
+            if (worker == null) {
+                if (claim.status() != ClaimStatus.PENDING && claim.status() != ClaimStatus.QUARANTINED) {
+                    return Optional.empty();
+                }
+            } else if (claim.status() != ClaimStatus.CLAIMED
+                    || !claim.claimedBy().map(worker::equals).orElse(false)
+                    || claim.leaseUntil().map(until -> until.isBefore(now)).orElse(true)) {
                 return Optional.empty();
             }
-            if (worker != null && !claim.claimedBy().map(worker::equals).orElse(false)) return Optional.empty();
+            if (status == ClaimStatus.SETTLED && !claim.complete()) return Optional.empty();
             int cursor = status == ClaimStatus.SETTLED ? claim.stepCount() : claim.stepCursor();
             return Optional.of(put(with(claim, status, cursor,
                     claim.attempts() + (countAttempt ? 1 : 0), reason == null ? "" : reason,

@@ -133,7 +133,8 @@ public final class MariaDbClaimRepository implements ClaimRepository {
     }
 
     @Override
-    public Optional<ClaimSnapshot> advance(UUID id, String worker, int completedSteps, Instant now)
+    public Optional<ClaimSnapshot> advance(UUID id, String worker, int completedSteps,
+                                           Duration lease, Instant now)
             throws SQLException {
         // step_cursor only ever grows, and never past step_count. A late reply
         // from a worker that already lost the lease cannot rewind delivery.
@@ -145,7 +146,7 @@ public final class MariaDbClaimRepository implements ClaimRepository {
                 statement.setInt(1, Math.max(0, completedSteps));
                 // Progress renews the lease: a long delivery must not have the
                 // claim stolen out from under it halfway through.
-                statement.setTimestamp(2, Timestamp.from(now.plus(Duration.ofMinutes(2))));
+                statement.setTimestamp(2, Timestamp.from(now.plus(lease)));
                 statement.setTimestamp(3, Timestamp.from(now));
                 statement.setString(4, id.toString());
                 statement.setString(5, worker);
@@ -163,10 +164,15 @@ public final class MariaDbClaimRepository implements ClaimRepository {
                 + "lease_until = NULL, last_error = ?, updated_at = ?");
         if (countAttempt) sql.append(", attempts = attempts + 1");
         if (status == ClaimStatus.SETTLED) sql.append(", settled_at = ?, step_cursor = step_count");
-        // Terminal states are terminal: a settled or dropped claim is never
-        // reopened by this path, only by an administrator through requeue.
-        sql.append(" WHERE id = ? AND status IN ('PENDING','CLAIMED','QUARANTINED')");
-        if (worker != null) sql.append(" AND claimed_by = ?");
+        // A worker may finish only the live lease it owns. Administrative drop
+        // deliberately cannot steal a CLAIMED row from an active delivery.
+        sql.append(" WHERE id = ?");
+        if (worker != null) {
+            sql.append(" AND status = 'CLAIMED' AND claimed_by = ? AND lease_until >= ?");
+        } else {
+            sql.append(" AND status IN ('PENDING','QUARANTINED')");
+        }
+        if (status == ClaimStatus.SETTLED) sql.append(" AND step_cursor >= step_count");
 
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(sql.toString())) {
@@ -176,7 +182,10 @@ public final class MariaDbClaimRepository implements ClaimRepository {
                 statement.setTimestamp(index++, Timestamp.from(now));
                 if (status == ClaimStatus.SETTLED) statement.setTimestamp(index++, Timestamp.from(now));
                 statement.setString(index++, id.toString());
-                if (worker != null) statement.setString(index, worker);
+                if (worker != null) {
+                    statement.setString(index++, worker);
+                    statement.setTimestamp(index, Timestamp.from(now));
+                }
                 if (statement.executeUpdate() == 0) return Optional.empty();
             }
             return one(connection, "id = ?", id.toString());

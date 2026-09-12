@@ -16,11 +16,27 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.AurumEconomyApi;
+import ovh.aurumgg.core.api.BalanceSnapshot;
+import ovh.aurumgg.core.api.CurrencySpec;
+import ovh.aurumgg.core.api.EconomyMode;
+import ovh.aurumgg.core.api.GlobalEconomySnapshot;
+import ovh.aurumgg.core.api.HoldRequest;
+import ovh.aurumgg.core.api.HoldResult;
+import ovh.aurumgg.core.api.HoldSnapshot;
 import ovh.aurumgg.core.api.TradeOffer;
 import ovh.aurumgg.core.api.TradeResult;
 import ovh.aurumgg.core.api.TradeSession;
 import ovh.aurumgg.core.api.TradeState;
+import ovh.aurumgg.core.api.TransactionRequest;
+import ovh.aurumgg.core.api.TransactionResult;
 
 /**
  * The one property a trade window has to have: a player is bound to the table
@@ -160,6 +176,52 @@ class TradeServiceTest {
         assertEquals(1, service.timedOut(10).toCompletableFuture().join().size());
     }
 
+    @Test
+    void расчётНеБлокируетОбщийОднопоточныйExecutor() throws Exception {
+        MemoryTrades trades = new MemoryTrades();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            AsyncEconomy economy = new AsyncEconomy(executor, false);
+            TradeService service = new TradeService(trades, economy, executor,
+                    Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofSeconds(30), Duration.ofMinutes(5));
+            UUID id = locked(service, trades);
+
+            TradeResult result = service.settleMoney(id).toCompletableFuture().get(2, TimeUnit.SECONDS);
+
+            assertTrue(result.ok());
+            assertEquals(TradeState.SETTLING, trades.rows.get(id).state());
+            assertEquals(1, economy.captures);
+
+            // A restart retries the same deterministic hold and observes it as
+            // already captured instead of charging the player a second time.
+            assertTrue(service.settleMoney(id).toCompletableFuture().get(2, TimeUnit.SECONDS).ok());
+            assertEquals(1, economy.captures);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void нехваткаСредствОткрываетНовуюРевизиюБезПодтверждений() throws Exception {
+        MemoryTrades trades = new MemoryTrades();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            TradeService service = new TradeService(trades, new AsyncEconomy(executor, true), executor,
+                    Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofSeconds(30), Duration.ofMinutes(5));
+            UUID id = locked(service, trades);
+            long confirmedRevision = trades.rows.get(id).revision();
+
+            TradeResult result = service.settleMoney(id).toCompletableFuture().get(2, TimeUnit.SECONDS);
+
+            assertEquals(TradeResult.Status.INSUFFICIENT_FUNDS, result.status());
+            assertEquals(TradeState.OPEN, trades.rows.get(id).state());
+            assertEquals(confirmedRevision + 1, trades.rows.get(id).revision());
+            assertFalse(trades.rows.get(id).ready());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     // ------------------------------------------------------------- fixtures
 
     private static TradeService service(MemoryTrades trades) {
@@ -282,6 +344,17 @@ class TradeServiceTest {
         }
 
         @Override
+        public Optional<TradeSession> reopen(UUID tradeId, Instant now) {
+            TradeSession trade = rows.get(tradeId);
+            if (trade == null || trade.state() != TradeState.SETTLING) return Optional.empty();
+            TradeSession reopened = new TradeSession(trade.id(), trade.first(), trade.second(),
+                    TradeState.OPEN, trade.revision() + 1, OptionalLong.empty(), OptionalLong.empty(),
+                    trade.expiresAt(), trade.createdAt(), now);
+            rows.put(tradeId, reopened);
+            return Optional.of(reopened);
+        }
+
+        @Override
         public Optional<TradeSession> touch(UUID tradeId, Instant expiresAt, Instant now) {
             TradeSession trade = rows.get(tradeId);
             if (trade == null || trade.state().finished()) return Optional.empty();
@@ -298,6 +371,67 @@ class TradeServiceTest {
                     .filter(trade -> !trade.state().finished() && trade.expiresAt().isBefore(now))
                     .limit(limit)
                     .toList();
+        }
+
+        @Override
+        public List<TradeSession> settling(int limit) {
+            return rows.values().stream()
+                    .filter(trade -> trade.state() == TradeState.SETTLING)
+                    .limit(limit)
+                    .toList();
+        }
+    }
+
+    /** Economy calls deliberately run on the same executor as TradeService. */
+    private static final class AsyncEconomy implements AurumEconomyApi {
+        private static final CurrencySpec COINS = new CurrencySpec("coins", "Coins", "$", 2);
+        private final ExecutorService executor;
+        private final boolean insufficient;
+        private HoldSnapshot hold;
+        private int captures;
+
+        private AsyncEconomy(ExecutorService executor, boolean insufficient) {
+            this.executor = executor;
+            this.insufficient = insufficient;
+        }
+
+        @Override public EconomyMode mode() { return EconomyMode.ACTIVE; }
+        @Override public CurrencySpec primaryCurrency() { return COINS; }
+        @Override public CompletionStage<Optional<BalanceSnapshot>> balance(AccountId account) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        @Override public CompletionStage<GlobalEconomySnapshot> globalSnapshot() {
+            return CompletableFuture.failedFuture(new UnsupportedOperationException());
+        }
+        @Override public CompletionStage<TransactionResult> transfer(TransactionRequest request) {
+            return CompletableFuture.failedFuture(new UnsupportedOperationException());
+        }
+        @Override public CompletionStage<HoldResult> createHold(HoldRequest request) {
+            return CompletableFuture.supplyAsync(() -> {
+                if (hold != null) return new HoldResult(HoldResult.Status.DUPLICATE,
+                        Optional.of(hold), "Existing hold");
+                HoldSnapshot.Status status = insufficient
+                        ? HoldSnapshot.Status.REJECTED : HoldSnapshot.Status.HELD;
+                hold = new HoldSnapshot(UUID.randomUUID(), request.idempotencyKey(), request.from(),
+                        request.to(), COINS, request.amount(), request.amount(), request.category(),
+                        request.purpose(), request.referenceId(), status, NOW, request.expiresAt(),
+                        request.metadata());
+                return new HoldResult(insufficient ? HoldResult.Status.INSUFFICIENT_FUNDS
+                        : HoldResult.Status.SUCCESS, Optional.of(hold), "reserved");
+            }, executor);
+        }
+        @Override public CompletionStage<HoldResult> captureHold(UUID holdId, TransactionRequest request) {
+            return CompletableFuture.supplyAsync(() -> {
+                if (hold.status() == HoldSnapshot.Status.CAPTURED) {
+                    return new HoldResult(HoldResult.Status.DUPLICATE, Optional.of(hold), "captured");
+                }
+                captures++;
+                hold = new HoldSnapshot(hold.id(), hold.idempotencyKey(), hold.from(), hold.to(),
+                        hold.currency(), hold.amount(), hold.reservedAmount(), hold.category(), hold.purpose(),
+                        hold.referenceId(), HoldSnapshot.Status.CAPTURED, hold.createdAt(), hold.expiresAt(),
+                        hold.metadata());
+                return new HoldResult(HoldResult.Status.SUCCESS, Optional.of(hold), "captured");
+            }, executor);
         }
     }
 }

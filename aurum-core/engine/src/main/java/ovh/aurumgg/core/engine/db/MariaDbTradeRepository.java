@@ -191,7 +191,7 @@ public final class MariaDbTradeRepository implements TradeRepository {
 
     @Override
     public Optional<TradeSession> transition(UUID tradeId, TradeState from, TradeState to,
-                                             boolean requireReady, Instant now) throws SQLException {
+                                              boolean requireReady, Instant now) throws SQLException {
         StringBuilder sql = new StringBuilder(
                 "UPDATE aurum_trades SET state = ?, updated_at = ? WHERE id = ? AND state = ?");
         if (requireReady) {
@@ -206,6 +206,21 @@ public final class MariaDbTradeRepository implements TradeRepository {
                 statement.setTimestamp(2, Timestamp.from(now));
                 statement.setString(3, tradeId.toString());
                 statement.setString(4, from.name());
+                if (statement.executeUpdate() == 0) return Optional.empty();
+            }
+            return one(connection, tradeId);
+        }
+    }
+
+    @Override
+    public Optional<TradeSession> reopen(UUID tradeId, Instant now) throws SQLException {
+        String sql = "UPDATE aurum_trades SET state = 'OPEN', revision = revision + 1, "
+                + "first_confirmed_revision = NULL, second_confirmed_revision = NULL, updated_at = ? "
+                + "WHERE id = ? AND state = 'SETTLING'";
+        try (Connection connection = dataSource.getConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setTimestamp(1, Timestamp.from(now));
+                statement.setString(2, tradeId.toString());
                 if (statement.executeUpdate() == 0) return Optional.empty();
             }
             return one(connection, tradeId);
@@ -235,6 +250,17 @@ public final class MariaDbTradeRepository implements TradeRepository {
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setTimestamp(1, Timestamp.from(now));
             statement.setInt(2, Math.clamp(limit, 1, 500));
+            return list(statement);
+        }
+    }
+
+    @Override
+    public List<TradeSession> settling(int limit) throws SQLException {
+        String sql = "SELECT " + COLUMNS + " FROM aurum_trades WHERE state = 'SETTLING' "
+                + "ORDER BY updated_at ASC LIMIT ?";
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, Math.clamp(limit, 1, 500));
             return list(statement);
         }
     }

@@ -90,6 +90,12 @@ public interface AurumClaimApi {
      */
     CompletionStage<ClaimResult> defer(UUID claimId, String worker, String reason);
 
+    /**
+     * Give a valid claim lease back without counting a failed attempt.
+     * Intended for neutral interruptions such as the player disconnecting.
+     */
+    CompletionStage<ClaimResult> pause(UUID claimId, String worker, String reason);
+
     /** Delivery cannot work. Hand it to an administrator. */
     CompletionStage<ClaimResult> quarantine(UUID claimId, String worker, String reason);
 

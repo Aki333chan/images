@@ -69,6 +69,15 @@ public interface TradeRepository {
                                       boolean requireReady, Instant now) throws SQLException;
 
     /**
+     * Put a failed, still-unpaid settlement back on the table.
+     *
+     * <p>This is deliberately not a plain state transition: both confirmations
+     * must be cleared and the revision must change atomically. Otherwise the
+     * same already-confirmed offer could immediately enter settlement again.
+     */
+    Optional<TradeSession> reopen(UUID tradeId, Instant now) throws SQLException;
+
+    /**
      * Push the deadline out after real activity.
      *
      * <p>Only for trades that are still running. A session timeout is meant to
@@ -79,4 +88,7 @@ public interface TradeRepository {
 
     /** Trades whose time ran out and that nobody has cleaned up yet. */
     List<TradeSession> timedOut(Instant now, int limit) throws SQLException;
+
+    /** Settlements left in progress by a restart or a transient storage failure. */
+    List<TradeSession> settling(int limit) throws SQLException;
 }

@@ -54,6 +54,10 @@ public final class ClaimService implements AurumClaimApi {
             // the key was already promised — that is the duplicate, and it is a
             // success for the caller, not an error.
             boolean fresh = stored.id().equals(id);
+            if (!fresh && !samePromise(stored, request)) {
+                return new ClaimResult(ClaimResult.Status.CONFLICT, Optional.of(stored),
+                        "Idempotency key belongs to a different claim intent");
+            }
             return new ClaimResult(fresh ? ClaimResult.Status.SUCCESS : ClaimResult.Status.DUPLICATE,
                     Optional.of(stored), fresh ? "Claim recorded" : "Existing claim");
         });
@@ -79,7 +83,7 @@ public final class ClaimService implements AurumClaimApi {
     @Override
     public CompletionStage<ClaimResult> advance(UUID claimId, String worker, int completedSteps) {
         return operation(() -> resolve(
-                repository.advance(claimId, worker, completedSteps, Instant.now(clock)), claimId,
+                repository.advance(claimId, worker, completedSteps, maxLease, Instant.now(clock)), claimId,
                 "Progress recorded", "Lease expired or belongs to another worker"));
     }
 
@@ -112,6 +116,13 @@ public final class ClaimService implements AurumClaimApi {
                     exhausted ? "Claim quarantined" : "Claim returned to the queue",
                     "Claim is not open");
         });
+    }
+
+    @Override
+    public CompletionStage<ClaimResult> pause(UUID claimId, String worker, String reason) {
+        return operation(() -> resolve(repository.finish(claimId, worker, ClaimStatus.PENDING,
+                        reason, false, Instant.now(clock)), claimId,
+                "Claim returned to the queue", "Claim is not open"));
     }
 
     @Override
@@ -169,6 +180,16 @@ public final class ClaimService implements AurumClaimApi {
         return current.isPresent()
                 ? new ClaimResult(ClaimResult.Status.CONFLICT, current, conflict)
                 : new ClaimResult(ClaimResult.Status.NOT_FOUND, Optional.empty(), "No such claim");
+    }
+
+    private static boolean samePromise(ClaimSnapshot claim, ClaimRequest request) {
+        return claim.idempotencyKey().equals(request.idempotencyKey())
+                && claim.plugin().equals(request.plugin())
+                && claim.owner().equals(request.owner())
+                && claim.kind().equals(request.kind())
+                && claim.stepCount() == request.stepCount()
+                && claim.summary().equals(request.summary())
+                && claim.payload().equals(request.payload());
     }
 
     private CompletableFuture<ClaimResult> operation(CheckedSupplier<ClaimResult> supplier) {

@@ -36,6 +36,10 @@ public final class MariaDbHoldRepository implements HoldRepository {
                         hold.currency());
                 if (duplicate.isPresent()) {
                     connection.rollback();
+                    if (!sameReservation(duplicate.orElseThrow(), hold)) {
+                        return new HoldResult(HoldResult.Status.REJECTED, duplicate,
+                                "Idempotency key belongs to a different hold intent");
+                    }
                     return new HoldResult(HoldResult.Status.DUPLICATE, duplicate, "Existing hold");
                 }
                 ensureAccount(connection, hold.from(), hold.currency());
@@ -43,6 +47,10 @@ public final class MariaDbHoldRepository implements HoldRepository {
                 duplicate = find(connection, "idempotency_key", hold.idempotencyKey(), hold.currency());
                 if (duplicate.isPresent()) {
                     connection.rollback();
+                    if (!sameReservation(duplicate.orElseThrow(), hold)) {
+                        return new HoldResult(HoldResult.Status.REJECTED, duplicate,
+                                "Idempotency key belongs to a different hold intent");
+                    }
                     return new HoldResult(HoldResult.Status.DUPLICATE, duplicate, "Existing hold");
                 }
                 BigDecimal held = activeHeld(connection, account.id(), hold.currency().id(), null);
@@ -54,11 +62,47 @@ public final class MariaDbHoldRepository implements HoldRepository {
                 connection.commit();
                 return new HoldResult(funded ? HoldResult.Status.SUCCESS : HoldResult.Status.INSUFFICIENT_FUNDS,
                         Optional.of(stored), funded ? "Funds reserved" : "Insufficient available balance");
-            } catch (SQLException | RuntimeException exception) {
+            } catch (SQLException exception) {
+                try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+                // Two Core instances can race on the same key while locking
+                // different source accounts. The unique index is the final
+                // arbiter; turn its loser into the same semantic answer as the
+                // ordinary duplicate path instead of a transient outage.
+                if (duplicateKey(exception)) {
+                    Optional<HoldSnapshot> duplicate = find(hold.idempotencyKey(), hold.currency());
+                    if (duplicate.isPresent()) {
+                        return new HoldResult(sameReservation(duplicate.orElseThrow(), hold)
+                                ? HoldResult.Status.DUPLICATE : HoldResult.Status.REJECTED,
+                                duplicate, sameReservation(duplicate.orElseThrow(), hold)
+                                        ? "Existing hold"
+                                        : "Idempotency key belongs to a different hold intent");
+                    }
+                }
+                throw exception;
+            } catch (RuntimeException exception) {
                 try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
                 throw exception;
             }
         }
+    }
+
+    private static boolean sameReservation(HoldSnapshot first, HoldSnapshot second) {
+        return first.from().equals(second.from()) && first.to().equals(second.to())
+                && first.currency().id().equals(second.currency().id())
+                && first.amount().compareTo(second.amount()) == 0
+                && first.reservedAmount().compareTo(second.reservedAmount()) == 0
+                && first.category() == second.category()
+                && first.purpose().equals(second.purpose())
+                && first.referenceId().equals(second.referenceId())
+                && first.expiresAt().equals(second.expiresAt())
+                && first.metadata().equals(second.metadata());
+    }
+
+    private static boolean duplicateKey(SQLException exception) {
+        for (SQLException current = exception; current != null; current = current.getNextException()) {
+            if (current.getErrorCode() == 1062) return true;
+        }
+        return false;
     }
 
     @Override public Optional<HoldSnapshot> find(UUID id, CurrencySpec currency) throws SQLException {

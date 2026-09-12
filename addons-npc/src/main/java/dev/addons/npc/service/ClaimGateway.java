@@ -24,9 +24,11 @@ public final class ClaimGateway {
 
     public ClaimGateway(JavaPlugin plugin) {
         this.plugin = plugin;
-        // Identifies the lease holder. One Core can serve several game servers,
-        // and the port is what distinguishes them when they share a host.
-        this.worker = "npc@" + plugin.getServer().getPort();
+        // A world's UUID stays stable across restarts and does not collide when
+        // several Pterodactyl nodes happen to expose the same internal port.
+        this.worker = "npc@" + (plugin.getServer().getWorlds().isEmpty()
+                ? plugin.getServer().getName() + ":" + plugin.getServer().getPort()
+                : plugin.getServer().getWorlds().getFirst().getUID());
     }
 
     public boolean hook() {
@@ -80,6 +82,11 @@ public final class ClaimGateway {
     public CompletionStage<ClaimResult> defer(UUID claimId, String reason) {
         AurumClaimApi current = claims;
         return current == null ? unavailable() : current.defer(claimId, worker, reason);
+    }
+
+    public CompletionStage<ClaimResult> pause(UUID claimId, String reason) {
+        AurumClaimApi current = claims;
+        return current == null ? unavailable() : current.pause(claimId, worker, reason);
     }
 
     public CompletionStage<ClaimResult> quarantine(UUID claimId, String reason) {

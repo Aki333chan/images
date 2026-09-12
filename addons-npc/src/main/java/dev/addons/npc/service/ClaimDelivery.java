@@ -176,7 +176,7 @@ public final class ClaimDelivery implements Listener {
             // Not a failure, and deliberately not a counted attempt: leaving
             // mid-delivery a few times would otherwise quarantine a perfectly
             // good claim.
-            close(claimId, () -> claims.defer(claimId, "player left before delivery finished"));
+            close(claimId, () -> claims.pause(claimId, "player left before delivery finished"));
             return;
         }
         plan.step(player, index, new StepOutcome(owner, claimId, plan, index));
