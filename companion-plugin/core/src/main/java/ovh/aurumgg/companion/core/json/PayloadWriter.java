@@ -160,7 +160,21 @@ public final class PayloadWriter {
         root.put("total", Json.number(summary.total()));
         root.put("totalFormatted", Json.string(summary.totalFormatted()));
         root.put("currency", Json.string(summary.currency()));
-        root.put("playersCounted", Json.number(summary.playersCounted()));
+        // null, а не ноль: «не считали» и «ноль игроков» — разные ответы, и
+        // панель по ним рисует разное.
+        if (summary.playersCounted() != null) {
+            root.put("playersCounted", Json.number(summary.playersCounted()));
+        }
+        EconomySummary.Ledger ledger = summary.ledger();
+        root.put("source", Json.string(ledger == null ? "vault" : "aurum"));
+        if (ledger != null) {
+            root.put("treasury", Json.number(ledger.treasury()));
+            root.put("treasuryFormatted", Json.string(ledger.treasuryFormatted()));
+            root.put("moneySupply", Json.number(ledger.moneySupply()));
+            root.put("moneySupplyFormatted", Json.string(ledger.moneySupplyFormatted()));
+            root.put("taxesCollected", Json.number(ledger.taxesCollected()));
+            root.put("taxesFormatted", Json.string(ledger.taxesFormatted()));
+        }
 
         List<String> top = new ArrayList<>(summary.top().size());
         for (EconomySummary.TopEntry entry : summary.top()) {

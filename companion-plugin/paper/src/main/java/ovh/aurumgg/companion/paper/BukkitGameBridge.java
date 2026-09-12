@@ -597,6 +597,14 @@ public final class BukkitGameBridge implements GameBridge {
 
     @Override
     public Optional<BalanceInfo> balance(UUID playerUuid) {
+        // Сначала ledger: когда AurumCore активен, ИМЕННО он источник истины, а
+        // Vault за ним — прослойка совместимости. Числа совпадут, но спрашивать
+        // прослойку о том, что знает первоисточник, значит зависеть от того,
+        // насколько аккуратно она это отражает.
+        Optional<BalanceInfo> ledger = callSync(
+                () -> AurumCoreEconomyIntegration.balance(playerUuid), Optional.empty(),
+                ECONOMY_TIMEOUT_SECONDS);
+        if (ledger.isPresent()) return ledger;
         return callSync(() -> VaultEconomyIntegration.balance(playerUuid), Optional.empty());
     }
 
@@ -612,6 +620,13 @@ public final class BukkitGameBridge implements GameBridge {
 
     @Override
     public Optional<EconomySummary> economySummary(int topLimit) {
+        // Ledger отвечает двумя запросами; Vault-версия обходит всех, кто
+        // когда-либо заходил, и спрашивает баланс каждого. Пробуем первый и
+        // откатываемся на второй, только если Core нет или он не ответил.
+        Optional<EconomySummary> ledger = callSync(
+                () -> AurumCoreEconomyIntegration.summary(topLimit), Optional.empty(),
+                ECONOMY_TIMEOUT_SECONDS);
+        if (ledger.isPresent()) return ledger;
         return callSync(
                 () -> VaultEconomyIntegration.summary(topLimit), Optional.empty(), ECONOMY_TIMEOUT_SECONDS);
     }

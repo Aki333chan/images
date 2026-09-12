@@ -123,6 +123,23 @@ class LedgerEconomyServiceTest {
                 repository.value(new AccountId(AccountType.SYSTEM_SINK, "global")));
     }
 
+    @Test
+    void доскаБогатстваСпрашиваетсяОдинРазИТолькоПоСвоейВалюте() {
+        repository.put(ALICE, "500.00");
+        repository.put(BOB, "1500.00");
+        repository.put(AccountId.globalTreasury(), "9999.00");
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
+
+        var top = service.richest("coins", 10).toCompletableFuture().join();
+
+        assertEquals(2, top.size(), "казна не участвует: это не игрок");
+        assertEquals(BOB, top.get(0).account());
+        assertEquals(ALICE, top.get(1).account());
+        // Чужая валюта — пустой список, а не список этой: молча выдать не то,
+        // о чём спросили, хуже, чем не выдать ничего.
+        assertEquals(java.util.List.of(), service.richest("tokens", 10).toCompletableFuture().join());
+    }
+
     private LedgerEconomyService service(FinancialRuleResolver resolver) {
         return new LedgerEconomyService(COINS, repository, resolver, executor, Clock.systemUTC());
     }
@@ -145,6 +162,19 @@ class LedgerEconomyServiceTest {
         @Override public synchronized Optional<BigDecimal> balance(AccountId account, CurrencySpec currency) {
             return Optional.ofNullable(balances.get(account));
         }
+        @Override
+        public synchronized java.util.List<ovh.aurumgg.core.api.BalanceSnapshot> richest(
+                CurrencySpec currency, int limit) {
+            return balances.entrySet().stream()
+                    .filter(entry -> entry.getKey().type() == AccountType.PLAYER)
+                    .filter(entry -> entry.getValue().signum() > 0)
+                    .sorted(java.util.Map.Entry.<AccountId, BigDecimal>comparingByValue().reversed())
+                    .limit(limit)
+                    .map(entry -> new ovh.aurumgg.core.api.BalanceSnapshot(entry.getKey(), currency,
+                            entry.getValue().setScale(currency.scale()), Instant.now(), true))
+                    .toList();
+        }
+
         @Override public synchronized GlobalEconomySnapshot globalSnapshot(CurrencySpec currency) {
             BigDecimal treasury = value(AccountId.globalTreasury());
             BigDecimal supply = balances.entrySet().stream()

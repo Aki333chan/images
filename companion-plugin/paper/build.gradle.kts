@@ -14,6 +14,13 @@ repositories {
         name = "jitpack"
         url = uri("https://jitpack.io")
     }
+    // API экономики AurumCore. Своего репозитория у него нет и не будет,
+    // поэтому API лежит рядом с исходниками — как у Arena, Slots, NPC и
+    // гильдий. Внутрь jar не попадает: зависимость compileOnly.
+    maven {
+        name = "aurum-local"
+        url = uri("${rootDir}/local-repo")
+    }
 }
 
 dependencies {
@@ -62,6 +69,11 @@ dependencies {
 
     // Публичный API плагина гильдий — по тем же правилам, что и auth-api.
     compileOnly("ovh.aurumgg:guilds-api:0.1.0")
+
+    // API экономики AurumCore: казна, денежная масса, налоги и доска
+    // богатства одним запросом к ledger. compileOnly и мягко — на сервере без
+    // Core класс моста ни разу не загружается, и экономика считается Vault.
+    compileOnly("ovh.aurumgg:aurum-api:0.10.0")
 
     // InvSee++ compileOnly-зависимостью НЕ подключается намеренно: его
     // артефакт лежит в GitHub Packages, требующем токен даже для публичных

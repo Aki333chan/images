@@ -50,6 +50,14 @@ public final class MultiCurrencyEconomyService implements AurumEconomyApi {
         return primaryService().globalSnapshot();
     }
 
+    @Override
+    public CompletionStage<List<BalanceSnapshot>> richest(String currencyId, int limit) {
+        LedgerEconomyService service = services.get(currencyId);
+        return service == null
+                ? CompletableFuture.completedFuture(List.of())
+                : service.richest(currencyId, limit);
+    }
+
     @Override public CompletionStage<Optional<GlobalEconomySnapshot>> globalSnapshot(String currencyId) {
         LedgerEconomyService service = service(currencyId);
         return service == null ? CompletableFuture.completedFuture(Optional.empty())

@@ -257,6 +257,11 @@
   "stats.economy.cached": " (cached)",
   "stats.economy.hideRich": "Hide the richest",
   "stats.economy.showRich": "Richest",
+  "stats.economy.supply": "total money supply",
+  "stats.economy.treasury": "Treasury",
+  "stats.economy.treasuryHint": "the server's own account",
+  "stats.economy.taxes": "Taxes",
+  "stats.economy.taxesHint": "collected all time",
   "stats.players": {
     "one": "{count} player",
     "other": "{count} players"

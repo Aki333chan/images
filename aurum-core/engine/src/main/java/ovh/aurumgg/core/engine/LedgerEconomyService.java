@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -71,6 +72,14 @@ public final class LedgerEconomyService implements AurumEconomyApi {
             globalCache.set(snapshot);
             return snapshot;
         });
+    }
+
+    @Override
+    public CompletionStage<List<BalanceSnapshot>> richest(String currencyId, int limit) {
+        // Чужая валюта — пустой список, а не список этой валюты: молча выдать
+        // не то, о чём спросили, хуже, чем не выдать ничего.
+        if (!currency.id().equals(currencyId)) return CompletableFuture.completedFuture(List.of());
+        return supply(() -> repository.richest(currency, limit)).exceptionally(exception -> List.of());
     }
 
     @Override

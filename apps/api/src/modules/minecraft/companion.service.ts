@@ -892,12 +892,31 @@ export class CompanionService {
       timeoutMs: 40_000,
     });
     if (!result.ok) return economyFailure(result.code, result.error);
+    // Плагин старой версии про источник не знает — значит Vault: ledger он
+    // отдать не мог физически.
+    const ledger = result.body.source === 'aurum';
     return {
       available: true,
+      source: ledger ? 'aurum' : 'vault',
       total: numberOr(result.body.total, 0),
       totalFormatted: result.body.totalFormatted ?? undefined,
       currency: result.body.currency ?? undefined,
-      playersCounted: numberOr(result.body.playersCounted, 0),
+      // Отсутствие счётчика игроков — это «не считали», а не ноль: у ledger
+      // сумма берётся запросом, и подставлять сюда ноль значит утверждать,
+      // что на сервере нет ни одного игрока.
+      ...(typeof result.body.playersCounted === 'number'
+        ? { playersCounted: result.body.playersCounted }
+        : {}),
+      ...(ledger
+        ? {
+            treasury: numberOr(result.body.treasury, 0),
+            treasuryFormatted: result.body.treasuryFormatted ?? undefined,
+            moneySupply: numberOr(result.body.moneySupply, 0),
+            moneySupplyFormatted: result.body.moneySupplyFormatted ?? undefined,
+            taxesCollected: numberOr(result.body.taxesCollected, 0),
+            taxesFormatted: result.body.taxesFormatted ?? undefined,
+          }
+        : {}),
       top: (result.body.top ?? [])
         .filter((e): e is Required<RawTopEntry> => typeof e.uuid === 'string' && typeof e.name === 'string')
         .map((e) => ({
@@ -1128,10 +1147,17 @@ interface RawTopEntry {
 }
 
 interface RawEconomy {
+  source?: string | null;
   total?: number;
   totalFormatted?: string | null;
   currency?: string | null;
   playersCounted?: number;
+  treasury?: number;
+  treasuryFormatted?: string | null;
+  moneySupply?: number;
+  moneySupplyFormatted?: string | null;
+  taxesCollected?: number;
+  taxesFormatted?: string | null;
   top?: RawTopEntry[];
 }
 

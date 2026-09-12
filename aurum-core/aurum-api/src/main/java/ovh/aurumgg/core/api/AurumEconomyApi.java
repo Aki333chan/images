@@ -28,6 +28,25 @@ public interface AurumEconomyApi {
 
     CompletionStage<GlobalEconomySnapshot> globalSnapshot();
 
+    /**
+     * The richest player accounts, biggest first.
+     *
+     * <p>One indexed query over the accounts table. The alternative — walking
+     * every player who ever joined and asking their balance one at a time — is
+     * what a Vault-era rich list had to do, and it costs a round trip per
+     * player for an answer the ledger already has in one place.
+     *
+     * <p>Player accounts only: a treasury or an escrow holding more than
+     * anybody is not news, and putting it on a leaderboard makes the leaderboard
+     * meaningless.
+     *
+     * @return empty when the economy is not authoritative here — a passive Core
+     *         has no ledger to rank
+     */
+    default CompletionStage<List<BalanceSnapshot>> richest(String currencyId, int limit) {
+        return java.util.concurrent.CompletableFuture.completedFuture(List.of());
+    }
+
     default CompletionStage<Optional<GlobalEconomySnapshot>> globalSnapshot(String currencyId) {
         if (!primaryCurrency().id().equalsIgnoreCase(currencyId)) {
             return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());

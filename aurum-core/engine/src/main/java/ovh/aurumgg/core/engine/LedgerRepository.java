@@ -2,9 +2,11 @@ package ovh.aurumgg.core.engine;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 
@@ -14,6 +16,16 @@ public interface LedgerRepository extends AutoCloseable {
     Optional<BigDecimal> balance(AccountId account, CurrencySpec currency) throws SQLException;
 
     GlobalEconomySnapshot globalSnapshot(CurrencySpec currency) throws SQLException;
+
+    /**
+     * Player accounts with the largest balances, biggest first.
+     *
+     * <p>Default empty so a repository that has no ledger to rank — a test
+     * double, a passive mode — does not have to pretend it does.
+     */
+    default List<BalanceSnapshot> richest(CurrencySpec currency, int limit) throws SQLException {
+        return List.of();
+    }
 
     LedgerCommit commit(TransactionPlan plan, CurrencySpec currency) throws SQLException;
 

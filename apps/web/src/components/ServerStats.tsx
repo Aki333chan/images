@@ -224,8 +224,36 @@ export function ServerStats({
         <Metric
           label={t('stats.economy')}
           value={economy.totalFormatted ?? String(economy.total ?? 0)}
-          hint={t('stats.players', { count: economy.playersCounted ?? 0 })}
+          // У ledger сумма берётся запросом, а не обходом игроков, и счётчика
+          // просто нет. Подставлять сюда ноль значило бы утверждать, что на
+          // сервере нет ни одного игрока.
+          hint={
+            typeof economy.playersCounted === 'number'
+              ? t('stats.players', { count: economy.playersCounted })
+              : t('stats.economy.supply')
+          }
         />
+      )}
+
+      {/*
+        Казна и налоги существуют только у настоящего ledger. На сервере с
+        одним Vault их нет не потому, что панель их не спросила, а потому что
+        там нет ни казны, ни понятия налога — и пустые нули на их месте были бы
+        неправдой.
+      */}
+      {wantsEconomy && economy?.available && economy.source === 'aurum' && (
+        <>
+          <Metric
+            label={t('stats.economy.treasury')}
+            value={economy.treasuryFormatted ?? String(economy.treasury ?? 0)}
+            hint={t('stats.economy.treasuryHint')}
+          />
+          <Metric
+            label={t('stats.economy.taxes')}
+            value={economy.taxesFormatted ?? String(economy.taxesCollected ?? 0)}
+            hint={t('stats.economy.taxesHint')}
+          />
+        </>
       )}
 
       {wantsPerformance && performance && (
