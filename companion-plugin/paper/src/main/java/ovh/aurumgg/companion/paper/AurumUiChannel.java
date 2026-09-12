@@ -207,6 +207,20 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
             return new Provider(target, target.getClass().getMethod("aurumSocialSnapshot", Player.class, String.class),
                     target.getClass().getMethod("aurumSocialAction", Player.class, String.class, String.class, Map.class));
         }
+        // Экономика игрока — не админская вкладка: собственный баланс и перевод
+        // доступны всем, как гильдии и пати. Права внутри (aurum.balance,
+        // aurum.pay) проверяет сам Core на каждый вызов.
+        if (scope.equals("economy") || scope.equals("economy-admin")) {
+            if (scope.equals("economy-admin")
+                    && !(player.hasPermission("aurumui.admin") && player.hasPermission("aurum.admin.economy"))) {
+                return null;
+            }
+            Plugin core = plugin.getServer().getPluginManager().getPlugin("AurumCore");
+            if (core == null || !core.isEnabled() || !authenticated(player)) return null;
+            return new Provider(core,
+                    core.getClass().getMethod("aurumEconomySnapshot", Player.class, String.class),
+                    core.getClass().getMethod("aurumEconomyAction", Player.class, String.class, String.class, Map.class));
+        }
         String pluginName;
         String permission;
         if (scope.equals("arena")) {
@@ -233,9 +247,13 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
 
     private void sendAdminState(Player player, String scope, boolean success, String message,
                                 List<Map<String, String>> objects) throws IOException {
-        byte[] payload = UiWireProtocol.adminState(++revision, scope, success, message, objects);
+        // Отправляем согласованную версию, а не версию этой сборки: клиент
+        // сверяет её со своей и отказывается от чужой, так что более новый
+        // номер тихо сломал бы админские вкладки всем, кто ещё не обновился.
+        int protocol = protocols.getOrDefault(player.getUniqueId(), UiWireProtocol.VERSION);
+        byte[] payload = UiWireProtocol.adminState(protocol, ++revision, scope, success, message, objects);
         if (payload.length > maxPayloadBytes) {
-            payload = UiWireProtocol.adminState(++revision, scope, false, "error.too_many_objects", List.of());
+            payload = UiWireProtocol.adminState(protocol, ++revision, scope, false, "error.too_many_objects", List.of());
         }
         player.sendPluginMessage(plugin, ADMIN_STATE_CHANNEL, payload);
     }
@@ -269,6 +287,12 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
             try { if (provider(player, "guild") != null) result |= UiWireProtocol.SOCIAL; }
             catch (ReflectiveOperationException ignored) { }
         }
+        if (authenticated(player) && hasEconomyProvider()) {
+            if (player.hasPermission("aurum.balance")) result |= UiWireProtocol.ECONOMY;
+            if (player.hasPermission("aurumui.admin") && player.hasPermission("aurum.admin.economy")) {
+                result |= UiWireProtocol.ADMIN_ECONOMY;
+            }
+        }
         if (!player.hasPermission("aurumui.admin")) return result;
         if (hasAdminProvider("AurumArena") && player.hasPermission("arena.admin")) {
             result |= UiWireProtocol.ADMIN_ARENA;
@@ -286,6 +310,19 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
         Plugin auth = plugin.getServer().getPluginManager().getPlugin("AurumAuth");
         if (auth == null) return true;
         return auth.isEnabled() && AuthIntegration.provider().map(api -> api.isAuthenticated(player.getUniqueId())).orElse(false);
+    }
+
+    /** Есть ли на сервере AurumCore, умеющий отвечать игровому окну. */
+    private boolean hasEconomyProvider() {
+        Plugin core = plugin.getServer().getPluginManager().getPlugin("AurumCore");
+        if (core == null || !core.isEnabled()) return false;
+        try {
+            core.getClass().getMethod("aurumEconomySnapshot", Player.class, String.class);
+            core.getClass().getMethod("aurumEconomyAction", Player.class, String.class, String.class, Map.class);
+            return true;
+        } catch (NoSuchMethodException ignored) {
+            return false;
+        }
     }
 
     private boolean hasAdminProvider(String name) {

@@ -3,7 +3,9 @@ package ovh.aurumgg.companion.core.ui;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.List;
 import java.util.Map;
@@ -59,9 +61,39 @@ class UiWireProtocolTest {
 
     @Test
     void writesBoundedAdminSnapshot() throws Exception {
-        byte[] result = UiWireProtocol.adminState(7, "slots", true, "ok.saved", List.of(Map.of(
-                "kind", "slots", "id", "one", "bet", "10")));
+        byte[] result = UiWireProtocol.adminState(UiWireProtocol.VERSION, 7, "slots", true, "ok.saved",
+                List.of(Map.of("kind", "slots", "id", "one", "bet", "10")));
         assertTrue(result.length > 20);
         assertTrue(result.length < 512);
+    }
+
+    @Test
+    void adminStateCarriesTheNegotiatedProtocolAndNotThisBuild() throws Exception {
+        // Клиент сверяет версию в ответе со своей и отказывается от чужой.
+        // Поэтому старому клиенту отвечаем его номером, иначе каждое повышение
+        // версии молча ломало бы админские вкладки всем, кто не обновился.
+        byte[] result = UiWireProtocol.adminState(3, 7, "slots", true, "ok.saved", List.of());
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(result))) {
+            assertEquals(UiWireProtocol.MAGIC, input.readInt());
+            assertEquals(3, input.readUnsignedShort());
+        }
+    }
+
+    @Test
+    void olderClientsNeverSeeCapabilityBitsTheyCannotRender() throws Exception {
+        int everything = UiWireProtocol.SOCIAL | UiWireProtocol.ECONOMY | UiWireProtocol.ADMIN_ECONOMY;
+
+        assertEquals(UiWireProtocol.SOCIAL, capabilities(3, everything));
+        assertEquals(everything, capabilities(UiWireProtocol.VERSION, everything));
+    }
+
+    private static int capabilities(int protocol, int bits) throws Exception {
+        byte[] state = UiWireProtocol.state(protocol, 1L, bits, List.of());
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(state))) {
+            input.readInt();
+            input.readUnsignedShort();
+            input.readLong();
+            return input.readUnsignedByte();
+        }
     }
 }

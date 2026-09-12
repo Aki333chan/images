@@ -12,11 +12,26 @@ import java.util.Map;
 /** Versioned, bounded binary protocol shared with the Fabric client. */
 public final class UiWireProtocol {
     public static final int MAGIC = 0x4155524D; // AURM
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
     public static final int ADMIN_ARENA = 1;
     public static final int ADMIN_NPC = 1 << 1;
     public static final int ADMIN_SLOTS = 1 << 2;
     public static final int SOCIAL = 1 << 3;
+    /** Own balance and transfers. Protocol 4 and newer. */
+    public static final int ECONOMY = 1 << 4;
+    /** Balance adjustments and treasury. Protocol 4 and newer. */
+    public static final int ADMIN_ECONOMY = 1 << 5;
+
+    /**
+     * Capability bits an older client is able to render.
+     *
+     * <p>Protocol 3 and older read four bits and know nothing about the rest.
+     * Sending bits they cannot render is not harmful, but masking keeps the
+     * payload honest about what the peer was actually told.</p>
+     */
+    private static int capabilityMask(int protocol) {
+        return protocol >= 4 ? 0xFF : 0x0F;
+    }
 
     private UiWireProtocol() {}
 
@@ -38,7 +53,7 @@ public final class UiWireProtocol {
             output.writeInt(MAGIC);
             output.writeShort(protocol);
             output.writeLong(revision);
-            if (protocol >= 2) output.writeByte(capabilities & 0x0F);
+            if (protocol >= 2) output.writeByte(capabilities & capabilityMask(protocol));
             output.writeByte(Math.min(32, panels.size()));
             for (UiPanel panel : panels.stream().limit(32).toList()) {
                 output.writeUTF(panel.id());
@@ -74,12 +89,21 @@ public final class UiWireProtocol {
         }
     }
 
-    public static byte[] adminState(long revision, String scope, boolean success, String message,
+    /**
+     * Administrative state for one client.
+     *
+     * <p>The negotiated protocol is written, not this build's {@link #VERSION}:
+     * the client checks the version it reads against its own and refuses
+     * anything else, so stamping a newer number would silently break the
+     * administration tabs of every client that has not been updated yet.</p>
+     */
+    public static byte[] adminState(int protocol, long revision, String scope, boolean success, String message,
                                     List<Map<String, String>> objects) throws IOException {
+        if (protocol < 1 || protocol > VERSION) throw new IOException("Unsupported protocol " + protocol);
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(4096);
         try (DataOutputStream output = new DataOutputStream(bytes)) {
             output.writeInt(MAGIC);
-            output.writeShort(VERSION);
+            output.writeShort(protocol);
             output.writeLong(revision);
             output.writeUTF(bounded(scope, 96, "scope"));
             output.writeBoolean(success);

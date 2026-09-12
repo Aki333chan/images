@@ -1,5 +1,30 @@
 # AurumUI
 
+## Economy (0.6.0)
+
+Requires AurumCompanion 0.6.0 and AurumCore 0.10.0 in active mode. Press U and
+select Economy.
+
+- Players see their balance per currency and can send money. The transfer form
+  shows the allowed range and cooldown before it is used, not as a refusal
+  afterwards; the button is hidden entirely when transfers are off or the
+  player lacks `aurum.pay`.
+- Administrators with BOTH `aurumui.admin` and `aurum.admin.economy` get a
+  Manage view: treasury, money supply and collected taxes, a player lookup, and
+  give/take/set against the selected player with a reason. `set` never rewrites
+  a balance — AurumCore books the difference through a system source or sink.
+- Tax rates, fees and exchange rates are deliberately NOT editable here. They
+  belong to the web panel, which has roles, two-factor sign-in, an audit trail
+  with an author and a preview before applying. See
+  `docs/aurum-core-architecture.md` for the reasoning.
+- Every request is re-checked against the player's current permissions on the
+  server. The set of buttons the client renders proves nothing.
+- Amounts left blank mean "not known yet", shown as `…` and never as zero: an
+  offline player's balance arrives in a second response.
+- Protocol 4. The server answers with the negotiated version, so an updated
+  client keeps working against an older Companion, and an older client keeps
+  its administration tabs against an updated one.
+
 ## Social menus (0.5.0)
 
 Requires AurumCompanion 0.5.0 and AurumGuilds 0.3.0. Press U and select Guilds

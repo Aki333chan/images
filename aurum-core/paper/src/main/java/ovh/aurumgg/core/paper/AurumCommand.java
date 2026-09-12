@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -19,12 +18,9 @@ import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.TransactionCategory;
-import ovh.aurumgg.core.api.TransactionRequest;
-import ovh.aurumgg.core.api.TransactionResult;
 
 final class AurumCommand implements CommandExecutor, TabCompleter {
     private final AurumCorePlugin plugin;
-    private final Map<UUID, Long> paymentCooldowns = new ConcurrentHashMap<>();
 
     AurumCommand(AurumCorePlugin plugin) {
         this.plugin = plugin;
@@ -144,11 +140,6 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.messages().component("player-only"));
             return true;
         }
-        if (!plugin.activeReady()) return activeUnavailable(sender);
-        if (!plugin.settings().paymentsEnabled()) {
-            sender.sendMessage(plugin.messages().component("payments-disabled"));
-            return true;
-        }
         if (args.length < 3) {
             sender.sendMessage(plugin.messages().component("pay-usage"));
             return true;
@@ -158,65 +149,22 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.messages().component("player-unknown"));
             return true;
         }
-        if (target.getUniqueId().equals(player.getUniqueId())) {
-            sender.sendMessage(plugin.messages().component("pay-self"));
-            return true;
-        }
         BigDecimal value = parseAmount(sender, args[2], false);
         if (value == null) return true;
-        if (value.compareTo(plugin.settings().paymentMinimum()) < 0
-                || value.compareTo(plugin.settings().paymentMaximum()) > 0) {
-            sender.sendMessage(plugin.messages().component("pay-limits", Map.of(
-                    "minimum", amount(plugin.settings().paymentMinimum()),
-                    "maximum", amount(plugin.settings().paymentMaximum()))));
-            return true;
-        }
-        long now = System.currentTimeMillis();
-        if (paymentCooldowns.size() > 4_096) {
-            paymentCooldowns.entrySet().removeIf(entry -> entry.getValue() <= now);
-        }
-        long until = paymentCooldowns.getOrDefault(player.getUniqueId(), 0L);
-        if (until > now) {
-            long seconds = Math.max(1, (until - now + 999) / 1000);
-            sender.sendMessage(plugin.messages().component("pay-cooldown", Map.of("seconds", Long.toString(seconds))));
-            return true;
-        }
-        paymentCooldowns.put(player.getUniqueId(), now + plugin.settings().paymentCooldownSeconds() * 1000L);
-        String reason = reason(args, 3);
-        TransactionRequest request = new TransactionRequest(
-                "pay:" + UUID.randomUUID(),
-                AccountId.player(player.getUniqueId()),
-                AccountId.player(target.getUniqueId()),
-                plugin.settings().currency().id(), value, TransactionCategory.PLAYER_PAYMENT,
-                metadata(sender, reason)
-        );
-        plugin.activeEconomy().transfer(request).whenComplete((result, error) -> reply(() -> {
-            if (error != null || result.status() == TransactionResult.Status.UNAVAILABLE) {
-                sender.sendMessage(plugin.messages().component("money-unavailable"));
-            } else if (result.status() == TransactionResult.Status.REJECTED) {
-                if (result.message().startsWith("POLICY:")) {
-                    sender.sendMessage(plugin.messages().component("policy-transaction-rejected", Map.of(
-                            "reason", result.message().substring("POLICY:".length()))));
-                } else {
-                    sender.sendMessage(plugin.messages().component("insufficient-funds"));
-                }
-            } else {
-                sender.sendMessage(plugin.messages().component("pay-sent", Map.of(
-                        "player", displayName(target, args[1]), "amount", amount(value),
-                        "symbol", plugin.settings().currency().symbol())));
-                if (target.isOnline() && target.getPlayer() != null) {
-                    target.getPlayer().sendMessage(plugin.messages().component("pay-received", Map.of(
-                            "player", player.getName(), "amount", amount(result.netAmount()),
-                            "symbol", plugin.settings().currency().symbol())));
-                }
-            }
-        }));
+        // Лимиты, задержка и запрет платить себе проверяются в EconomyOperations:
+        // то же самое делает игровое окно, и расходиться этим проверкам нельзя.
+        plugin.economyOperations().pay(player, target, value, reason(args, 3)).thenAccept(outcome -> say(sender, outcome));
         return true;
     }
 
     private boolean economy(CommandSender sender, String[] args) {
         if (!plugin.activeReady()) return activeUnavailable(sender);
-        if (args.length < 4 || !List.of("give", "take", "set").contains(args[1].toLowerCase())) {
+        if (args.length < 4) {
+            sender.sendMessage(plugin.messages().component("economy-usage"));
+            return true;
+        }
+        var operation = EconomyOperations.Adjustment.of(args[1]).orElse(null);
+        if (operation == null) {
             sender.sendMessage(plugin.messages().component("economy-usage"));
             return true;
         }
@@ -225,42 +173,23 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.messages().component("player-unknown"));
             return true;
         }
-        String operation = args[1].toLowerCase(java.util.Locale.ROOT);
         boolean explicitCurrency = args.length >= 5 && args[4].startsWith("currency:");
         String currencyId = explicitCurrency
                 ? args[4].substring("currency:".length()) : plugin.settings().currency().id();
         CurrencySpec selected = currency(sender, currencyId);
         if (selected == null) return true;
-        BigDecimal value = parseAmount(sender, args[3], operation.equals("set"), selected);
+        BigDecimal value = parseAmount(sender, args[3],
+                operation == EconomyOperations.Adjustment.SET, selected);
         if (value == null) return true;
-        String key = "admin:" + operation + ":" + UUID.randomUUID();
-        String reason = reason(args, explicitCurrency ? 5 : 4);
-        var future = operation.equals("set")
-                ? plugin.activeEconomy().setPlayerBalance(AccountId.player(target.getUniqueId()), selected.id(),
-                        value, key, metadata(sender, reason))
-                : plugin.activeEconomy().transfer(new TransactionRequest(
-                        key,
-                        operation.equals("give") ? system(AccountType.SYSTEM_SOURCE)
-                                : AccountId.player(target.getUniqueId()),
-                        operation.equals("give") ? AccountId.player(target.getUniqueId())
-                                : system(AccountType.SYSTEM_SINK),
-                        selected.id(), value, TransactionCategory.ADMIN_ADJUSTMENT,
-                        metadata(sender, reason)));
-        future.whenComplete((result, error) -> reply(() -> {
-            if (error != null || result.status() == TransactionResult.Status.UNAVAILABLE) {
-                sender.sendMessage(plugin.messages().component("money-unavailable"));
-            } else if (result.status() == TransactionResult.Status.REJECTED) {
-                sender.sendMessage(plugin.messages().component("insufficient-funds"));
-            } else {
-                var balance = plugin.cachedBalance(AccountId.player(target.getUniqueId()), selected.id())
-                        .map(it -> amount(it.balance())).orElse("0");
-                sender.sendMessage(plugin.messages().component("economy-success", Map.of(
-                        "operation", operation, "player", displayName(target, args[2]),
-                        "amount", amount(value), "balance", balance,
-                        "symbol", selected.symbol())));
-            }
-        }));
+        plugin.economyOperations()
+                .adjust(sender.getName(), operation, target, selected, value, reason(args, explicitCurrency ? 5 : 4))
+                .thenAccept(outcome -> say(sender, outcome));
         return true;
+    }
+
+    /** Ответ операции — в чат отправителя, всегда из главного потока. */
+    private void say(CommandSender sender, EconomyOperations.Outcome outcome) {
+        reply(() -> sender.sendMessage(plugin.messages().component(outcome.key(), outcome.placeholders())));
     }
 
     private boolean activeUnavailable(CommandSender sender) {
@@ -296,17 +225,10 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         return value;
     }
 
-    private static AccountId system(AccountType type) { return new AccountId(type, "global"); }
     private static String reason(String[] args, int from) {
         if (args.length <= from) return "unspecified";
         String value = String.join(" ", Arrays.copyOfRange(args, from, args.length)).trim();
         return value.length() <= 200 ? value : value.substring(0, 200);
-    }
-    private static Map<String, String> metadata(CommandSender sender, String reason) {
-        return Map.of("actor", sender.getName(), "reason", reason);
-    }
-    private static String displayName(OfflinePlayer player, String fallback) {
-        return player.getName() == null ? fallback : player.getName();
     }
     private static String amount(BigDecimal value) { return value.stripTrailingZeros().toPlainString(); }
     private void reply(Runnable action) {
