@@ -24,7 +24,9 @@ import dev.addons.npc.service.GuildTraderService;
 import dev.addons.npc.service.AurumExchangeService;
 import dev.addons.npc.service.ClaimGateway;
 import dev.addons.npc.service.NpcSagaRepository;
+import dev.addons.npc.service.BonusClaim;
 import dev.addons.npc.service.BuyerPlan;
+import dev.addons.npc.service.GuildTraderPlan;
 import dev.addons.npc.service.ClaimDelivery;
 import dev.addons.npc.service.PurchaseClaim;
 import dev.addons.npc.service.SaleClaim;
@@ -107,7 +109,9 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         buyerService = new BuyerService(this, buyerRepository, economy, messages, delivery);
         guildsHook = new AurumGuildsHook(this);
         GuildTraderService guildTraderService = new GuildTraderService(this, guildTraderRepository, economy,
-                messages, guildsHook, sagas);
+                messages, guildsHook, delivery);
+        delivery.register(GuildTraderPlan.KIND, payload -> BonusClaim.decode(payload)
+                .map(bonus -> new GuildTraderPlan(this, economy, messages, guildsHook, delivery, bonus)));
         exchangerService = new AurumExchangeService(this, exchangerRepository, messages);
         boolean aurumExchange = exchangerService.hook();
         ActionExecutor actionExecutor = new ActionExecutor(messages, shopService, buyerService,
@@ -138,15 +142,22 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         long startupDelay = Math.max(1L, getConfig().getLong("settings.startup-spawn-delay-ticks", 20L));
         getServer().getScheduler().runTaskLater(this, npcManager::start, startupDelay);
         long recoveryPeriod = Math.max(5L, getConfig().getLong("economy.recovery-retry-seconds", 20L)) * 20L;
-        getServer().getScheduler().runTaskTimer(this,
-                () -> economy.recover(sagas, guildsHook), recoveryPeriod, recoveryPeriod);
-        // The same cadence for undelivered purchases. A claim that could not be
-        // served when Core was down has to be picked up without waiting for the
-        // player to relog.
+        // Незавершённые заявки: та, которую не удалось выдать, пока Core лежал,
+        // должна подхватиться без ожидания перезахода игрока.
         getServer().getScheduler().runTaskTimer(this, () -> {
+            if (!economy.available()) economy.hook();
             if (!claims.available()) claims.hook();
             delivery.sweep();
         }, recoveryPeriod, recoveryPeriod);
+        // Журнал старой версии заводим ТОЛЬКО если в нём что-то осталось.
+        // На новой установке его нет вовсе, и вешать ради него повторяющуюся
+        // задачу незачем.
+        if (!sagas.isEmpty()) {
+            getLogger().info("Найдены незавершённые операции AddonsNPC 1.9.0 (" + sagas.all().size()
+                    + "). Они будут дочищены; новые операции идут через заявки AurumCore");
+            getServer().getScheduler().runTaskTimer(this,
+                    () -> economy.recover(sagas, guildsHook), recoveryPeriod, recoveryPeriod);
+        }
         getLogger().info("Enabled " + npcRepository.ids().size() + " NPC(s) and " + shopRepository.ids().size()
                 + " shop(s), " + buyerRepository.ids().size() + " buyer(s), and "
                 + guildTraderRepository.ids().size() + " guild trader(s), "
