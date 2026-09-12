@@ -349,6 +349,19 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> tradeOfferOperations = List.of(
+                """
+                CREATE TABLE IF NOT EXISTS aurum_trade_offer_operations (
+                    operation_key VARCHAR(191) PRIMARY KEY,
+                    trade_id CHAR(36) NOT NULL,
+                    owner_uuid CHAR(36) NOT NULL,
+                    intent_hash CHAR(64) NOT NULL,
+                    revision_after BIGINT UNSIGNED NOT NULL,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    KEY ix_aurum_trade_offer_operation_owner (owner_uuid)
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -365,7 +378,9 @@ public final class CoreMigrations {
                 new SchemaMigration(7, "durable cross-system hold intents",
                         checksum(durableHolds), durableHolds),
                 new SchemaMigration(8, "durable delivery claims and quarantine",
-                        checksum(deliveryClaims), deliveryClaims)
+                        checksum(deliveryClaims), deliveryClaims),
+                new SchemaMigration(9, "idempotent outgoing trade item offers",
+                        checksum(tradeOfferOperations), tradeOfferOperations)
         );
     }
 

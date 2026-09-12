@@ -130,10 +130,9 @@ Exchange engine использует версионированную котир
 - Trade: круг `encode`/`decode` предметов не покрыт тестом — `ItemStack.serialize()`
   требует живого сервера. Поэтому и используется штатный поток Bukkit, а не своя
   кодировка.
-- Trade: `trading.enabled` остаётся `false`. Выдача claim теперь защищена PDC receipt и
-  упорядоченной записью player.dat → MariaDB cursor, но изъятие предмета происходит до
-  подтверждения записи оферты; авария в этом промежутке теряет предмет. Не выпускать
-  trade как «гарантированный» до escrow исходящей оферты и fault injection.
+- Trade: `trading.enabled` остаётся `false` до живого fault-injection. Выдача claim
+  защищена PDC receipt и порядком player.dat → MariaDB cursor; исходящее изъятие в
+  Core 0.11.0 защищено полной квитанцией оферты и idempotent MariaDB operation.
 
 - NPC: доставка идёт только игроку, который в сети. Гильдейский бонус, оплаченный игроком,
   который больше никогда не зайдёт, останется невыданным. Это заметно только на бонусах:
@@ -185,7 +184,7 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Escrow исходящей оферты гарантированного trade.**
+**Native write routes Companion.**
 
 В Core устранён дедлок trade на общем однопоточном executor, расчёт встречных денег
 сведён в одну net-проводку, SETTLING возобновляется sweep-ом, а SETTLED ставится только
@@ -199,26 +198,46 @@ Exchange engine использует версионированную котир
 оборот, источники/стоки, правила и ledger history: под них в панели нет ни экрана, ни
 маршрута, и это отдельный этап, а не хвост этого.
 
-Выдача/изъятие предметов AddonsNPC и выдача trade используют PDC receipt и строгий порядок
-player.dat → MariaDB cursor. Роспуск гильдии теперь имеет persisted plan и восстанавливает
-multi-recipient split. Остаётся входящая граница trade: предмет убирается из руки до
-подтверждения оферты в БД, поэтому trade всё ещё выключен. Следом — native Companion и
+Выдача/изъятие предметов AddonsNPC и обе стороны trade используют PDC receipt. Для
+исходящей оферты Core 0.11.0 сохраняет изменённый inventory и полную оферту вместе в
+player.dat, затем атомарно пишет offer + operation marker; отказ возвращает предмет через
+claim. Роспуск гильдии имеет persisted plan и восстанавливает multi-recipient split.
+В коде встроенные предметные границы закрыты; `trading.enabled` всё ещё выключен до
+живого Paper/MariaDB fault-injection. Текущая разработка — native Companion, затем
 незаконченные экраны AurumUI/панели.
 
-Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.10.0,
+Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.11.0,
 AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.6.0,
 AurumUI 0.6.0.
 
 ## Очередь после текущего этапа
 
-1. Escrow исходящей оферты trade и fault injection предметных границ.
-2. Native write routes Companion.
-3. Экономические экраны AurumUI: trade и claims quarantine.
-4. Native Companion routes и экраны истории/правил веб-панели.
+1. Native write routes Companion.
+2. Экономические экраны AurumUI: trade и claims quarantine.
+3. Native Companion routes и экраны истории/правил веб-панели.
+4. Контракт idempotency произвольных команд оферт.
 5. Опциональная миграция динамических настроек.
 6. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
 
 ## Журнал передачи
+
+### 2026-09-12 — Codex, outgoing trade escrow receipt
+
+- Core поднят до 0.11.0; migration 9 добавляет `aurum_trade_offer_operations`.
+- Перед изъятием сериализуются полная новая оферта и исходный stack. Receipt и отсутствие
+  предмета принудительно сохраняются одним `player.dat`, затем `offerIdempotent` одной
+  транзакцией двигает revision/offer и пишет marker.
+- Потерянный ответ оставляет receipt и повторяет тот же operation key; окончательный
+  conflict создаёт стабильный `trade-deposit-refund:<operation>` claim и только после его
+  записи очищает receipt. Другой похожий stack из инвентаря больше не удаляется.
+- Recovery работает на join и в существующем 10-секундном sweep, но обращается к БД только
+  если у конкретного online-player есть receipt. На пустом сервере и обычных игроках новых
+  запросов нет; обязательный `saveData()` происходит один раз на фактический item deposit.
+- Operation journal ограничен одной последней строкой на owner: новый durable receipt
+  делает старый невосстановимым и удаляет прежние marker-строки в той же DB-транзакции.
+- Unit-тесты проверяют, что повтор ключа не меняет revision дважды, а ключ нельзя
+  переиспользовать для другой оферты. Нужен живой fault-injection Paper/MariaDB перед
+  включением `trading.enabled`.
 
 ### 2026-09-12 — Codex, persisted guild disband plan
 
@@ -250,9 +269,9 @@ AurumUI 0.6.0.
   а не удаляется похожий стак, который мог принадлежать игроку раньше.
 - Это точечный sync I/O только на реальную предметную операцию. На join и sweep нет
   записи на диск; обычные balance/placeholder reads по-прежнему работают из памяти.
-- Ограничения: исходящее изъятие trade до записи оферты ещё не защищено; произвольные
-  console commands требуют idempotency от целевого плагина; live Paper fault injection
-  остаётся частью staging.
+- Ограничение исходящего trade из этого старого этапа закрыто Core 0.11.0; произвольные
+  console commands по-прежнему требуют idempotency от целевого плагина, а live Paper
+  fault injection остаётся частью staging.
 - Проверка: AddonsNPC Maven/JDK 25 `clean test`; Core полный Gradle `clean test`.
 
 ### 2026-09-12 — Codex, Core/claims hardening после аудита Claude

@@ -128,6 +128,29 @@ public final class TradeService {
         });
     }
 
+    /** Receipt-backed item offer; retrying the same key never bumps the table twice. */
+    public CompletionStage<TradeResult> offerIdempotent(
+            String operationKey, UUID tradeId, TradeOffer offer) {
+        return operation(() -> {
+            if (operationKey == null || operationKey.isBlank() || operationKey.length() > 191) {
+                throw new IllegalArgumentException("Invalid trade offer operation key");
+            }
+            Instant now = Instant.now(clock);
+            Optional<TradeRepository.OfferWrite> written =
+                    repository.offerIdempotent(operationKey, tradeId, offer, now);
+            if (written.isEmpty()) {
+                Optional<TradeSession> current = repository.find(tradeId);
+                return current.isEmpty() ? notFound()
+                        : conflict(current, "The trade is no longer editable");
+            }
+            TradeRepository.OfferWrite result = written.get();
+            return result.repeated()
+                    ? new TradeResult(TradeResult.Status.SUCCESS, Optional.of(result.trade()),
+                            "Offer was already updated")
+                    : renew(result.trade(), now.plus(sessionTimeout), "Offer updated");
+        });
+    }
+
     /**
      * Confirm the revision the player is looking at.
      *

@@ -11,9 +11,13 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.ClaimResult;
@@ -45,11 +49,12 @@ import ovh.aurumgg.core.engine.TradeService;
  * added later as a skin over a service that already works, instead of being the
  * place the rules are written down.
  */
-final class TradeCoordinator {
+final class TradeCoordinator implements Listener {
 
     private final AurumCorePlugin plugin;
     private final TradeService trades;
     private final TradeDelivery delivery;
+    private final TradeDepositReceipt deposits;
     /** Players with a command in flight; two clicks must not race one table. */
     private final Set<UUID> busy = ConcurrentHashMap.newKeySet();
     /** Trades whose durable settlement pipeline is already running on this server. */
@@ -68,6 +73,7 @@ final class TradeCoordinator {
         this.plugin = plugin;
         this.trades = trades;
         this.delivery = delivery;
+        this.deposits = new TradeDepositReceipt(plugin);
     }
 
     boolean execute(CommandSender sender, String[] args) {
@@ -128,8 +134,14 @@ final class TradeCoordinator {
             player.sendMessage(plugin.messages().component("trade-nothing-in-hand"));
             return;
         }
-        putItem(player, trade, offers, held.clone(),
-                () -> player.getInventory().setItemInMainHand(null));
+        ItemStack offered = held.clone();
+        putItem(player, trade, offers, offered, () -> {
+            ItemStack current = player.getInventory().getItemInMainHand();
+            if (!sameAmountOrMore(current, offered)) return false;
+            decrement(current, offered.getAmount(),
+                    value -> player.getInventory().setItemInMainHand(value));
+            return true;
+        });
     }
 
     /**
@@ -139,12 +151,16 @@ final class TradeCoordinator {
      * because the window offers what was CLICKED. Re-reading the hand after an
      * asynchronous hop would offer whatever ended up there in the meantime.
      *
-     * @param takeFromPlayer removes the stack from wherever it was; runs only
-     *                       once the offer has been recorded well enough to be
-     *                       written, and never before
+     * @param takeFromPlayer removes the exact source stack and reports whether
+     *                       it was still present; it runs on the main thread
      */
     void putItem(Player player, TradeSession trade, List<TradeOffer> offers, ItemStack offered,
-                 Runnable takeFromPlayer) {
+                 BooleanSupplier takeFromPlayer) {
+        if (deposits.has(player)) {
+            recoverDeposit(player, false);
+            player.sendMessage(plugin.messages().component("trade-unavailable"));
+            return;
+        }
         List<ItemStack> table = new ArrayList<>(items(player.getUniqueId(), offers));
         if (table.size() >= TradeWindow.SIDE_SLOTS) {
             player.sendMessage(plugin.messages().component("trade-table-full"));
@@ -154,8 +170,10 @@ final class TradeCoordinator {
         table.add(offered);
 
         byte[] blob;
+        byte[] itemBlob;
         try {
             blob = TradeItems.encode(table);
+            itemBlob = TradeItems.encode(List.of(offered));
         } catch (RuntimeException failure) {
             // Refusing is right: an offer whose stored half is wrong is worse
             // than an offer that could not be made. Nothing has been taken yet.
@@ -163,23 +181,87 @@ final class TradeCoordinator {
             player.sendMessage(plugin.messages().component("trade-item-rejected"));
             return;
         }
-        takeFromPlayer.run();
-        player.updateInventory();
+        TradeDepositReceipt.Pending pending = new TradeDepositReceipt.Pending(
+                "trade-offer:" + UUID.randomUUID(), trade.id(), current.currencyId(),
+                current.money(), TradeItems.FORMAT, blob, itemBlob);
 
-        TradeOffer updated = new TradeOffer(trade.id(), player.getUniqueId(),
-                current.currencyId(), current.money(), blob, TradeItems.FORMAT);
-        trades.offer(trade.id(), updated).whenComplete((result, error) -> onMain(() -> {
-            if (result == null || !result.ok()) {
-                // The table was closed underneath us. The item is already out of
-                // the inventory, so it goes back the only durable way there is.
-                returnItems(trade.id(), player.getUniqueId(), TradeItems.encode(List.of(offered)),
-                        "trade-return:" + trade.id() + ":" + player.getUniqueId() + ":" + System.nanoTime());
-                deliverTo(player.getUniqueId());
-                answered(player, result, error);
+        ItemStack[] inventoryBefore = java.util.Arrays.stream(player.getInventory().getStorageContents())
+                .map(item -> item == null ? null : item.clone()).toArray(ItemStack[]::new);
+        ItemStack cursorBefore = player.getItemOnCursor().clone();
+        try {
+            deposits.mark(player, pending);
+            if (!takeFromPlayer.getAsBoolean()) {
+                deposits.clear(player);
+                player.sendMessage(plugin.messages().component("trade-item-rejected"));
                 return;
             }
-            announce(result.trade().orElse(trade), "trade-changed",
-                    Map.of("player", player.getName()));
+            player.updateInventory();
+            // The missing item and its recovery instructions reach one player
+            // file before MariaDB is allowed to own the item.
+            player.saveData();
+        } catch (RuntimeException failure) {
+            player.getInventory().setStorageContents(inventoryBefore);
+            player.setItemOnCursor(cursorBefore);
+            deposits.clear(player);
+            player.updateInventory();
+            plugin.getLogger().log(java.util.logging.Level.WARNING,
+                    "Could not persist outgoing trade receipt for " + player.getUniqueId(), failure);
+            player.sendMessage(plugin.messages().component("trade-item-rejected"));
+            return;
+        }
+        submitDeposit(player, pending, trade, true);
+    }
+
+    /** Retry only when a player actually carries an unfinished receipt. */
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        if (!deposits.has(event.getPlayer())) return;
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> recoverDeposit(event.getPlayer(), false), 20L);
+    }
+
+    private void recoverDeposit(Player player, boolean reportFailure) {
+        if (!player.isOnline() || !deposits.has(player)) return;
+        deposits.read(player).ifPresent(pending -> submitDeposit(player, pending, null, reportFailure));
+    }
+
+    private void submitDeposit(Player player, TradeDepositReceipt.Pending pending,
+                               TradeSession knownTrade, boolean reportFailure) {
+        UUID owner = player.getUniqueId();
+        if (!busy.add(owner)) return;
+        trades.offerIdempotent(pending.operationKey(), pending.tradeId(), pending.offer(owner))
+                .whenComplete((result, error) -> onMain(() -> {
+            if (error == null && result != null && result.ok()) {
+                deposits.clear(player);
+                busy.remove(owner);
+                TradeSession current = result.trade().orElse(knownTrade);
+                if (current != null) {
+                    if (reportFailure) announce(current, "trade-changed", Map.of("player", player.getName()));
+                    else onChanged.accept(current);
+                }
+                return;
+            }
+            if (error != null || result == null || result.status() == TradeResult.Status.UNAVAILABLE) {
+                // The commit may have succeeded and only its answer was lost.
+                // Retain the receipt and retry the same operation later.
+                busy.remove(owner);
+                if (reportFailure) answered(player, result, error);
+                return;
+            }
+            // A definite conflict means MariaDB did not accept this operation.
+            // Turn the removed source stack into a durable, idempotent refund.
+            delivery.owe("trade-deposit-refund:" + pending.operationKey(), owner,
+                    pending.tradeId(), pending.itemBlob(), pending.format(),
+                    "trade item deposit rejected").whenComplete((claim, claimError) -> onMain(() -> {
+                boolean durable = claimError == null && claim != null && claim.ok()
+                        && claim.claim().isPresent();
+                if (durable) {
+                    deposits.clear(player);
+                    deliverTo(owner);
+                }
+                busy.remove(owner);
+                if (reportFailure) answered(player, result, null);
+            }));
         }));
     }
 
@@ -336,6 +418,9 @@ final class TradeCoordinator {
 
     /** Clear out tables nobody finished in time. */
     void sweep() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (deposits.has(player)) recoverDeposit(player, false);
+        }
         trades.timedOut(50).whenComplete((expired, error) -> onMain(() -> {
             if (expired == null) return;
             for (TradeSession trade : expired) cancel(trade, "timed out");
@@ -407,6 +492,11 @@ final class TradeCoordinator {
     }
 
     private boolean withTrade(Player player, TradeState required, WithTrade action) {
+        if (deposits.has(player)) {
+            recoverDeposit(player, false);
+            player.sendMessage(plugin.messages().component("trade-unavailable"));
+            return true;
+        }
         if (!busy.add(player.getUniqueId())) return true;
         trades.activeFor(player.getUniqueId()).whenComplete((found, error) -> onMain(() -> {
             busy.remove(player.getUniqueId());
@@ -527,6 +617,22 @@ final class TradeCoordinator {
     private static List<ItemStack> items(UUID owner, List<TradeOffer> offers) {
         TradeOffer offer = mine(owner, offers);
         return TradeItems.decode(offer.items(), offer.itemsFormatVersion()).orElse(List.of());
+    }
+
+    static boolean sameAmountOrMore(ItemStack current, ItemStack expected) {
+        return current != null && !current.getType().isAir()
+                && current.isSimilar(expected) && current.getAmount() >= expected.getAmount();
+    }
+
+    private static void decrement(ItemStack current, int amount,
+                                  java.util.function.Consumer<ItemStack> setter) {
+        int left = current.getAmount() - amount;
+        if (left <= 0) setter.accept(null);
+        else {
+            ItemStack changed = current.clone();
+            changed.setAmount(left);
+            setter.accept(changed);
+        }
     }
 
     private String money(TradeOffer offer) {

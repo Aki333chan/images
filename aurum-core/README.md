@@ -12,7 +12,7 @@ them into the dormant ledger, verifies every balance and exports rollback CSV.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.7.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.11.0.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
@@ -158,6 +158,18 @@ the first consumer of delivery claims that is not a shop.
 exists only as a durable blob in MariaDB. There is no second, live copy
 anywhere: two places that can disagree about an item are two places that can
 duplicate it.
+
+The transition from the inventory to that blob is receipt-backed. Core first
+persists the exact removed stack and the proposed full offer in the same
+`player.dat` as the changed inventory, then writes migration 9's operation and
+offer in one MariaDB transaction. A lost reply retries the stable operation
+key; a definite rejection creates an idempotent return claim. Only players who
+actually carry an unfinished receipt are retried (on join and by the existing
+trade recovery sweep), so this protection adds no idle polling. The clicked
+cursor or inventory slot is checked again before removal; an equal-looking
+stack elsewhere is never taken as a substitute. MariaDB retains only the latest
+outgoing operation per player, matching the single receipt a player can carry,
+so the safety journal is bounded rather than growing per click forever.
 
 **Every edit to either offer clears both confirmations**, and a confirmation
 names the revision it was given for. A confirmation that arrives after the

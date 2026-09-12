@@ -114,6 +114,37 @@ class TradeServiceTest {
     }
 
     @Test
+    void повторКвитанцииНеДобавляетПредметИНеМеняетРевизиюДважды() {
+        MemoryTrades trades = new MemoryTrades();
+        TradeService service = service(trades);
+        UUID id = open(service);
+        long before = trades.rows.get(id).revision();
+        TradeOffer item = new TradeOffer(id, ANNA, Optional.of("coins"), BigDecimal.TEN,
+                new byte[] {1, 2, 3}, 1);
+
+        assertTrue(service.offerIdempotent("receipt-1", id, item).toCompletableFuture().join().ok());
+        assertTrue(service.offerIdempotent("receipt-1", id, item).toCompletableFuture().join().ok());
+
+        assertEquals(before + 1, trades.rows.get(id).revision());
+        assertEquals(3, trades.offers.get(id).get(ANNA).items().length);
+    }
+
+    @Test
+    void однуКвитанциюНельзяПереиспользоватьДляДругойОферты() {
+        MemoryTrades trades = new MemoryTrades();
+        TradeService service = service(trades);
+        UUID id = open(service);
+
+        assertTrue(service.offerIdempotent("receipt-1", id, offer(id, ANNA, "11"))
+                .toCompletableFuture().join().ok());
+        TradeResult collision = service.offerIdempotent("receipt-1", id, offer(id, ANNA, "12"))
+                .toCompletableFuture().join();
+
+        assertEquals(TradeResult.Status.UNAVAILABLE, collision.status());
+        assertEquals(new BigDecimal("11"), trades.offers.get(id).get(ANNA).money());
+    }
+
+    @Test
     void сделкаНеЗакрываетсяПокаНеПодтвердилиОба() {
         MemoryTrades trades = new MemoryTrades();
         TradeService service = service(trades);
@@ -270,6 +301,8 @@ class TradeServiceTest {
     private static final class MemoryTrades implements TradeRepository {
         private final Map<UUID, TradeSession> rows = new LinkedHashMap<>();
         private final Map<UUID, Map<UUID, TradeOffer>> offers = new LinkedHashMap<>();
+        private final Map<String, String> offerOperations = new LinkedHashMap<>();
+        private final Map<String, UUID> offerOperationOwners = new LinkedHashMap<>();
 
         @Override
         public Optional<TradeSession> open(UUID id, UUID first, UUID second, Instant expiresAt, Instant now) {
@@ -311,6 +344,30 @@ class TradeServiceTest {
                     trade.expiresAt(), trade.createdAt(), now);
             rows.put(tradeId, bumped);
             return Optional.of(bumped);
+        }
+
+        @Override
+        public Optional<OfferWrite> offerIdempotent(
+                String operationKey, UUID tradeId, TradeOffer offer, Instant now) {
+            String intent = tradeId + ":" + offer.owner() + ":" + offer.currencyId()
+                    + ":" + offer.money().toPlainString() + ":" + offer.itemsFormatVersion()
+                    + ":" + java.util.Arrays.hashCode(offer.items());
+            String existing = offerOperations.get(operationKey);
+            if (existing != null) {
+                if (!existing.equals(intent)) throw new IllegalStateException("operation key collision");
+                TradeSession current = rows.get(tradeId);
+                if (current == null) throw new IllegalStateException("trade disappeared");
+                return Optional.of(new OfferWrite(current, true));
+            }
+            Optional<TradeSession> written = offer(tradeId, offer, now);
+            written.ifPresent(ignored -> {
+                offerOperationOwners.entrySet().removeIf(entry -> entry.getValue().equals(offer.owner())
+                        && !entry.getKey().equals(operationKey));
+                offerOperations.keySet().retainAll(offerOperationOwners.keySet());
+                offerOperations.put(operationKey, intent);
+                offerOperationOwners.put(operationKey, offer.owner());
+            });
+            return written.map(trade -> new OfferWrite(trade, false));
         }
 
         @Override

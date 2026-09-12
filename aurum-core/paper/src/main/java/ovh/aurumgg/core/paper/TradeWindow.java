@@ -242,11 +242,19 @@ final class TradeWindow implements Listener {
      * an asynchronous hop — and offering whatever ended up there by then.
      */
     private void offer(Player player, ItemStack item, InventoryClickEvent event) {
-        ItemStack offered = item.clone();
         boolean fromCursor = event.getCursor() != null && !event.getCursor().getType().isAir();
+        ItemStack offered = (fromCursor ? event.getCursor() : item).clone();
+        int sourceSlot = event.getSlot();
         trades.current(player, (trade, offers) -> trades.putItem(player, trade, offers, offered, () -> {
-            if (fromCursor) event.getView().setCursor(null);
-            else player.getInventory().removeItem(offered);
+            ItemStack current = fromCursor ? player.getItemOnCursor()
+                    : player.getInventory().getItem(sourceSlot);
+            if (!TradeCoordinator.sameAmountOrMore(current, offered)) return false;
+            int left = current.getAmount() - offered.getAmount();
+            ItemStack changed = left <= 0 ? null : current.clone();
+            if (changed != null) changed.setAmount(left);
+            if (fromCursor) player.setItemOnCursor(changed);
+            else player.getInventory().setItem(sourceSlot, changed);
+            return true;
         }));
     }
 

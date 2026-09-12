@@ -19,6 +19,9 @@ import ovh.aurumgg.core.api.TradeState;
  */
 public interface TradeRepository {
 
+    /** Result of a receipt-backed offer write. */
+    record OfferWrite(TradeSession trade, boolean repeated) {}
+
     /**
      * Start a trade, unless either player is already in one.
      *
@@ -47,6 +50,16 @@ public interface TradeRepository {
      * @return empty when the trade is not editable any more
      */
     Optional<TradeSession> offer(UUID tradeId, TradeOffer offer, Instant now) throws SQLException;
+
+    /**
+     * Replace an offer once for a stable external receipt.
+     *
+     * <p>The operation marker and offer/revision update are one DB transaction.
+     * A retry after a lost response returns {@code repeated=true}; reusing the
+     * key for different contents is an error, never a new edit.
+     */
+    Optional<OfferWrite> offerIdempotent(
+            String operationKey, UUID tradeId, TradeOffer offer, Instant now) throws SQLException;
 
     /**
      * Record that this side confirms the given revision.
