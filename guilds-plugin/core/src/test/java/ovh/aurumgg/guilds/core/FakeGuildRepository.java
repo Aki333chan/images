@@ -30,12 +30,14 @@ final class FakeGuildRepository implements GuildRepository {
     private final AtomicLong nextId = new AtomicLong(1);
     private final Map<Long, StoredGuild> guilds = new HashMap<>();
     private final List<GuildBankEntry> bankLog = new ArrayList<>();
+    private final Map<Long, GuildDisbandPlan> disbandPlans = new HashMap<>();
     /** Бонусы: id гильдии → вид → бонус. Вложенная карта даёт «один вида на гильдию». */
     final Map<Long, Map<BonusType, GuildBonus>> bonuses = new HashMap<>();
     final List<GuildRegion> regions = new ArrayList<>();
     /** Сколько раз просили записать что-либо — чтобы отличить «не сохранилось». */
     int writes;
     boolean failMove;
+    boolean failDisbandMarkOnce;
 
     @Override
     public void moveMember(long from, long to, UUID uuid, String username, Instant joinedAt) {
@@ -67,13 +69,6 @@ final class FakeGuildRepository implements GuildRepository {
         guilds.put(id, new StoredGuild(id, name, tag, leader, 0, createdAt, settings,
                 List.of(new GuildMember(leader, leaderName, GuildRank.LEADER, createdAt))));
         return id;
-    }
-
-    @Override
-    public void deleteGuild(long guildId) {
-        writes++;
-        // Состав уносится вместе с гильдией — как каскад в MariaDB.
-        guilds.remove(guildId);
     }
 
     @Override
@@ -205,6 +200,46 @@ final class FakeGuildRepository implements GuildRepository {
     }
 
     @Override
+    public List<GuildDisbandPlan> loadDisbandPlans() {
+        return List.copyOf(disbandPlans.values());
+    }
+
+    @Override
+    public void createDisbandPlan(GuildDisbandPlan plan) {
+        writes++;
+        if (!guilds.containsKey(plan.guildId())) throw new IllegalStateException("No guild");
+        if (disbandPlans.putIfAbsent(plan.guildId(), plan) != null) {
+            throw new IllegalStateException("Disband plan already exists");
+        }
+    }
+
+    @Override
+    public void markDisbandPaid(long guildId, int sequence, GuildBankEntry entry) {
+        writes++;
+        if (failDisbandMarkOnce) {
+            failDisbandMarkOnce = false;
+            throw new IllegalStateException("Simulated disband mark failure");
+        }
+        GuildDisbandPlan plan = disbandPlans.get(guildId);
+        if (plan == null) throw new IllegalStateException("No disband plan");
+        GuildDisbandShare share = plan.shares().stream()
+                .filter(candidate -> candidate.sequence() == sequence).findFirst()
+                .orElseThrow(() -> new IllegalStateException("No share"));
+        if (share.paid()) return;
+        disbandPlans.put(guildId, plan.markPaid(sequence));
+        bankLog.add(entry);
+    }
+
+    @Override
+    public void completeDisband(long guildId) {
+        writes++;
+        GuildDisbandPlan plan = disbandPlans.get(guildId);
+        if (plan != null && !plan.complete()) throw new IllegalStateException("Unpaid shares");
+        if (guilds.remove(guildId) == null) throw new IllegalStateException("No guild");
+        disbandPlans.remove(guildId);
+    }
+
+    @Override
     public void close() {}
 
     /** Заглянуть в «базу» из теста, минуя кэш сервиса. */
@@ -214,6 +249,10 @@ final class FakeGuildRepository implements GuildRepository {
 
     List<GuildBankEntry> allBankEntries() {
         return List.copyOf(bankLog);
+    }
+
+    java.util.Optional<GuildDisbandPlan> disbandPlan(long guildId) {
+        return java.util.Optional.ofNullable(disbandPlans.get(guildId));
     }
 
     private void edit(long guildId, java.util.function.UnaryOperator<StoredGuild> change) {

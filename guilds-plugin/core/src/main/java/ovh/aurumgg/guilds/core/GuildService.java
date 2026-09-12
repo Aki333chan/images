@@ -119,6 +119,8 @@ public final class GuildService implements AutoCloseable {
      * счёта гильдии там не существует и переносить нечего.
      */
     private final Set<Long> bankMigrated = ConcurrentHashMap.newKeySet();
+    /** Rare, persisted disbands. Presence also freezes further guild mutations. */
+    private final Map<Long, GuildDisbandPlan> disbandPlans = new ConcurrentHashMap<>();
 
     /** Приглашённый → зовущие его гильдии. */
     private final Map<UUID, List<Invite>> invites = new ConcurrentHashMap<>();
@@ -200,9 +202,13 @@ public final class GuildService implements AutoCloseable {
             regions.computeIfAbsent(region.guildId(), key -> new ArrayList<>()).add(region);
         }
         bankMigrated.addAll(repository.migratedBanks());
+        for (GuildDisbandPlan plan : repository.loadDisbandPlans()) {
+            if (guilds.containsKey(plan.guildId())) disbandPlans.put(plan.guildId(), plan);
+        }
         logger.info("Загружено гильдий: " + guilds.size()
                 + ", участников: " + memberOf.size()
-                + ", бонусов: " + bonuses.values().stream().mapToInt(List::size).sum());
+                + ", бонусов: " + bonuses.values().stream().mapToInt(List::size).sum()
+                + ", незавершённых роспусков: " + disbandPlans.size());
     }
 
     // ------------------------------------------------------------- чтение
@@ -284,7 +290,18 @@ public final class GuildService implements AutoCloseable {
      */
     public boolean bankReady(long guildId) {
         if (!bankAvailable()) return false;
-        return !economy.guildAccounts() || bankMigrated.contains(guildId);
+        return accountReady(guildId) && !disbandPlans.containsKey(guildId);
+    }
+
+    private boolean accountReady(long guildId) {
+        // A migrated account never falls back to the old Vault mirror after a
+        // restart where Core is temporarily late or absent.
+        if (bankMigrated.contains(guildId)) return economy.guildAccounts();
+        return !economy.guildAccounts();
+    }
+
+    private boolean disbanding(StoredGuild guild) {
+        return disbandPlans.containsKey(guild.id());
     }
 
     public GuildsConfig config() {
@@ -397,6 +414,7 @@ public final class GuildService implements AutoCloseable {
 
             StoredGuild guild = guilds.get(memberOf.get(actor));
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!rankOf(guild, actor).canManageMembers()) {
                 return GuildActionResult.fail("guild.err.inviteRank");
             }
@@ -457,6 +475,10 @@ public final class GuildService implements AutoCloseable {
                 guild = invited;
             }
 
+            if (disbanding(guild) || (previous != null && disbanding(previous))) {
+                return GuildActionResult.fail("guild.err.disbandPending");
+            }
+
             if (guild.members().size() >= config.maxGuildMembers()) {
                 return GuildActionResult.fail("guild.err.noSlots");
             }
@@ -506,6 +528,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(player));
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (guild.leader().equals(player)) {
                 if (guild.members().size() > 1) {
                     // Лидер не уходит, бросив гильдию: у неё остался бы
@@ -530,6 +553,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (actor.equals(target)) return GuildActionResult.fail("guild.err.kickSelf");
             if (!rankOf(guild, actor).canManageMembers()) {
                 return GuildActionResult.fail("guild.err.kickRank");
@@ -553,6 +577,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
                 return GuildActionResult.fail("guild.err.rankLeaderOnly");
             }
@@ -584,6 +609,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
                 return GuildActionResult.fail("guild.err.transferLeaderOnly");
             }
@@ -618,6 +644,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
                 return GuildActionResult.fail("guild.err.settingsLeaderOnly");
             }
@@ -643,6 +670,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(memberOf.get(actor));
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
                 return GuildActionResult.fail("guild.err.tagLeaderOnly");
             }
@@ -669,6 +697,7 @@ public final class GuildService implements AutoCloseable {
             StoredGuild guild = guildOf(player).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!bankAvailable()) return GuildActionResult.fail("guild.err.bankOff");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!bankReady(guild.id())) return GuildActionResult.fail("guild.err.bankMigrating");
             if (!(amount > 0)) return GuildActionResult.fail("guild.err.amountPositive");
 
@@ -692,6 +721,7 @@ public final class GuildService implements AutoCloseable {
             StoredGuild guild = guildOf(player).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!bankAvailable()) return GuildActionResult.fail("guild.err.bankOff");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!bankReady(guild.id())) return GuildActionResult.fail("guild.err.bankMigrating");
             if (!(amount > 0)) return GuildActionResult.fail("guild.err.amountPositive");
             if (!guild.settings().bankAccess().allows(rankOf(guild, player))) {
@@ -841,6 +871,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
             if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             Optional<GuildMember> target = byUsername(guild, targetName);
             if (target.isEmpty()) {
                 return GuildActionResult.fail("guild.err.noMemberNamed",
@@ -866,6 +897,7 @@ public final class GuildService implements AutoCloseable {
             if (found.isEmpty()) return GuildActionResult.fail("guild.err.targetNoGuild", Map.of("player", targetName));
 
             StoredGuild guild = found.get();
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             UUID target = byUsername(guild, targetName).orElseThrow().uuid();
             String guildName = guild.name();
             if (!forceRemove(guild, target, "исключён администратором " + actor)) {
@@ -949,6 +981,7 @@ public final class GuildService implements AutoCloseable {
      */
     public synchronized boolean attachRegion(long guildId, String world, String regionId) {
         if (!guilds.containsKey(guildId)) return false;
+        if (disbandPlans.containsKey(guildId)) return false;
         GuildRegion region = new GuildRegion(guildId, world, regionId);
         List<GuildRegion> current = new ArrayList<>(regions.getOrDefault(guildId, List.of()));
         if (current.contains(region)) return true;
@@ -960,6 +993,7 @@ public final class GuildService implements AutoCloseable {
 
     /** Забыть привязку. false — такой привязки не было. */
     public synchronized boolean detachRegion(long guildId, String world, String regionId) {
+        if (disbandPlans.containsKey(guildId)) return false;
         List<GuildRegion> current = new ArrayList<>(regions.getOrDefault(guildId, List.of()));
         GuildRegion region = new GuildRegion(guildId, world, regionId);
         if (!current.remove(region)) return false;
@@ -1068,6 +1102,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
             if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (type == null) return GuildActionResult.fail("guild.err.noBonusType");
 
             double value = Math.max(type.min(), Math.min(type.max(), magnitude));
@@ -1104,6 +1139,7 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
             if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
+            if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (type == null) return GuildActionResult.fail("guild.err.noBonusType");
             if (bonuses(guildId).stream().noneMatch(bonus -> bonus.type() == type)) {
                 return GuildActionResult.fail("guild.err.noSuchBonus");
@@ -1295,8 +1331,6 @@ public final class GuildService implements AutoCloseable {
     }
 
     private BankResult deleteGuild(StoredGuild guild, String reason) {
-        // Деньги — ПЕРЕД удалением строки: после него ни счёта гильдии в
-        // ledger, ни её баланса в памяти уже не к чему привязать.
         BankResult settlement = settleBank(guild);
         if (!settlement.ok()) {
             logger.warning("Гильдия «" + guild.name() + "» НЕ удалена: общак не рассчитан ("
@@ -1304,12 +1338,23 @@ public final class GuildService implements AutoCloseable {
             return settlement;
         }
 
-        write(() -> repository.deleteGuild(guild.id()), "удалить гильдию " + guild.name());
+        try {
+            // The repository verifies that the persisted plan has no unpaid
+            // rows and deletes guild + plan in one transaction.
+            repository.completeDisband(guild.id());
+        } catch (Exception failure) {
+            logger.log(Level.SEVERE, "Не удалось завершить роспуск гильдии " + guild.name()
+                    + "; данные оставлены для безопасного повтора", failure);
+            return BankResult.fail("guild.err.internal");
+        }
         for (GuildMember member : guild.members()) {
             memberOf.remove(member.uuid(), guild.id());
             hooks.memberLeft(guild.id(), member.uuid());
         }
         guilds.remove(guild.id());
+        disbandPlans.remove(guild.id());
+        bonuses.remove(guild.id());
+        regions.remove(guild.id());
         // Группу удаляем после того, как убрали из неё всех: LuckPerms не
         // возражает против удаления группы с наследниками, но оставшиеся ноды
         // указывали бы на несуществующую группу.
@@ -1334,111 +1379,134 @@ public final class GuildService implements AutoCloseable {
      * нельзя. Правило дележа теперь задано в config.yml, и старое возражение
      * этим снято.
      *
-     * <h2>Ключи проводок стабильные</h2>
+     * <h2>План сохраняется до первой проводки</h2>
      *
-     * Роспуск может оборваться на середине списка получателей — например,
-     * если сервер упал. Повтор с теми же ключами не заплатит дважды.
+     * Режим, исходный баланс и участники замораживаются в MariaDB. Роспуск
+     * может оборваться на середине списка: оплаченные строки отмечены, а
+     * повтор той же проводки защищён стабильным ключом AurumCore.
      */
     private BankResult settleBank(StoredGuild guild) {
-        double balance = guild.bank();
-        if (!(balance > 0)) return BankResult.success();
-
-        if (!economy.available() || !bankReady(guild.id())) {
-            // Ни трогать счёт, ни делать вид, что денег не было. Громко в
-            // лог: дальше это разбирает администратор командами AurumCore.
-            logger.warning("Гильдия «" + guild.name() + "» распускается, когда экономика "
-                    + "недоступна. Общак " + economy.format(balance) + " остался на счёте "
-                    + "гильдии и потребует ручного разбора");
-            return BankResult.unavailable();
+        GuildDisbandPlan plan = disbandPlans.get(guild.id());
+        if (plan == null) {
+            long cents = Math.round(guild.bank() * 100);
+            if (cents <= 0) return BankResult.success();
+            BankOnDisband mode = config.bankOnDisband();
+            if (mode != BankOnDisband.KEEP
+                    && (!economy.available() || !accountReady(guild.id()))) {
+                logger.warning("Гильдия «" + guild.name() + "» не распущена: экономика "
+                        + "недоступна или её ledger-счёт ещё не готов; общак "
+                        + economy.format(guild.bank()) + " оставлен без изменений");
+                return BankResult.unavailable();
+            }
+            plan = makeDisbandPlan(guild, mode, cents);
+            try {
+                repository.createDisbandPlan(plan);
+            } catch (Exception failure) {
+                logger.log(Level.SEVERE, "Не удалось сохранить план роспуска гильдии "
+                        + guild.name(), failure);
+                return BankResult.fail("guild.err.internal");
+            }
+            disbandPlans.put(guild.id(), plan);
         }
 
-        switch (config.bankOnDisband()) {
-            case KEEP -> {
-                logger.info("Общак гильдии «" + guild.name() + "» ("
-                        + economy.format(balance) + ") оставлен на её счёте: bank.on-disband: keep");
-                return BankResult.success();
+        if (plan.mode() == BankOnDisband.KEEP) {
+            logger.info("Общак гильдии «" + guild.name() + "» ("
+                    + economy.format(plan.totalCents() / 100.0)
+                    + ") оставлен на её счёте: bank.on-disband: keep");
+            return BankResult.success();
+        }
+        if (!economy.available() || !accountReady(guild.id())) return BankResult.unavailable();
+        return settlePlan(guild, plan);
+    }
+
+    private GuildDisbandPlan makeDisbandPlan(
+            StoredGuild guild, BankOnDisband mode, long totalCents) {
+        List<GuildDisbandShare> shares = new ArrayList<>();
+        if (mode == BankOnDisband.TREASURY) {
+            shares.add(new GuildDisbandShare(0, GuildDisbandShare.Destination.TREASURY,
+                    null, totalCents, false));
+        } else if (mode == BankOnDisband.LEADER) {
+            shares.add(new GuildDisbandShare(0, GuildDisbandShare.Destination.PLAYER,
+                    guild.leader(), totalCents, false));
+        } else if (mode == BankOnDisband.SPLIT) {
+            List<GuildMember> members = guild.members().isEmpty()
+                    ? List.of(new GuildMember(guild.leader(), names.nameOf(guild.leader()),
+                            GuildRank.LEADER, guild.createdAt()))
+                    : guild.members();
+            long each = totalCents / members.size();
+            long extra = totalCents - each * members.size();
+            int sequence = 0;
+            for (GuildMember member : members) {
+                long cents = each + (member.uuid().equals(guild.leader()) ? extra : 0);
+                if (cents <= 0) continue;
+                shares.add(new GuildDisbandShare(sequence++,
+                        GuildDisbandShare.Destination.PLAYER, member.uuid(), cents, false));
             }
-            case TREASURY -> {
-                BankResult result = economy.toTreasury(
-                        guild.id(), balance, "guild-disband:" + guild.id() + ":treasury");
-                logSettlement(guild, guild.leader(), balance, balance, result, "казна сервера");
+        }
+        return new GuildDisbandPlan(guild.id(), mode, totalCents, clock.get(), shares);
+    }
+
+    private BankResult settlePlan(StoredGuild guild, GuildDisbandPlan initial) {
+        GuildDisbandPlan plan = initial;
+        long left = plan.totalCents()
+                - plan.shares().stream().filter(GuildDisbandShare::paid)
+                        .mapToLong(GuildDisbandShare::cents).sum();
+        for (GuildDisbandShare share : plan.shares()) {
+            if (share.paid()) continue;
+            BankResult result = share.destination() == GuildDisbandShare.Destination.TREASURY
+                    ? economy.toTreasury(guild.id(), share.amount(), share.operationKey(guild.id()))
+                    : economy.disburse(guild.id(), share.player(), share.amount(),
+                            share.operationKey(guild.id()));
+            String where = share.destination() == GuildDisbandShare.Destination.TREASURY
+                    ? "казна сервера" : names.nameOf(share.player());
+            if (!result.ok()) {
+                logger.warning("Не рассчитан общак гильдии «" + guild.name() + "» ("
+                        + where + ", " + economy.format(share.amount()) + "): "
+                        + result.messageKey() + ". Сохраняемый план будет продолжен позже");
                 return result;
             }
-            case LEADER -> {
-                return payShare(guild, guild.leader(), balance, balance);
+
+            long after = left - share.cents();
+            UUID actor = share.player() == null ? guild.leader() : share.player();
+            GuildBankEntry entry = new GuildBankEntry(clock.get(), guild.id(), actor,
+                    names.nameOf(actor), false, share.amount(),
+                    result.balance().orElse(Math.max(0, after / 100.0)));
+            try {
+                repository.markDisbandPaid(guild.id(), share.sequence(), entry);
+            } catch (Exception failure) {
+                // The ledger transfer has a stable key. Retrying it after this
+                // failure returns DUPLICATE and then records this row once.
+                logger.log(Level.SEVERE, "Выплата прошла, но не отмечена в плане роспуска "
+                        + guild.name() + "; будет безопасно повторена", failure);
+                return BankResult.fail("guild.err.internal");
             }
-            case SPLIT -> {
-                return splitBank(guild, balance);
+            plan = plan.markPaid(share.sequence());
+            disbandPlans.put(guild.id(), plan);
+            left = after;
+            logger.info("Общак гильдии «" + guild.name() + "»: "
+                    + economy.format(share.amount()) + " → " + where);
+        }
+        return BankResult.success(Math.max(0, left / 100.0));
+    }
+
+    /** Resume rare persisted disbands without adding work to ordinary reads. */
+    public CompletableFuture<Integer> resumeDisbands() {
+        return CompletableFuture.supplyAsync(() -> {
+            synchronized (this) {
+                int completed = 0;
+                for (Long guildId : List.copyOf(disbandPlans.keySet())) {
+                    StoredGuild guild = guilds.get(guildId);
+                    if (guild != null && deleteGuild(guild, "продолжен после незавершённого расчёта").ok()) {
+                        completed++;
+                    }
+                }
+                return completed;
             }
-        }
-        throw new IllegalStateException("Unknown bank disband policy");
+        }, worker);
     }
 
-    /**
-     * Поровну между участниками, остаток от деления — лидеру.
-     *
-     * Считаем в копейках целыми числами. Делить double на число участников и
-     * раздавать частное — верный способ раздать на копейку больше или меньше,
-     * чем было в банке, а расхождение в ledger не спишешь на округление.
-     */
-    private BankResult splitBank(StoredGuild guild, double balance) {
-        List<GuildMember> members = guild.members();
-        if (members.isEmpty()) {
-            return payShare(guild, guild.leader(), balance, balance);
-        }
-
-        long cents = Math.round(balance * 100);
-        long each = cents / members.size();
-        long extra = cents - each * members.size();
-
-        double left = balance;
-        for (GuildMember member : members) {
-            boolean leader = member.uuid().equals(guild.leader());
-            long share = leader ? each + extra : each;
-            if (share <= 0) continue;
-            double amount = share / 100.0;
-            BankResult result = payShare(guild, member.uuid(), amount, left);
-            if (!result.ok()) return result;
-            left -= amount;
-        }
-        return BankResult.success(Math.max(0, left));
-    }
-
-    /**
-     * Выдать одному человеку его долю из общака.
-     *
-     * @param left сколько было в банке до этой выдачи
-     * @return сколько осталось после
-     */
-    private BankResult payShare(StoredGuild guild, UUID recipient, double amount, double left) {
-        double after = left - amount;
-        BankResult result = economy.disburse(
-                guild.id(), recipient, amount, "guild-disband:" + guild.id() + ":" + recipient);
-        logSettlement(guild, recipient, amount, after, result, names.nameOf(recipient));
-        return result;
-    }
-
-    /**
-     * Запись о выдаче — в тот же журнал банка, что и обычные снятия.
-     *
-     * Журнал переживает роспуск (ни внешнего ключа, ни каскада), и именно он
-     * отвечает на вопрос «куда делся общак», который задают не в день
-     * роспуска, а через неделю.
-     */
-    private void logSettlement(StoredGuild guild, UUID actor, double amount, double balanceAfter,
-            BankResult result, String where) {
-        if (!result.ok()) {
-            logger.warning("Не выдать долю из общака гильдии «" + guild.name() + "» ("
-                    + where + ", " + economy.format(amount) + "): " + result.messageKey()
-                    + ". Деньги остались на счёте гильдии");
-            return;
-        }
-        double recordedBalance = result.balance().orElse(Math.max(0, balanceAfter));
-        GuildBankEntry entry = new GuildBankEntry(clock.get(), guild.id(), actor,
-                names.nameOf(actor), false, amount, recordedBalance);
-        write(() -> repository.logBank(entry), "записать выдачу из общака гильдии " + guild.name());
-        logger.info("Общак гильдии «" + guild.name() + "»: " + economy.format(amount)
-                + " → " + where);
+    public boolean hasPendingDisbands() {
+        return !disbandPlans.isEmpty();
     }
 
     private void applyBank(

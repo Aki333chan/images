@@ -25,6 +25,8 @@ final class FakeEconomy implements EconomyBridge {
     boolean rejectDeposits;
     /** Ledger-режим: у гильдии есть собственный счёт. */
     boolean guildAccounts;
+    /** Fault injection: successful new disbursements allowed before refusal. */
+    int disbursementsBeforeFailure = Integer.MAX_VALUE;
     /** Сколько ушло в казну сервера за все роспуски. */
     double treasury;
 
@@ -78,19 +80,26 @@ final class FakeEconomy implements EconomyBridge {
     @Override
     public BankResult disburse(long guildId, UUID player, double amount, String key) {
         // Повтор с тем же ключом не платит второй раз — как настоящий ledger.
-        if (!keys.add(key)) return BankResult.success();
-        return withdraw(guildId, player, amount);
+        if (keys.contains(key)) return BankResult.success(vault(guildId));
+        if (disbursementsBeforeFailure <= 0) return BankResult.refused();
+        BankResult result = withdraw(guildId, player, amount);
+        if (result.ok()) {
+            keys.add(key);
+            disbursementsBeforeFailure--;
+        }
+        return result;
     }
 
     @Override
     public BankResult toTreasury(long guildId, double amount, String key) {
-        if (!keys.add(key)) return BankResult.success();
+        if (keys.contains(key)) return BankResult.success(vault(guildId));
         if (guildAccounts) {
             double have = vault(guildId);
             if (have < amount) return BankResult.notEnough();
             vaults.put(guildId, have - amount);
         }
         treasury += amount;
+        keys.add(key);
         return BankResult.success();
     }
 

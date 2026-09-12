@@ -402,21 +402,27 @@ ledger новой законной операцией. Поэтому решае
 | --- | --- |
 | `leader` (по умолчанию) | всё лидеру: роспуск его решение, получатель один и заранее известен |
 | `split` | поровну между участниками на момент роспуска, остаток от деления лидеру |
-| `treasury` | в казну сервера — ближе всего к прежнему поведению, деньги уходят из игры |
+| `treasury` | в глобальную казну сервера; деньги меняют владельца, но остаются в общей денежной массе |
 | `keep` | не трогать; останутся на счёте распущенной гильдии и будут доступны только через команды AurumCore |
 
 **Это изменение поведения при обновлении с 0.3.0**, где общак просто исчезал.
-Прежнее поведение — `treasury` (на сервере без AurumCore казны нет, и деньги
-там так же перестают существовать).
+На сервере без AurumCore у Vault нет счёта казны, поэтому только там `treasury`
+повторяет старое поведение и удаляет число вместе с гильдией.
 
 Доли считаются **в копейках целыми числами**: делить `double` на число
 участников и раздавать частное — верный способ раздать на копейку больше или
 меньше, чем было в банке, а расхождение в ledger на округление не спишешь.
-Каждая выдача идёт со стабильным ключом `guild-disband:<id>:<получатель>` —
-роспуск может оборваться на середине списка, и повтор не должен заплатить
-дважды. **У Vault идемпотентности нет**, и это единственное место, где он
-слабее по существу, а не по удобству: падение ровно между выдачей доли и
-удалением гильдии приведёт к повторной выдаче при следующем роспуске.
+Перед первой выплатой режим, исходный баланс и список участников записываются в
+`<prefix>_disband_plans` и `<prefix>_disband_shares`. Пока план не завершён,
+состав, настройки, бонусы и банк этой гильдии заморожены. Каждая выдача идёт со
+стабильным ключом `guild-disband:<id>:<получатель>`, а отметка доли и строка
+банковского аудита записываются одной транзакцией. После перезапуска минутный
+housekeeping продолжает только неоплаченные строки; появление AurumCore запускает
+продолжение сразу. В обычной работе обе таблицы пусты и не участвуют в HUD/чате.
+
+С AurumCore потерянный ответ безопасен: повтор ключа возвращает ту же проводку и
+не платит дважды. **У Vault идемпотентности нет**; сохранённый план уменьшает окно,
+но авария ровно после выплаты Vault и до отметки строки всё ещё может её повторить.
 
 Записи о выдачах попадают в тот же журнал банка, что и обычные снятия. Журнал
 переживает роспуск (ни внешнего ключа, ни каскада) и отвечает на вопрос «куда
@@ -831,11 +837,13 @@ engine first — a server-wide `TAX` rule matching `GUILD_DEPOSIT` or
 the money vanish, because on a ledger account it would instead be stranded on
 an address no command can reach. The destination is configurable via
 `bank.on-disband`: `leader` (default), `split`, `treasury` or `keep`. Set it to
-`treasury` to keep the 0.3.0 behaviour. Shares are computed in integer cents and
-paid with stable keys, so an interrupted disband does not pay twice — with
-AurumCore; Vault has no idempotency and cannot offer that guarantee.
+`treasury` to send it to the global server treasury. Shares are frozen in two
+small disband-plan tables before the first transfer, computed in integer cents,
+and paid with stable keys. An interrupted disband resumes unpaid rows without
+paying twice with AurumCore; Vault has no idempotency and cannot offer the same
+crash guarantee. These tables are normally empty and are never read by HUD code.
 
-No manual schema migration is required: the new table is created on start.
+No manual schema migration is required: the new tables are created on start.
 
 # Release 0.3.0: social UI and guild switching
 

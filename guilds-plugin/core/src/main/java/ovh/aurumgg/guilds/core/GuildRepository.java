@@ -40,8 +40,6 @@ public interface GuildRepository extends AutoCloseable {
             String name, String tag, UUID leader, String leaderName, Instant createdAt,
             GuildSettings settings) throws Exception;
 
-    void deleteGuild(long guildId) throws Exception;
-
     void updateTag(long guildId, String tag) throws Exception;
 
     void updateSettings(long guildId, GuildSettings settings) throws Exception;
@@ -109,6 +107,20 @@ public interface GuildRepository extends AutoCloseable {
 
     /** Отметить, что банк этой гильдии перенесён. Повтор безвреден. */
     void markBankMigrated(long guildId) throws Exception;
+
+    // ----------------------------------------- незавершённый роспуск
+
+    /** Plans left after a restart, normally an empty list. */
+    List<GuildDisbandPlan> loadDisbandPlans() throws Exception;
+
+    /** Atomically store the frozen policy and all of its recipients. */
+    void createDisbandPlan(GuildDisbandPlan plan) throws Exception;
+
+    /** Atomically mark one payout and append its audit entry. */
+    void markDisbandPaid(long guildId, int sequence, GuildBankEntry entry) throws Exception;
+
+    /** Delete the guild only when its persisted plan has no unpaid recipients. */
+    void completeDisband(long guildId) throws Exception;
 
     /** Операции с банком, новые сверху. */
     List<GuildBankEntry> bankHistory(long guildId, int limit) throws Exception;

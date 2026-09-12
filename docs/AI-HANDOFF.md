@@ -178,14 +178,14 @@ Exchange engine использует версионированную котир
 - Guilds: переключение обратно с ledger на Vault не поддерживается намеренно. Если
   AurumCore выключить после переноса, банк отвечает «недоступно», а не работает по
   зеркалу.
-- Guilds: default `bank.on-disband: leader` и `treasury` теперь не удаляют гильдию,
-  если единственная денежная проводка отказала. `split` состоит из нескольких проводок:
-  ключи не дают заплатить одну долю дважды, но для полностью атомарного результата между
-  всеми участниками нужен persisted disband plan/escrow. Это отдельная переработка.
+- Guilds: `bank.on-disband` сохраняет immutable plan до первой выплаты для всех четырёх
+  режимов. Участники и суммы не меняются после частичного расчёта; оплаченная доля и
+  bank log отмечаются одной DB-транзакцией, restart продолжает неоплаченные строки.
+  Exactly-once потерянного ответа обеспечивается AurumCore stable key; у Vault его нет.
 
 ## Текущий этап
 
-**Persisted disband plan для `bank.on-disband: split`.**
+**Escrow исходящей оферты гарантированного trade.**
 
 В Core устранён дедлок trade на общем однопоточном executor, расчёт встречных денег
 сведён в одну net-проводку, SETTLING возобновляется sweep-ом, а SETTLED ставится только
@@ -199,10 +199,10 @@ Exchange engine использует версионированную котир
 оборот, источники/стоки, правила и ledger history: под них в панели нет ни экрана, ни
 маршрута, и это отдельный этап, а не хвост этого.
 
-Выдача/изъятие предметов AddonsNPC и выдача trade теперь используют PDC receipt и строгий
-порядок player.dat → MariaDB cursor. Остаётся отдельная входящая граница trade: предмет
-убирается из руки до подтверждения оферты в БД, поэтому trade всё ещё выключен. Следующая
-работа — сохраняемый план роспуска гильдии; затем escrow оферты trade, native Companion и
+Выдача/изъятие предметов AddonsNPC и выдача trade используют PDC receipt и строгий порядок
+player.dat → MariaDB cursor. Роспуск гильдии теперь имеет persisted plan и восстанавливает
+multi-recipient split. Остаётся входящая граница trade: предмет убирается из руки до
+подтверждения оферты в БД, поэтому trade всё ещё выключен. Следом — native Companion и
 незаконченные экраны AurumUI/панели.
 
 Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.10.0,
@@ -211,15 +211,33 @@ AurumUI 0.6.0.
 
 ## Очередь после текущего этапа
 
-1. Persisted plan для `bank.on-disband: split` и защита банка на время роспуска.
-2. Escrow исходящей оферты trade и fault injection предметных границ.
-3. Native write routes Companion.
-4. Экономические экраны AurumUI: trade и claims quarantine.
-5. Native Companion routes и экраны истории/правил веб-панели.
-6. Опциональная миграция динамических настроек.
-7. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
+1. Escrow исходящей оферты trade и fault injection предметных границ.
+2. Native write routes Companion.
+3. Экономические экраны AurumUI: trade и claims quarantine.
+4. Native Companion routes и экраны истории/правил веб-панели.
+5. Опциональная миграция динамических настроек.
+6. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
 
 ## Журнал передачи
+
+### 2026-09-12 — Codex, persisted guild disband plan
+
+- Для `leader`, `split`, `treasury` и `keep` до первой выплаты сохраняются режим,
+  баланс в целых копейках и immutable список получателей. Смена config после начала
+  роспуска план не меняет.
+- Новые таблицы `<prefix>_disband_plans` и `<prefix>_disband_shares` обычно пусты и не
+  читаются HUD/чатом. Незаконченный план загружается один раз на старте и повторяется
+  только минутным housekeeping либо сразу после готовности AurumCore.
+- Доля и bank-log фиксируются одной MariaDB-транзакцией. Crash после ledger transfer,
+  но до отметки строки, безопасен за счёт stable idempotency key AurumCore. Vault не
+  умеет дать такую гарантию, это оставлено явным ограничением fallback-режима.
+- Пока план существует, изменение состава, настроек, бонусов и банка блокируется.
+  Удаление guild row и плана атомарно и допускается только без неоплаченных долей.
+- Исправлен опасный fallback: уже мигрированный `GUILD:<id>` не откроется через старое
+  Vault-зеркало, если AurumCore временно отсутствует при рестарте.
+- При удалении очищаются in-memory bonuses/regions, которые раньше оставались до restart.
+- Регрессионные тесты останавливают split после первой доли и имитируют потерю DB-ответа
+  уже после ledger transfer: restart/повтор завершают план без повторной выплаты.
 
 ### 2026-09-12 — Codex, player-data receipts для предметных claim
 

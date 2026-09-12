@@ -167,6 +167,14 @@ public record GuildsConfig(
         return tablePrefix + "_bank_migrated";
     }
 
+    public String disbandPlansTable() {
+        return tablePrefix + "_disband_plans";
+    }
+
+    public String disbandSharesTable() {
+        return tablePrefix + "_disband_shares";
+    }
+
     // ------------------------------------------------------------ разбор
 
     private static String string(Map<String, Object> raw, String key, String fallback) {

@@ -200,7 +200,9 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         // GuildService, потому что тот берёт мост в конструкторе, а перенос
         // балансов — это уже работа готового сервиса.
         GuildEconomy economy = new GuildEconomy(this, vault, () -> {
-            if (guilds != null) guilds.migrateBanks();
+            if (guilds != null) guilds.migrateBanks().whenComplete((moved, failure) -> {
+                if (failure == null && guilds.hasPendingDisbands()) guilds.resumeDisbands();
+            });
         });
 
         guilds = new GuildService(config, repository, hooks, economy, names, getLogger(), Instant::now);
@@ -431,6 +433,7 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         if (socialUi != null) socialUi.purge();
         guilds.purgeInvites();
         guilds.purgeExpiredBonuses();
+        if (guilds.hasPendingDisbands()) guilds.resumeDisbands();
         int removed = parties.purgeIdle(
                 getServer().getOnlinePlayers().stream()
                         .map(Player::getUniqueId)

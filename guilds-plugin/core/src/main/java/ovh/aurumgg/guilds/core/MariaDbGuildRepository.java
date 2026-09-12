@@ -76,6 +76,8 @@ public final class MariaDbGuildRepository implements GuildRepository {
     private final String members;
     private final String bankLog;
     private final String bankMigrated;
+    private final String disbandPlans;
+    private final String disbandShares;
     private final String bonuses;
     private final String regions;
 
@@ -96,6 +98,8 @@ public final class MariaDbGuildRepository implements GuildRepository {
         this.members = config.membersTable();
         this.bankLog = config.bankLogTable();
         this.bankMigrated = config.bankMigrationTable();
+        this.disbandPlans = config.disbandPlansTable();
+        this.disbandShares = config.disbandSharesTable();
         this.bonuses = config.bonusesTable();
         this.regions = config.regionsTable();
     }
@@ -214,6 +218,33 @@ public final class MariaDbGuildRepository implements GuildRepository {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
                 """.formatted(bankMigrated);
 
+        // Normally empty: it freezes policy and recipients only while a rare
+        // disband is being recovered. Ordinary guild reads never query it.
+        String disbandPlansDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  guild_id    BIGINT      NOT NULL PRIMARY KEY,
+                  mode_name   VARCHAR(16) NOT NULL,
+                  total_cents BIGINT      NOT NULL,
+                  created_at  TIMESTAMP   NOT NULL,
+                  CONSTRAINT fk_disband_guild FOREIGN KEY (guild_id)
+                      REFERENCES %s (id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(disbandPlans, guilds);
+
+        String disbandSharesDdl = """
+                CREATE TABLE IF NOT EXISTS %s (
+                  guild_id        BIGINT      NOT NULL,
+                  sequence_number INT         NOT NULL,
+                  destination     VARCHAR(16) NOT NULL,
+                  player_uuid     CHAR(36)    NULL,
+                  amount_cents    BIGINT      NOT NULL,
+                  paid            TINYINT(1)  NOT NULL DEFAULT 0,
+                  PRIMARY KEY (guild_id, sequence_number),
+                  CONSTRAINT fk_disband_share_plan FOREIGN KEY (guild_id)
+                      REFERENCES %s (guild_id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """.formatted(disbandShares, disbandPlans);
+
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate(guildsDdl);
@@ -222,6 +253,8 @@ public final class MariaDbGuildRepository implements GuildRepository {
             statement.executeUpdate(bonusesDdl);
             statement.executeUpdate(regionsDdl);
             statement.executeUpdate(bankMigratedDdl);
+            statement.executeUpdate(disbandPlansDdl);
+            statement.executeUpdate(disbandSharesDdl);
         }
     }
 
@@ -316,13 +349,6 @@ public final class MariaDbGuildRepository implements GuildRepository {
                 connection.setAutoCommit(true);
             }
         }
-    }
-
-    @Override
-    public void deleteGuild(long guildId) throws Exception {
-        // Участников уносит ON DELETE CASCADE — отдельный DELETE здесь был бы
-        // вторым местом, где записано одно и то же правило.
-        update("DELETE FROM " + guilds + " WHERE id = ?", statement -> statement.setLong(1, guildId));
     }
 
     @Override
@@ -567,6 +593,172 @@ public final class MariaDbGuildRepository implements GuildRepository {
         // после решения «переносить нечего», и повтор здесь ожидаем.
         update("INSERT IGNORE INTO " + bankMigrated + " (guild_id) VALUES (?)",
                 statement -> statement.setLong(1, guildId));
+    }
+
+    // ----------------------------------------- незавершённый роспуск
+
+    @Override
+    public List<GuildDisbandPlan> loadDisbandPlans() throws Exception {
+        Map<Long, List<GuildDisbandShare>> shares = new HashMap<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT guild_id, sequence_number, destination, player_uuid, amount_cents, "
+                                + "paid FROM " + disbandShares
+                                + " ORDER BY guild_id, sequence_number");
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                String player = rs.getString("player_uuid");
+                shares.computeIfAbsent(rs.getLong("guild_id"), ignored -> new ArrayList<>())
+                        .add(new GuildDisbandShare(
+                                rs.getInt("sequence_number"),
+                                GuildDisbandShare.Destination.valueOf(rs.getString("destination")),
+                                player == null ? null : UUID.fromString(player),
+                                rs.getLong("amount_cents"),
+                                rs.getBoolean("paid")));
+            }
+        }
+
+        List<GuildDisbandPlan> result = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT guild_id, mode_name, total_cents, created_at FROM " + disbandPlans);
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                long guildId = rs.getLong("guild_id");
+                result.add(new GuildDisbandPlan(
+                        guildId,
+                        BankOnDisband.valueOf(rs.getString("mode_name")
+                                .toUpperCase(java.util.Locale.ROOT)),
+                        rs.getLong("total_cents"),
+                        rs.getTimestamp("created_at").toInstant(),
+                        shares.getOrDefault(guildId, List.of())));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public void createDisbandPlan(GuildDisbandPlan plan) throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO " + disbandPlans
+                                + " (guild_id, mode_name, total_cents, created_at) VALUES (?, ?, ?, ?)")) {
+                    statement.setLong(1, plan.guildId());
+                    statement.setString(2, plan.mode().storageName());
+                    statement.setLong(3, plan.totalCents());
+                    statement.setTimestamp(4, Timestamp.from(plan.createdAt()));
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO " + disbandShares + " (guild_id, sequence_number, destination, "
+                                + "player_uuid, amount_cents, paid) VALUES (?, ?, ?, ?, ?, ?)")) {
+                    for (GuildDisbandShare share : plan.shares()) {
+                        statement.setLong(1, plan.guildId());
+                        statement.setInt(2, share.sequence());
+                        statement.setString(3, share.destination().name());
+                        statement.setString(4, share.player() == null ? null : share.player().toString());
+                        statement.setLong(5, share.cents());
+                        statement.setBoolean(6, share.paid());
+                        statement.addBatch();
+                    }
+                    statement.executeBatch();
+                }
+                connection.commit();
+            } catch (Exception failure) {
+                connection.rollback();
+                throw failure;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public void markDisbandPaid(long guildId, int sequence, GuildBankEntry entry) throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                int changed;
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE " + disbandShares
+                                + " SET paid=1 WHERE guild_id=? AND sequence_number=? AND paid=0")) {
+                    statement.setLong(1, guildId);
+                    statement.setInt(2, sequence);
+                    changed = statement.executeUpdate();
+                }
+                if (changed == 1) {
+                    insertBankLog(connection, entry);
+                } else if (!disbandSharePaid(connection, guildId, sequence)) {
+                    throw new IllegalStateException("Disband share does not exist");
+                }
+                connection.commit();
+            } catch (Exception failure) {
+                connection.rollback();
+                throw failure;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public void completeDisband(long guildId) throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT sequence_number FROM " + disbandShares
+                                + " WHERE guild_id=? AND paid=0 FOR UPDATE")) {
+                    statement.setLong(1, guildId);
+                    try (ResultSet rs = statement.executeQuery()) {
+                        if (rs.next()) {
+                            throw new IllegalStateException("Disband has unpaid shares");
+                        }
+                    }
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM " + guilds + " WHERE id=?")) {
+                    statement.setLong(1, guildId);
+                    if (statement.executeUpdate() != 1) {
+                        throw new IllegalStateException("Guild does not exist");
+                    }
+                }
+                connection.commit();
+            } catch (Exception failure) {
+                connection.rollback();
+                throw failure;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    private boolean disbandSharePaid(Connection connection, long guildId, int sequence) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT paid FROM " + disbandShares + " WHERE guild_id=? AND sequence_number=?")) {
+            statement.setLong(1, guildId);
+            statement.setInt(2, sequence);
+            try (ResultSet rs = statement.executeQuery()) {
+                return rs.next() && rs.getBoolean("paid");
+            }
+        }
+    }
+
+    private void insertBankLog(Connection connection, GuildBankEntry entry) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO " + bankLog + " (guild_id, actor_uuid, actor_name, deposit, amount, "
+                        + "balance_after, at) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+            statement.setLong(1, entry.guildId());
+            statement.setString(2, entry.actorUuid().toString());
+            statement.setString(3, entry.actorName());
+            statement.setBoolean(4, entry.deposit());
+            statement.setBigDecimal(5, java.math.BigDecimal.valueOf(entry.amount()));
+            statement.setBigDecimal(6, java.math.BigDecimal.valueOf(entry.balanceAfter()));
+            statement.setTimestamp(7, Timestamp.from(entry.at()));
+            statement.executeUpdate();
+        }
     }
 
     private void update(String sql, Binder binder) throws Exception {

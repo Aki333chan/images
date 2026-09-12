@@ -143,6 +143,7 @@ guild:
     bankHasOnly: "W banku gildii jest tylko {amount}"
     bankShort: "Na koncie gildii jest mniej, niż pokazano. Sprawdź /guild info"
     bankMigrating: "Bank gildii jest jeszcze przenoszony na konto AurumCore, spróbuj później"
+    disbandPending: "Ta gildia jest rozwiązywana; najpierw musi zakończyć się zapisane rozliczenie banku"
     economyRefused: "Plugin ekonomii odmówił, pieniądze zostały w banku"
     noSuchGuild: "Nie ma takiej gildii"
     noMemberNamed: "W gildii „{guild}” nie ma gracza {player}"

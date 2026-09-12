@@ -480,6 +480,10 @@ class GuildServiceTest {
         service.withdraw(LEADER, 100).join();
         assertEquals(0, service.migrateBanks().join());
         assertEquals(200, economy.vault(id), "второй перенос не состоялся");
+
+        economy.guildAccounts = false;
+        assertFalse(service.bankReady(id),
+                "мигрированный счёт нельзя временно открыть через старое Vault-зеркало");
     }
 
     @Test
@@ -517,6 +521,28 @@ class GuildServiceTest {
     }
 
     @Test
+    @DisplayName("Потерянный ответ после выплаты не платит лидеру второй раз")
+    void отметкаПослеВыплатыПовторяетсяИдемпотентно() {
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 300);
+        service.deposit(MEMBER, 300).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+        repository.failDisbandMarkOnce = true;
+
+        assertFalse(service.disband(LEADER).join().ok());
+        assertEquals(300, economy.balance(LEADER));
+        assertTrue(repository.disbandPlan(id).orElseThrow().shares().stream()
+                .noneMatch(GuildDisbandShare::paid));
+
+        assertTrue(service.disband(LEADER).join().ok());
+        assertEquals(300, economy.balance(LEADER), "stable key подавил повторную выплату");
+        assertTrue(service.byId(id).isEmpty());
+        assertEquals(1, repository.allBankEntries().stream()
+                .filter(entry -> entry.guildId() == id && !entry.deposit()).count());
+    }
+
+    @Test
     @DisplayName("Настройка split делит общак между участниками, остаток лидеру")
     void роспускДелитОбщакПоровну() {
         service.applyConfig(GuildsConfig.fromMap(Map.of("bank.on-disband", "split")));
@@ -529,6 +555,42 @@ class GuildServiceTest {
 
         assertTrue(service.disband(LEADER).join().ok());
         assertEquals(33.34, economy.balance(LEADER), 1e-9, "остаток от деления — лидеру");
+        assertEquals(33.33, economy.balance(OFFICER), 1e-9);
+        assertEquals(33.33, economy.balance(MEMBER), 1e-9);
+        assertEquals(0, economy.vault(id), 1e-9);
+    }
+
+    @Test
+    @DisplayName("Незавершённый split переживает рестарт и не платит долю дважды")
+    void роспускПродолжаетсяПослеРестарта() throws Exception {
+        GuildsConfig split = GuildsConfig.fromMap(Map.of("bank.on-disband", "split"));
+        service.applyConfig(split);
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 100);
+        service.deposit(MEMBER, 100).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+
+        economy.disbursementsBeforeFailure = 1;
+        assertFalse(service.disband(LEADER).join().ok());
+        GuildDisbandPlan waiting = repository.disbandPlan(id).orElseThrow();
+        assertEquals(1, waiting.shares().stream().filter(GuildDisbandShare::paid).count());
+        assertEquals(33.34, economy.balance(LEADER), 1e-9);
+        assertEquals("guild.err.disbandPending",
+                service.invite(LEADER, STRANGER).join().messageKey());
+
+        service.close();
+        economy.disbursementsBeforeFailure = Integer.MAX_VALUE;
+        service = new GuildService(split, repository, hooks, economy,
+                uuid -> names.getOrDefault(uuid, "неизвестный"),
+                Logger.getLogger("guilds-restart-test"), now::get);
+        service.load();
+
+        assertTrue(service.hasPendingDisbands());
+        assertEquals(1, service.resumeDisbands().join());
+        assertTrue(service.byId(id).isEmpty());
+        assertTrue(repository.disbandPlan(id).isEmpty());
+        assertEquals(33.34, economy.balance(LEADER), 1e-9, "первая доля не повторена");
         assertEquals(33.33, economy.balance(OFFICER), 1e-9);
         assertEquals(33.33, economy.balance(MEMBER), 1e-9);
         assertEquals(0, economy.vault(id), 1e-9);
