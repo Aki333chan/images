@@ -25,6 +25,7 @@
   "mc.err.serverSilent": "Serwer gry nie odpowiedział",
   "mc.err.ecoNeedCompanion": "Praca z walutą wymaga pluginu companion na serwerze gry",
   "mc.err.ecoNeedVault": "Praca z walutą wymaga pluginu Vault i pluginu ekonomii na serwerze gry",
+  "mc.err.ecoNeedAurumCore": "Panel walut wymaga AurumCore w trybie ACTIVE na serwerze gry",
   "mc.err.ecoNoProvider": "Vault jest zainstalowany, ale żaden plugin ekonomii nie zarejestrował dostawcy",
   "mc.err.ecoUnavailable": "Na tym serwerze nie ma waluty",
   "mc.err.amountPositive": "Kwota musi być większa od zera",

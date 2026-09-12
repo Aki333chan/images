@@ -290,6 +290,7 @@ public final class FakeGameBridge implements GameBridge {
     // случая разными кодами ошибки.
 
     public boolean economyProvider = true;
+    public boolean nativeEconomyProvider;
 
     public final Map<UUID, Double> balances = new LinkedHashMap<>(Map.of(STEVE, 250.0));
 
@@ -354,6 +355,50 @@ public final class FakeGameBridge implements GameBridge {
         if (entries.size() > topLimit) entries = new ArrayList<>(entries.subList(0, topLimit));
         return Optional.of(new EconomySummary(total, money(total), "монет", balances.size(),
                 List.copyOf(entries), null));
+    }
+
+    @Override
+    public Optional<BalanceInfo> nativeBalance(UUID playerUuid) {
+        if (!nativeEconomyProvider) return Optional.empty();
+        double value = balances.getOrDefault(playerUuid, 0.0);
+        return Optional.of(new BalanceInfo(value, money(value), "монет"));
+    }
+
+    @Override
+    public Optional<BalanceChange> changeNativeBalance(UUID playerUuid, BalanceMutation mutation) {
+        if (!nativeEconomyProvider) return Optional.empty();
+        balanceMutations.add(mutation);
+        if (balanceChangeOverride != null) return Optional.of(balanceChangeOverride);
+        double before = balances.getOrDefault(playerUuid, 0.0);
+        double amount = mutation.amount().doubleValue();
+        if (mutation.operation() == BalanceMutation.Operation.GIVE) {
+            double after = before + amount;
+            balances.put(playerUuid, after);
+            return Optional.of(new BalanceChange(true, "ok", null, before, after, money(after),
+                    mutation.idempotencyKey(), "aurum", false));
+        }
+        if (amount > before) {
+            return Optional.of(new BalanceChange(false, "Недостаточно средств", before, before, money(before)));
+        }
+        double after = before - amount;
+        balances.put(playerUuid, after);
+        return Optional.of(new BalanceChange(true, "ok", null, before, after, money(after),
+                mutation.idempotencyKey(), "aurum", false));
+    }
+
+    @Override
+    public Optional<EconomySummary> nativeEconomySummary(int topLimit) {
+        if (!nativeEconomyProvider) return Optional.empty();
+        double total = balances.values().stream().mapToDouble(Double::doubleValue).sum();
+        List<EconomySummary.TopEntry> entries = balances.entrySet().stream()
+                .sorted(Map.Entry.<UUID, Double>comparingByValue().reversed())
+                .limit(topLimit)
+                .map(entry -> new EconomySummary.TopEntry(
+                        playerNames.getOrDefault(entry.getKey(), entry.getKey().toString()),
+                        entry.getKey().toString(), entry.getValue(), money(entry.getValue())))
+                .toList();
+        return Optional.of(new EconomySummary(total, money(total), "монет", null, entries,
+                new EconomySummary.Ledger(50.0, money(50.0), total, money(total), 12.0, money(12.0))));
     }
 
     public boolean auditAvailable;

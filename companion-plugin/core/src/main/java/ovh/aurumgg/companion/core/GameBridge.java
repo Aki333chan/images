@@ -226,6 +226,27 @@ public interface GameBridge {
      */
     Optional<EconomySummary> economySummary(int topLimit);
 
+    /**
+     * Баланс строго из active ledger AurumCore, без Vault fallback.
+     *
+     * Панель экосистемы использует именно этот путь: молчаливое переключение
+     * на старого провайдера опасно, потому что администратор мог бы изменить
+     * не тот источник истины.
+     */
+    default Optional<BalanceInfo> nativeBalance(UUID playerUuid) {
+        return Optional.empty();
+    }
+
+    /** Идемпотентное изменение строго в active ledger AurumCore. */
+    default Optional<BalanceChange> changeNativeBalance(UUID playerUuid, BalanceMutation mutation) {
+        return Optional.empty();
+    }
+
+    /** Нативная денежная масса и доска богатства, без обхода Vault-аккаунтов. */
+    default Optional<EconomySummary> nativeEconomySummary(int topLimit) {
+        return Optional.empty();
+    }
+
     /** Bounded native AurumCore audit section; unavailable on Vault fallback. */
     default Optional<EconomyAuditInfo> economyAudit(
             String section, String currency, String account, int limit) {

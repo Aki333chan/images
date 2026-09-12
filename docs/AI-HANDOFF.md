@@ -209,7 +209,7 @@ HTTP `set` баланса по-прежнему отложен до отдель
 нужна.
 
 Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.15.0,
-AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.10.0,
+AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.11.0,
 AurumUI 0.7.0.
 
 Перед редактором закрыт отдельный packaging-инвариант панели: вместо галочек она
@@ -228,6 +228,24 @@ JAR и релизы не объединены. API сам вычисляет п�
 4. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
 
 ## Журнал передачи
+
+### 2026-09-12 — Codex, панель экономики переведена на strict-native Core
+
+- Companion 0.11.0 получил отдельные `/economy/native` и
+  `/economy/native/balance/...`: без active AurumCore они отвечают
+  `requires-aurumcore` и никогда не читают/не изменяют Vault. Старые маршруты
+  оставлены для совместимости протокола.
+- Денежная масса, казна, налоги и Richest убраны из общей полосы CPU/RAM и
+  перенесены в capability-вкладку экономики. Snapshot запрашивается при открытии,
+  кэшируется пять минут и обновляется вручную; polling и OfflinePlayer scan не добавлены.
+- Баланс в карточке online/offline игрока сохранён и показывается только при включённом
+  AurumCore. `minecraft.economy.view` остаётся у ADMIN/MODERATOR, но поля изменения
+  требуют `minecraft.economy.admin` (ADMIN); OWNER/GM получает общий wildcard.
+- Проверка: Companion clean test/jar, 690 API Jest, 111 web Jest и production
+  builds shared/Nest/Vite. Собранный `AurumCompanion-0.11.0.jar` имеет SHA-256
+  `88206109251D2D36C374A04D4A5FE30701E3162E5793344DDCF762EABDC2E455`;
+  Addons release пока не публиковался. Следующий этап остаётся прежним —
+  idempotency команд оферт.
 
 ### 2026-09-12 — Codex, экономика перенесена в capability Minecraft-модуля
 

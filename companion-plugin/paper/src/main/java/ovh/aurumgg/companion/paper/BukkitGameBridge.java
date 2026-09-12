@@ -650,6 +650,26 @@ public final class BukkitGameBridge implements GameBridge {
     }
 
     @Override
+    public Optional<BalanceInfo> nativeBalance(UUID playerUuid) {
+        return aurumEconomy == null || !aurumEconomy.active()
+                ? Optional.empty() : aurumEconomy.balance(playerUuid);
+    }
+
+    @Override
+    public Optional<BalanceChange> changeNativeBalance(UUID playerUuid, BalanceMutation mutation) {
+        // Never fall back after an unavailable reply: the ledger transaction
+        // may already be committed and its idempotency key must be retried.
+        return aurumEconomy == null || !aurumEconomy.active()
+                ? Optional.empty() : Optional.of(aurumEconomy.change(playerUuid, mutation));
+    }
+
+    @Override
+    public Optional<EconomySummary> nativeEconomySummary(int topLimit) {
+        return aurumEconomy == null || !aurumEconomy.active()
+                ? Optional.empty() : aurumEconomy.summary(topLimit);
+    }
+
+    @Override
     public Optional<EconomyAuditInfo> economyAudit(
             String section, String currency, String account, int limit) {
         return aurumEconomy == null ? Optional.empty() : aurumEconomy.audit(section, currency, account, limit);

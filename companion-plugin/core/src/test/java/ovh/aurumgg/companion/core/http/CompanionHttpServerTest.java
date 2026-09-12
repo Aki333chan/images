@@ -920,6 +920,44 @@ class CompanionHttpServerTest {
     }
 
     @Test
+    @DisplayName("нативная сводка не откатывается к Vault")
+    void nativeEconomyNeverFallsBackToVault() throws Exception {
+        bridge.install("Vault");
+
+        HttpResponse<String> unavailable = get("/economy/native", TOKEN);
+        assertEquals(503, unavailable.statusCode());
+        assertEquals("requires-aurumcore", JsonParser.parseObject(unavailable.body()).get("code"));
+
+        bridge.nativeEconomyProvider = true;
+        Map<String, Object> body = JsonParser.parseObject(get("/economy/native?top=1", TOKEN).body());
+        assertEquals("aurum", body.get("source"));
+        assertEquals(250.0, (Double) body.get("moneySupply"));
+        assertEquals(1, ((List<?>) body.get("top")).size());
+    }
+
+    @Test
+    @DisplayName("нативный баланс читает и изменяет только ledger")
+    void nativeBalanceUsesLedgerOnly() throws Exception {
+        bridge.install("Vault");
+        String path = "/economy/native/balance/" + FakeGameBridge.STEVE;
+
+        assertEquals(503, get(path, TOKEN).statusCode());
+        assertEquals(503, post(path + "/deposit", TOKEN,
+                "{\"amount\":5,\"idempotencyKey\":\"native-1\"," +
+                        "\"actor\":\"admin\",\"reason\":\"test\"}").statusCode());
+        assertTrue(bridge.balanceMutations.isEmpty());
+
+        bridge.nativeEconomyProvider = true;
+        assertEquals(250.0, (Double) JsonParser.parseObject(get(path, TOKEN).body()).get("balance"));
+        HttpResponse<String> changed = post(path + "/deposit", TOKEN,
+                "{\"amount\":5,\"idempotencyKey\":\"native-1\"," +
+                        "\"actor\":\"admin\",\"reason\":\"test\"}");
+        assertEquals(200, changed.statusCode());
+        assertEquals("aurum", JsonParser.parseObject(changed.body()).get("source"));
+        assertEquals(255.0, (Double) JsonParser.parseObject(changed.body()).get("balanceAfter"));
+    }
+
+    @Test
     @DisplayName("экономика сервера без Vault — тот же понятный код")
     void economyWithoutVault() throws Exception {
         HttpResponse<String> response = get("/economy", TOKEN);

@@ -484,15 +484,15 @@ export interface MinecraftPerformanceDto {
 
 // ------------------------------------------------------------- Экономика
 //
-// При ACTIVE работает через ledger AurumCore; на старой или shadow-схеме —
-// через Vault. Панель с конкретным legacy-провайдером не разговаривает.
+// Панель работает через active ledger AurumCore. Vault остаётся мостом для
+// сторонних игровых плагинов, но не запасным источником истины панели.
 
 /** Баланс игрока. */
 export interface MinecraftBalanceDto {
   available: boolean;
   /** Почему недоступно: нет Companion, active Core либо Vault-провайдера. */
   reason?: string;
-  code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
+  code?: 'no-companion' | 'requires-aurumcore' | 'requires-vault' | 'no-provider' | 'error';
   balance?: number;
   /** Отформатированная провайдером строка: «1 234,50 монет». */
   formatted?: string;
@@ -518,7 +518,7 @@ export interface MinecraftBalanceChangeDto {
 export interface MinecraftEconomyDto {
   available: boolean;
   reason?: string;
-  code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
+  code?: 'no-companion' | 'requires-aurumcore' | 'requires-vault' | 'no-provider' | 'error';
   /**
    * Откуда числа.
    *

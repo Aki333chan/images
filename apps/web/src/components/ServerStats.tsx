@@ -1,27 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   cpuUsage,
   formatCpu,
   memoryUsage,
   resourceTone,
-  LOCALE_TAGS,
-  type Locale,
-  type MinecraftEconomyDto,
   type MinecraftPerformanceDto,
 } from '@aurum/shared';
 import { api } from '../lib/api';
-import { useAuth } from '../lib/auth';
 import { GAME_POLL_MS, useServerRuntime } from '../lib/server-runtime';
-import { Button, Card } from './ui';
+import { Card } from './ui';
 import { useI18n } from '../i18n';
-
-/** Байты в человекочитаемый вид: 1.5 ГБ вместо 1610612736. */
-export /** Переводчик аргументом: функции вне компонента, хук туда не занести. */
-/** Время без даты: «посчитано в 14:32» — дата там лишняя. */
-function makeTimeFormatter(locale: Locale) {
-  const format = new Intl.DateTimeFormat(LOCALE_TAGS[locale], { hour: '2-digit', minute: '2-digit' });
-  return (value: string) => format.format(new Date(value));
-}
 
 function formatBytes(bytes: number, unit: (key: string) => string): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return `0 ${unit('size.b')}`;
@@ -80,9 +68,8 @@ function Metric({
  * Ресурсы берутся из общего опроса (см. lib/server-runtime): то же состояние
  * нужно шапке страницы и списку плагинов, и спрашивать его трижды незачем.
  *
- * Экономика из этого цикла намеренно исключена: её пересчёт обходит всех, кто
- * когда-либо заходил на сервер, поэтому цифра берётся один раз при открытии
- * (бэкенд отдаёт её из кэша) и дальше — только по кнопке «обновить».
+ * Экономика здесь больше не смешивается с ресурсами хоста: её нативный
+ * snapshot и доска богатства находятся в модульной вкладке AurumCore.
  */
 export function ServerStats({
   serverId,
@@ -93,45 +80,11 @@ export function ServerStats({
   moduleId: string | null;
   canSeePerformance: boolean;
 }) {
-  const { t, locale } = useI18n();
-  const formatTime = makeTimeFormatter(locale);
-  const { hasPermission } = useAuth();
+  const { t } = useI18n();
   const { resources, failed } = useServerRuntime(serverId);
   const [performance, setPerformance] = useState<MinecraftPerformanceDto | null>(null);
-  const [economy, setEconomy] = useState<MinecraftEconomyDto | null>(null);
-  const [economyBusy, setEconomyBusy] = useState(false);
-  const [showRich, setShowRich] = useState(false);
 
   const wantsPerformance = moduleId === 'minecraft' && canSeePerformance;
-  const wantsEconomy = moduleId === 'minecraft' && hasPermission('minecraft.economy.view');
-
-  const loadEconomy = useCallback(
-    async (refresh: boolean) => {
-      setEconomyBusy(true);
-      try {
-        setEconomy(
-          await api<MinecraftEconomyDto>(
-            `/api/modules/minecraft/servers/${serverId}/economy${refresh ? '?refresh=1' : ''}`,
-          ),
-        );
-      } catch {
-        // Нет Vault, нет плагина, сервер выключен — полосу метрик это гасить
-        // не должно.
-        setEconomy(null);
-      } finally {
-        setEconomyBusy(false);
-      }
-    },
-    [serverId],
-  );
-
-  useEffect(() => {
-    if (!wantsEconomy) {
-      setEconomy(null);
-      return;
-    }
-    void loadEconomy(false);
-  }, [wantsEconomy, loadEconomy]);
 
   useEffect(() => {
     if (!wantsPerformance) {
@@ -220,42 +173,6 @@ export function ServerStats({
       />
       <Metric label={t('stats.uptime')} value={formatUptime(resources.uptimeMs, t)} hint={resources.state} />
 
-      {wantsEconomy && economy?.available && (
-        <Metric
-          label={t('stats.economy')}
-          value={economy.totalFormatted ?? String(economy.total ?? 0)}
-          // У ledger сумма берётся запросом, а не обходом игроков, и счётчика
-          // просто нет. Подставлять сюда ноль значило бы утверждать, что на
-          // сервере нет ни одного игрока.
-          hint={
-            typeof economy.playersCounted === 'number'
-              ? t('stats.players', { count: economy.playersCounted })
-              : t('stats.economy.supply')
-          }
-        />
-      )}
-
-      {/*
-        Казна и налоги существуют только у настоящего ledger. На сервере с
-        одним Vault их нет не потому, что панель их не спросила, а потому что
-        там нет ни казны, ни понятия налога — и пустые нули на их месте были бы
-        неправдой.
-      */}
-      {wantsEconomy && economy?.available && economy.source === 'aurum' && (
-        <>
-          <Metric
-            label={t('stats.economy.treasury')}
-            value={economy.treasuryFormatted ?? String(economy.treasury ?? 0)}
-            hint={t('stats.economy.treasuryHint')}
-          />
-          <Metric
-            label={t('stats.economy.taxes')}
-            value={economy.taxesFormatted ?? String(economy.taxesCollected ?? 0)}
-            hint={t('stats.economy.taxesHint')}
-          />
-        </>
-      )}
-
       {wantsPerformance && performance && (
         <>
           <Metric
@@ -305,42 +222,6 @@ export function ServerStats({
         </>
       )}
 
-      {wantsEconomy && economy?.available && (
-        // Отдельной строкой во всю ширину: кнопка обновления и доска
-        // богатства не помещаются в полосу метрик и ломали бы её ритм.
-        <div className="w-full border-t border-border pt-3">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
-            <span>
-              {economy.calculatedAt
-                ? t('stats.economy.countedAt', { time: formatTime(economy.calculatedAt) })
-                : t('stats.economy.countedNow')}
-              {economy.cached ? t('stats.economy.cached') : ''}
-            </span>
-            <Button size="sm" variant="ghost" disabled={economyBusy} onClick={() => void loadEconomy(true)}>
-              {t('common.refresh')}
-            </Button>
-            {(economy.top?.length ?? 0) > 0 && (
-              <Button size="sm" variant="ghost" onClick={() => setShowRich((v) => !v)}>
-                {t(showRich ? 'stats.economy.hideRich' : 'stats.economy.showRich')}
-              </Button>
-            )}
-          </div>
-
-          {showRich && (economy.top?.length ?? 0) > 0 && (
-            <ol className="mt-2 space-y-1">
-              {economy.top!.map((entry, index) => (
-                <li key={entry.uuid} className="flex items-baseline justify-between gap-3 text-xs">
-                  <span className="min-w-0 truncate">
-                    <span className="mr-2 text-muted">{index + 1}.</span>
-                    {entry.name}
-                  </span>
-                  <span className="shrink-0 font-medium">{entry.formatted || entry.balance}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-      )}
     </Card>
   );
 }

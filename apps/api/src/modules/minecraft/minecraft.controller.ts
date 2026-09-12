@@ -293,7 +293,7 @@ export class MinecraftController {
     return this.companion.changePermission(serverId, uuid, dto);
   }
 
-  // ---------- Валюта (Vault) ----------
+  // ---------- Валюта (AurumCore ledger) ----------
   //
   // Просмотр и изменение разведены по разным правам: смотреть баланс полезно
   // и модератору, а начислять деньги — это раздача ценностей.

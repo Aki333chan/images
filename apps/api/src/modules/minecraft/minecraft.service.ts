@@ -321,7 +321,7 @@ export class MinecraftService {
     return uuid;
   }
 
-  // ---------- Валюта (Vault) ----------
+  // ---------- Валюта (AurumCore ledger) ----------
 
   async getBalance(serverId: string, uuid: string): Promise<MinecraftBalanceDto> {
     return this.companion.getBalance(serverId, uuid);
@@ -416,9 +416,9 @@ export class MinecraftService {
   /**
    * Экономика сервера: общий объём денег и доска богатства.
    *
-   * Считается не на каждое открытие страницы. Для Core это один индексированный
-   * запрос, для Vault fallback — обход известных игроков; кэш сохраняет лёгким
-   * и старый режим, а «обновить» пользователь жмёт сам.
+   * Считается не на каждое открытие страницы. Core отдаёт один индексированный
+   * snapshot, а кэш не заставляет пересчитывать его при каждом переходе между
+   * вкладками; свежий снимок пользователь запрашивает явно.
    */
   async getEconomy(serverId: string, options?: { refresh?: boolean }): Promise<MinecraftEconomyDto> {
     const now = Date.now();
@@ -429,7 +429,7 @@ export class MinecraftService {
 
     const fresh = await this.companion.getEconomy(serverId, ECONOMY_TOP_LIMIT);
     if (!fresh.available) {
-      // Отказ не кэшируем: подняли Core или поставили Vault — цифра должна
+      // Отказ не кэшируем: подняли или переключили Core в ACTIVE — цифра должна
       // появиться сразу, а не через пять минут.
       MinecraftService.economyCache.delete(serverId);
       return fresh;

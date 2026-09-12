@@ -1,6 +1,7 @@
 import { useAuth } from '../../lib/auth';
 import type { ModuleTabProps } from '../registry';
 import { EconomyAuditPanel } from './EconomyAuditPanel';
+import { EconomyOverviewPanel } from './EconomyOverviewPanel';
 import { EconomyRulesEditor } from './EconomyRulesEditor';
 
 /**
@@ -13,6 +14,7 @@ export function MinecraftEconomyTab({ serverId }: ModuleTabProps) {
 
   return (
     <div className="space-y-3">
+      <EconomyOverviewPanel serverId={serverId} />
       <EconomyAuditPanel serverId={serverId} />
       {hasPermission('minecraft.economy.admin') ? (
         <EconomyRulesEditor serverId={serverId} />

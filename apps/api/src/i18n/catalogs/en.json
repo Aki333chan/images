@@ -25,6 +25,7 @@
   "mc.err.serverSilent": "The game server did not answer",
   "mc.err.ecoNeedCompanion": "Working with the currency needs the companion plugin on the game server",
   "mc.err.ecoNeedVault": "Working with the currency needs Vault and an economy plugin on the game server",
+  "mc.err.ecoNeedAurumCore": "The currency panel needs AurumCore in ACTIVE mode on the game server",
   "mc.err.ecoNoProvider": "Vault is installed, but no economy plugin has registered a provider",
   "mc.err.ecoUnavailable": "There is no currency on this server",
   "mc.err.amountPositive": "The amount must be greater than zero",

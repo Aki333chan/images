@@ -66,6 +66,9 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  *   POST /players/{uuid}/balance/deposit
  *   POST /players/{uuid}/balance/withdraw
  *   GET  /economy?top=...
+ *   GET  /economy/native?top=...
+ *   GET  /economy/native/balance/{uuid}
+ *   POST /economy/native/balance/{uuid}/{deposit|withdraw}
  *   GET  /jails
  *   GET  /players/{ник}/jail
  *   POST /webtoken/{code}
@@ -525,6 +528,47 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // Нативные маршруты панели экосистемы. Они намеренно НЕ переходят к
+        // Vault: отсутствие active Core должно быть явным отказом, а не
+        // незаметной записью в другой источник баланса.
+        if (parts.length == 2 && parts[0].equals("economy") && parts[1].equals("native")
+                && method.equals("GET")) {
+            Optional<EconomySummary> summary =
+                    bridge.nativeEconomySummary(parseTopLimit(queryParam(exchange, "top")));
+            if (summary.isEmpty()) {
+                respondNoNativeEconomy(exchange);
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.economy(summary.get()));
+            return;
+        }
+
+        if (parts.length == 4 && parts[0].equals("economy") && parts[1].equals("native")
+                && parts[2].equals("balance") && method.equals("GET")) {
+            Optional<BalanceInfo> balance = bridge.nativeBalance(parseUuid(parts[3]));
+            if (balance.isEmpty()) {
+                respondNoNativeEconomy(exchange);
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.balance(balance.get()));
+            return;
+        }
+
+        if (parts.length == 5 && parts[0].equals("economy") && parts[1].equals("native")
+                && parts[2].equals("balance") && method.equals("POST")
+                && (parts[4].equals("deposit") || parts[4].equals("withdraw"))) {
+            UUID uuid = parseUuid(parts[3]);
+            boolean deposit = parts[4].equals("deposit");
+            BalanceMutation mutation = parseBalanceMutation(readBody(exchange), deposit);
+            Optional<BalanceChange> change = bridge.changeNativeBalance(uuid, mutation);
+            if (change.isEmpty()) {
+                respondNoNativeEconomy(exchange);
+                return;
+            }
+            respondBalanceChange(exchange, change.get());
+            return;
+        }
+
         // GET /players/{uuid}/balance — работает и для тех, кого нет в сети
         if (parts.length == 3
                 && parts[0].equals("players")
@@ -556,19 +600,7 @@ public final class CompanionHttpServer {
                 respondNoEconomy(exchange);
                 return;
             }
-            if (change.get().code().equals("unavailable")) {
-                respond(exchange, 503, PayloadWriter.error(change.get().error(), "economy-unavailable"));
-                return;
-            }
-            if (change.get().code().equals("idempotency-conflict")) {
-                respond(exchange, 409, PayloadWriter.error(
-                        "Idempotency key belongs to another operation", "idempotency-conflict"));
-                return;
-            }
-            // Отказ провайдера («не хватает денег») — 200 с ok:false: запрос
-            // корректен, а причина отказа нужна панели целиком, вместе с
-            // балансом до и после, чтобы записать её в аудит.
-            respond(exchange, 200, PayloadWriter.balanceChange(change.get()));
+            respondBalanceChange(exchange, change.get());
             return;
         }
 
@@ -872,6 +904,27 @@ public final class CompanionHttpServer {
             respond(exchange, 404, PayloadWriter.error(
                     "Работа с валютой требует плагина Vault и плагина экономики", "requires-vault"));
         }
+    }
+
+    private void respondNoNativeEconomy(HttpExchange exchange) throws IOException {
+        respond(exchange, 503, PayloadWriter.error(
+                "Active AurumCore economy is unavailable", "requires-aurumcore"));
+    }
+
+    private void respondBalanceChange(HttpExchange exchange, BalanceChange change) throws IOException {
+        if (change.code().equals("unavailable")) {
+            respond(exchange, 503, PayloadWriter.error(change.error(), "economy-unavailable"));
+            return;
+        }
+        if (change.code().equals("idempotency-conflict")) {
+            respond(exchange, 409, PayloadWriter.error(
+                    "Idempotency key belongs to another operation", "idempotency-conflict"));
+            return;
+        }
+        // Отказ провайдера («не хватает денег») — 200 с ok:false: запрос
+        // корректен, а причина отказа нужна панели целиком, вместе с
+        // балансом до и после, чтобы записать её в аудит.
+        respond(exchange, 200, PayloadWriter.balanceChange(change));
     }
 
     /** Больше сотни вариантов в выпадающем списке всё равно бесполезны. */

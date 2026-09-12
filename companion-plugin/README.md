@@ -1,5 +1,14 @@
 # Aurum Companion
 
+## Release 0.11.0
+
+The web panel's balance card, money-supply overview and Richest list now use
+dedicated native AurumCore routes. These routes fail closed when Core is not
+ACTIVE and never scan or mutate Vault accounts. Legacy endpoints remain for
+protocol compatibility, but the panel no longer calls them. The overview was
+moved out of host CPU/RAM metrics into the plugin-gated Minecraft Economy tab;
+it is loaded on open and cached by the panel, with no background polling.
+
 ## Release 0.10.0
 
 The web panel can now list, preview and apply versioned AurumCore financial
@@ -122,10 +131,10 @@ are rate-limited, and allow only one outstanding mutation per player.
 | `GET /plugins` | все установленные плагины: имя, версия, включён ли | Paper API |
 | `GET /players/{uuid}/permissions` | группы и права игрока | LuckPerms |
 | `POST /players/{uuid}/permissions` | выдать или снять группу либо право | LuckPerms |
-| `GET /players/{uuid}/balance` | баланс игрока (в том числе офлайн) | AurumCore, иначе Vault |
-| `POST /players/{uuid}/balance/deposit` | начислить сумму | AurumCore, иначе Vault |
-| `POST /players/{uuid}/balance/withdraw` | списать сумму | AurumCore, иначе Vault |
-| `GET /economy?top=N` | деньги сервера целиком и доска богатства | AurumCore, иначе Vault |
+| `GET /economy/native/balance/{uuid}` | баланс игрока панели (в том числе офлайн) | только active AurumCore |
+| `POST /economy/native/balance/{uuid}/{deposit\|withdraw}` | безопасно начислить/списать из панели | только active AurumCore |
+| `GET /economy/native?top=N` | денежная масса, казна, налоги и богатейшие | только active AurumCore |
+| `GET /players/{uuid}/balance`, `POST .../{deposit\|withdraw}`, `GET /economy` | старый совместимый контракт | AurumCore, иначе Vault |
 | `GET /economy/audit/{section}` | один ограниченный срез ledger/правил/holds/claims | только active AurumCore |
 | `GET /economy/rules/{policy\|exchange}` | актуальные ревизии финансовых правил | только active AurumCore |
 | `POST /economy/rules/{policy\|exchange}/preview` | проверить полную новую ревизию и получить одноразовый токен | только active AurumCore |

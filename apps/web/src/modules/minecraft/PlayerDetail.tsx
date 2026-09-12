@@ -202,7 +202,7 @@ export function PlayerDetail({
           {/* Валюта — отдельным блоком, а не четвёртой вкладкой: на телефоне
               вкладки и так делят ширину поровну, и четвёртая сделала бы
               подписи нечитаемыми. */}
-          {bukkit && hasPermission('minecraft.economy.view') && (
+          {bukkit && has('AurumCore') && hasPermission('minecraft.economy.view') && (
             <div className="space-y-2 border-t border-border pt-4">
               <Label>{t('mc.pd.balance')}</Label>
               {player.uuid ? (

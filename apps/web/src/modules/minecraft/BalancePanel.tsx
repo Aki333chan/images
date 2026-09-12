@@ -8,9 +8,9 @@ import { useApiText, useT } from '../../i18n';
 /**
  * Блок «Валюта» в карточке игрока.
  *
- * При ACTIVE работает прямо через AurumCore, иначе — через совместимый Vault
- * fallback. Панель не разговаривает с конкретным старым провайдером и
- * показывает точную причину, если экономика недоступна.
+ * Работает строго через active ledger AurumCore. Vault остаётся API-мостом
+ * для сторонних игровых плагинов, но панель не откатывается к нему скрыто:
+ * оператор всегда читает и изменяет единственный источник истины.
  *
  * Каждое начисление и списание уходит в журнал аудита на бэкенде — вместе с
  * суммой, причиной и балансом до и после. Здесь это только сообщается
@@ -111,11 +111,11 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
 
   if (!data && !error) return <Spinner />;
 
-  // Валюты на сервере нет. Показываем причину и оставляем поля видимыми, но
-  // неактивными — так понятно, что появится после установки Vault.
+  // Active Core временно недоступен. Поля остаются видимыми, но неактивными:
+  // оператор видит, какая возможность вернётся после восстановления ledger.
   const unavailable = !data?.available;
-  const hint = apiText(data?.reason) || t('mc.bal.needVault');
-  const shortHint = t(data?.code === 'no-companion' ? 'mc.bal.needCompanion' : 'mc.bal.needVault');
+  const hint = apiText(data?.reason) || t('mc.bal.needAurumCore');
+  const shortHint = t(data?.code === 'no-companion' ? 'mc.bal.needCompanion' : 'mc.bal.needAurumCore');
 
   return (
     <div className="space-y-3">

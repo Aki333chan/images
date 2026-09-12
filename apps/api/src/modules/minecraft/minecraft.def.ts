@@ -99,7 +99,7 @@ export const minecraftManifest: GameModuleManifest = {
     },
     {
       key: MINECRAFT_PERMISSIONS.economyView,
-      description: 'Просмотр баланса игроков и экономики сервера (AurumCore/Vault)',
+      description: 'Просмотр баланса игроков и экономики active ledger AurumCore',
       defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {

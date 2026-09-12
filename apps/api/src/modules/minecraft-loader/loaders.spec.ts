@@ -62,6 +62,14 @@ describe('манифесты загрузчиков', () => {
     expect(minecraftManifest.capabilities.tickets).toBe(true);
     expect(minecraftManifest.capabilities.economy).toBe('requires-plugin');
   });
+
+  it('финансы Paper разделяют просмотр и изменение по ролям', () => {
+    const roles = (key: string) =>
+      minecraftManifest.permissions.find((permission) => permission.key === key)?.defaultRoles;
+
+    expect(roles('minecraft.economy.view')).toEqual(['ADMIN', 'MODERATOR']);
+    expect(roles('minecraft.economy.admin')).toEqual(['ADMIN']);
+  });
 });
 
 describe('изоляция прав между модулями', () => {

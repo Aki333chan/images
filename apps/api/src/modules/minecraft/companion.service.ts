@@ -669,15 +669,15 @@ export class CompanionService {
 
   // ---------------------------------------------------------- Экономика
   //
-  // В ACTIVE запись и чтение идут прямо через AurumCore; если его нет или он
-  // в SHADOW, сохраняется совместимый Vault fallback. Панель различает
-  // отсутствие Companion, Vault и его провайдера, а также временный отказ
-  // ledger: один общий текст заставил бы администратора искать вслепую.
+  // Панель экосистемы работает строго через active ledger AurumCore. Vault
+  // остаётся совместимым мостом для сторонних игровых плагинов, но не является
+  // запасным источником данных панели: молчаливый fallback мог бы показать
+  // или изменить другой баланс.
 
   /** Баланс игрока по UUID. Работает и для тех, кого сейчас нет в сети. */
   async getBalance(serverId: string, uuid: string): Promise<MinecraftBalanceDto> {
     if (!(await this.isConfigured(serverId))) return economyFailure('no-companion', null);
-    const result = await this.callRaw<RawBalance>(serverId, `/players/${uuid}/balance`);
+    const result = await this.callRaw<RawBalance>(serverId, `/economy/native/balance/${uuid}`);
     if (!result.ok) return economyFailure(result.code, result.error);
     return {
       available: true,
@@ -718,7 +718,7 @@ export class CompanionService {
     }
     const result = await this.callRaw<RawBalanceChange>(
       serverId,
-      `/players/${uuid}/balance/${direction}`,
+      `/economy/native/balance/${uuid}/${direction}`,
       { method: 'POST', body: { amount, idempotencyKey, actor, reason } },
     );
     if (!result.ok) {
@@ -727,6 +727,14 @@ export class CompanionService {
         failure: economyFailure(result.code, result.error),
         operationCode: result.code,
         status: result.status,
+      };
+    }
+    if (result.body.source !== 'aurum') {
+      return {
+        ok: false,
+        failure: economyFailure('requires-aurumcore', null),
+        operationCode: 'economy-unavailable',
+        status: 503,
       };
     }
     return {
@@ -739,7 +747,7 @@ export class CompanionService {
         formatted: result.body.formatted ?? undefined,
         code: result.body.code ?? undefined,
         idempotencyKey: result.body.idempotencyKey ?? idempotencyKey,
-        source: result.body.source === 'aurum' ? 'aurum' : 'vault',
+        source: 'aurum',
         duplicate: result.body.duplicate === true,
       },
     };
@@ -908,22 +916,20 @@ export class CompanionService {
   /**
    * Экономика сервера целиком.
    *
-   * Таймаут здесь заметно больше обычного: плагин обходит всех, кто когда-либо
-   * заходил на сервер, и у некоторых провайдеров это поход в базу на каждого.
-   * Запрос редкий — панель держит результат в кэше.
+   * Нативный snapshot — индексированные агрегаты ledger и ограниченный top.
+   * Никакого обхода OfflinePlayer и Vault fallback этот маршрут не делает.
    */
   async getEconomy(serverId: string, top: number): Promise<MinecraftEconomyDto> {
     if (!(await this.isConfigured(serverId))) return economyFailure('no-companion', null);
-    const result = await this.callRaw<RawEconomy>(serverId, `/economy?top=${top}`, {
-      timeoutMs: 40_000,
+    const result = await this.callRaw<RawEconomy>(serverId, `/economy/native?top=${top}`, {
+      timeoutMs: 8_000,
     });
     if (!result.ok) return economyFailure(result.code, result.error);
-    // Плагин старой версии про источник не знает — значит Vault: ledger он
-    // отдать не мог физически.
     const ledger = result.body.source === 'aurum';
+    if (!ledger) return economyFailure('requires-aurumcore', null);
     return {
       available: true,
-      source: ledger ? 'aurum' : 'vault',
+      source: 'aurum',
       total: numberOr(result.body.total, 0),
       totalFormatted: result.body.totalFormatted ?? undefined,
       currency: result.body.currency ?? undefined,
@@ -933,16 +939,12 @@ export class CompanionService {
       ...(typeof result.body.playersCounted === 'number'
         ? { playersCounted: result.body.playersCounted }
         : {}),
-      ...(ledger
-        ? {
-            treasury: numberOr(result.body.treasury, 0),
-            treasuryFormatted: result.body.treasuryFormatted ?? undefined,
-            moneySupply: numberOr(result.body.moneySupply, 0),
-            moneySupplyFormatted: result.body.moneySupplyFormatted ?? undefined,
-            taxesCollected: numberOr(result.body.taxesCollected, 0),
-            taxesFormatted: result.body.taxesFormatted ?? undefined,
-          }
-        : {}),
+      treasury: numberOr(result.body.treasury, 0),
+      treasuryFormatted: result.body.treasuryFormatted ?? undefined,
+      moneySupply: numberOr(result.body.moneySupply, 0),
+      moneySupplyFormatted: result.body.moneySupplyFormatted ?? undefined,
+      taxesCollected: numberOr(result.body.taxesCollected, 0),
+      taxesFormatted: result.body.taxesFormatted ?? undefined,
       top: (result.body.top ?? [])
         .filter((e): e is Required<RawTopEntry> => typeof e.uuid === 'string' && typeof e.name === 'string')
         .map((e) => ({
@@ -1356,12 +1358,19 @@ function toRuleApply(value: unknown): MinecraftEconomyRuleApplyDto | null {
 function economyFailure(
   code: string | null,
   error: string | null,
-): { available: false; code: 'no-companion' | 'requires-vault' | 'no-provider' | 'error'; reason: string } {
+): { available: false; code: 'no-companion' | 'requires-aurumcore' | 'requires-vault' | 'no-provider' | 'error'; reason: string } {
   if (code === 'no-companion') {
     return {
       available: false,
       code: 'no-companion',
       reason: 'mc.err.ecoNeedCompanion',
+    };
+  }
+  if (code === 'requires-aurumcore') {
+    return {
+      available: false,
+      code: 'requires-aurumcore',
+      reason: 'mc.err.ecoNeedAurumCore',
     };
   }
   if (code === 'requires-vault') {
