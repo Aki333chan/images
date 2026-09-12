@@ -166,5 +166,7 @@
    provider, а Core запускают с новым пустым ledger без shadow-import. Fresh cutover
    разрешается один раз через `active.require-verified-migration: false`; после успешного
    старта настройка возвращается в `true`.
-9. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
-    сбои БД/рестарты, Spark и финальная инструкция переключения Essentials.
+9. [~] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
+    сбои БД/рестарты и Spark. Финальная инструкция переключения Essentials и fresh-ledger
+    cutover подготовлена в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md`; live-прогон ещё
+    предстоит.

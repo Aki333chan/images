@@ -187,7 +187,7 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Runbook чистого первого развёртывания и полный staging.**
+**Живой staging чистого первого развёртывания.**
 
 Безопасный абсолютный `set` закрыт в Core 0.16.0 и Companion 0.12.0. Панель передаёт
 показанный expected и target; Core сравнивает и проводит под одной MariaDB-транзакцией.
@@ -214,9 +214,14 @@ Essentials economy provider не удалять до проверки откат
 ценные Guilds/Slots данные, оценить их отдельно до удаления, не возвращаясь к универсальной
 миграции.
 
-Следующая работа: подготовить точный runbook с версиями JAR, конфигами MariaDB/Core,
-порядком обновления панели и плагинов, командами проверки и отката. После этого выполнить
-полный staging Paper 26.2 + MariaDB + VaultUnlocked с fault injection и Spark.
+Точный runbook подготовлен в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md`. Он фиксирует
+версии JAR, отдельную пустую логическую MariaDB для Core, резервные копии, обновление
+панели, три запуска Minecraft (passive, первый active, контрольный active с закрытым
+gate), команды проверки и откат. Проверенный локальный staging-комплект лежит в
+`outputs/aurum-ecosystem-staging-2026-09-12` вместе с `SHA256SUMS.txt`.
+
+Следующая работа: выполнить этот runbook на Paper 26.2 + MariaDB + VaultUnlocked,
+собрать фактические логи каждого запуска, затем провести fault injection и Spark.
 
 `trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. Не выпущены в
 Addons (JAR собраны, тегов и релизов нет): AurumCore 0.16.0, AddonsNPC 2.1.0,
@@ -224,13 +229,30 @@ AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.12.0, AurumUI 0.7.0.
 
 ## Очередь после текущего этапа
 
-1. Точный runbook первого развёртывания: обнуление тестовых Vault-счетов, backup, состав
-   пакета, новая MariaDB schema, fresh active cutover, обновление панели и rollback.
+1. Выполнить `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md` на остановленном тестовом сервере,
+   проверить панель и базовые проводки, зафиксировать логи/версии/backup baseline.
 2. Полный staging Paper 26.2 + MariaDB + VaultUnlocked: fault injection, Spark и проверка
    package installer/cutover.
 3. После успешного staging — синхронизация Addons, теги, GitHub Releases и `.sha256`.
 
 ## Журнал передачи
+
+### 2026-09-12 — Codex, runbook первого live cutover
+
+- Подготовлен `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md`: отдельная пустая логическая
+  MariaDB для Core на том же DB-сервере, backup файлов/MariaDB/PostgreSQL, обновление
+  панели, ручная установка staging JAR, passive → active → closed-gate последовательность,
+  smoke checks и rollback.
+- Для fresh ledger `active.require-verified-migration: false` применяется только в
+  `plugins/AurumCore/config.yml` перед первым active-запуском; после успешной проверки
+  возвращается `true`. Сервер не открывается игрокам до контрольного третьего запуска.
+- Собран единый локальный комплект семи серверных JAR в
+  `outputs/aurum-ecosystem-staging-2026-09-12`; фактические SHA-256 сверены и записаны в
+  `SHA256SUMS.txt`. Addons/release по-прежнему не публиковались до живого staging.
+- Повторно собраны и прошли тесты: Arena 25, NPC 58, Slots 13; Guilds и Auth — все тесты.
+  Core 74 и Companion 170 были проверены на предыдущем этапе.
+- Следующая работа — пользовательский live cutover по runbook, затем fault injection,
+  Spark и только после этого публикация Addons package.
 
 ### 2026-09-12 — решение о чистом первом развёртывании
 
