@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Bukkit;
@@ -24,7 +25,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.ClaimRequest;
 import ovh.aurumgg.core.api.HoldResult;
+import ovh.aurumgg.core.api.HoldSnapshot;
 import ovh.aurumgg.core.api.TransactionCategory;
 
 public final class ShopService implements Listener {
@@ -32,16 +35,16 @@ public final class ShopService implements Listener {
     private final ShopRepository repository;
     private final EconomyService economy;
     private final MessageService messages;
-    private final NpcSagaRepository sagas;
+    private final ClaimDelivery delivery;
     private final Set<UUID> pending = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public ShopService(JavaPlugin plugin, ShopRepository repository, EconomyService economy,
-                       MessageService messages, NpcSagaRepository sagas) {
+                       MessageService messages, ClaimDelivery delivery) {
         this.plugin = plugin;
         this.repository = repository;
         this.economy = economy;
         this.messages = messages;
-        this.sagas = sagas;
+        this.delivery = delivery;
     }
 
     public void open(Player player, String shopId) {
@@ -162,6 +165,24 @@ public final class ShopService implements Listener {
                         price, holder, result, error)));
     }
 
+    /**
+     * The money is reserved. Now write down what is owed — and only then hand
+     * anything over.
+     *
+     * <h2>Why the order changed in 2.0.0</h2>
+     *
+     * This used to give the items first and mark the journal afterwards. A
+     * crash between those two lines left a reservation the restarted plugin
+     * believed had never been applied: it released the money, and the player
+     * kept the goods for free. Post-purchase commands were worse — they ran
+     * after capture and vanished with the process, and re-running an arbitrary
+     * console command blindly is not safe either.
+     *
+     * Now the claim is written while the funds are still only reserved, and
+     * everything after that — collecting the money, the item, each command —
+     * is a step Core remembers. Nothing is handed over without a durable record
+     * of it, and a restart resumes at the step that never ran.
+     */
     private void reservedPurchase(Player player, String shopId, int slot, double reservedPrice, ShopHolder holder,
                                   HoldResult result, Throwable error) {
         if (error != null || result == null || (result.status() != HoldResult.Status.SUCCESS
@@ -171,66 +192,82 @@ public final class ShopService implements Listener {
                     ? "insufficient-funds" : "purchase-failed");
             return;
         }
-        NpcSaga saga;
-        try { saga = sagas.begin(NpcSaga.Kind.SHOP_PURCHASE, player.getUniqueId(), result.hold().orElseThrow()); }
-        catch (RuntimeException failure) {
-            plugin.getLogger().log(java.util.logging.Level.SEVERE, "Could not journal NPC shop purchase", failure);
-            economy.release(NpcSaga.held(NpcSaga.Kind.SHOP_PURCHASE, player.getUniqueId(), result.hold().orElseThrow()));
-            pending.remove(player.getUniqueId());
-            messages.send(player, "purchase-failed");
-            return;
-        }
+        HoldSnapshot hold = result.hold().orElseThrow();
         ShopDefinition shop = repository.get(shopId);
         ShopOffer offer = shop == null ? null : shop.offers().get(slot);
         long now = System.currentTimeMillis();
         ActivePrice price = offer == null ? null : activePrice(shop, offer, now);
         if (offer == null || !offer.available() || Math.abs(price.finalPrice() - reservedPrice) > 0.0000001
                 || !canFit(player.getInventory().getStorageContents(), offer.product())) {
-            releaseFailed(saga, player, "shop-price-changed");
+            releaseHold(hold, player, "shop-price-changed");
             return;
         }
-        ItemStack reward = offer.product();
-        int stockBefore = offer.stock();
-        Map<String, Object> values = placeholders(player, offer, price, economy.balance(player), now);
-        try {
-            HashMap<Integer, ItemStack> leftovers = player.getInventory().addItem(reward);
-            if (!leftovers.isEmpty()) {
-                throw new IllegalStateException("Inventory changed during purchase");
-            }
-            offer.consume();
-            repository.save();
-            NpcSaga applied = sagas.markApplied(saga);
-            economy.capture(applied).whenComplete((capture, failure) -> runMain(() -> {
-                pending.remove(player.getUniqueId());
-                if (failure == null && capture != null && (capture.status() == HoldResult.Status.SUCCESS
-                        || capture.status() == HoldResult.Status.DUPLICATE)) {
-                    for (String command : offer.commands()) try {
-                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
-                                stripSlash(MessageService.replace(command, values)));
-                    } catch (RuntimeException commandError) {
-                        plugin.getLogger().warning("Shop post-purchase command failed: " + commandError.getMessage());
-                    }
-                    sagas.complete(applied);
-                    refreshOffer(player, holder, shop, offer);
-                    player.updateInventory();
-                    messages.send(player, "purchase-success", values);
-                } else if (capture != null && capture.status() != HoldResult.Status.UNAVAILABLE) {
-                    offer.stock(stockBefore); repository.save(); player.getInventory().removeItem(reward);
-                    economy.release(applied); sagas.complete(applied); player.updateInventory();
-                    messages.send(player, "purchase-failed");
-                } else {
-                    plugin.getLogger().warning("NPC shop purchase " + applied.id()
-                            + " is awaiting AurumCore recovery");
-                    messages.send(player, "purchase-failed");
-                }
-            }));
-        } catch (RuntimeException exception) {
-            offer.stock(stockBefore);
-            player.getInventory().removeItem(reward);
-            economy.release(saga); sagas.complete(saga); pending.remove(player.getUniqueId());
-            plugin.getLogger().warning("Rolled back purchase for " + player.getName() + ": " + exception.getMessage());
-            messages.send(player, "purchase-failed");
+        if (!delivery.available()) {
+            // Without the claim store there is nowhere to record the debt, and
+            // handing goods over first is exactly the failure 2.0.0 exists to
+            // remove. Refusing the sale is the only honest answer.
+            releaseHold(hold, player, "delivery-unavailable");
+            return;
         }
+
+        Map<String, Object> values = placeholders(player, offer, price, economy.balance(player), now);
+        List<String> commands = offer.commands().stream()
+                // Substituted now, while the price that was paid is still the
+                // current one. Resolving them at delivery time would describe
+                // tomorrow's balance and today's promise.
+                .map(command -> stripSlash(MessageService.replace(command, values)))
+                .toList();
+        PurchaseClaim purchase = new PurchaseClaim(Optional.of(hold.idempotencyKey()), shop.id(),
+                offer.slot(), offer.product(), commands);
+
+        // Stock goes down here, with the debt: from this point the player is
+        // going to be charged. Only the path that discovers nobody was charged
+        // puts it back (see ShopDelivery.abandon).
+        int stockBefore = offer.stock();
+        offer.consume();
+        repository.save();
+
+        ClaimRequest request;
+        try {
+            request = new ClaimRequest("npc-shop-claim:" + hold.idempotencyKey(), ClaimGateway.PLUGIN,
+                    player.getUniqueId(), ShopPlan.KIND, purchase.stepCount(), purchase.summary(),
+                    purchase.encode());
+        } catch (IllegalArgumentException invalid) {
+            plugin.getLogger().warning("Could not describe NPC purchase as a claim: " + invalid.getMessage());
+            offer.stock(stockBefore);
+            repository.save();
+            releaseHold(hold, player, "purchase-failed");
+            return;
+        }
+
+        ShopDefinition target = shop;
+        ShopOffer bought = offer;
+        delivery.promise(request).whenComplete((promised, failure) -> runMain(() -> {
+            pending.remove(player.getUniqueId());
+            if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
+                // Nothing was charged and nothing was promised: undo the shelf
+                // and let the reservation go.
+                bought.stock(stockBefore);
+                repository.save();
+                releaseHold(hold, player, "purchase-failed");
+                return;
+            }
+            refreshOffer(player, holder, target, bought);
+            messages.send(player, "purchase-success", values);
+            // Delivery from here on is Core's record, not this method's: even
+            // if the server dies on the next line, the claim survives and the
+            // player is served on their next login.
+            delivery.deliver(player, promised.claim().orElseThrow(),
+                    new ShopPlan(plugin, economy, messages, repository, delivery, purchase));
+        }));
+    }
+
+    /** Let a reservation go: no money moved, so there is nothing to undo but the message. */
+    private void releaseHold(HoldSnapshot hold, Player player, String message) {
+        economy.release(hold).whenComplete((ignored, error) -> runMain(() -> {
+            pending.remove(player.getUniqueId());
+            messages.send(player, message);
+        }));
     }
 
     private void applyFreePurchase(Player player, ShopDefinition shop, ShopOffer offer,
@@ -249,11 +286,6 @@ public final class ShopService implements Listener {
             offer.stock(stockBefore); player.getInventory().removeItem(reward); repository.save();
             messages.send(player, "purchase-failed");
         }
-    }
-
-    private void releaseFailed(NpcSaga saga, Player player, String message) {
-        economy.release(saga).whenComplete((ignored, error) -> sagas.complete(saga));
-        pending.remove(player.getUniqueId()); messages.send(player, message);
     }
 
     private void refreshOffer(Player player, ShopHolder holder, ShopDefinition shop, ShopOffer offer) {

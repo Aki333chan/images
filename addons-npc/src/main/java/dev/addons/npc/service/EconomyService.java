@@ -79,11 +79,77 @@ public final class EconomyService {
         return current == null ? unavailable() : current.captureHold(saga.holdId(), saga.captureRequest());
     }
 
+    /**
+     * Look a hold up by the key the claim remembers.
+     *
+     * <p>Delivery captures from the snapshot Core returns, never from values it
+     * kept itself: Core refuses a capture whose from, to, currency, amount,
+     * category or metadata differ from the reservation by even one entry, and a
+     * refusal AFTER the player's money is reserved is the worst possible moment
+     * to discover a mismatch.
+     */
+    public CompletionStage<java.util.Optional<ovh.aurumgg.core.api.HoldSnapshot>> hold(String key) {
+        AurumEconomyApi current = aurum;
+        return current == null
+                ? CompletableFuture.completedFuture(java.util.Optional.empty())
+                : current.hold(key);
+    }
+
+    /** Capture exactly what was reserved, under a key stable for this claim. */
+    public CompletionStage<HoldResult> capture(ovh.aurumgg.core.api.HoldSnapshot hold, String key) {
+        AurumEconomyApi current = aurum;
+        if (current == null) return unavailable();
+        return current.captureHold(hold.id(), new ovh.aurumgg.core.api.TransactionRequest(
+                key, hold.from(), hold.to(), hold.currency().id(), hold.amount(), hold.category(),
+                hold.metadata()));
+    }
+
     public CompletionStage<HoldResult> release(NpcSaga saga) {
         AurumEconomyApi current = aurum;
         return current == null ? unavailable() : current.releaseHold(saga.holdId());
     }
 
+    /**
+     * Pay a player from a system source, once.
+     *
+     * <p>No reservation: a buyer pays from {@code SYSTEM_SOURCE:npc-buyers},
+     * and the ledger treats a system source as always funded, so there is
+     * nothing to prove in advance. The idempotency key is what makes a repeat
+     * safe, and unlike a hold it does not expire — which matters, because the
+     * repeat may happen a restart later.
+     */
+    public CompletionStage<ovh.aurumgg.core.api.TransactionResult> pay(
+            String key, AccountId from, AccountId to, BigDecimal amount,
+            TransactionCategory category, Map<String, String> metadata) {
+        AurumEconomyApi current = aurum;
+        if (current == null) {
+            return CompletableFuture.completedFuture(new ovh.aurumgg.core.api.TransactionResult(
+                    ovh.aurumgg.core.api.TransactionResult.Status.UNAVAILABLE, key,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "AurumCore is unavailable"));
+        }
+        return current.transfer(new ovh.aurumgg.core.api.TransactionRequest(
+                key, from, to, currencyId(), amount, category, metadata));
+    }
+
+    /** Release a reservation the plugin never wrote a saga for. */
+    public CompletionStage<HoldResult> release(ovh.aurumgg.core.api.HoldSnapshot hold) {
+        AurumEconomyApi current = aurum;
+        return current == null ? unavailable() : current.releaseHold(hold.id());
+    }
+
+    /**
+     * Дочистить операции, застрявшие на момент обновления до 2.0.0.
+     *
+     * Новых записей в журнале не появляется: всё, что начинается сейчас, держит
+     * AurumCore заявкой. Здесь разбираются только те, что были начаты старой
+     * версией, — по тому же правилу, по которому она их и разбирала.
+     *
+     * Гильдейский бонус — единственный случай, где «применено ли» приходится
+     * опознавать по подписи `guild-actor` на самом бонусе. Ровно из-за
+     * ненадёжности этого приёма (истёкший бонус выглядит невыданным) гильдейские
+     * торговцы и переведены на заявки; здесь он остаётся лишь потому, что
+     * старые записи другого способа не оставили.
+     */
     public void recover(NpcSagaRepository sagas, AurumGuildsHook guilds) {
         if (!available() && !hook()) return;
         for (NpcSaga saga : sagas.all()) {

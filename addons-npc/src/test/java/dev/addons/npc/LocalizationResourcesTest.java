@@ -27,6 +27,23 @@ class LocalizationResourcesTest {
         }
     }
 
+    /**
+     * Точечные проверки выше ловят только то, о чём кто-то вспомнил. Настоящая
+     * поломка выглядит иначе: добавили ключ в en, забыли в ru и pl, и игрок
+     * видит сырой ключ вместо фразы. Английский здесь — эталон, потому что
+     * именно он заполняется первым.
+     */
+    @Test
+    void everyEnglishKeyExistsInEveryOtherLocale() {
+        YamlConfiguration english = load("/locales/en.yml");
+        var expected = english.getKeys(true);
+        for (String code : new String[]{"pl", "ru"}) {
+            YamlConfiguration locale = load("/locales/" + code + ".yml");
+            var missing = expected.stream().filter(key -> !locale.contains(key)).sorted().toList();
+            assertEquals(java.util.List.of(), missing, "в " + code + ".yml не хватает ключей");
+        }
+    }
+
     private static YamlConfiguration load(String resource) {
         var stream = LocalizationResourcesTest.class.getResourceAsStream(resource);
         assertNotNull(stream, resource);

@@ -23,26 +23,23 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
-import ovh.aurumgg.core.api.AccountId;
-import ovh.aurumgg.core.api.AccountType;
-import ovh.aurumgg.core.api.HoldResult;
-import ovh.aurumgg.core.api.TransactionCategory;
+import ovh.aurumgg.core.api.ClaimRequest;
 
 public final class BuyerService implements Listener {
     private final JavaPlugin plugin;
     private final BuyerRepository repository;
     private final EconomyService economy;
     private final MessageService messages;
-    private final NpcSagaRepository sagas;
+    private final ClaimDelivery delivery;
     private final Set<UUID> transactions = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public BuyerService(JavaPlugin plugin, BuyerRepository repository, EconomyService economy,
-                        MessageService messages, NpcSagaRepository sagas) {
+                        MessageService messages, ClaimDelivery delivery) {
         this.plugin = plugin;
         this.repository = repository;
         this.economy = economy;
         this.messages = messages;
-        this.sagas = sagas;
+        this.delivery = delivery;
     }
 
     public void open(Player player, String buyerId) {
@@ -141,6 +138,28 @@ public final class BuyerService implements Listener {
         if (event.getInventory().getHolder() instanceof BuyerHolder) event.setCancelled(true);
     }
 
+    /**
+     * Записать долг, а потом забрать предметы — и никогда наоборот.
+     *
+     * <h2>Что здесь было не так</h2>
+     *
+     * Прежний порядок был: зарезервировать выплату, забрать предметы, отметить
+     * журнал, списать. Авария между «забрали» и «отметили» оставляла резерв,
+     * который перезапущенный плагин считал неприменённым: он освобождал деньги,
+     * а предметы игрока уже были забраны. Терялось имущество ИГРОКА, и
+     * восстановить его было не из чего.
+     *
+     * <h2>Почему резерв вообще исчез</h2>
+     *
+     * Резерв доказывал, что деньги есть. Доказывать нечего: скупщик платит из
+     * {@code SYSTEM_SOURCE:npc-buyers}, а системный источник в ledger считается
+     * обеспеченным всегда. На деле резерв работал обещанием — и плохим, потому
+     * что обещание с TTL истекает ровно тогда, когда сервер лежит.
+     *
+     * Заявка — это то обещание, которым резерв притворялся, и она не истекает.
+     * Поэтому holds здесь больше нет, выплата стала обычной идемпотентной
+     * проводкой, а порядок «сначала запись, потом предметы» держит заявка.
+     */
     private void sell(Player player, BuyerDefinition buyer, BuyerOffer offer,
                       SaleMode mode, TimedPercentage bonus, long now) {
         if (!transactions.add(player.getUniqueId())) return;
@@ -149,6 +168,11 @@ public final class BuyerService implements Listener {
         }
         if (!economy.available() && !economy.hook()) {
             transactions.remove(player.getUniqueId()); messages.send(player, "aurum-economy-unavailable"); return;
+        }
+        if (!delivery.available()) {
+            // Записать долг некуда. Забрать предметы и понадеяться — ровно то,
+            // от чего заявки и избавляют.
+            transactions.remove(player.getUniqueId()); messages.send(player, "delivery-unavailable"); return;
         }
         int available = countMatching(player.getInventory().getStorageContents(), offer);
         SaleQuote quoted = offer.quote(mode, available);
@@ -160,101 +184,57 @@ public final class BuyerService implements Listener {
         }
         double basePayout = quoted.payout();
         SaleQuote finalQuote = new SaleQuote(quoted.amount(), bonus.bonus(basePayout, now));
-        String operation = UUID.randomUUID().toString();
-        Map<String, String> metadata = Map.of("plugin", "AddonsNPC", "operation", operation,
-                "buyer", buyer.id(), "offer-slot", Integer.toString(offer.slot()));
-        economy.reserve("npc-buyer:" + operation,
-                new AccountId(AccountType.SYSTEM_SOURCE, "npc-buyers"), AccountId.player(player.getUniqueId()),
-                finalQuote.payout(), TransactionCategory.NPC_SALE, "npc-buyer",
-                buyer.id() + ":" + offer.slot(), metadata).whenComplete((result, error) -> runMain(() ->
-                reservedSale(player, buyer.id(), offer.slot(), mode, finalQuote, basePayout, result, error)));
-    }
+        java.math.BigDecimal payout = economy.amount(finalQuote.payout());
+        if (payout.signum() <= 0) {
+            transactions.remove(player.getUniqueId()); messages.send(player, "buyer-sale-failed"); return;
+        }
 
-    private void reservedSale(Player player, String buyerId, int slot, SaleMode mode, SaleQuote reserved,
-                              double basePayout, HoldResult result, Throwable error) {
-        if (error != null || result == null || (result.status() != HoldResult.Status.SUCCESS
-                && result.status() != HoldResult.Status.DUPLICATE) || result.hold().isEmpty()) {
+        Map<String, Object> values = new HashMap<>(placeholders(offer, finalQuote.amount(),
+                finalQuote.payout(), bonus, now));
+        values.put("base_price", economy.format(basePayout));
+        values.put("player", player.getName());
+        values.put("balance", economy.format(economy.balance(player)));
+        List<String> commands = offer.commands().stream()
+                .map(command -> stripSlash(MessageService.replace(command, values)))
+                .toList();
+
+        String operation = UUID.randomUUID().toString();
+        SaleClaim sale = new SaleClaim(operation, buyer.id(), offer.slot(), finalQuote.amount(),
+                payout, now + saleDeadlineMillis(), commands);
+        ClaimRequest request;
+        try {
+            request = new ClaimRequest("npc-buyer-claim:" + operation, ClaimGateway.PLUGIN,
+                    player.getUniqueId(), BuyerPlan.KIND, sale.stepCount(), sale.summary(), sale.encode());
+        } catch (IllegalArgumentException invalid) {
+            plugin.getLogger().warning("Could not describe NPC sale as a claim: " + invalid.getMessage());
             transactions.remove(player.getUniqueId()); messages.send(player, "buyer-sale-failed"); return;
         }
-        NpcSaga saga;
-        try { saga = sagas.begin(NpcSaga.Kind.BUYER_SALE, player.getUniqueId(), result.hold().orElseThrow()); }
-        catch (RuntimeException failure) {
-            economy.release(NpcSaga.held(NpcSaga.Kind.BUYER_SALE, player.getUniqueId(), result.hold().orElseThrow()));
-            transactions.remove(player.getUniqueId()); messages.send(player, "buyer-sale-failed"); return;
-        }
-        BuyerDefinition buyer = repository.get(buyerId);
-        BuyerOffer offer = buyer == null ? null : buyer.offers().get(slot);
-        long now = System.currentTimeMillis();
-        TimedPercentage bonus = offer == null ? TimedPercentage.none() : activeBonus(buyer, offer, now);
-        ItemStack[] contents = player.getInventory().getStorageContents();
-        int available = offer == null ? 0 : countMatching(contents, offer);
-        SaleQuote current = offer == null ? null : offer.quote(mode, available);
-        if (current != null) current = new SaleQuote(current.amount(), bonus.bonus(current.payout(), now));
-        if (current == null || current.amount() != reserved.amount()
-                || economy.amount(current.payout()).compareTo(economy.amount(reserved.payout())) != 0) {
-            economy.release(saga).whenComplete((ignored, failure) -> sagas.complete(saga));
-            transactions.remove(player.getUniqueId()); messages.send(player, "buyer-sale-failed"); return;
-        }
-        ItemStack[] snapshot = cloneContents(contents);
-        if (removeMatching(contents, offer, current.amount()) != current.amount()) {
-            economy.release(saga).whenComplete((ignored, failure) -> sagas.complete(saga));
-            transactions.remove(player.getUniqueId()); messages.send(player, "buyer-sale-failed"); return;
-        }
-        List<ItemStack> removedItems = removedItems(snapshot, contents);
-        player.getInventory().setStorageContents(contents);
-        NpcSaga applied;
-        try { applied = sagas.markApplied(saga); }
-        catch (RuntimeException failure) {
-            restoreItems(player, removedItems); economy.release(saga);
-            transactions.remove(player.getUniqueId()); messages.send(player, "buyer-sale-failed"); return;
-        }
-        Map<String, Object> values = new HashMap<>(placeholders(offer, current.amount(), current.payout(), bonus, now));
-        values.put("base_price", economy.format(basePayout)); values.put("player", player.getName());
-        economy.capture(applied).whenComplete((capture, failure) -> runMain(() -> {
+
+        delivery.promise(request).whenComplete((promised, failure) -> runMain(() -> {
             transactions.remove(player.getUniqueId());
-            if (failure == null && capture != null && (capture.status() == HoldResult.Status.SUCCESS
-                    || capture.status() == HoldResult.Status.DUPLICATE)) {
-                sagas.complete(applied); values.put("balance", economy.format(economy.balance(player)));
-                for (String command : offer.commands()) try {
-                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), stripSlash(MessageService.replace(command, values)));
-                } catch (RuntimeException commandError) {
-                    plugin.getLogger().warning("Buyer post-sale command failed: " + commandError.getMessage());
-                }
-                player.updateInventory(); messages.send(player, "buyer-sale-success", values);
-            } else if (capture != null && capture.status() != HoldResult.Status.UNAVAILABLE) {
-                restoreItems(player, removedItems); economy.release(applied); sagas.complete(applied);
-                player.updateInventory(); messages.send(player, "buyer-sale-failed");
-            } else {
-                plugin.getLogger().warning("NPC buyer sale " + applied.id() + " is awaiting AurumCore recovery");
+            if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
+                // Ничего не записано и ничего не забрано: продажи не было.
                 messages.send(player, "buyer-sale-failed");
+                return;
             }
+            messages.send(player, "buyer-sale-success", values);
+            // Дальше всё держит запись в Core: даже если сервер умрёт на
+            // следующей строке, предметы и выплата сойдутся при следующем входе.
+            delivery.deliver(player, promised.claim().orElseThrow(),
+                    new BuyerPlan(plugin, economy, messages, repository, delivery, sale));
         }));
     }
 
-    private static List<ItemStack> removedItems(ItemStack[] before, ItemStack[] after) {
-        List<ItemStack> result = new ArrayList<>();
-        for (int slot = 0; slot < before.length; slot++) {
-            ItemStack original = before[slot];
-            if (original == null) continue;
-            ItemStack remaining = after[slot];
-            int amount = original.getAmount() - (remaining != null && remaining.isSimilar(original)
-                    ? remaining.getAmount() : 0);
-            if (amount > 0) {
-                ItemStack removed = original.clone();
-                removed.setAmount(amount);
-                result.add(removed);
-            }
-        }
-        return result;
-    }
-
-    private void restoreItems(Player player, List<ItemStack> items) {
-        for (ItemStack item : items) {
-            for (ItemStack leftover : player.getInventory().addItem(item).values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), leftover);
-            }
-        }
-        player.updateInventory();
+    /**
+     * Сколько заявка на продажу остаётся годной.
+     *
+     * Это защита игрока, а не денег: продажа, нажатая перед аварией и
+     * возобновлённая через неделю, забрала бы предметы, которые человек давно
+     * решил оставить себе.
+     */
+    private long saleDeadlineMillis() {
+        long configured = plugin.getConfig().getLong("economy.sale-deadline-seconds", 900L);
+        return Math.max(60L, Math.min(86_400L, configured)) * 1000L;
     }
 
     private void runMain(Runnable action) {
@@ -306,14 +286,6 @@ public final class BuyerService implements Listener {
             else stack.setAmount(stack.getAmount() - taken);
         }
         return requested - remaining;
-    }
-
-    private static ItemStack[] cloneContents(ItemStack[] contents) {
-        ItemStack[] result = new ItemStack[contents.length];
-        for (int index = 0; index < contents.length; index++) {
-            result[index] = contents[index] == null ? null : contents[index].clone();
-        }
-        return result;
     }
 
     private static String stripSlash(String command) { return command.startsWith("/") ? command.substring(1) : command; }

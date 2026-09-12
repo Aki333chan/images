@@ -29,7 +29,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.ClaimRequest;
 import ovh.aurumgg.core.api.HoldResult;
+import ovh.aurumgg.core.api.HoldSnapshot;
 import ovh.aurumgg.core.api.TransactionCategory;
 
 /** GUI merchant that exchanges AurumCore currency for AurumGuilds bonuses. */
@@ -39,17 +41,17 @@ public final class GuildTraderService implements Listener {
     private final EconomyService economy;
     private final MessageService messages;
     private final AurumGuildsHook guilds;
-    private final NpcSagaRepository sagas;
+    private final ClaimDelivery delivery;
     private final Set<UUID> pendingPurchases = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public GuildTraderService(JavaPlugin plugin, GuildTraderRepository repository, EconomyService economy,
-                              MessageService messages, AurumGuildsHook guilds, NpcSagaRepository sagas) {
+                              MessageService messages, AurumGuildsHook guilds, ClaimDelivery delivery) {
         this.plugin = plugin;
         this.repository = repository;
         this.economy = economy;
         this.messages = messages;
         this.guilds = guilds;
-        this.sagas = sagas;
+        this.delivery = delivery;
     }
 
     public void open(Player player, String traderId) {
@@ -196,6 +198,22 @@ public final class GuildTraderService implements Listener {
                         duration, actor, hold, error)));
     }
 
+    /**
+     * Резерв прошёл — записать долг и только потом что-то менять.
+     *
+     * <h2>Что здесь было не так</h2>
+     *
+     * Прежний порядок выдавал бонус и лишь затем отмечал журнал. Авария между
+     * этими шагами оставляла резерв, который перезапущенный плагин считал
+     * неприменённым, — и распознавал уже выданный бонус по уникальной строке
+     * {@code guild-actor}, которой тот был подписан. Это работало, но ровно
+     * пока бонус существует: истёкший до восстановления бонус выглядел
+     * невыданным, резерв освобождался, и гильдия оставалась с усилением,
+     * которое никто не оплатил.
+     *
+     * Курсор заявки не зависит от того, жив ли ещё бонус. Он говорит, какие
+     * шаги выполнены, и этот ответ не истекает.
+     */
     private void reservedGuildPurchase(UUID playerId, String traderId, int slot, long guildId,
                                        Duration duration, String actor, HoldResult hold, Throwable error) {
         Player player = Bukkit.getPlayer(playerId);
@@ -206,59 +224,64 @@ public final class GuildTraderService implements Listener {
                     ? "insufficient-funds" : "purchase-failed");
             return;
         }
-        NpcSaga saga;
-        try { saga = sagas.begin(NpcSaga.Kind.GUILD_BONUS, playerId, hold.hold().orElseThrow()); }
-        catch (RuntimeException failure) {
-            economy.release(NpcSaga.held(NpcSaga.Kind.GUILD_BONUS, playerId, hold.hold().orElseThrow()));
-            pendingPurchases.remove(playerId); if (player != null) messages.send(player, "purchase-failed"); return;
-        }
+        HoldSnapshot reserved = hold.hold().orElseThrow();
         GuildTraderDefinition trader = repository.get(traderId);
         GuildBonusOffer offer = trader == null ? null : trader.offers().get(slot);
         Optional<AurumGuildsHook.Membership> membership = guilds.membership(playerId);
         if (offer == null || membership.isEmpty() || membership.get().guildId() != guildId) {
-            economy.release(saga).whenComplete((ignored, failure) -> sagas.complete(saga));
-            pendingPurchases.remove(playerId); if (player != null) messages.send(player, "guild-membership-changed");
+            releaseReservation(reserved, playerId, "guild-membership-changed");
             return;
         }
-        guilds.grant(guildId, offer.type(), offer.magnitude(), duration, actor)
-                .whenComplete((result, failure) -> runMain(() -> finishGuildGrant(playerId, traderId, saga, result, failure)));
+        if (player == null || !delivery.available()) {
+            // Записать долг некуда (или некому его вручить). Выдавать бонус и
+            // надеяться — ровно то, от чего заявки и избавляют.
+            releaseReservation(reserved, playerId, "delivery-unavailable");
+            return;
+        }
+
+        BonusClaim bonus = new BonusClaim(reserved.idempotencyKey(), traderId, slot, guildId,
+                offer.type(), offer.magnitude(), duration == null ? 0L : duration.toSeconds(), actor);
+        ClaimRequest request;
+        try {
+            request = new ClaimRequest("npc-guild-claim:" + reserved.idempotencyKey(), ClaimGateway.PLUGIN,
+                    playerId, GuildTraderPlan.KIND, bonus.stepCount(), bonus.summary(), bonus.encode());
+        } catch (IllegalArgumentException invalid) {
+            plugin.getLogger().warning("Could not describe guild bonus as a claim: " + invalid.getMessage());
+            releaseReservation(reserved, playerId, "purchase-failed");
+            return;
+        }
+
+        String openTrader = traderId;
+        delivery.promise(request).whenComplete((promised, failure) -> runMain(() -> {
+            pendingPurchases.remove(playerId);
+            Player online = Bukkit.getPlayer(playerId);
+            if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
+                releaseReservation(reserved, playerId, "purchase-failed");
+                return;
+            }
+            if (online == null) return;
+            delivery.deliver(online, promised.claim().orElseThrow(),
+                    new GuildTraderPlan(plugin, economy, messages, guilds, delivery, bonus));
+            refresh(online, openTrader);
+        }));
     }
 
-    private void finishGuildGrant(UUID playerId, String traderId, NpcSaga saga,
-                                  AurumGuildsHook.GrantResult result, Throwable error) {
-        Player player = Bukkit.getPlayer(playerId);
-        boolean success = error == null && result != null && result.ok();
-        if (!success) {
-            economy.release(saga).whenComplete((ignored, failure) -> sagas.complete(saga));
+    /** Отпустить резерв: деньги не двигались, отменять нечего кроме сообщения. */
+    private void releaseReservation(HoldSnapshot hold, UUID playerId, String message) {
+        economy.release(hold).whenComplete((ignored, error) -> runMain(() -> {
             pendingPurchases.remove(playerId);
-            if (player != null) messages.send(player, "guild-purchase-failed",
-                    Map.of("reason", result == null ? messages.text("messages.unknown-error") : result.message()));
-            return;
-        }
-        NpcSaga applied;
-        try { applied = sagas.markApplied(saga); }
-        catch (RuntimeException failure) {
-            plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "Guild bonus was granted but NPC saga could not advance: " + saga.id(), failure);
-            pendingPurchases.remove(playerId); return;
-        }
-        economy.capture(applied).whenComplete((capture, failure) -> runMain(() -> {
-            pendingPurchases.remove(playerId);
-            if (failure == null && capture != null && (capture.status() == HoldResult.Status.SUCCESS
-                    || capture.status() == HoldResult.Status.DUPLICATE)) {
-                sagas.complete(applied);
-                if (player != null) {
-                    messages.send(player, "guild-purchase-success", Map.of("result", result.message()));
-                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
-                    if (player.getOpenInventory().getTopInventory().getHolder() instanceof GuildTraderHolder holder
-                            && holder.traderId.equals(traderId)) open(player, traderId);
-                }
-            } else {
-                plugin.getLogger().warning("Guild bonus saga " + applied.id() + " is awaiting AurumCore recovery");
-                if (player != null) messages.send(player, "guild-purchase-refund-failed",
-                        Map.of("reason", capture == null ? "AurumCore unavailable" : capture.message()));
-            }
+            Player player = Bukkit.getPlayer(playerId);
+            if (player != null) messages.send(player, message);
         }));
+    }
+
+    /** Перерисовать окно торговца, если игрок всё ещё в нём стоит. */
+    private void refresh(Player player, String traderId) {
+        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+        if (player.getOpenInventory().getTopInventory().getHolder() instanceof GuildTraderHolder holder
+                && holder.traderId.equals(traderId)) {
+            open(player, traderId);
+        }
     }
 
     private void completeFreePurchase(UUID playerId, String traderId,

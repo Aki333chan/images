@@ -22,7 +22,15 @@ import dev.addons.npc.service.BuyerService;
 import dev.addons.npc.service.AurumGuildsHook;
 import dev.addons.npc.service.GuildTraderService;
 import dev.addons.npc.service.AurumExchangeService;
+import dev.addons.npc.service.ClaimGateway;
 import dev.addons.npc.service.NpcSagaRepository;
+import dev.addons.npc.service.BonusClaim;
+import dev.addons.npc.service.BuyerPlan;
+import dev.addons.npc.service.GuildTraderPlan;
+import dev.addons.npc.service.ClaimDelivery;
+import dev.addons.npc.service.PurchaseClaim;
+import dev.addons.npc.service.SaleClaim;
+import dev.addons.npc.service.ShopPlan;
 import dev.addons.npc.model.BuyerDefinition;
 import dev.addons.npc.model.BuyerOffer;
 import dev.addons.npc.model.ClickMode;
@@ -62,6 +70,8 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     private BuyerService buyerService;
     private AurumExchangeService exchangerService;
     private NpcSagaRepository sagas;
+    private ClaimGateway claims;
+    private ClaimDelivery delivery;
 
     @Override
     public void onEnable() {
@@ -86,17 +96,29 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         dialogues = new DialogueService(messages);
         MannequinAdapter adapter = new MannequinAdapter(this);
         npcManager = new NpcManager(this, npcRepository, new dev.addons.npc.service.SkinService(this, adapter), adapter);
-        shopService = new ShopService(this, shopRepository, economy, messages, sagas);
-        buyerService = new BuyerService(this, buyerRepository, economy, messages, sagas);
+        claims = new ClaimGateway(this);
+        boolean deliveryClaims = claims.hook();
+        delivery = new ClaimDelivery(this, claims, messages);
+        // Каждый вид заявки умеет читать только свой payload. Неизвестный вид
+        // не трогаем вовсе: угадывать, что задолжал чужой плагин, нельзя.
+        delivery.register(ShopPlan.KIND, payload -> PurchaseClaim.decode(payload)
+                .map(purchase -> new ShopPlan(this, economy, messages, shopRepository, delivery, purchase)));
+        delivery.register(BuyerPlan.KIND, payload -> SaleClaim.decode(payload)
+                .map(sale -> new BuyerPlan(this, economy, messages, buyerRepository, delivery, sale)));
+        shopService = new ShopService(this, shopRepository, economy, messages, delivery);
+        buyerService = new BuyerService(this, buyerRepository, economy, messages, delivery);
         guildsHook = new AurumGuildsHook(this);
         GuildTraderService guildTraderService = new GuildTraderService(this, guildTraderRepository, economy,
-                messages, guildsHook, sagas);
+                messages, guildsHook, delivery);
+        delivery.register(GuildTraderPlan.KIND, payload -> BonusClaim.decode(payload)
+                .map(bonus -> new GuildTraderPlan(this, economy, messages, guildsHook, delivery, bonus)));
         exchangerService = new AurumExchangeService(this, exchangerRepository, messages);
         boolean aurumExchange = exchangerService.hook();
         ActionExecutor actionExecutor = new ActionExecutor(messages, shopService, buyerService,
                 guildTraderService, exchangerService);
 
         getServer().getPluginManager().registerEvents(shopService, this);
+        getServer().getPluginManager().registerEvents(delivery, this);
         getServer().getPluginManager().registerEvents(buyerService, this);
         getServer().getPluginManager().registerEvents(guildTraderService, this);
         getServer().getPluginManager().registerEvents(exchangerService, this);
@@ -120,13 +142,28 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         long startupDelay = Math.max(1L, getConfig().getLong("settings.startup-spawn-delay-ticks", 20L));
         getServer().getScheduler().runTaskLater(this, npcManager::start, startupDelay);
         long recoveryPeriod = Math.max(5L, getConfig().getLong("economy.recovery-retry-seconds", 20L)) * 20L;
-        getServer().getScheduler().runTaskTimer(this,
-                () -> economy.recover(sagas, guildsHook), recoveryPeriod, recoveryPeriod);
+        // Незавершённые заявки: та, которую не удалось выдать, пока Core лежал,
+        // должна подхватиться без ожидания перезахода игрока.
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            if (!economy.available()) economy.hook();
+            if (!claims.available()) claims.hook();
+            delivery.sweep();
+        }, recoveryPeriod, recoveryPeriod);
+        // Журнал старой версии заводим ТОЛЬКО если в нём что-то осталось.
+        // На новой установке его нет вовсе, и вешать ради него повторяющуюся
+        // задачу незачем.
+        if (!sagas.isEmpty()) {
+            getLogger().info("Найдены незавершённые операции AddonsNPC 1.9.0 (" + sagas.all().size()
+                    + "). Они будут дочищены; новые операции идут через заявки AurumCore");
+            getServer().getScheduler().runTaskTimer(this,
+                    () -> economy.recover(sagas, guildsHook), recoveryPeriod, recoveryPeriod);
+        }
         getLogger().info("Enabled " + npcRepository.ids().size() + " NPC(s) and " + shopRepository.ids().size()
                 + " shop(s), " + buyerRepository.ids().size() + " buyer(s), and "
                 + guildTraderRepository.ids().size() + " guild trader(s), "
                 + exchangerRepository.ids().size() + " exchanger(s). AurumCore holds: "
-                + (nativeEconomy ? "connected" : "unavailable") + "; AurumGuilds: "
+                + (nativeEconomy ? "connected" : "unavailable") + "; delivery claims: "
+                + (deliveryClaims ? "connected" : "unavailable") + "; AurumGuilds: "
                 + (guildsHook.available() ? "connected" : "unavailable") + "; Aurum exchange: "
                 + (aurumExchange ? "connected" : "unavailable"));
     }

@@ -33,6 +33,14 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
+        if (command.getName().equalsIgnoreCase("trade")) {
+            if (!sender.hasPermission("aurum.trade")) return deny(sender);
+            if (plugin.tradeCommands() == null) {
+                sender.sendMessage(plugin.messages().component("trade-disabled"));
+                return true;
+            }
+            return plugin.tradeCommands().execute(sender, args);
+        }
         args = normalized(command.getName(), args);
         if (args.length > 0 && args[0].equalsIgnoreCase("pay")) return pay(sender, args);
         if (args.length == 0 || args[0].equalsIgnoreCase("status")) {
@@ -379,6 +387,11 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         return normalized;
     }
 
+    /** Сколько слов игрок уже набрал: дополняем только первое. */
+    private static int values(String[] args) {
+        return args.length;
+    }
+
     private boolean deny(CommandSender sender) {
         sender.sendMessage(plugin.messages().component("no-permission"));
         return true;
@@ -387,6 +400,12 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                  @NotNull String alias, @NotNull String[] args) {
+        if (command.getName().equalsIgnoreCase("trade")) {
+            if (plugin.tradeCommands() == null || values(args) != 1) return List.of();
+            java.util.List<String> options = new java.util.ArrayList<>(plugin.tradeCommands().actions());
+            Bukkit.getOnlinePlayers().stream().map(Player::getName).forEach(options::add);
+            return options.stream().filter(it -> it.toLowerCase().startsWith(args[0].toLowerCase())).toList();
+        }
         String[] values = normalized(command.getName(), args);
         if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy", "policy", "exchange", "claims").stream()
                 .filter(it -> it.startsWith(values[0].toLowerCase())).toList();

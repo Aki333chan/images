@@ -14,7 +14,26 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.core.api.TransactionCategory;
 
-/** Small synchronous WAL. Entries are tiny and every state transition is flushed before gameplay advances. */
+/**
+ * Журнал незавершённых операций AddonsNPC 1.9.0 и старше — ТОЛЬКО ДЛЯ ДОЧИСТКИ.
+ *
+ * Новых записей сюда больше никто не кладёт: покупки, продажи и гильдейские
+ * бонусы держит AurumCore заявками (claims), у которых есть транзакционное
+ * хранилище, аренда и курсор шагов. Этот класс остался, чтобы операции,
+ * застрявшие на момент обновления, дошли до конца, а не зависли навсегда.
+ *
+ * Почему его нельзя было просто удалить: на живом сервере в `transactions.yml`
+ * вполне может лежать резерв, сделанный за секунду до остановки. Удалить файл
+ * вместе с кодом — значит оставить деньги игрока заблокированными до истечения
+ * TTL и ни разу об этом не сказать.
+ *
+ * Файл удаляется сам, когда в нём не остаётся записей. После этого класс можно
+ * убрать целиком — в 2.1.0 или позже, когда обновление точно везде прошло.
+ *
+ * Заодно видно, почему заявки лучше: здесь весь журнал переписывается целиком
+ * на каждое изменение и без fsync, так что обрыв записи теряет ВСЕ незакрытые
+ * операции разом.
+ */
 public final class NpcSagaRepository {
     private final JavaPlugin plugin;
     private final File file;
@@ -62,14 +81,6 @@ public final class NpcSagaRepository {
         }
     }
 
-    public synchronized NpcSaga begin(NpcSaga.Kind kind, UUID playerId,
-                                      ovh.aurumgg.core.api.HoldSnapshot hold) {
-        NpcSaga saga = NpcSaga.held(kind, playerId, hold);
-        entries.put(saga.id(), saga);
-        save();
-        return saga;
-    }
-
     public synchronized NpcSaga markApplied(NpcSaga saga) {
         NpcSaga applied = saga.state(NpcSaga.State.APPLIED);
         entries.put(applied.id(), applied);
@@ -84,7 +95,19 @@ public final class NpcSagaRepository {
 
     public synchronized List<NpcSaga> all() { return List.copyOf(new ArrayList<>(entries.values())); }
 
+    /** Осталось ли что дочищать. Пусто — периодическую задачу можно и не заводить. */
+    public synchronized boolean isEmpty() { return entries.isEmpty(); }
+
     private void save() {
+        if (entries.isEmpty()) {
+            // Дочистили всё: файл больше не нужен, и пустой он только сбивал бы
+            // с толку при разборе через полгода.
+            if (file.isFile() && !file.delete()) {
+                plugin.getLogger().warning("Не удалить пустой " + file.getName()
+                        + "; он безвреден, но его можно убрать вручную");
+            }
+            return;
+        }
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.set("schema-version", 1);
         for (NpcSaga saga : entries.values()) {

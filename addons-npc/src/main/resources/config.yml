@@ -21,3 +21,13 @@ economy:
   # Cross-system NPC operations are reserved in AurumCore before items or bonuses change.
   hold-ttl-seconds: 300
   recovery-retry-seconds: 20
+
+  # How long a promised sale stays valid before it is cancelled untouched.
+  #
+  # This protects the PLAYER, not the money. A sale clicked just before a crash
+  # and resumed a week later would take items the player has long since decided
+  # to keep. Past this deadline nothing is taken and nothing is paid.
+  #
+  # Purchases have no such deadline: the player already paid, and what they paid
+  # for is owed to them however long it takes to hand over.
+  sale-deadline-seconds: 900

@@ -26,6 +26,9 @@ record CoreSettings(
         int holdMaxTtlSeconds,
         int claimMaxLeaseSeconds,
         int claimMaxAttempts,
+        boolean tradingEnabled,
+        int tradeInviteTimeoutSeconds,
+        int tradeSessionTimeoutSeconds,
         boolean databaseEnabled,
         MariaDbSettings database
 ) {
@@ -62,6 +65,11 @@ record CoreSettings(
                 config.getInt("claims.max-lease-seconds", 120)));
         int claimMaxAttempts = Math.max(1, Math.min(50,
                 config.getInt("claims.max-attempts", 5)));
+        boolean tradingEnabled = config.getBoolean("trading.enabled", false);
+        int tradeInviteTimeoutSeconds = Math.max(5, Math.min(600,
+                config.getInt("trading.invite-timeout-seconds", 30)));
+        int tradeSessionTimeoutSeconds = Math.max(30, Math.min(3600,
+                config.getInt("trading.session-timeout-seconds", 300)));
         boolean enabled = config.getBoolean("database.enabled", false);
         MariaDbSettings database = new MariaDbSettings(
                 config.getString("database.jdbc-url", "jdbc:mariadb://127.0.0.1:3306/aurum_core"),
@@ -72,6 +80,7 @@ record CoreSettings(
         return new CoreSettings(language, mode, currency, currencies, refresh, migrationPlayersPerTick,
                 requireVerifiedMigration, globalRefreshTicks, paymentsEnabled, paymentMinimum,
                 paymentMaximum, paymentCooldownSeconds, policies, exchange, holdMaxTtlSeconds, claimMaxLeaseSeconds, claimMaxAttempts,
+                tradingEnabled, tradeInviteTimeoutSeconds, tradeSessionTimeoutSeconds,
                 enabled, database);
     }
 

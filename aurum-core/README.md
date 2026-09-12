@@ -1,4 +1,4 @@
-# AurumCore 0.8.0
+# AurumCore 0.9.0
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -40,6 +40,7 @@ deliberately fresh, empty ledger; a non-empty unverified ledger is rejected.
 - `/aurum policy ...`, short form `/apolicy ...` — `aurum.admin.policy`.
 - `/aurum exchange ...`, short form `/aexchange ...` — `aurum.admin.exchange`.
 - `/aurum claims [list [plugin]|inspect <id>|retry <id>|drop <id>]` — `aurum.admin.claims`.
+- `/trade <player|accept|item|money <amount>|clear|confirm|cancel|view>` — `aurum.trade`.
 
 The top-level commands `give`, `take` and `set` are intentionally not
 registered. Commands have context-aware tab completion. Player names are
@@ -135,6 +136,53 @@ it makes progress. After `claims.max-attempts` (5) failed hand-backs the claim
 quarantines itself and waits for `/aurum claims`, because a delivery that keeps
 failing needs a person, not another login-time retry. See
 `../docs/aurum-claims.md`.
+
+## Guaranteed player trade
+
+Version 0.9.0 turns on `/trade`, off by default (`trading.enabled`). It is the
+first operation in the ecosystem where goods move in **both** directions, and
+the first consumer of delivery claims that is not a shop.
+
+**An item put on the table leaves the player's inventory immediately** and
+exists only as a durable blob in MariaDB. There is no second, live copy
+anywhere: two places that can disagree about an item are two places that can
+duplicate it.
+
+**Every edit to either offer clears both confirmations**, and a confirmation
+names the revision it was given for. A confirmation that arrives after the
+table changed is refused, not adjusted. That refusal is the feature — it is
+what stops the oldest trade scam there is, swapping the goods between the other
+player's look and their click. The check lives in the SQL `UPDATE`, not in the
+caller: deciding from a read taken one edit ago is exactly the mistake the
+revision exists to prevent.
+
+**One trade per player.** Otherwise the same stack could be offered in two
+windows, and whichever settled second would be settling goods that are no
+longer there.
+
+**Money moves last, through holds.** Both sides may be offering money, and two
+plain transfers can half-succeed — unwinding the first is a refund nobody asked
+for. Reserving both first turns "can this trade pay for itself" into a question
+answered before anything moves. A side that cannot cover its offer puts the
+trade back on the table with nothing moved.
+
+The recorded design reserved money as soon as it was offered; this reserves it
+at settlement. The guarantee is identical — nothing moves unless both sides are
+funded — without creating and releasing a hold on every edit of the amount.
+
+**Every ending owes the goods to somebody.** Settling owes each side's table to
+the other; cancelling and timing out owe each table back to its owner. All three
+go through the same delivery claim, so a full inventory, an offline player or a
+restart delays the handover instead of losing it.
+
+Items are serialized with Bukkit's own object stream and stamped with a format
+version. A hand-rolled encoding does not fail loudly on enchantments, lore or
+attribute modifiers — it hands back a sword that quietly lost them, and the
+player who paid for it cannot prove what it was. An unreadable blob is
+quarantined for `/aurum claims`, never guessed at.
+
+The window is not built yet: the safety lives in the revision, not the pixels,
+so the commands exercise exactly the machinery a GUI would later sit on.
 
 ## Runtime behavior
 

@@ -13,12 +13,26 @@ class GuildTraderMetadataTest {
         try (var stream = getClass().getResourceAsStream("/plugin.yml")) {
             assertNotNull(stream);
             var yaml = YamlConfiguration.loadConfiguration(new InputStreamReader(stream, StandardCharsets.UTF_8));
-            assertEquals("1.9.0", yaml.getString("version"));
+            // Версию не храним константой: панель ставит аддоны по тегу
+            // <name>-v<version>, и значение имеет смысл ровно постольку,
+            // поскольку совпадает с pom. Константа здесь ломала бы тест при
+            // каждом повышении версии и ничего при этом не проверяла.
+            assertEquals(pomVersion(), yaml.getString("version"));
             assertTrue(yaml.getStringList("depend").contains("AurumCore"));
             assertTrue(yaml.getStringList("softdepend").contains("AurumGuilds"));
             assertTrue(yaml.isConfigurationSection("permissions.addonsnpc.guildtrader"));
             assertTrue(yaml.isConfigurationSection("permissions.addonsnpc.exchanger"));
         }
+    }
+
+    private static String pomVersion() throws Exception {
+        String pom = java.nio.file.Files.readString(java.nio.file.Path.of("pom.xml"),
+                StandardCharsets.UTF_8);
+        var matcher = java.util.regex.Pattern
+                .compile("<artifactId>addons-npc</artifactId>\\s*<version>([^<]+)</version>")
+                .matcher(pom);
+        assertTrue(matcher.find(), "в pom.xml не найдена версия addons-npc");
+        return matcher.group(1);
     }
 
     @Test
