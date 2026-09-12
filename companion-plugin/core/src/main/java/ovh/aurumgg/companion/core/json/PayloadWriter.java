@@ -160,6 +160,9 @@ public final class PayloadWriter {
         fields.put("idempotencyKey", Json.string(change.idempotencyKey()));
         fields.put("source", Json.string(change.source()));
         fields.put("duplicate", change.duplicate() ? "true" : "false");
+        if (change.expectedBalance() != null) fields.put("expectedBalance", Json.number(change.expectedBalance()));
+        if (change.targetBalance() != null) fields.put("targetBalance", Json.number(change.targetBalance()));
+        if (change.currentBalance() != null) fields.put("currentBalance", Json.number(change.currentBalance()));
         return Json.object(fields);
     }
 

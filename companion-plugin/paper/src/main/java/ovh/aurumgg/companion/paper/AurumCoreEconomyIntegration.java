@@ -10,6 +10,7 @@ import java.util.function.Function;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
+import ovh.aurumgg.companion.core.model.BalanceSetMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.EconomyRuleApply;
@@ -22,6 +23,8 @@ import ovh.aurumgg.core.api.AurumAuditApi;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.AurumRulesAdminApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
+import ovh.aurumgg.core.api.BalanceSetRequest;
+import ovh.aurumgg.core.api.BalanceSetResult;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.EconomyAuditSection;
@@ -168,6 +171,48 @@ final class AurumCoreEconomyIntegration {
         return new BalanceChange(success, code, success ? null : result.message(),
                 before.doubleValue(), after.doubleValue(), format(after, currency),
                 mutation.idempotencyKey(), "aurum", duplicate);
+    }
+
+    /** Atomic absolute replacement. The expected value is never refreshed on retry. */
+    BalanceChange set(UUID playerUuid, BalanceSetMutation mutation) {
+        CurrencySpec currency = mutation.currencyId().isBlank()
+                ? economy.primaryCurrency() : economy.currency(mutation.currencyId()).orElse(null);
+        if (currency == null) {
+            return new BalanceChange(false, "currency-unknown", "Unknown currency",
+                    mutation.expectedBalance().doubleValue(), mutation.expectedBalance().doubleValue(), null,
+                    mutation.idempotencyKey(), "aurum", false,
+                    mutation.expectedBalance().doubleValue(), mutation.targetBalance().doubleValue(),
+                    mutation.expectedBalance().doubleValue());
+        }
+        BalanceSetRequest request = new BalanceSetRequest(
+                "companion:set:" + mutation.idempotencyKey(), AccountId.player(playerUuid), currency.id(),
+                mutation.expectedBalance(), mutation.targetBalance(), java.util.Map.of(
+                        "actor", mutation.actor(), "reason", mutation.reason(), "source", "panel"));
+        Optional<BalanceSetResult> answered = await(economy.setBalance(request));
+        if (answered.isEmpty() || answered.get().status() == BalanceSetResult.Status.UNAVAILABLE) {
+            return new BalanceChange(false, "unavailable", "Ledger balance set unavailable",
+                    mutation.expectedBalance().doubleValue(), mutation.expectedBalance().doubleValue(), null,
+                    mutation.idempotencyKey(), "aurum", false,
+                    mutation.expectedBalance().doubleValue(), mutation.targetBalance().doubleValue(),
+                    mutation.expectedBalance().doubleValue());
+        }
+        BalanceSetResult result = answered.get();
+        boolean success = result.status() == BalanceSetResult.Status.SUCCESS
+                || result.status() == BalanceSetResult.Status.DUPLICATE;
+        boolean duplicate = result.status() == BalanceSetResult.Status.DUPLICATE;
+        String code = switch (result.status()) {
+            case SUCCESS -> "ok";
+            case DUPLICATE -> "duplicate";
+            case CONFLICT -> "balance-conflict";
+            case REJECTED -> result.message().contains("IDEMPOTENCY_KEY_REUSED")
+                    ? "idempotency-conflict" : "rejected";
+            case UNAVAILABLE -> "unavailable";
+        };
+        return new BalanceChange(success, code, success ? null : result.message(),
+                result.balanceBefore().doubleValue(), result.balanceAfter().doubleValue(),
+                format(result.currentBalance(), currency), mutation.idempotencyKey(), "aurum", duplicate,
+                result.expectedBalance().doubleValue(), result.targetBalance().doubleValue(),
+                result.currentBalance().doubleValue());
     }
 
     private static BalanceChange failed(String code, String error, double balance,

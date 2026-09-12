@@ -15,6 +15,7 @@ import java.util.Set;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.CurrencySpec;
+import ovh.aurumgg.core.api.TransactionCategory;
 import ovh.aurumgg.core.api.TransactionRequest;
 
 public final class TransactionPlanner {
@@ -39,7 +40,10 @@ public final class TransactionPlanner {
             throw new IllegalArgumentException("Transaction currency does not match the selected currency");
         }
         BigDecimal gross = currency.requireAmount(request.amount());
-        if (gross.signum() <= 0) throw new IllegalArgumentException("Amount must be positive");
+        if (gross.signum() < 0
+                || (gross.signum() == 0 && request.category() != TransactionCategory.ADMIN_ADJUSTMENT)) {
+            throw new IllegalArgumentException("Amount must be positive (or an administrative no-op)");
+        }
 
         List<FinancialRule> rules = selectedRules.stream()
                 .filter(rule -> PolicyMatcher.matches(rule, request, now))

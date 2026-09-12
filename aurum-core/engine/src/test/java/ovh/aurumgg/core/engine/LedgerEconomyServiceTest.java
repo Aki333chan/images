@@ -21,6 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.BalanceSetRequest;
+import ovh.aurumgg.core.api.BalanceSetResult;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 import ovh.aurumgg.core.api.TransactionCategory;
@@ -137,6 +139,75 @@ class LedgerEconomyServiceTest {
     }
 
     @Test
+    void absoluteSetCommitsOnlyWhenExpectedBalanceStillMatches() {
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
+        BalanceSetRequest request = setRequest("panel:set:one", "100.00", "25.00");
+
+        BalanceSetResult result = service.setBalance(request).toCompletableFuture().join();
+
+        assertEquals(BalanceSetResult.Status.SUCCESS, result.status());
+        assertEquals(new BigDecimal("100.00"), result.balanceBefore());
+        assertEquals(new BigDecimal("25.00"), result.balanceAfter());
+        assertEquals(new BigDecimal("25.00"), result.currentBalance());
+        assertEquals(new BigDecimal("25.00"), repository.value(ALICE));
+        assertEquals(new BigDecimal("75.00"),
+                repository.value(new AccountId(AccountType.SYSTEM_SINK, "global")));
+    }
+
+    @Test
+    void staleExpectedBalanceIsATerminalConflict() {
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
+        BalanceSetRequest request = setRequest("panel:set:stale", "90.00", "25.00");
+
+        BalanceSetResult first = service.setBalance(request).toCompletableFuture().join();
+        assertEquals(BalanceSetResult.Status.CONFLICT, first.status());
+        assertEquals(new BigDecimal("100.00"), first.balanceBefore());
+        assertEquals(new BigDecimal("100.00"), first.currentBalance());
+        assertEquals(new BigDecimal("100.00"), repository.value(ALICE));
+
+        // Even if the account later happens to equal the stale expectation,
+        // the same key remains the same failed attempt and cannot wake up.
+        repository.put(ALICE, "90.00");
+        BalanceSetResult retry = service.setBalance(request).toCompletableFuture().join();
+        assertEquals(BalanceSetResult.Status.CONFLICT, retry.status());
+        assertEquals(new BigDecimal("100.00"), retry.balanceBefore(), "original observed value is immutable");
+        assertEquals(new BigDecimal("90.00"), retry.currentBalance(), "fresh balance is reported separately");
+        assertEquals(new BigDecimal("90.00"), repository.value(ALICE));
+    }
+
+    @Test
+    void retryAfterLostSuccessReturnsDuplicateWithoutOverwritingLaterPayment() {
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
+        BalanceSetRequest request = setRequest("panel:set:retry", "100.00", "50.00");
+        assertEquals(BalanceSetResult.Status.SUCCESS,
+                service.setBalance(request).toCompletableFuture().join().status());
+        service.transfer(new TransactionRequest("later",
+                new AccountId(AccountType.SYSTEM_SOURCE, "later"), ALICE, "coins", new BigDecimal("10.00"),
+                TransactionCategory.PLAYER_PAYMENT, Map.of())).toCompletableFuture().join();
+
+        BalanceSetResult retry = service.setBalance(request).toCompletableFuture().join();
+
+        assertEquals(BalanceSetResult.Status.DUPLICATE, retry.status());
+        assertEquals(new BigDecimal("50.00"), retry.balanceAfter(), "what the set itself applied");
+        assertEquals(new BigDecimal("60.00"), retry.currentBalance(), "later money is preserved");
+        assertEquals(new BigDecimal("60.00"), repository.value(ALICE));
+    }
+
+    @Test
+    void setKeyCannotDescribeAnotherTargetIncludingAfterNoOp() {
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
+        assertEquals(BalanceSetResult.Status.SUCCESS, service.setBalance(
+                setRequest("panel:set:noop", "100.00", "100.00")).toCompletableFuture().join().status());
+
+        BalanceSetResult changed = service.setBalance(
+                setRequest("panel:set:noop", "100.00", "200.00")).toCompletableFuture().join();
+
+        assertEquals(BalanceSetResult.Status.REJECTED, changed.status());
+        assertTrue(changed.message().contains("IDEMPOTENCY_KEY_REUSED"));
+        assertEquals(new BigDecimal("100.00"), repository.value(ALICE));
+    }
+
+    @Test
     void доскаБогатстваСпрашиваетсяОдинРазИТолькоПоСвоейВалюте() {
         repository.put(ALICE, "500.00");
         repository.put(BOB, "1500.00");
@@ -160,6 +231,11 @@ class LedgerEconomyServiceTest {
     private static TransactionRequest request(String key, String amount) {
         return new TransactionRequest(key, ALICE, BOB, "coins", new BigDecimal(amount),
                 TransactionCategory.PLAYER_PAYMENT, Map.of());
+    }
+
+    private static BalanceSetRequest setRequest(String key, String expected, String target) {
+        return new BalanceSetRequest(key, ALICE, "coins", new BigDecimal(expected), new BigDecimal(target),
+                Map.of("actor", "panel", "reason", "test"));
     }
 
     private static final class MemoryLedger implements LedgerRepository {
@@ -197,6 +273,35 @@ class LedgerEconomyServiceTest {
                     .map(Map.Entry::getValue).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(currency.scale());
             return new GlobalEconomySnapshot(currency, treasury, supply, BigDecimal.ZERO.setScale(currency.scale()),
                     Instant.now(), true, true);
+        }
+
+        @Override
+        public synchronized LedgerCommit commit(
+                TransactionPlan plan, CurrencySpec currency, BalanceExpectation expectation) {
+            LedgerCommit duplicate = committed.get(plan.request().idempotencyKey());
+            if (duplicate != null) {
+                if (!intents.get(plan.request().idempotencyKey()).equals(TransactionIntent.hash(plan.request()))) {
+                    BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+                    return new LedgerCommit(LedgerCommit.Status.REJECTED, duplicate.transactionId(),
+                            currency.requireAmount(plan.request().amount()), zero, zero, zero, zero,
+                            "IDEMPOTENCY_KEY_REUSED");
+                }
+                if (duplicate.status() == LedgerCommit.Status.CONFLICT) return duplicate;
+                return new LedgerCommit(LedgerCommit.Status.DUPLICATE,
+                        duplicate.transactionId(), duplicate.grossAmount(), duplicate.netAmount(),
+                        duplicate.taxAmount(), duplicate.sourceBalance(), duplicate.targetBalance(), "Duplicate");
+            }
+            BigDecimal actual = value(expectation.account()).setScale(currency.scale());
+            if (actual.compareTo(currency.requireAmount(expectation.balance())) != 0) {
+                BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+                LedgerCommit conflict = new LedgerCommit(LedgerCommit.Status.CONFLICT, UUID.randomUUID(),
+                        currency.requireAmount(plan.request().amount()), zero, zero, actual, actual,
+                        "EXPECTED_BALANCE_MISMATCH:" + actual, Map.of(expectation.account(), actual));
+                committed.put(plan.request().idempotencyKey(), conflict);
+                intents.put(plan.request().idempotencyKey(), TransactionIntent.hash(plan.request()));
+                return conflict;
+            }
+            return commit(plan, currency);
         }
 
         @Override public synchronized LedgerCommit commit(TransactionPlan plan, CurrencySpec currency) {

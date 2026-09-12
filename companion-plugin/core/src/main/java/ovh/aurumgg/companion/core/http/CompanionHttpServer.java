@@ -22,6 +22,7 @@ import ovh.aurumgg.companion.core.json.PayloadWriter;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
+import ovh.aurumgg.companion.core.model.BalanceSetMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyRuleApply;
 import ovh.aurumgg.companion.core.model.EconomyRuleInfo;
@@ -68,7 +69,7 @@ import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
  *   GET  /economy?top=...
  *   GET  /economy/native?top=...
  *   GET  /economy/native/balance/{uuid}
- *   POST /economy/native/balance/{uuid}/{deposit|withdraw}
+ *   POST /economy/native/balance/{uuid}/{deposit|withdraw|set}
  *   GET  /jails
  *   GET  /players/{ник}/jail
  *   POST /webtoken/{code}
@@ -569,6 +570,19 @@ public final class CompanionHttpServer {
             return;
         }
 
+        if (parts.length == 5 && parts[0].equals("economy") && parts[1].equals("native")
+                && parts[2].equals("balance") && parts[4].equals("set") && method.equals("POST")) {
+            UUID uuid = parseUuid(parts[3]);
+            BalanceSetMutation mutation = parseBalanceSetMutation(readBody(exchange));
+            Optional<BalanceChange> change = bridge.setNativeBalance(uuid, mutation);
+            if (change.isEmpty()) {
+                respondNoNativeEconomy(exchange);
+                return;
+            }
+            respondBalanceChange(exchange, change.get());
+            return;
+        }
+
         // GET /players/{uuid}/balance — работает и для тех, кого нет в сети
         if (parts.length == 3
                 && parts[0].equals("players")
@@ -804,6 +818,24 @@ public final class CompanionHttpServer {
         return new BalanceMutation(key,
                 deposit ? BalanceMutation.Operation.GIVE : BalanceMutation.Operation.TAKE,
                 BigDecimal.valueOf(amount), currency, actor, reason);
+    }
+
+    static BalanceSetMutation parseBalanceSetMutation(String body) {
+        if (body == null || body.isBlank()) throw new IllegalArgumentException("Пустое тело запроса");
+        Map<String, Object> parsed = JsonParser.parseObject(body);
+        double expected = finiteBalance(parsed.get("expectedBalance"), "expectedBalance");
+        double target = finiteBalance(parsed.get("targetBalance"), "targetBalance");
+        return new BalanceSetMutation(stringField(parsed, "idempotencyKey"),
+                BigDecimal.valueOf(expected), BigDecimal.valueOf(target), stringField(parsed, "currency"),
+                stringField(parsed, "actor"), stringField(parsed, "reason"));
+    }
+
+    private static double finiteBalance(Object raw, String field) {
+        if (!(raw instanceof Double value) || !Double.isFinite(value)
+                || value < 0 || value > 1_000_000_000D) {
+            throw new IllegalArgumentException("Поле " + field + " должно быть неотрицательным числом");
+        }
+        return value;
     }
 
     static int parseTopLimit(String raw) {

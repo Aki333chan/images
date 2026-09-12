@@ -26,6 +26,7 @@ import ovh.aurumgg.companion.core.GameBridge;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
+import ovh.aurumgg.companion.core.model.BalanceSetMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.GiveResult;
@@ -661,6 +662,12 @@ public final class BukkitGameBridge implements GameBridge {
         // may already be committed and its idempotency key must be retried.
         return aurumEconomy == null || !aurumEconomy.active()
                 ? Optional.empty() : Optional.of(aurumEconomy.change(playerUuid, mutation));
+    }
+
+    @Override
+    public Optional<BalanceChange> setNativeBalance(UUID playerUuid, BalanceSetMutation mutation) {
+        return aurumEconomy == null || !aurumEconomy.active()
+                ? Optional.empty() : Optional.of(aurumEconomy.set(playerUuid, mutation));
     }
 
     @Override

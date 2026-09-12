@@ -56,6 +56,15 @@ public interface AurumEconomyApi {
 
     CompletionStage<TransactionResult> transfer(TransactionRequest request);
 
+    /** Atomic administrative compare-and-set; unsupported providers fail closed. */
+    default CompletionStage<BalanceSetResult> setBalance(BalanceSetRequest request) {
+        return java.util.concurrent.CompletableFuture.completedFuture(new BalanceSetResult(
+                BalanceSetResult.Status.UNAVAILABLE, request.idempotencyKey(),
+                request.expectedBalance(), request.targetBalance(), request.expectedBalance(),
+                request.expectedBalance(), request.expectedBalance(),
+                "Absolute balance replacement is unavailable"));
+    }
+
     default CompletionStage<HoldResult> createHold(HoldRequest request) {
         return java.util.concurrent.CompletableFuture.completedFuture(new HoldResult(
                 HoldResult.Status.UNAVAILABLE, Optional.empty(), "Holds are unavailable"));

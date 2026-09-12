@@ -958,6 +958,59 @@ class CompanionHttpServerTest {
     }
 
     @Test
+    @DisplayName("абсолютный set передаёт expected/target и умеет установить ноль")
+    void nativeBalanceSetIsCompareAndSet() throws Exception {
+        bridge.nativeEconomyProvider = true;
+        String path = "/economy/native/balance/" + FakeGameBridge.STEVE + "/set";
+
+        HttpResponse<String> changed = post(path, TOKEN,
+                "{\"expectedBalance\":250,\"targetBalance\":0,"
+                        + "\"idempotencyKey\":\"set-1\",\"actor\":\"admin\",\"reason\":\"reset\"}");
+
+        assertEquals(200, changed.statusCode(), changed.body());
+        Map<String, Object> body = JsonParser.parseObject(changed.body());
+        assertEquals(Boolean.TRUE, body.get("ok"));
+        assertEquals(250.0, (Double) body.get("expectedBalance"));
+        assertEquals(0.0, (Double) body.get("targetBalance"));
+        assertEquals(0.0, (Double) body.get("currentBalance"));
+        assertEquals(0.0, bridge.balances.get(FakeGameBridge.STEVE));
+        assertEquals("reset", bridge.balanceSetMutations.getFirst().reason());
+    }
+
+    @Test
+    @DisplayName("устаревший expected set возвращает читаемый отказ без перезаписи")
+    void nativeBalanceSetRejectsStaleView() throws Exception {
+        bridge.nativeEconomyProvider = true;
+        String path = "/economy/native/balance/" + FakeGameBridge.STEVE + "/set";
+
+        HttpResponse<String> response = post(path, TOKEN,
+                "{\"expectedBalance\":200,\"targetBalance\":0,"
+                        + "\"idempotencyKey\":\"set-stale\",\"actor\":\"admin\",\"reason\":\"reset\"}");
+
+        assertEquals(200, response.statusCode(), response.body());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals(Boolean.FALSE, body.get("ok"));
+        assertEquals("balance-conflict", body.get("code"));
+        assertEquals(250.0, (Double) body.get("currentBalance"));
+        assertEquals(250.0, bridge.balances.get(FakeGameBridge.STEVE));
+    }
+
+    @Test
+    @DisplayName("set требует оба баланса, ключ, автора и причину")
+    void nativeBalanceSetValidatesIntent() throws Exception {
+        bridge.nativeEconomyProvider = true;
+        String path = "/economy/native/balance/" + FakeGameBridge.STEVE + "/set";
+
+        assertEquals(400, post(path, TOKEN,
+                "{\"targetBalance\":1,\"idempotencyKey\":\"x\",\"actor\":\"a\",\"reason\":\"r\"}")
+                .statusCode());
+        assertEquals(400, post(path, TOKEN,
+                "{\"expectedBalance\":250,\"targetBalance\":-1,\"idempotencyKey\":\"x\","
+                        + "\"actor\":\"a\",\"reason\":\"r\"}").statusCode());
+        assertTrue(bridge.balanceSetMutations.isEmpty());
+    }
+
+    @Test
     @DisplayName("экономика сервера без Vault — тот же понятный код")
     void economyWithoutVault() throws Exception {
         HttpResponse<String> response = get("/economy", TOKEN);

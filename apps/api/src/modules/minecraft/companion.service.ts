@@ -987,6 +987,62 @@ export class CompanionService {
     };
   }
 
+  /** Absolute compare-and-set. Retries preserve expectedBalance and the key. */
+  async setBalance(
+    serverId: string,
+    uuid: string,
+    expectedBalance: number,
+    targetBalance: number,
+    idempotencyKey: string,
+    actor: string,
+    reason: string,
+  ): Promise<
+    | { ok: true; change: MinecraftBalanceChangeDto }
+    | { ok: false; failure: MinecraftBalanceDto; operationCode?: string | null; status?: number | null }
+  > {
+    if (!(await this.isConfigured(serverId))) {
+      return { ok: false, failure: economyFailure('no-companion', null) };
+    }
+    const result = await this.callRaw<RawBalanceChange>(
+      serverId,
+      `/economy/native/balance/${uuid}/set`,
+      { method: 'POST', body: { expectedBalance, targetBalance, idempotencyKey, actor, reason } },
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        failure: economyFailure(result.code, result.error),
+        operationCode: result.code,
+        status: result.status,
+      };
+    }
+    if (result.body.source !== 'aurum') {
+      return {
+        ok: false,
+        failure: economyFailure('requires-aurumcore', null),
+        operationCode: 'economy-unavailable',
+        status: 503,
+      };
+    }
+    return {
+      ok: true,
+      change: {
+        ok: result.body.ok === true,
+        error: result.body.error ?? undefined,
+        balanceBefore: numberOr(result.body.balanceBefore, expectedBalance),
+        balanceAfter: numberOr(result.body.balanceAfter, expectedBalance),
+        formatted: result.body.formatted ?? undefined,
+        code: result.body.code ?? undefined,
+        idempotencyKey: result.body.idempotencyKey ?? idempotencyKey,
+        source: 'aurum',
+        duplicate: result.body.duplicate === true,
+        expectedBalance: numberOr(result.body.expectedBalance, expectedBalance),
+        targetBalance: numberOr(result.body.targetBalance, targetBalance),
+        currentBalance: numberOr(result.body.currentBalance, result.body.balanceAfter ?? expectedBalance),
+      },
+    };
+  }
+
   async getEconomyRules(
     serverId: string,
     type: MinecraftEconomyRuleType,
@@ -1241,6 +1297,9 @@ interface RawBalanceChange {
   idempotencyKey?: string | null;
   source?: string | null;
   duplicate?: boolean;
+  expectedBalance?: number;
+  targetBalance?: number;
+  currentBalance?: number;
 }
 
 interface RawTopEntry {

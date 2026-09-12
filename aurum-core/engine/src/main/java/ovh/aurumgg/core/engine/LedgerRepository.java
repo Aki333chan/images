@@ -3,6 +3,7 @@ package ovh.aurumgg.core.engine;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import ovh.aurumgg.core.api.AccountId;
@@ -43,6 +44,23 @@ public interface LedgerRepository extends AutoCloseable {
 
     default LedgerCommit commit(TransactionPlan plan, CurrencySpec currency, UUID excludedHold)
             throws SQLException {
+        return commit(plan, currency);
+    }
+
+    /**
+     * Commit only if the locked account still has the expected balance.
+     * Production repositories must make the comparison and postings atomic.
+     */
+    default LedgerCommit commit(TransactionPlan plan, CurrencySpec currency, BalanceExpectation expectation)
+            throws SQLException {
+        BigDecimal current = balance(expectation.account(), currency)
+                .orElse(BigDecimal.ZERO.setScale(currency.scale()));
+        if (current.compareTo(currency.requireAmount(expectation.balance())) != 0) {
+            BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+            return new LedgerCommit(LedgerCommit.Status.CONFLICT, null,
+                    currency.requireAmount(plan.request().amount()), zero, zero, current, current,
+                    "EXPECTED_BALANCE_MISMATCH", Map.of(expectation.account(), current));
+        }
         return commit(plan, currency);
     }
 

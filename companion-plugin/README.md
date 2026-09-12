@@ -1,5 +1,15 @@
 # Aurum Companion
 
+## Release 0.12.0
+
+The player balance card can now replace a balance absolutely without turning
+the operation into an unsafe read-plus-delta sequence. The native `set` route
+requires the displayed `expectedBalance`, the desired `targetBalance`, an
+idempotency key, actor and reason. Core compares and writes atomically; a stale
+view returns `balance-conflict` with both the immutable observed value and the
+fresh current balance. Retrying after a timeout preserves the same expectation
+and key. The route is strict-native and never falls back to Vault.
+
 ## Release 0.11.0
 
 The web panel's balance card, money-supply overview and Richest list now use

@@ -102,6 +102,27 @@ export class BalanceChangeDto {
   reason!: string;
 }
 
+/** Atomic absolute replacement; expectedBalance is the value shown before confirmation. */
+export class BalanceSetDto {
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'mc.val.amountDecimals' })
+  @Min(0)
+  @Max(1_000_000_000)
+  expectedBalance!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'mc.val.amountDecimals' })
+  @Min(0)
+  @Max(1_000_000_000)
+  targetBalance!: number;
+
+  @IsUUID()
+  idempotencyKey!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  reason!: string;
+}
+
 /** Exact full replacement; partial patches are deliberately unsupported. */
 export class EconomyRulePreviewDto {
   @IsString()

@@ -29,6 +29,7 @@
   "mc.err.ecoNoProvider": "Vault jest zainstalowany, ale żaden plugin ekonomii nie zarejestrował dostawcy",
   "mc.err.ecoUnavailable": "Na tym serwerze nie ma waluty",
   "mc.err.amountPositive": "Kwota musi być większa od zera",
+  "mc.err.amountNonNegative": "Saldo musi wynosić zero lub więcej",
   "mc.err.resetFailed": "Nie udało się zresetować hasła: sprawdź, czy na serwerze jest AurumAuth i czy ten gracz jest zarejestrowany",
   "mc.err.noServer": "Nie podano serwera",
   "mc.err.internalOnly": "Ten endpoint jest dostępny tylko z sieci wewnętrznej",

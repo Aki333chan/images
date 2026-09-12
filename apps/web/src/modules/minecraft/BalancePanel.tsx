@@ -26,7 +26,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
-  const pending = useRef<{ fingerprint: string; key: string } | null>(null);
+  const pending = useRef<{ fingerprint: string; key: string; expectedBalance?: number } | null>(null);
 
   const canEdit = hasPermission('minecraft.economy.admin');
   const base = `/api/modules/minecraft/servers/${serverId}/players/${uuid}/balance`;
@@ -40,10 +40,10 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
 
   useEffect(load, [load]);
 
-  async function change(direction: 'deposit' | 'withdraw') {
+  async function change(direction: 'deposit' | 'withdraw' | 'set') {
     const value = Number(amount.replace(',', '.'));
-    if (!Number.isFinite(value) || value <= 0) {
-      setError(t('mc.bal.positive'));
+    if (!Number.isFinite(value) || (direction === 'set' ? value < 0 : value <= 0)) {
+      setError(t(direction === 'set' ? 'mc.bal.nonNegative' : 'mc.bal.positive'));
       return;
     }
     const why = reason.trim();
@@ -56,7 +56,16 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
     const idempotencyKey = pending.current?.fingerprint === fingerprint
       ? pending.current.key
       : crypto.randomUUID();
-    pending.current = { fingerprint, key: idempotencyKey };
+    const expectedBalance = direction === 'set'
+      ? (pending.current?.fingerprint === fingerprint
+          ? pending.current.expectedBalance
+          : data?.balance)
+      : undefined;
+    if (direction === 'set' && expectedBalance === undefined) {
+      setError(t('mc.bal.needRefresh'));
+      return;
+    }
+    pending.current = { fingerprint, key: idempotencyKey, expectedBalance };
     setBusy(true);
     setError('');
     setResult('');
@@ -66,7 +75,9 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
         body: JSON.stringify({
           // Округление до копеек — то же, что делает бэкенд: пусть в поле и
           // в журнале будет одна и та же величина.
-          amount: rounded,
+          ...(direction === 'set'
+            ? { expectedBalance, targetBalance: rounded }
+            : { amount: rounded }),
           reason: why,
           idempotencyKey,
         }),
@@ -78,10 +89,13 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
       if (!res.ok) {
         // Отказ провайдера («недостаточно средств») — это его текст, а не
         // сбой панели, и подменять его своим было бы неправдой.
-        setError(apiText(res.error) || t('mc.bal.rejected'));
+        setError(res.code === 'balance-conflict'
+          ? t('mc.bal.changed')
+          : (apiText(res.error) || t('mc.bal.rejected')));
       } else {
         setResult(
-          t(direction === 'deposit' ? 'mc.bal.deposited' : 'mc.bal.withdrawn', {
+          t(direction === 'deposit' ? 'mc.bal.deposited'
+            : direction === 'withdraw' ? 'mc.bal.withdrawn' : 'mc.bal.setDone', {
             value,
             before: res.balanceBefore,
             after: res.balanceAfter,
@@ -94,7 +108,11 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
       // как кто-то другой изменил счёт.
       setData((prev) =>
         prev && prev.available
-          ? { ...prev, balance: res.balanceAfter, formatted: res.formatted ?? prev.formatted }
+          ? {
+              ...prev,
+              balance: res.currentBalance ?? res.balanceAfter,
+              formatted: res.formatted ?? prev.formatted,
+            }
           : prev,
       );
     } catch (e) {
@@ -179,6 +197,16 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
               onClick={() => void change('withdraw')}
             >
               {t('mc.bal.withdraw')}
+              {unavailable && <span className="ml-1 opacity-60">·{shortHint}</span>}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={unavailable || busy || !amount.trim() || !reason.trim()}
+              title={unavailable ? `${t('mc.bal.set')} — ${shortHint}` : t('mc.bal.setHint')}
+              onClick={() => void change('set')}
+            >
+              {t('mc.bal.set')}
               {unavailable && <span className="ml-1 opacity-60">·{shortHint}</span>}
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={load}>

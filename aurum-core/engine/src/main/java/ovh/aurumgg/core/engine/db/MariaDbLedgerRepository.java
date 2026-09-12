@@ -23,6 +23,7 @@ import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 import ovh.aurumgg.core.api.TransactionCategory;
+import ovh.aurumgg.core.engine.BalanceExpectation;
 import ovh.aurumgg.core.engine.LedgerCommit;
 import ovh.aurumgg.core.engine.LedgerFlowAudit;
 import ovh.aurumgg.core.engine.LedgerPosting;
@@ -275,11 +276,22 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
 
     @Override
     public LedgerCommit commit(TransactionPlan plan, CurrencySpec currency) throws SQLException {
-        return commit(plan, currency, null);
+        return commit(plan, currency, null, null);
     }
 
     @Override
     public LedgerCommit commit(TransactionPlan plan, CurrencySpec currency, UUID capturedHold) throws SQLException {
+        return commit(plan, currency, capturedHold, null);
+    }
+
+    @Override
+    public LedgerCommit commit(TransactionPlan plan, CurrencySpec currency, BalanceExpectation expectation)
+            throws SQLException {
+        return commit(plan, currency, null, expectation);
+    }
+
+    private LedgerCommit commit(TransactionPlan plan, CurrencySpec currency, UUID capturedHold,
+                                BalanceExpectation expectation) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             connection.setAutoCommit(false);
@@ -290,18 +302,35 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                     return findDuplicate(plan, currency);
                 }
 
-                List<LedgerPosting> ordered = plan.postings().stream()
-                        .sorted(Comparator.comparing(posting -> posting.account().stableKey()))
+                List<AccountId> orderedAccounts = java.util.stream.Stream.concat(
+                                plan.postings().stream().map(LedgerPosting::account),
+                                expectation == null ? java.util.stream.Stream.empty()
+                                        : java.util.stream.Stream.of(expectation.account()))
+                        .distinct().sorted(Comparator.comparing(AccountId::stableKey))
                         .toList();
-                for (LedgerPosting posting : ordered) ensureAccount(connection, posting.account(), currency);
+                for (AccountId account : orderedAccounts) ensureAccount(connection, account, currency);
 
                 Map<AccountId, LockedAccount> locked = new LinkedHashMap<>();
-                for (LedgerPosting posting : ordered) {
-                    locked.put(posting.account(), lockAccount(connection, posting.account(), currency));
+                for (AccountId account : orderedAccounts) {
+                    locked.put(account, lockAccount(connection, account, currency));
+                }
+
+                if (expectation != null) {
+                    BigDecimal expected = currency.requireAmount(expectation.balance());
+                    BigDecimal actual = locked.get(expectation.account()).balance().setScale(currency.scale());
+                    if (actual.compareTo(expected) != 0) {
+                        String reason = "EXPECTED_BALANCE_MISMATCH:" + actual.toPlainString();
+                        markTerminal(connection, transactionId, "CONFLICT", reason);
+                        connection.commit();
+                        BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+                        return new LedgerCommit(LedgerCommit.Status.CONFLICT, transactionId,
+                                currency.requireAmount(plan.request().amount()), zero, zero,
+                                actual, actual, reason, Map.of(expectation.account(), actual));
+                    }
                 }
 
                 Map<AccountId, BigDecimal> afterBalances = new LinkedHashMap<>();
-                for (LedgerPosting posting : ordered) {
+                for (LedgerPosting posting : plan.postings()) {
                     LockedAccount account = locked.get(posting.account());
                     BigDecimal after = account.balance().add(posting.amount()).setScale(currency.scale());
                     BigDecimal reserved = posting.amount().signum() < 0
@@ -310,14 +339,14 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                     if (after.subtract(reserved).signum() < 0
                             && posting.account().type() != AccountType.SYSTEM_SOURCE) {
                         String reason = "Insufficient funds in " + posting.account().stableKey();
-                        markRejected(connection, transactionId, reason);
+                        markTerminal(connection, transactionId, "REJECTED", reason);
                         connection.commit();
                         return rejected(plan, transactionId, LedgerCommit.Status.INSUFFICIENT_FUNDS,
                                 reason, currency);
                     }
                     afterBalances.put(posting.account(), after);
                 }
-                for (LedgerPosting posting : ordered) {
+                for (LedgerPosting posting : plan.postings()) {
                     LockedAccount account = locked.get(posting.account());
                     BigDecimal after = afterBalances.get(posting.account());
                     updateBalance(connection, account.id(), after);
@@ -417,8 +446,11 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                             "IDEMPOTENCY_KEY_REUSED");
                 }
                 String storedStatus = result.getString("status");
-                LedgerCommit.Status status = "REJECTED".equals(storedStatus)
-                        ? LedgerCommit.Status.REJECTED : LedgerCommit.Status.DUPLICATE;
+                LedgerCommit.Status status = switch (storedStatus) {
+                    case "REJECTED" -> LedgerCommit.Status.REJECTED;
+                    case "CONFLICT" -> LedgerCommit.Status.CONFLICT;
+                    default -> LedgerCommit.Status.DUPLICATE;
+                };
                 return new LedgerCommit(
                         status,
                         UUID.fromString(result.getString("id")),
@@ -427,7 +459,7 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                         result.getBigDecimal("tax_amount").setScale(currency.scale()),
                         BigDecimal.ZERO.setScale(currency.scale()),
                         BigDecimal.ZERO.setScale(currency.scale()),
-                        "REJECTED".equals(storedStatus)
+                        ("REJECTED".equals(storedStatus) || "CONFLICT".equals(storedStatus))
                                 ? result.getString("failure_reason")
                                 : "Existing transaction status: " + storedStatus
                 );
@@ -442,14 +474,19 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                 plan.targetCredit(), plan.taxCredit(), zero, zero, message);
     }
 
-    private static void markRejected(Connection connection, UUID transactionId, String reason) throws SQLException {
+    private static void markTerminal(Connection connection, UUID transactionId, String status, String reason)
+            throws SQLException {
+        if (!status.equals("REJECTED") && !status.equals("CONFLICT")) {
+            throw new IllegalArgumentException("Unsupported terminal transaction status: " + status);
+        }
         try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE aurum_transactions SET status = 'REJECTED', failure_reason = ?,
+                UPDATE aurum_transactions SET status = ?, failure_reason = ?,
                     committed_at = CURRENT_TIMESTAMP(6) WHERE id = ?
                 """)) {
-            statement.setString(1, reason);
-            statement.setString(2, transactionId.toString());
-            if (statement.executeUpdate() != 1) throw new SQLException("Could not mark transaction rejected");
+            statement.setString(1, status);
+            statement.setString(2, reason);
+            statement.setString(3, transactionId.toString());
+            if (statement.executeUpdate() != 1) throw new SQLException("Could not mark transaction terminal");
         }
     }
 

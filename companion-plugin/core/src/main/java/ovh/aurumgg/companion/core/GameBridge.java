@@ -6,6 +6,7 @@ import java.util.UUID;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
+import ovh.aurumgg.companion.core.model.BalanceSetMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.EconomyRuleApply;
@@ -239,6 +240,11 @@ public interface GameBridge {
 
     /** Идемпотентное изменение строго в active ledger AurumCore. */
     default Optional<BalanceChange> changeNativeBalance(UUID playerUuid, BalanceMutation mutation) {
+        return Optional.empty();
+    }
+
+    /** Absolute compare-and-set strictly through active AurumCore. */
+    default Optional<BalanceChange> setNativeBalance(UUID playerUuid, BalanceSetMutation mutation) {
         return Optional.empty();
     }
 

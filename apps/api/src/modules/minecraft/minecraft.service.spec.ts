@@ -126,6 +126,7 @@ describe('MinecraftService — валюта', () => {
 
   function setup(options: {
     change?: Awaited<ReturnType<CompanionService['changeBalance']>>;
+    set?: Awaited<ReturnType<CompanionService['setBalance']>>;
     economy?: Awaited<ReturnType<CompanionService['getEconomy']>>;
     audit?: Awaited<ReturnType<CompanionService['getEconomyAudit']>>;
     onEconomyCall?: () => void;
@@ -139,6 +140,18 @@ describe('MinecraftService — валюта', () => {
             change: { ok: true, balanceBefore: 100, balanceAfter: 150, formatted: '150' },
           },
         ),
+      setBalance: () => Promise.resolve(options.set ?? {
+        ok: true,
+        change: {
+          ok: true,
+          balanceBefore: 100,
+          balanceAfter: 25,
+          currentBalance: 25,
+          expectedBalance: 100,
+          targetBalance: 25,
+          formatted: '25',
+        },
+      }),
       getEconomy: () => {
         options.onEconomyCall?.();
         return Promise.resolve(
@@ -291,6 +304,63 @@ describe('MinecraftService — валюта', () => {
       BadRequestException,
     );
     expect(logged).toHaveLength(0);
+  });
+
+  it('абсолютный set пишет expected, target и фактический результат в аудит', async () => {
+    const { service, logged } = setup({});
+
+    const result = await service.setBalance('s1', STEVE, 100, 25, 'исправление', 'user-1',
+      '7a5222de-57bb-48f7-8abc-9a9fdb52c50e');
+
+    expect(result.ok).toBe(true);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      action: 'minecraft.economy.set',
+      metadata: {
+        expectedBalance: 100,
+        targetBalance: 25,
+        balanceBefore: 100,
+        balanceAfter: 25,
+        currentBalance: 25,
+        reason: 'исправление',
+      },
+    });
+  });
+
+  it('конфликт expected balance не перезаписывается и остаётся в аудите', async () => {
+    const { service, logged } = setup({
+      set: {
+        ok: true,
+        change: {
+          ok: false,
+          code: 'balance-conflict',
+          error: 'EXPECTED_BALANCE_MISMATCH',
+          balanceBefore: 120,
+          balanceAfter: 120,
+          currentBalance: 120,
+          expectedBalance: 100,
+          targetBalance: 25,
+        },
+      },
+    });
+
+    const result = await service.setBalance('s1', STEVE, 100, 25, 'исправление', 'user-1',
+      '8a5222de-57bb-48f7-8abc-9a9fdb52c50e');
+
+    expect(result.ok).toBe(false);
+    expect(result.currentBalance).toBe(120);
+    expect(logged[0]?.metadata).toMatchObject({ ok: false, resultCode: 'balance-conflict' });
+  });
+
+  it('set допускает ноль, но отклоняет отрицательные и дробные копейки', async () => {
+    const { service, logged } = setup({});
+    await expect(service.setBalance('s1', STEVE, 100, 0, 'reset', 'u',
+      '9a5222de-57bb-48f7-8abc-9a9fdb52c50e')).resolves.toMatchObject({ ok: true });
+    await expect(service.setBalance('s1', STEVE, 100, -1, 'reset', 'u',
+      '9a5222de-57bb-48f7-8abc-9a9fdb52c50f')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.setBalance('s1', STEVE, 100, 1.001, 'reset', 'u',
+      '9a5222de-57bb-48f7-8abc-9a9fdb52c510')).rejects.toBeInstanceOf(BadRequestException);
+    expect(logged).toHaveLength(1);
   });
 
   it('сводка экономики берётся из кэша, а refresh пересчитывает', async () => {

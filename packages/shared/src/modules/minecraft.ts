@@ -512,6 +512,11 @@ export interface MinecraftBalanceChangeDto {
   idempotencyKey?: string;
   source?: 'aurum' | 'vault';
   duplicate?: boolean;
+  /** Compare-and-set intent; present for absolute set only. */
+  expectedBalance?: number;
+  targetBalance?: number;
+  /** Fresh balance after the response, including operations that happened after a duplicate set. */
+  currentBalance?: number;
 }
 
 /** Экономика сервера целиком: общий объём денег и самые богатые. */

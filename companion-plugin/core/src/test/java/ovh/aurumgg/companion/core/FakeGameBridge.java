@@ -11,6 +11,7 @@ import java.util.UUID;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
+import ovh.aurumgg.companion.core.model.BalanceSetMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.EconomyRuleApply;
@@ -296,6 +297,7 @@ public final class FakeGameBridge implements GameBridge {
 
     public final Map<UUID, String> playerNames = new LinkedHashMap<>(Map.of(STEVE, "Steve"));
     public final List<BalanceMutation> balanceMutations = new ArrayList<>();
+    public final List<BalanceSetMutation> balanceSetMutations = new ArrayList<>();
     /** Optional protocol-level failure injected by HTTP tests. */
     public BalanceChange balanceChangeOverride;
 
@@ -384,6 +386,24 @@ public final class FakeGameBridge implements GameBridge {
         balances.put(playerUuid, after);
         return Optional.of(new BalanceChange(true, "ok", null, before, after, money(after),
                 mutation.idempotencyKey(), "aurum", false));
+    }
+
+    @Override
+    public Optional<BalanceChange> setNativeBalance(UUID playerUuid, BalanceSetMutation mutation) {
+        if (!nativeEconomyProvider) return Optional.empty();
+        balanceSetMutations.add(mutation);
+        if (balanceChangeOverride != null) return Optional.of(balanceChangeOverride);
+        double current = balances.getOrDefault(playerUuid, 0.0);
+        double expected = mutation.expectedBalance().doubleValue();
+        double target = mutation.targetBalance().doubleValue();
+        if (Double.compare(current, expected) != 0) {
+            return Optional.of(new BalanceChange(false, "balance-conflict", "EXPECTED_BALANCE_MISMATCH",
+                    current, current, money(current), mutation.idempotencyKey(), "aurum", false,
+                    expected, target, current));
+        }
+        balances.put(playerUuid, target);
+        return Optional.of(new BalanceChange(true, "ok", null, expected, target, money(target),
+                mutation.idempotencyKey(), "aurum", false, expected, target, target));
     }
 
     @Override

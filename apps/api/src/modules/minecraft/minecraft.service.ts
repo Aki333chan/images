@@ -414,6 +414,69 @@ export class MinecraftService {
   }
 
   /**
+   * Replace a balance only if the value shown to the administrator is still current.
+   * A stale view is a recorded provider refusal, never a recalculated delta.
+   */
+  async setBalance(
+    serverId: string,
+    uuid: string,
+    expectedBalance: number,
+    targetBalance: number,
+    reason: string,
+    actorId: string,
+    idempotencyKey: string,
+  ): Promise<MinecraftBalanceChangeDto> {
+    const expected = exactBalance(expectedBalance);
+    const target = exactBalance(targetBalance);
+    const auditReason = reason.trim();
+    if (!auditReason) throw new BadRequestException('mc.bal.reason');
+
+    const result = await this.companion.setBalance(
+      serverId, uuid, expected, target, idempotencyKey, actorId, auditReason,
+    );
+    if (!result.ok) {
+      const message = result.failure.reason ?? 'mc.err.ecoUnavailable';
+      if (result.operationCode === 'idempotency-conflict') {
+        throw new ConflictException({ message, code: 'idempotency-conflict' });
+      }
+      if (result.operationCode === 'economy-unavailable') {
+        throw new ServiceUnavailableException({ message, code: 'economy-unavailable' });
+      }
+      throw new BadRequestException({
+        message,
+        code: result.operationCode ?? result.failure.code ?? 'economy-unavailable',
+      });
+    }
+
+    const players = await this.companion.getPlayers(serverId).catch(() => null);
+    const playerName = players?.find((player) => player.uuid === uuid)?.name ?? null;
+    await this.audit.log({
+      actorId,
+      action: 'minecraft.economy.set',
+      targetType: 'minecraft-player',
+      targetId: uuid,
+      metadata: {
+        serverId,
+        playerUuid: uuid,
+        playerName,
+        expectedBalance: expected,
+        targetBalance: target,
+        reason: auditReason,
+        idempotencyKey: result.change.idempotencyKey ?? idempotencyKey,
+        source: result.change.source ?? null,
+        duplicate: result.change.duplicate === true,
+        resultCode: result.change.code ?? null,
+        ok: result.change.ok,
+        error: result.change.error ?? null,
+        balanceBefore: result.change.balanceBefore,
+        balanceAfter: result.change.balanceAfter,
+        currentBalance: result.change.currentBalance ?? result.change.balanceAfter,
+      },
+    });
+    return result.change;
+  }
+
+  /**
    * Экономика сервера: общий объём денег и доска богатства.
    *
    * Считается не на каждое открытие страницы. Core отдаёт один индексированный
@@ -488,3 +551,14 @@ const ECONOMY_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /** Длина доски богатства. Больше десятка строк на экран сервера не влезает. */
 const ECONOMY_TOP_LIMIT = 10;
+
+function exactBalance(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1_000_000_000) {
+    throw new BadRequestException('mc.err.amountNonNegative');
+  }
+  const rounded = Math.round(value * 100) / 100;
+  if (Math.abs(value * 100 - Math.round(value * 100)) > 1e-9) {
+    throw new BadRequestException('mc.val.amountDecimals');
+  }
+  return rounded;
+}

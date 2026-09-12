@@ -1,4 +1,4 @@
-# AurumCore 0.15.0
+# AurumCore 0.16.0
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -9,7 +9,16 @@ Vault remains the compatibility API; it is not the money store.
 Vault/Essentials balances. Shadow mode creates immutable snapshots, imports
 them into the dormant ledger, verifies every balance and exports rollback CSV.
 
-Version 0.15.0 adds `AurumRulesAdminApi`, a two-phase editor for financial
+Version 0.16.0 adds an atomic absolute balance replacement to
+`AurumEconomyApi`. The caller supplies both the balance it displayed and the
+desired target. MariaDB checks the expected value while holding the account
+row lock and records either a committed adjustment or a terminal conflict
+under the idempotency key. A lost reply can therefore be retried without
+overwriting a later payment. Zero and no-op targets are supported; policies
+are deliberately bypassed so an administrative replacement lands exactly on
+the requested value, while active holds still prevent an unsafe debit.
+
+Version 0.15.0 added `AurumRulesAdminApi`, a two-phase editor for financial
 policies and exchange rules. Preview validates an exact full replacement,
 checks the expected immutable revision and returns a five-minute actor-bound
 one-use token. Apply requires an audit reason and uses an atomic revision guard;
@@ -29,7 +38,7 @@ instead of silently widening the audit to every account.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.15.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.16.0.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.

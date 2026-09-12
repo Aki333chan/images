@@ -33,5 +33,5 @@ public record LedgerCommit(
                 targetBalance, message, Map.of());
     }
 
-    public enum Status { COMMITTED, DUPLICATE, INSUFFICIENT_FUNDS, REJECTED }
+    public enum Status { COMMITTED, DUPLICATE, CONFLICT, INSUFFICIENT_FUNDS, REJECTED }
 }

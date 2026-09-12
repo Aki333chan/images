@@ -766,14 +766,16 @@ registry не удалось перечитать; такой запрос **н�
 preview. Эти маршруты доступны только с active AurumCore и не имеют Vault
 fallback.
 
-**Нативные маршруты панели (Companion 0.11.0+)**
+**Нативные маршруты панели (Companion 0.12.0+)**
 
 - `GET /economy/native?top=10` — денежная масса, казна, налоги и богатейшие;
 - `GET /economy/native/balance/{uuid}` — баланс онлайн- или офлайн-игрока;
 - `POST /economy/native/balance/{uuid}/{deposit|withdraw}` — идемпотентная
-  административная проводка.
+  административная delta-проводка;
+- `POST /economy/native/balance/{uuid}/set` — атомарная абсолютная замена с
+  optimistic concurrency.
 
-Все три маршрута требуют active AurumCore и при его отсутствии отвечают `503
+Все маршруты требуют active AurumCore и при его отсутствии отвечают `503
 requires-aurumcore`. Они принципиально не переходят к Vault: панель не должна
 показывать или менять второй источник денег. Старые `/economy` и
 `/players/{uuid}/balance` сохранены как совместимый Core/Vault-контракт, но
@@ -833,7 +835,13 @@ Vault.** Это даёт ledger категорию, автора, причину
 
 Чтение различает `requires-vault` (нет ни активного Core, ни Vault) и
 `no-provider` (Vault есть, но провайдера нет). Нативная запись дополнительно
-может вернуть `economy-unavailable` и `idempotency-conflict`. Веб-маршруты
+может вернуть `economy-unavailable` и `idempotency-conflict`. Абсолютный `set`
+при устаревшем показанном балансе отвечает `200`, `ok:false`, кодом
+`balance-conflict` и свежим `currentBalance`: корректный запрос завершён, но
+ничего не списано и не начислено. Его тело содержит `expectedBalance`,
+`targetBalance`, обязательные `idempotencyKey`, `actor` и `reason`. После
+неопределённого сетевого сбоя повторяются тот же ключ и тот же expected — новый
+баланс для retry не подставляется. Веб-маршруты
 записи требуют отдельного ADMIN-only права `minecraft.economy.admin`;
 устаревшее `minecraft.economy.edit` оставлено только для совместимости ролей.
 

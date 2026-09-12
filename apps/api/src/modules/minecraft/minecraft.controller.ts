@@ -52,6 +52,7 @@ import { JailsService } from './jails.service';
 import { MinecraftService } from './minecraft.service';
 import {
   BalanceChangeDto,
+  BalanceSetDto,
   BanDto,
   CompanionConfigDto,
   EconomyRuleApplyDto as EconomyRuleApplyRequestDto,
@@ -342,6 +343,26 @@ export class MinecraftController {
       uuid,
       'withdraw',
       dto.amount,
+      dto.reason,
+      user.id,
+      dto.idempotencyKey,
+    );
+  }
+
+  @Post('players/:uuid/balance/set')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
+  @ServerScoped('serverId')
+  setBalance(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() dto: BalanceSetDto,
+  ): Promise<MinecraftBalanceChangeDto> {
+    return this.minecraft.setBalance(
+      serverId,
+      uuid,
+      dto.expectedBalance,
+      dto.targetBalance,
       dto.reason,
       user.id,
       dto.idempotencyKey,

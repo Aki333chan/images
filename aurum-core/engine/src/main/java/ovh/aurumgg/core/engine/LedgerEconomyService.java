@@ -15,6 +15,8 @@ import java.util.concurrent.Executor;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
+import ovh.aurumgg.core.api.BalanceSetRequest;
+import ovh.aurumgg.core.api.BalanceSetResult;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
@@ -123,7 +125,7 @@ public final class LedgerEconomyService implements AurumEconomyApi {
         TransactionResult.Status status = switch (commit.status()) {
             case COMMITTED -> TransactionResult.Status.SUCCESS;
             case DUPLICATE -> TransactionResult.Status.DUPLICATE;
-            case INSUFFICIENT_FUNDS, REJECTED -> TransactionResult.Status.REJECTED;
+            case CONFLICT, INSUFFICIENT_FUNDS, REJECTED -> TransactionResult.Status.REJECTED;
         };
         return new TransactionResult(status, request.idempotencyKey(), commit.grossAmount(),
                 commit.netAmount(), commit.taxAmount(), commit.message());
@@ -139,7 +141,99 @@ public final class LedgerEconomyService implements AurumEconomyApi {
                 policies.select(request, Instant.now(clock)), Instant.now(clock));
     }
 
-    /** Serialized compare-and-adjust used by the administrative set command. */
+    /** Atomic compare-and-set used by Companion and other retrying clients. */
+    @Override
+    public CompletionStage<BalanceSetResult> setBalance(BalanceSetRequest request) {
+        return supply(() -> setBalanceBlocking(request)).exceptionally(exception -> {
+            BigDecimal expected = normalizedOrZero(request.expectedBalance());
+            BigDecimal target = normalizedOrZero(request.targetBalance());
+            return new BalanceSetResult(BalanceSetResult.Status.UNAVAILABLE,
+                    request.idempotencyKey(), expected, target, expected, expected, expected,
+                    rootMessage(exception));
+        });
+    }
+
+    private BalanceSetResult setBalanceBlocking(BalanceSetRequest request) throws Exception {
+        synchronized (mutationLock) {
+            if (!currency.id().equalsIgnoreCase(request.currencyId())) {
+                return setRejected(request, "Unknown currency: " + request.currencyId());
+            }
+            if (request.account().type() != AccountType.PLAYER) {
+                return setRejected(request, "Only player balances can be replaced");
+            }
+            BigDecimal expected = currency.requireAmount(request.expectedBalance());
+            BigDecimal target = currency.requireAmount(request.targetBalance());
+            if (expected.signum() < 0 || target.signum() < 0) {
+                return setRejected(request, "Player balance cannot be negative");
+            }
+
+            BigDecimal difference = target.subtract(expected).setScale(currency.scale());
+            AccountId system = new AccountId(
+                    difference.signum() >= 0 ? AccountType.SYSTEM_SOURCE : AccountType.SYSTEM_SINK,
+                    "global");
+            Map<String, String> metadata = new java.util.LinkedHashMap<>(request.metadata());
+            // These fields bind the compare-and-set intent to the existing
+            // transaction request hash, including a zero-delta receipt.
+            metadata.put("operation", "set");
+            metadata.put("expected-balance", expected.toPlainString());
+            metadata.put("target-balance", target.toPlainString());
+            TransactionRequest transaction = new TransactionRequest(
+                    request.idempotencyKey(),
+                    difference.signum() >= 0 ? system : request.account(),
+                    difference.signum() >= 0 ? request.account() : system,
+                    currency.id(), difference.abs(), TransactionCategory.ADMIN_ADJUSTMENT, metadata);
+            // A set has to land on the exact target. Taxes, fees and subsidies
+            // would change that meaning, so administrative replacement does
+            // not run through policy selection.
+            TransactionPlan plan = TransactionPlanner.plan(transaction, currency, List.of(), Instant.now(clock));
+            LedgerCommit commit = repository.commit(plan, currency,
+                    new BalanceExpectation(request.account(), expected));
+            BigDecimal current = repository.balance(request.account(), currency)
+                    .orElse(BigDecimal.ZERO.setScale(currency.scale()));
+            balanceCache.put(request.account(), current);
+            if (commit.status() == LedgerCommit.Status.COMMITTED) {
+                balanceCache.putAll(commit.balancesAfter());
+            }
+
+            BalanceSetResult.Status status = switch (commit.status()) {
+                case COMMITTED -> BalanceSetResult.Status.SUCCESS;
+                case DUPLICATE -> BalanceSetResult.Status.DUPLICATE;
+                case CONFLICT -> BalanceSetResult.Status.CONFLICT;
+                case INSUFFICIENT_FUNDS, REJECTED -> BalanceSetResult.Status.REJECTED;
+            };
+            BigDecimal before = status == BalanceSetResult.Status.CONFLICT
+                    ? conflictBalance(commit.message()).orElse(current)
+                    : expected;
+            BigDecimal after = status == BalanceSetResult.Status.SUCCESS
+                    || status == BalanceSetResult.Status.DUPLICATE ? target : before;
+            return new BalanceSetResult(status, request.idempotencyKey(), expected, target,
+                    before, after, current, commit.message());
+        }
+    }
+
+    private Optional<BigDecimal> conflictBalance(String message) {
+        String prefix = "EXPECTED_BALANCE_MISMATCH:";
+        if (message == null || !message.startsWith(prefix)) return Optional.empty();
+        try {
+            return Optional.of(currency.requireAmount(new BigDecimal(message.substring(prefix.length()))));
+        } catch (RuntimeException invalidStoredReason) {
+            return Optional.empty();
+        }
+    }
+
+    private BalanceSetResult setRejected(BalanceSetRequest request, String message) {
+        BigDecimal expected = normalizedOrZero(request.expectedBalance());
+        BigDecimal target = normalizedOrZero(request.targetBalance());
+        return new BalanceSetResult(BalanceSetResult.Status.REJECTED, request.idempotencyKey(),
+                expected, target, expected, expected, expected, message);
+    }
+
+    private BigDecimal normalizedOrZero(BigDecimal amount) {
+        try { return currency.requireAmount(amount); }
+        catch (RuntimeException invalid) { return BigDecimal.ZERO.setScale(currency.scale()); }
+    }
+
+    /** Serialized convenience used by the interactive administrative command. */
     public CompletionStage<TransactionResult> setPlayerBalance(AccountId player, BigDecimal target,
                                                                 String idempotencyKey, Map<String, String> metadata) {
         return supply(() -> {
@@ -156,24 +250,17 @@ public final class LedgerEconomyService implements AurumEconomyApi {
                         throw new LedgerAccessException(exception);
                     }
                 });
-                int comparison = wanted.compareTo(current);
-                if (comparison == 0) {
-                    BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
-                    return new TransactionResult(TransactionResult.Status.SUCCESS, idempotencyKey,
-                            zero, zero, zero, "Balance already has the requested value");
-                }
-                AccountId system = new AccountId(
-                        comparison > 0 ? AccountType.SYSTEM_SOURCE : AccountType.SYSTEM_SINK, "global");
-                TransactionRequest request = new TransactionRequest(
-                        idempotencyKey,
-                        comparison > 0 ? system : player,
-                        comparison > 0 ? player : system,
-                        currency.id(),
-                        wanted.subtract(current).abs(),
-                        TransactionCategory.ADMIN_ADJUSTMENT,
-                        metadata
-                );
-                return transferBlocking(request);
+                BalanceSetResult result = setBalanceBlocking(new BalanceSetRequest(
+                        idempotencyKey, player, currency.id(), current, wanted, metadata));
+                TransactionResult.Status status = switch (result.status()) {
+                    case SUCCESS -> TransactionResult.Status.SUCCESS;
+                    case DUPLICATE -> TransactionResult.Status.DUPLICATE;
+                    case CONFLICT, REJECTED -> TransactionResult.Status.REJECTED;
+                    case UNAVAILABLE -> TransactionResult.Status.UNAVAILABLE;
+                };
+                BigDecimal changed = wanted.subtract(current).abs();
+                return new TransactionResult(status, idempotencyKey, changed, changed,
+                        BigDecimal.ZERO.setScale(currency.scale()), result.message());
             }
         }).exceptionally(exception -> {
             BigDecimal amount;

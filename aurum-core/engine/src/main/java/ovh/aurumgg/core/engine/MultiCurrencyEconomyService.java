@@ -11,6 +11,8 @@ import java.util.concurrent.CompletionStage;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
+import ovh.aurumgg.core.api.BalanceSetRequest;
+import ovh.aurumgg.core.api.BalanceSetResult;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
@@ -70,6 +72,11 @@ public final class MultiCurrencyEconomyService implements AurumEconomyApi {
         BigDecimal zero = BigDecimal.ZERO.setScale(primary.scale());
         return CompletableFuture.completedFuture(new TransactionResult(TransactionResult.Status.REJECTED,
                 request.idempotencyKey(), zero, zero, zero, "Unknown currency: " + request.currencyId()));
+    }
+
+    @Override public CompletionStage<BalanceSetResult> setBalance(BalanceSetRequest request) {
+        LedgerEconomyService service = service(request.currencyId());
+        return service == null ? AurumEconomyApi.super.setBalance(request) : service.setBalance(request);
     }
 
     @Override public CompletionStage<ovh.aurumgg.core.api.HoldResult> createHold(

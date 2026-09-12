@@ -24,8 +24,10 @@ public record TransactionRequest(
         if (idempotencyKey.isEmpty() || idempotencyKey.length() > 191) {
             throw new IllegalArgumentException("Idempotency key must contain 1..191 characters");
         }
-        if (from.equals(to) || amount.signum() <= 0) {
-            throw new IllegalArgumentException("Transaction needs different accounts and positive amount");
+        if (from.equals(to) || amount.signum() < 0
+                || (amount.signum() == 0 && category != TransactionCategory.ADMIN_ADJUSTMENT)) {
+            throw new IllegalArgumentException(
+                    "Transaction needs different accounts and a positive amount (or an administrative no-op)");
         }
         if (metadata.size() > 32 || metadata.entrySet().stream().anyMatch(entry ->
                 entry.getKey().isBlank() || entry.getKey().length() > 64 || entry.getValue().length() > 512
