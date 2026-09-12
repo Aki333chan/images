@@ -55,6 +55,7 @@ public final class ClaimDelivery implements Listener {
     private final JavaPlugin plugin;
     private final ClaimGateway claims;
     private final MessageService messages;
+    private final PlayerDeliveryReceipt receipts;
     /** Claim kind → how to read that kind's payload back into a plan. */
     private final Map<String, Function<String, Optional<DeliveryPlan>>> decoders = new ConcurrentHashMap<>();
 
@@ -71,6 +72,7 @@ public final class ClaimDelivery implements Listener {
         this.plugin = plugin;
         this.claims = claims;
         this.messages = messages;
+        this.receipts = new PlayerDeliveryReceipt(plugin);
     }
 
     /** Teach the loop one kind of claim. Unknown kinds are left alone, not guessed at. */
@@ -106,9 +108,12 @@ public final class ClaimDelivery implements Listener {
         if (!claims.available() || !player.isOnline()) return;
         UUID owner = player.getUniqueId();
         claims.owed(owner).whenComplete((owed, error) -> onMain(() -> {
-            if (error != null || owed == null || owed.isEmpty()) return;
+            if (error != null || owed == null) return;
             Player online = Bukkit.getPlayer(owner);
             if (online == null) return;
+            receipts.clean(online, owed.stream().map(ClaimSnapshot::id)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+            if (owed.isEmpty()) return;
             // Said once for the batch, not once per item: the ordinary case is
             // a purchase made seconds ago, and announcing each step of it would
             // be noise on top of the shop's own confirmation.
@@ -179,7 +184,14 @@ public final class ClaimDelivery implements Listener {
             close(claimId, () -> claims.pause(claimId, "player left before delivery finished"));
             return;
         }
-        plan.step(player, index, new StepOutcome(owner, claimId, plan, index));
+        StepOutcome outcome = new StepOutcome(owner, claimId, plan, index);
+        if (plan.playerDataStep(index) && receipts.has(player, claimId, index)) {
+            // The item mutation and receipt survived one player-data snapshot,
+            // while the database cursor did not. Only record the missing half.
+            outcome.done();
+            return;
+        }
+        plan.step(player, index, outcome);
     }
 
     /** One step's answer, usable exactly once. */
@@ -200,6 +212,28 @@ public final class ClaimDelivery implements Listener {
         @Override
         public void done() {
             if (spent()) return;
+            Player player = Bukkit.getPlayer(owner);
+            if (plan.playerDataStep(index)) {
+                if (player == null || !player.isOnline()) {
+                    close(claimId, () -> claims.pause(claimId,
+                            "player left while an inventory step completed"));
+                    return;
+                }
+                receipts.mark(player, claimId, index);
+                try {
+                    // Durability order is player.dat first, MariaDB cursor
+                    // second. Without this save a crash after advance could
+                    // restore the old inventory while Core remembers the step
+                    // as complete.
+                    player.saveData();
+                } catch (RuntimeException failure) {
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "Could not persist inventory receipt for claim " + claimId, failure);
+                    close(claimId, () -> claims.defer(claimId,
+                            "could not persist the player's inventory"));
+                    return;
+                }
+            }
             int completed = index + 1;
             claims.advance(claimId, completed).whenComplete((result, error) -> onMain(() -> {
                 if (error != null || result == null || !result.ok()) {
@@ -209,6 +243,8 @@ public final class ClaimDelivery implements Listener {
                     running.remove(claimId);
                     return;
                 }
+                Player online = Bukkit.getPlayer(owner);
+                if (online != null) receipts.clear(online, claimId, index);
                 step(owner, claimId, plan, completed);
             }));
         }

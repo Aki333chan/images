@@ -128,6 +128,14 @@ need a stable idempotency key and item/command consumers need their own receipt,
 escrow or compensation. The lease prevents concurrent workers; it does not turn
 MariaDB and a Minecraft inventory into one transaction.
 
+The built-in trade delivery and AddonsNPC item steps add that receipt. They stamp
+the claim step into the player's PDC, save the inventory and stamp in the same
+player-data snapshot, and only then advance MariaDB. A retry that sees the stamp
+records the missing cursor without applying the item mutation again. The forced
+save happens once per completed item hand-off, never in a join or periodic loop.
+Arbitrary console commands remain outside this guarantee unless their target
+accepts the claim/step key idempotently.
+
 Payloads are opaque. Core stores them, hands them back and never parses them —
 items, commands and their encoding belong to the plugin. Core owns only what a
 plugin cannot get right alone: the record survives a crash, one worker holds it

@@ -28,6 +28,17 @@ public interface DeliveryPlan {
     /** Plugin-defined; Core stores it and never parses it. */
     String encode();
 
+    /**
+     * Whether this step changes the player's persisted Minecraft data.
+     *
+     * <p>The delivery loop stamps those steps into the same player data as the
+     * inventory mutation. If the server stops after the item moved but before
+     * Core records the cursor, the stamp lets the retry advance without moving
+     * the item a second time. Database-backed and arbitrary command steps must
+     * stay false: their effects do not share the player's persistence domain.
+     */
+    default boolean playerDataStep(int index) { return false; }
+
     void step(Player player, int index, Outcome outcome);
 
     /**

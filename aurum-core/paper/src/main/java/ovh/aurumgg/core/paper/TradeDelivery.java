@@ -45,6 +45,7 @@ final class TradeDelivery implements Listener {
     private final ClaimService claims;
     private final LanguageBundle messages;
     private final String worker;
+    private final PlayerDeliveryReceipt receipts;
     /** Claims this server is already delivering; the lease covers the other servers. */
     private final Set<UUID> running = ConcurrentHashMap.newKeySet();
 
@@ -52,6 +53,7 @@ final class TradeDelivery implements Listener {
         this.plugin = plugin;
         this.claims = claims;
         this.messages = messages;
+        this.receipts = new PlayerDeliveryReceipt(plugin);
         this.worker = "trade@" + (plugin.getServer().getWorlds().isEmpty()
                 ? plugin.getServer().getName() + ":" + plugin.getServer().getPort()
                 : plugin.getServer().getWorlds().getFirst().getUID());
@@ -91,10 +93,12 @@ final class TradeDelivery implements Listener {
         if (!player.isOnline()) return;
         UUID owner = player.getUniqueId();
         claims.owed(owner, "AurumCore").whenComplete((owed, error) -> onMain(() -> {
-            if (error != null || owed == null || owed.isEmpty()) return;
+            if (error != null || owed == null) return;
             Player online = Bukkit.getPlayer(owner);
             if (online == null) return;
             List<ClaimSnapshot> mine = owed.stream().filter(claim -> KIND.equals(claim.kind())).toList();
+            receipts.clean(online, mine.stream().map(ClaimSnapshot::id)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet()));
             if (mine.isEmpty()) return;
             online.sendMessage(messages.component("trade-delivery-pending",
                     Map.of("count", Integer.toString(mine.size()))));
@@ -128,6 +132,13 @@ final class TradeDelivery implements Listener {
     }
 
     private void give(Player player, UUID claimId, List<ItemStack> items) {
+        if (receipts.has(player, claimId)) {
+            // The inventory and receipt reached player.dat together, but the
+            // claim cursor did not reach MariaDB. Complete only the missing
+            // database half instead of handing over the table twice.
+            advance(player, claimId);
+            return;
+        }
         // All or nothing. A half-delivered trade would need the claim to
         // remember which stacks already went in, and the whole point of the
         // blob is that the table is one indivisible thing.
@@ -136,6 +147,8 @@ final class TradeDelivery implements Listener {
             close(claimId, claims.defer(claimId, worker, "inventory full"));
             return;
         }
+        ItemStack[] before = java.util.Arrays.stream(player.getInventory().getStorageContents())
+                .map(item -> item == null ? null : item.clone()).toArray(ItemStack[]::new);
         for (ItemStack item : items) {
             HashMap<Integer, ItemStack> leftovers = new HashMap<>(
                     player.getInventory().addItem(item.clone()));
@@ -143,12 +156,30 @@ final class TradeDelivery implements Listener {
                 // The inventory changed between the check and the insert. Take
                 // back what did go in and try again later: an item handed over
                 // twice is worse than one handed over late.
-                items.forEach(given -> player.getInventory().removeItem(given.clone()));
+                player.getInventory().setStorageContents(before);
                 close(claimId, claims.defer(claimId, worker, "inventory changed during delivery"));
                 return;
             }
         }
         player.updateInventory();
+        receipts.mark(player, claimId);
+        advance(player, claimId);
+    }
+
+    private void advance(Player player, UUID claimId) {
+        try {
+            // Keep the cross-store order strict: the inventory and receipt
+            // must be durable before MariaDB is allowed to forget this step.
+            // This is one targeted save per completed item hand-off, never a
+            // periodic or join-time disk sweep.
+            player.saveData();
+        } catch (RuntimeException failure) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING,
+                    "Could not persist trade delivery receipt for claim " + claimId, failure);
+            close(claimId, claims.defer(claimId, worker,
+                    "could not persist the player's inventory"));
+            return;
+        }
         claims.advance(claimId, worker, 1).whenComplete((advanced, error) -> onMain(() -> {
             if (error != null || advanced == null || !advanced.ok()) {
                 // The lease is gone, so this server is no longer the one
@@ -157,6 +188,7 @@ final class TradeDelivery implements Listener {
                 running.remove(claimId);
                 return;
             }
+            receipts.clear(player, claimId);
             close(claimId, claims.settle(claimId, worker));
         }));
     }

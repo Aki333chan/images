@@ -52,6 +52,7 @@ public final class BuyerPlan implements DeliveryPlan {
     @Override public int stepCount() { return sale.stepCount(); }
     @Override public String summary() { return sale.summary(); }
     @Override public String encode() { return sale.encode(); }
+    @Override public boolean playerDataStep(int index) { return sale.itemStep(index); }
 
     @Override
     public void step(Player player, int index, Outcome outcome) {

@@ -47,6 +47,7 @@ public final class ShopPlan implements DeliveryPlan {
     @Override public int stepCount() { return purchase.stepCount(); }
     @Override public String summary() { return purchase.summary(); }
     @Override public String encode() { return purchase.encode(); }
+    @Override public boolean playerDataStep(int index) { return index == purchase.itemStep(); }
 
     @Override
     public void step(Player player, int index, Outcome outcome) {
@@ -67,7 +68,9 @@ public final class ShopPlan implements DeliveryPlan {
 
     private void giveItem(Player player, Outcome outcome) {
         ItemStack reward = purchase.item().clone();
-        if (!ShopService.canFit(player.getInventory().getStorageContents(), reward)) {
+        ItemStack[] before = java.util.Arrays.stream(player.getInventory().getStorageContents())
+                .map(item -> item == null ? null : item.clone()).toArray(ItemStack[]::new);
+        if (!ShopService.canFit(before, reward)) {
             // Deferring counts an attempt, and that is correct: a player who
             // never frees a slot should end up in quarantine rather than have
             // this retried on every login for ever.
@@ -77,10 +80,10 @@ public final class ShopPlan implements DeliveryPlan {
         }
         HashMap<Integer, ItemStack> leftovers = new HashMap<>(player.getInventory().addItem(reward));
         if (!leftovers.isEmpty()) {
-            // The inventory changed between the check and the insert. Take back
-            // what did go in, so the retry starts from a clean state.
-            leftovers.values().forEach(left -> reward.setAmount(reward.getAmount() - left.getAmount()));
-            if (reward.getAmount() > 0) player.getInventory().removeItem(reward);
+            // Restore the exact inventory image. Removing an indistinguishable
+            // stack could otherwise take an older item that the player already
+            // owned rather than the part inserted by this delivery.
+            player.getInventory().setStorageContents(before);
             outcome.defer("inventory changed during delivery");
             return;
         }
