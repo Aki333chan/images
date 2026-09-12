@@ -21,6 +21,8 @@ import {
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
   type MinecraftEconomyDto,
+  type MinecraftEconomyAuditDto,
+  type MinecraftEconomyAuditSection,
   type MinecraftGiveResponse,
   type MinecraftGuildBonusDto,
   type MinecraftGuildDto,
@@ -586,6 +588,21 @@ export class MinecraftController {
     @Query('refresh') refresh?: string,
   ): Promise<MinecraftEconomyDto> {
     return this.minecraft.getEconomy(serverId, { refresh: refresh === '1' || refresh === 'true' });
+  }
+
+  @Get('economy/audit/:section')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  economyAudit(
+    @Param('serverId') serverId: string,
+    @Param('section') section: MinecraftEconomyAuditSection,
+    @Query('currency') currency?: string,
+    @Query('account') account?: string,
+    @Query('limit') rawLimit?: string,
+  ): Promise<MinecraftEconomyAuditDto> {
+    const parsed = Number.parseInt(rawLimit ?? '50', 10);
+    const limit = Number.isFinite(parsed) ? Math.max(1, Math.min(200, parsed)) : 50;
+    return this.minecraft.getEconomyAudit(serverId, section, currency ?? '', account ?? '', limit);
   }
 
   @Post('quick-commands/:commandId')

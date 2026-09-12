@@ -13,6 +13,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -21,9 +22,13 @@ import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
+import ovh.aurumgg.core.api.TransactionCategory;
 import ovh.aurumgg.core.engine.LedgerCommit;
+import ovh.aurumgg.core.engine.LedgerFlowAudit;
 import ovh.aurumgg.core.engine.LedgerPosting;
+import ovh.aurumgg.core.engine.LedgerPostingAudit;
 import ovh.aurumgg.core.engine.LedgerRepository;
+import ovh.aurumgg.core.engine.LedgerTransactionAudit;
 import ovh.aurumgg.core.engine.TransactionPlan;
 import ovh.aurumgg.core.engine.TransactionIntent;
 
@@ -120,6 +125,112 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
             }
         }
         return List.copyOf(result);
+    }
+
+    @Override
+    public List<LedgerTransactionAudit> history(
+            CurrencySpec currency, Optional<AccountId> account, int limit) throws SQLException {
+        int bounded = Math.clamp(limit, 1, 200);
+        List<LedgerTransactionAudit> transactions = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setReadOnly(true);
+            String sql = account.isEmpty() ? """
+                    SELECT t.id,t.idempotency_key,t.category,t.status,t.gross_amount,t.net_amount,t.tax_amount,
+                           t.failure_reason,t.metadata_json,t.created_at,t.committed_at
+                    FROM aurum_transactions t WHERE t.currency_id=?
+                    ORDER BY t.created_at DESC,t.id DESC LIMIT ?
+                    """ : """
+                    SELECT DISTINCT t.id,t.idempotency_key,t.category,t.status,t.gross_amount,t.net_amount,
+                           t.tax_amount,t.failure_reason,t.metadata_json,t.created_at,t.committed_at
+                    FROM aurum_accounts a
+                    JOIN aurum_ledger_entries e ON e.account_id=a.id
+                    JOIN aurum_transactions t ON t.id=e.transaction_id
+                    WHERE a.currency_id=? AND a.account_type=? AND a.reference_id=?
+                    ORDER BY t.created_at DESC,t.id DESC LIMIT ?
+                    """;
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, currency.id());
+                if (account.isPresent()) {
+                    statement.setString(2, account.get().type().name());
+                    statement.setString(3, account.get().reference());
+                    statement.setInt(4, bounded);
+                } else {
+                    statement.setInt(2, bounded);
+                }
+                try (ResultSet rows = statement.executeQuery()) {
+                    while (rows.next()) {
+                        java.sql.Timestamp committed = rows.getTimestamp("committed_at");
+                        transactions.add(new LedgerTransactionAudit(
+                                UUID.fromString(rows.getString("id")), rows.getString("idempotency_key"),
+                                TransactionCategory.valueOf(rows.getString("category")), rows.getString("status"),
+                                rows.getBigDecimal("gross_amount").setScale(currency.scale()),
+                                rows.getBigDecimal("net_amount").setScale(currency.scale()),
+                                rows.getBigDecimal("tax_amount").setScale(currency.scale()),
+                                Objects.requireNonNullElse(rows.getString("failure_reason"), ""),
+                                Objects.requireNonNullElse(rows.getString("metadata_json"), "{}"),
+                                rows.getTimestamp("created_at").toInstant(),
+                                committed == null ? null : committed.toInstant(), List.of()));
+                    }
+                }
+            }
+            if (transactions.isEmpty()) return List.of();
+            Map<UUID, List<LedgerPostingAudit>> postings = new LinkedHashMap<>();
+            String placeholders = String.join(",", java.util.Collections.nCopies(transactions.size(), "?"));
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT e.transaction_id,e.amount,e.balance_after,a.account_type,a.reference_id
+                    FROM aurum_ledger_entries e JOIN aurum_accounts a ON a.id=e.account_id
+                    WHERE e.transaction_id IN (""" + placeholders + ") ORDER BY e.id")) {
+                for (int index = 0; index < transactions.size(); index++) {
+                    statement.setString(index + 1, transactions.get(index).id().toString());
+                }
+                try (ResultSet rows = statement.executeQuery()) {
+                    while (rows.next()) {
+                        UUID transaction = UUID.fromString(rows.getString("transaction_id"));
+                        postings.computeIfAbsent(transaction, ignored -> new ArrayList<>()).add(
+                                new LedgerPostingAudit(new AccountId(
+                                        AccountType.valueOf(rows.getString("account_type")),
+                                        rows.getString("reference_id")),
+                                        rows.getBigDecimal("amount").setScale(currency.scale()),
+                                        rows.getBigDecimal("balance_after").setScale(currency.scale())));
+                    }
+                }
+            }
+            return transactions.stream().map(row -> new LedgerTransactionAudit(row.id(), row.idempotencyKey(),
+                    row.category(), row.status(), row.gross(), row.net(), row.tax(), row.failure(), row.metadata(),
+                    row.createdAt(), row.committedAt(), postings.getOrDefault(row.id(), List.of()))).toList();
+        }
+    }
+
+    @Override
+    public LedgerFlowAudit flow(CurrencySpec currency) throws SQLException {
+        String sql = """
+                SELECT
+                  (SELECT COUNT(*) FROM aurum_transactions
+                     WHERE currency_id=? AND status='COMMITTED') transactions,
+                  (SELECT COALESCE(SUM(gross_amount),0) FROM aurum_transactions
+                     WHERE currency_id=? AND status='COMMITTED') turnover,
+                  (SELECT COALESCE(-SUM(e.amount),0) FROM aurum_ledger_entries e
+                     JOIN aurum_accounts a ON a.id=e.account_id
+                     WHERE a.currency_id=? AND a.account_type='SYSTEM_SOURCE' AND e.amount<0) issued,
+                  (SELECT COALESCE(SUM(e.amount),0) FROM aurum_ledger_entries e
+                     JOIN aurum_accounts a ON a.id=e.account_id
+                     WHERE a.currency_id=? AND a.account_type='SYSTEM_SINK' AND e.amount>0) sunk,
+                  (SELECT COALESCE(SUM(tax_amount),0) FROM aurum_transactions
+                     WHERE currency_id=? AND status='COMMITTED') taxes
+                """;
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            connection.setReadOnly(true);
+            for (int index = 1; index <= 5; index++) statement.setString(index, currency.id());
+            try (ResultSet row = statement.executeQuery()) {
+                row.next();
+                return new LedgerFlowAudit(row.getLong("transactions"),
+                        row.getBigDecimal("turnover").setScale(currency.scale()),
+                        row.getBigDecimal("issued").setScale(currency.scale()),
+                        row.getBigDecimal("sunk").setScale(currency.scale()),
+                        row.getBigDecimal("taxes").setScale(currency.scale()));
+            }
+        }
     }
 
     @Override

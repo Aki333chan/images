@@ -446,6 +446,26 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // GET /economy/audit/{section} — один bounded read-only срез AurumCore.
+        // Секции раздельны намеренно: открытие истории не тащит holds, claims
+        // и правила одним тяжёлым запросом.
+        if (parts.length == 3 && parts[0].equals("economy") && parts[1].equals("audit")
+                && method.equals("GET")) {
+            String currency = queryParam(exchange, "currency");
+            String account = queryParam(exchange, "account");
+            int limit = parseAuditLimit(queryParam(exchange, "limit"));
+            Optional<ovh.aurumgg.companion.core.model.EconomyAuditInfo> audit =
+                    bridge.economyAudit(parts[2], currency == null ? "" : currency,
+                            account == null ? "" : account, limit);
+            if (audit.isEmpty()) {
+                respond(exchange, 503, PayloadWriter.error(
+                        "AurumCore audit is unavailable", "economy-audit-unavailable"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.economyAudit(audit.get()));
+            return;
+        }
+
         // GET /economy?top=10 — общий объём денег на сервере и доска богатства.
         // Считается по всем, кто когда-либо заходил, поэтому обращение дорогое;
         // кэширует результат панель, а не плагин: срок жизни кэша — её решение.
@@ -718,6 +738,18 @@ public final class CompanionHttpServer {
         }
         if (value < 0) throw new IllegalArgumentException("Параметр top не может быть отрицательным");
         return Math.min(value, MAX_TOP_LIMIT);
+    }
+
+    static int parseAuditLimit(String raw) {
+        if (raw == null) return 50;
+        int value;
+        try {
+            value = Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Параметр limit должен быть числом");
+        }
+        if (value < 1) throw new IllegalArgumentException("Параметр limit должен быть положительным");
+        return Math.min(value, 200);
     }
 
     /**

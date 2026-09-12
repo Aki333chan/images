@@ -7,6 +7,7 @@ import java.util.Map;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildBonusInfo;
@@ -191,6 +192,28 @@ public final class PayloadWriter {
         }
         root.put("top", Json.array(top));
         return Json.object(root);
+    }
+
+    public static String economyAudit(EconomyAuditInfo page) {
+        Map<String, String> root = new LinkedHashMap<>();
+        root.put("section", Json.string(page.section()));
+        root.put("currency", Json.string(page.currency()));
+        root.put("generatedAt", Json.number(page.generatedAt()));
+        root.put("summary", stringMap(page.summary()));
+        List<String> records = new ArrayList<>(page.records().size());
+        for (EconomyAuditInfo.Record record : page.records()) {
+            records.add(Json.object(Map.of(
+                    "type", Json.string(record.type()),
+                    "fields", stringMap(record.fields()))));
+        }
+        root.put("records", Json.array(records));
+        return Json.object(root);
+    }
+
+    private static String stringMap(Map<String, String> values) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        values.forEach((key, value) -> fields.put(key, Json.string(value)));
+        return Json.object(fields);
     }
 
     public static String pluginToggle(PluginToggle toggle) {

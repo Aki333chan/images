@@ -1,5 +1,14 @@
 # Aurum Companion
 
+## Release 0.9.0
+
+The panel can now request one bounded AurumCore audit section at a time:
+overview, ledger history, financial policies, exchange rules, holds, or
+quarantined claims. The endpoint is read-only, token-protected, available only
+with active AurumCore, and never falls back to Vault because Vault has no
+authoritative ledger history. Requests run on the existing HTTP/database
+workers; there is no Paper-thread wait or background polling.
+
 ## Release 0.8.0
 
 AurumUI can now open a player's guaranteed trade and the administrative
@@ -105,6 +114,7 @@ are rate-limited, and allow only one outstanding mutation per player.
 | `POST /players/{uuid}/balance/deposit` | начислить сумму | AurumCore, иначе Vault |
 | `POST /players/{uuid}/balance/withdraw` | списать сумму | AurumCore, иначе Vault |
 | `GET /economy?top=N` | деньги сервера целиком и доска богатства | AurumCore, иначе Vault |
+| `GET /economy/audit/{section}` | один ограниченный срез ledger/правил/holds/claims | только active AurumCore |
 | `POST /webtoken/{code}` | обменять одноразовый код игрока на его UUID и ник | AurumAuth |
 | `POST /auth/reset/{ник}` | выдать игроку одноразовый токен сброса пароля | AurumAuth |
 

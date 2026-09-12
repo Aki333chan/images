@@ -73,7 +73,7 @@ dependencies {
     // API экономики AurumCore: казна, денежная масса, налоги и доска
     // богатства одним запросом к ledger. compileOnly и мягко — на сервере без
     // Core класс моста ни разу не загружается, и экономика считается Vault.
-    compileOnly("ovh.aurumgg:aurum-api:0.12.0")
+    compileOnly("ovh.aurumgg:aurum-api:0.14.0")
 
     // InvSee++ compileOnly-зависимостью НЕ подключается намеренно: его
     // артефакт лежит в GitHub Packages, требующем токен даже для публичных

@@ -553,6 +553,23 @@ export interface MinecraftEconomyDto {
   cached?: boolean;
 }
 
+export type MinecraftEconomyAuditSection =
+  | 'overview'
+  | 'ledger'
+  | 'policies'
+  | 'exchanges'
+  | 'holds'
+  | 'claims';
+
+/** One explicitly requested, bounded native-ledger audit view. */
+export interface MinecraftEconomyAuditDto {
+  section: MinecraftEconomyAuditSection;
+  currency: string;
+  generatedAt: string;
+  summary: Record<string, string>;
+  records: { type: string; fields: Record<string, string> }[];
+}
+
 /**
  * Гильдия в панели.
  *

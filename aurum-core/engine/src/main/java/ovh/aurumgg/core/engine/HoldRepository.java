@@ -1,6 +1,7 @@
 package ovh.aurumgg.core.engine;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import ovh.aurumgg.core.api.CurrencySpec;
@@ -11,5 +12,6 @@ public interface HoldRepository {
     HoldResult reserve(HoldSnapshot hold) throws SQLException;
     Optional<HoldSnapshot> find(UUID id, CurrencySpec currency) throws SQLException;
     Optional<HoldSnapshot> find(String idempotencyKey, CurrencySpec currency) throws SQLException;
+    default List<HoldSnapshot> recent(CurrencySpec currency, int limit) throws SQLException { return List.of(); }
     HoldResult resolve(UUID id, HoldSnapshot.Status status, CurrencySpec currency) throws SQLException;
 }

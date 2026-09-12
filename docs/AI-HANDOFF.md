@@ -29,6 +29,9 @@
 - Maven: `E:\Codex\2026-08-26\new-chat\work\tooling\apache-maven-3.9.16\bin\mvn.cmd`
 - JDK 25: `E:\Codex\2026-08-26\new-chat\work\tooling\jdk25\jdk-25.0.4.1+1`
 - Gradle-проекты используют собственный wrapper.
+- Companion использует Gradle 8.14.3, который не разбирает строку версии JDK
+  `25.0.4.1`. Wrapper запускать системной Java 21, а JDK 25 передавать toolchain:
+  `.\gradlew.bat "-Dorg.gradle.java.installations.paths=E:\Codex\2026-08-26\new-chat\work\tooling\jdk25\jdk-25.0.4.1+1" clean test :paper:jar`.
 
 ## Архитектура экономики
 
@@ -184,44 +187,58 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Native read routes и ретроспективные экономические экраны веб-панели.**
+**Редактор версионированных финансовых правил в веб-панели.**
 
-В Core устранён дедлок trade на общем однопоточном executor, расчёт встречных денег
-сведён в одну net-проводку, SETTLING возобновляется sweep-ом, а SETTLED ставится только
-после успешной записи всех claims. Claims теперь проверяют живую аренду, полный cursor,
-используют настроенный TTL и имеют `pause` без штрафа попытки. Hold idempotency key нельзя
-повторить с другим намерением даже при гонке разных Core-инстансов.
+Этап чтения завершён в Core 0.14.0 + Companion 0.9.0. `AurumAuditApi` отдаёт шесть
+независимых bounded-срезов: поток денег, последние проводки, политики, exchange rules,
+holds и quarantined claims. История ledger имеет индексированный фильтр stable account key;
+неверный ключ не превращается в широкий запрос. Веб-блок свёрнут по умолчанию, запрашивает
+только открытую секцию и не использует polling. Все DB futures выполняются существующим
+однопоточным executor Core и ожидаются HTTP worker Companion, не Paper thread.
 
-Панель и Companion используют ledger для чтения и существующих deposit/withdraw, когда
-AurumCore активен (Core 0.13.0 + Companion 0.8.0). Запись передаёт stable UUID, автора,
-причину и `ADMIN_ADJUSTMENT`; migration 10 привязывает idempotency key к полному intent.
-Timeout активного Core не включает Vault fallback. Не сделана оставшаяся часть пункта 5 —
-оборот, источники/стоки, правила и ledger history: под них в панели нет ни экрана, ни
-маршрута, и это отдельный этап. HTTP `set` тоже отложен до отдельного семантического
-контракта: delta-transfer нельзя безопасно выдавать за абсолютную установку.
+Следующая разработка — формы создания/изменения налогов, комиссий и курсов. Панель должна
+работать поверх существующих revision repositories Core, требовать право, причину и
+явное подтверждение, а не писать YAML/SQL напрямую. Сначала определить узкий mutation API,
+optimistic revision guard и preview/dry-run; только затем открывать HTTP и UI.
 
-Выдача/изъятие предметов AddonsNPC и обе стороны trade используют PDC receipt. Для
-исходящей оферты Core 0.11.0 сохраняет изменённый inventory и полную оферту вместе в
-player.dat, затем атомарно пишет offer + operation marker; отказ возвращает предмет через
-claim. Роспуск гильдии имеет persisted plan и восстанавливает multi-recipient split.
-В коде встроенные предметные границы закрыты; `trading.enabled` всё ещё выключен до
-живого Paper/MariaDB fault-injection. AurumUI 0.7.0 показывает trade и карантин выдач;
-следующая разработка — маршруты и экраны истории/источников/стоков/правил веб-панели.
+HTTP `set` баланса по-прежнему отложен до отдельного семантического контракта: delta-transfer
+нельзя безопасно выдавать за абсолютную установку. `trading.enabled` остаётся `false` до
+живого Paper/MariaDB fault-injection. Роспуск гильдии уже поддерживает `leader`, `split`,
+`treasury` и `keep` через immutable persisted plan; сложная миграция тестового сервера не
+нужна.
 
-Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.13.0,
-AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.8.0,
+Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.14.0,
+AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.9.0,
 AurumUI 0.7.0.
 
 ## Очередь после текущего этапа
 
-1. Native Companion routes и экраны чтения истории/правил веб-панели.
-2. Редактор версионированных налогов, комиссий и курсов в веб-панели.
-3. Контракт idempotency произвольных команд оферт.
-4. Отдельный безопасный контракт абсолютного `set` баланса, если он действительно нужен.
-5. Опциональная миграция динамических настроек.
-6. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
+1. Редактор версионированных налогов, комиссий и курсов в веб-панели.
+2. Контракт idempotency произвольных команд оферт.
+3. Отдельный безопасный контракт абсолютного `set` баланса, если он действительно нужен.
+4. Опциональная миграция динамических настроек.
+5. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
 
 ## Журнал передачи
+
+### 2026-09-12 — Codex, Core 0.14.0 + ретроспективный аудит панели
+
+- Новый read-only `AurumAuditApi` отдаёт ровно одну из шести секций: overview, ledger,
+  policies, exchanges, holds или quarantined claims. Размер ограничен 200 строками и
+  2 KiB на поле; ошибки БД возвращают unavailable, а не ложный пустой аудит.
+- Для истории добавлен stable account selector (`player:<uuid>`, `guild:<id>`,
+  `treasury:global` и другие `AccountType`). Фильтрация делается индексированным SQL до
+  `LIMIT`, postings последних транзакций забираются одним `IN`-запросом без N+1.
+- Migration 11 добавляет индексы currency/time для transactions и holds. Overview считает
+  оборот, эмиссию, изъятие и налоги агрегатами; запрос выполняется только при открытии.
+- Companion 0.9.0 публикует token-protected GET route без Vault fallback. API панели
+  повторно ограничивает тип секции, account selector и limit; доступ требует существующего
+  `minecraft.economy.view`.
+- Веб-панель EN/PL/RU свёрнута по умолчанию, грузит только выбранную вкладку, умеет
+  фильтровать ledger по счёту и обновляется только вручную/при переключении.
+- Проверка: Core clean test/jar, Companion clean test/jar, shared CJS+ESM, Nest build,
+  686 API Jest, web TypeScript, 109 web Jest и production Vite build.
+- Следующий шаг: mutation API и редактор версионированных policies/exchange rules.
 
 ### 2026-09-12 — Codex, AurumUI 0.7.0: trade и карантин выдач
 

@@ -21,12 +21,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 import net.milkbowl.vault.economy.Economy;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumClaimApi;
+import ovh.aurumgg.core.api.AurumAuditApi;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 import ovh.aurumgg.core.engine.LedgerEconomyService;
 import ovh.aurumgg.core.engine.LedgerRepository;
 import ovh.aurumgg.core.engine.ExchangeRegistry;
+import ovh.aurumgg.core.engine.EconomyAuditService;
 import ovh.aurumgg.core.engine.ExchangeRepository;
 import ovh.aurumgg.core.engine.ExchangeService;
 import ovh.aurumgg.core.engine.ClaimService;
@@ -60,6 +62,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile ExchangeRegistry exchangeRegistry;
     private volatile ExchangeCoordinator exchanges;
     private volatile ClaimService claims;
+    private volatile EconomyAuditService audit;
     private volatile ClaimCoordinator claimCommands;
     private volatile ClaimsUiBridge claimsUi;
     private volatile TradeCoordinator tradeCommands;
@@ -168,7 +171,9 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                     }
                     MultiCurrencyEconomyService service = new MultiCurrencyEconomyService(
                             settings.currency(), services);
-                    service.attachHoldService(new HoldService(settings.currencies(), opened.holdRepository(),
+                    var holdRepository = opened.holdRepository();
+                    var claimRepository = opened.claimRepository();
+                    service.attachHoldService(new HoldService(settings.currencies(), holdRepository,
                             service, databaseExecutor, Clock.systemUTC(), mutationLock,
                             Duration.ofSeconds(settings.holdMaxTtlSeconds())));
                     if (settings.exchange().enabled()) {
@@ -180,9 +185,11 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                     // protects the money half of an operation, a claim the half
                     // that happens in Minecraft. Both need the database, so both
                     // only exist in active mode.
-                    claims = new ClaimService(opened.claimRepository(), databaseExecutor,
+                    claims = new ClaimService(claimRepository, databaseExecutor,
                             Clock.systemUTC(), Duration.ofSeconds(settings.claimMaxLeaseSeconds()),
                             settings.claimMaxAttempts());
+                    audit = new EconomyAuditService(settings.currency(), settings.currencies(), ledger, holdRepository,
+                            claimRepository, policyRegistry, exchangeRegistry, databaseExecutor, Clock.systemUTC());
                     claimCommands = new ClaimCoordinator(this, claims);
                     claimsUi = new ClaimsUiBridge(this, claims);
                     if (settings.tradingEnabled()) {
@@ -304,6 +311,10 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         // interface that can move balances.
         if (claims != null) {
             getServer().getServicesManager().register(AurumClaimApi.class, claims,
+                    this, ServicePriority.Highest);
+        }
+        if (audit != null) {
+            getServer().getServicesManager().register(AurumAuditApi.class, audit,
                     this, ServicePriority.Highest);
         }
         if (tradeDelivery != null) {

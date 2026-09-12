@@ -27,6 +27,7 @@ import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.InventorySelection;
@@ -646,6 +647,12 @@ public final class BukkitGameBridge implements GameBridge {
         if (ledger.isPresent()) return ledger;
         return callSync(
                 () -> VaultEconomyIntegration.summary(topLimit), Optional.empty(), ECONOMY_TIMEOUT_SECONDS);
+    }
+
+    @Override
+    public Optional<EconomyAuditInfo> economyAudit(
+            String section, String currency, String account, int limit) {
+        return aurumEconomy == null ? Optional.empty() : aurumEconomy.audit(section, currency, account, limit);
     }
 
     /**

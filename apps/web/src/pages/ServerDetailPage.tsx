@@ -15,6 +15,7 @@ import {
 import { MODULE_REGISTRY, resolveSettings, resolveTab } from '../modules/registry';
 import { ServerStats } from '../components/ServerStats';
 import { PluginsPanel } from '../modules/minecraft/PluginsPanel';
+import { EconomyAuditPanel } from '../modules/minecraft/EconomyAuditPanel';
 import { AddonsModal, useServerAddons } from '../components/AddonsModal';
 import { ServerAddress } from '../components/ServerAddress';
 import { Modal } from '../components/Modal';
@@ -318,6 +319,10 @@ export function ServerDetailPage() {
         moduleId={server.moduleId ?? null}
         canSeePerformance={hasPermission('minecraft.players.view')}
       />
+
+      {manifest?.id === 'minecraft' && hasPermission('minecraft.economy.view') && (
+        <EconomyAuditPanel serverId={server.id} />
+      )}
 
       {manifest && DashboardWidget && (
         <DashboardWidget serverId={server.id} moduleId={manifest.id} capabilityState={true} />

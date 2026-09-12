@@ -127,6 +127,7 @@ describe('MinecraftService — валюта', () => {
   function setup(options: {
     change?: Awaited<ReturnType<CompanionService['changeBalance']>>;
     economy?: Awaited<ReturnType<CompanionService['getEconomy']>>;
+    audit?: Awaited<ReturnType<CompanionService['getEconomyAudit']>>;
     onEconomyCall?: () => void;
   }) {
     const logged: Recorded[] = [];
@@ -151,6 +152,7 @@ describe('MinecraftService — валюта', () => {
           },
         );
       },
+      getEconomyAudit: () => Promise.resolve(options.audit ?? null),
       getPlayers: () =>
         Promise.resolve([
           {
@@ -324,5 +326,32 @@ describe('MinecraftService — валюта', () => {
     await service.getEconomy(serverId);
 
     expect(calls).toBe(2);
+  });
+
+  it('нативный аудит возвращает только запрошенную секцию без кэша сводки', async () => {
+    const audit = {
+      section: 'ledger' as const,
+      currency: 'aurum',
+      summary: { count: '1' },
+      records: [{ type: 'transaction', fields: { id: 'tx-1', gross: '25' } }],
+      generatedAt: '2026-09-12T10:00:00.000Z',
+    };
+    const { service } = setup({ audit });
+
+    await expect(service.getEconomyAudit('s1', 'ledger', 'aurum', 'player:steve', 50)).resolves.toEqual(audit);
+  });
+
+  it('неизвестная секция и недоступный Core имеют разные HTTP-ответы', async () => {
+    const { service } = setup({ audit: null });
+
+    await expect(service.getEconomyAudit('s1', 'unknown' as never)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(service.getEconomyAudit('s1', 'ledger', '', 'made_up:42')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(service.getEconomyAudit('s1', 'overview')).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });

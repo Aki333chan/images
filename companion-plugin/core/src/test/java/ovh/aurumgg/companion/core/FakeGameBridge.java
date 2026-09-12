@@ -12,6 +12,7 @@ import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
 import ovh.aurumgg.companion.core.model.InventorySelection;
@@ -349,6 +350,20 @@ public final class FakeGameBridge implements GameBridge {
         if (entries.size() > topLimit) entries = new ArrayList<>(entries.subList(0, topLimit));
         return Optional.of(new EconomySummary(total, money(total), "монет", balances.size(),
                 List.copyOf(entries), null));
+    }
+
+    public boolean auditAvailable;
+    public String auditAccount = "";
+
+    @Override
+    public Optional<EconomyAuditInfo> economyAudit(
+            String section, String currency, String account, int limit) {
+        if (!auditAvailable) return Optional.empty();
+        auditAccount = account;
+        return Optional.of(new EconomyAuditInfo(section, currency.isBlank() ? "coin" : currency,
+                1_700_000_000_000L, Map.of("turnover", "125.5", "transactions", "3"),
+                List.of(new EconomyAuditInfo.Record("transaction",
+                        Map.of("id", "tx-1", "status", "COMMITTED")))));
     }
 
     // -------------------------------------------------------- сброс пароля

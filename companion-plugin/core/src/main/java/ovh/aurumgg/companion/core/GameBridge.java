@@ -7,6 +7,7 @@ import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
 import ovh.aurumgg.companion.core.model.GuildBonusInfo;
@@ -220,6 +221,12 @@ public interface GameBridge {
      * @return пусто, если экономики нет
      */
     Optional<EconomySummary> economySummary(int topLimit);
+
+    /** Bounded native AurumCore audit section; unavailable on Vault fallback. */
+    default Optional<EconomyAuditInfo> economyAudit(
+            String section, String currency, String account, int limit) {
+        return Optional.empty();
+    }
 
     // ---------- Гильдии и пати (AurumGuilds) ----------
     //

@@ -11,6 +11,8 @@ import type {
   MinecraftConsoleCompletionDto,
   MinecraftConsoleDictionaryDto,
   MinecraftEconomyDto,
+  MinecraftEconomyAuditDto,
+  MinecraftEconomyAuditSection,
   MinecraftInventoryResponse,
   MinecraftPerformanceDto,
   MinecraftPlayersResponse,
@@ -34,6 +36,11 @@ import {
   catalogConsoleCommands,
 } from '../minecraft-shared/quick-commands.config';
 import { VanillaRconService } from '../minecraft-shared/vanilla-rcon.service';
+
+const ECONOMY_ACCOUNT_TYPES = new Set([
+  'player', 'guild', 'treasury', 'arena_escrow', 'trade_escrow', 'exchange_reserve',
+  'npc_shop', 'npc_buyer', 'slots', 'server', 'system_source', 'system_sink',
+]);
 
 @Injectable()
 export class MinecraftService {
@@ -430,6 +437,35 @@ export class MinecraftService {
     const value: MinecraftEconomyDto = { ...fresh, calculatedAt: new Date(now).toISOString() };
     MinecraftService.economyCache.set(serverId, { at: now, value });
     return { ...value, cached: false };
+  }
+
+  async getEconomyAudit(
+    serverId: string,
+    section: MinecraftEconomyAuditSection,
+    currency = '',
+    account = '',
+    limit = 50,
+  ): Promise<MinecraftEconomyAuditDto> {
+    const allowed: MinecraftEconomyAuditSection[] = [
+      'overview', 'ledger', 'policies', 'exchanges', 'holds', 'claims',
+    ];
+    if (!allowed.includes(section)) throw new BadRequestException('Unknown economy audit section');
+    const selectedAccount = account.trim();
+    if (selectedAccount && (section !== 'ledger' || selectedAccount.length > 160
+      || !/^[a-z_]+:[^\u0000-\u001f\u007f]{1,128}$/i.test(selectedAccount)
+      || !ECONOMY_ACCOUNT_TYPES.has(selectedAccount.slice(0, selectedAccount.indexOf(':')).toLowerCase()))) {
+      throw new BadRequestException('Invalid economy account selector');
+    }
+    const result = await this.companion.getEconomyAudit(
+      serverId, section, currency, selectedAccount, limit,
+    );
+    if (!result) {
+      throw new ServiceUnavailableException({
+        message: 'AurumCore audit is unavailable',
+        code: 'economy-audit-unavailable',
+      });
+    }
+    return result;
   }
 
   /**

@@ -27,6 +27,18 @@ public interface LedgerRepository extends AutoCloseable {
         return List.of();
     }
 
+    /** Bounded latest transactions, including their balanced postings. */
+    default List<LedgerTransactionAudit> history(
+            CurrencySpec currency, Optional<AccountId> account, int limit) throws SQLException {
+        return List.of();
+    }
+
+    /** All-time aggregate counters; a single database aggregate, never a player scan. */
+    default LedgerFlowAudit flow(CurrencySpec currency) throws SQLException {
+        BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+        return new LedgerFlowAudit(0, zero, zero, zero, zero);
+    }
+
     LedgerCommit commit(TransactionPlan plan, CurrencySpec currency) throws SQLException;
 
     default LedgerCommit commit(TransactionPlan plan, CurrencySpec currency, UUID excludedHold)

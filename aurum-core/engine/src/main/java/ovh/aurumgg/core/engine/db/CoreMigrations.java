@@ -368,6 +368,16 @@ public final class CoreMigrations {
                     ADD COLUMN IF NOT EXISTS request_hash CHAR(64) NULL AFTER idempotency_key
                 """
         );
+        List<String> auditReadIndexes = List.of(
+                """
+                ALTER TABLE aurum_transactions
+                    ADD INDEX IF NOT EXISTS ix_aurum_transactions_currency_time (currency_id, created_at, id)
+                """,
+                """
+                ALTER TABLE aurum_holds
+                    ADD INDEX IF NOT EXISTS ix_aurum_holds_currency_time (currency_id, created_at, id)
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -388,7 +398,9 @@ public final class CoreMigrations {
                 new SchemaMigration(9, "idempotent outgoing trade item offers",
                         checksum(tradeOfferOperations), tradeOfferOperations),
                 new SchemaMigration(10, "bind ledger idempotency keys to transaction intents",
-                        checksum(transactionIntentHashes), transactionIntentHashes)
+                        checksum(transactionIntentHashes), transactionIntentHashes),
+                new SchemaMigration(11, "bounded economy audit read indexes",
+                        checksum(auditReadIndexes), auditReadIndexes)
         );
     }
 

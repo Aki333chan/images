@@ -8,6 +8,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -114,6 +116,22 @@ public final class MariaDbHoldRepository implements HoldRepository {
         try (Connection connection = dataSource.getConnection()) {
             return find(connection, "h.idempotency_key", key, currency);
         }
+    }
+
+    @Override
+    public List<HoldSnapshot> recent(CurrencySpec currency, int limit) throws SQLException {
+        List<HoldSnapshot> result = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     select() + " WHERE h.currency_id=? ORDER BY h.created_at DESC,h.id DESC LIMIT ?")) {
+            connection.setReadOnly(true);
+            statement.setString(1, currency.id());
+            statement.setInt(2, Math.clamp(limit, 1, 200));
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) result.add(read(rows, currency));
+            }
+        }
+        return List.copyOf(result);
     }
 
     @Override

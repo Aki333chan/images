@@ -10,6 +10,8 @@ import type {
   MinecraftBalanceDto,
   MinecraftPasswordResetDto,
   MinecraftEconomyDto,
+  MinecraftEconomyAuditDto,
+  MinecraftEconomyAuditSection,
   MinecraftGiveItemDto,
   MinecraftGiveResponse,
   MinecraftGuildBonusDto,
@@ -948,6 +950,37 @@ export class CompanionService {
     };
   }
 
+  /** One bounded native Core section. There is deliberately no Vault approximation. */
+  async getEconomyAudit(
+    serverId: string,
+    section: MinecraftEconomyAuditSection,
+    currency = '',
+    account = '',
+    limit = 50,
+  ): Promise<MinecraftEconomyAuditDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(200, limit))) });
+    if (currency.trim()) query.set('currency', currency.trim().toLowerCase());
+    if (account.trim()) query.set('account', account.trim());
+    const result = await this.callRaw<RawEconomyAudit>(
+      serverId,
+      `/economy/audit/${section}?${query.toString()}`,
+      { timeoutMs: 8_000 },
+    );
+    if (!result.ok || result.body.section !== section || typeof result.body.currency !== 'string') return null;
+    return {
+      section,
+      currency: result.body.currency,
+      generatedAt: new Date(numberOr(result.body.generatedAt, Date.now())).toISOString(),
+      summary: stringRecord(result.body.summary),
+      records: (result.body.records ?? [])
+        .filter((record): record is RawEconomyAuditRecord =>
+          typeof record?.type === 'string' && record.fields !== null && typeof record.fields === 'object')
+        .slice(0, 200)
+        .map((record) => ({ type: record.type!, fields: stringRecord(record.fields) })),
+    };
+  }
+
   // ------------------------------------------------------------- Тюрьмы
 
   /**
@@ -1183,6 +1216,26 @@ interface RawEconomy {
   taxesCollected?: number;
   taxesFormatted?: string | null;
   top?: RawTopEntry[];
+}
+
+interface RawEconomyAuditRecord {
+  type?: string;
+  fields?: Record<string, unknown>;
+}
+
+interface RawEconomyAudit {
+  section?: string;
+  currency?: string;
+  generatedAt?: number;
+  summary?: Record<string, unknown>;
+  records?: RawEconomyAuditRecord[];
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
 }
 
 /**

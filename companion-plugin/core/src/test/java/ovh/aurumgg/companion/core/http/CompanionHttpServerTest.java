@@ -760,6 +760,25 @@ class CompanionHttpServerTest {
     }
 
     @Test
+    @DisplayName("Экономический аудит закрыт токеном и отдаёт только выбранную секцию")
+    void returnsBoundedEconomyAuditSection() throws Exception {
+        bridge.auditAvailable = true;
+        String path = "/economy/audit/ledger?currency=coin&account=player%3Aabc&limit=25";
+        assertEquals(401, get(path, null).statusCode());
+
+        HttpResponse<String> response = get(path, TOKEN);
+        assertEquals(200, response.statusCode());
+        Map<String, Object> body = JsonParser.parseObject(response.body());
+        assertEquals("ledger", body.get("section"));
+        assertEquals("coin", body.get("currency"));
+        assertEquals("125.5", ((Map<?, ?>) body.get("summary")).get("turnover"));
+        Map<?, ?> record = (Map<?, ?>) ((List<?>) body.get("records")).getFirst();
+        Map<?, ?> fields = (Map<?, ?>) record.get("fields");
+        assertEquals("tx-1", fields.get("id"));
+        assertEquals("player:abc", bridge.auditAccount);
+    }
+
+    @Test
     @DisplayName("денежная запись требует ключ, автора и причину")
     void balanceMutationRequiresAuditIdentity() throws Exception {
         bridge.install("Vault");

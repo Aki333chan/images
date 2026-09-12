@@ -11,12 +11,15 @@ import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
+import ovh.aurumgg.companion.core.model.EconomyAuditInfo;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.AurumAuditApi;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.EconomyMode;
+import ovh.aurumgg.core.api.EconomyAuditSection;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 import ovh.aurumgg.core.api.TransactionCategory;
 import ovh.aurumgg.core.api.TransactionRequest;
@@ -50,12 +53,14 @@ final class AurumCoreEconomyIntegration {
     private static final long TIMEOUT_SECONDS = 3;
 
     private final AurumEconomyApi economy;
+    private final AurumAuditApi audit;
     private final Function<UUID, String> playerName;
 
     /** Constructed by BukkitGameBridge on the main thread during onEnable. */
     AurumCoreEconomyIntegration(org.bukkit.plugin.Plugin plugin, Function<UUID, String> playerName) {
         this.playerName = playerName;
         this.economy = findApi(plugin);
+        this.audit = findAudit(plugin);
     }
 
     /** Есть ли Core и ведёт ли он экономику сам, а не в режиме наблюдателя. */
@@ -85,6 +90,17 @@ final class AurumCoreEconomyIntegration {
                 .flatMap(found -> found)
                 .map(snapshot -> new BalanceInfo(snapshot.balance().doubleValue(),
                         format(snapshot.balance(), currency), currency.displayName()));
+    }
+
+    private static AurumAuditApi findAudit(org.bukkit.plugin.Plugin plugin) {
+        if (plugin.getServer().getPluginManager().getPlugin(PLUGIN_NAME) == null) return null;
+        try {
+            RegisteredServiceProvider<AurumAuditApi> registration =
+                    plugin.getServer().getServicesManager().getRegistration(AurumAuditApi.class);
+            return registration == null ? null : registration.getProvider();
+        } catch (NoClassDefFoundError | Exception unavailable) {
+            return null;
+        }
     }
 
     /** Native ledger mutation; an unavailable reply is never retried through Vault. */
@@ -176,6 +192,26 @@ final class AurumCoreEconomyIntegration {
         return Optional.of(new EconomySummary(
                 snapshot.moneySupply().doubleValue(), format(snapshot.moneySupply(), currency),
                 currency.displayName(), null, List.copyOf(top), ledger));
+    }
+
+    Optional<EconomyAuditInfo> audit(
+            String rawSection, String currencyId, String accountKey, int limit) {
+        if (economy == null || audit == null) return Optional.empty();
+        EconomyAuditSection section;
+        try {
+            section = EconomyAuditSection.valueOf(rawSection.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (RuntimeException invalid) {
+            return Optional.empty();
+        }
+        String selected = currencyId == null || currencyId.isBlank()
+                ? economy.primaryCurrency().id() : currencyId.trim().toLowerCase(java.util.Locale.ROOT);
+        return await(audit.read(section, selected, accountKey == null ? "" : accountKey.trim(),
+                Math.clamp(limit, 1, 200)))
+                .flatMap(value -> value)
+                .map(page -> new EconomyAuditInfo(page.section().name().toLowerCase(java.util.Locale.ROOT),
+                        page.currencyId(), page.generatedAt().toEpochMilli(), page.summary(),
+                        page.records().stream().map(record ->
+                                new EconomyAuditInfo.Record(record.type(), record.fields())).toList()));
     }
 
     private static UUID playerOf(AccountId account) {
