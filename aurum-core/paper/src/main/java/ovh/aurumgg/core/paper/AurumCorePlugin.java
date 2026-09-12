@@ -64,6 +64,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile TradeCoordinator tradeCommands;
     private volatile TradeDelivery tradeDelivery;
     private volatile TradeWindow tradeWindow;
+    private final EconomyOperations economyOperations = new EconomyOperations(this);
+    private final EconomyUiBridge economyUi = new EconomyUiBridge(this);
 
     @Override
     public void onEnable() {
@@ -419,6 +421,32 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     CoreSettings settings() { return settings; }
     MultiCurrencyEconomyService activeEconomy() { return activeEconomy; }
     PolicyCoordinator policies() { return policies; }
+    /** Денежные операции игрока и администратора; общий слой для команд и игрового окна. */
+    EconomyOperations economyOperations() { return economyOperations; }
+
+    /**
+     * Снимок экономики для игрового окна AurumUI.
+     *
+     * <p>Вызывается Companion рефлексией — поэтому метод публичный и с точно
+     * такой сигнатурой. Прямой зависимости между плагинами нет намеренно: Core
+     * должен работать и на сервере, где Companion не установлен.</p>
+     */
+    public java.util.List<java.util.Map<String, String>> aurumEconomySnapshot(
+            org.bukkit.entity.Player viewer, String scope) {
+        return economyUi.snapshot(viewer, scope);
+    }
+
+    /**
+     * Действие из игрового окна; возвращает ключ сообщения или его ожидание.
+     *
+     * <p>Права проверяются внутри по текущему состоянию игрока: то, что клиент
+     * показал кнопку, ничего не значит.</p>
+     */
+    public Object aurumEconomyAction(org.bukkit.entity.Player viewer, String id, String action,
+                                     java.util.Map<String, String> arguments) {
+        return economyUi.action(viewer, id, action,
+                arguments == null ? java.util.Map.of() : java.util.Map.copyOf(arguments));
+    }
     ExchangeCoordinator exchanges() { return exchanges; }
 
     ClaimCoordinator claimCommands() {
