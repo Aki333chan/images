@@ -28,6 +28,7 @@ import dev.addons.npc.service.MessageService;
 import dev.addons.npc.service.NpcManager;
 import dev.addons.npc.service.ShopService;
 import dev.addons.npc.service.BuyerService;
+import dev.addons.npc.service.ClaimCommand;
 import dev.addons.npc.service.GuildTraderService;
 import dev.addons.npc.service.AurumExchangeService;
 import java.math.BigDecimal;
@@ -689,7 +690,16 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         switch (args[4].toLowerCase(Locale.ROOT)) {
             case "add" -> {
                 require(args, 6, "/npc buyer " + type + " <buyer> <slot> add <value>");
-                lines.add(join(args, 5));
+                String value = join(args, 5);
+                if (type.equals("command")) {
+                    try {
+                        ClaimCommand.prepare(value, "validation-key");
+                    } catch (IllegalArgumentException invalid) {
+                        throw new IllegalArgumentException(messages.text(
+                                "messages.command-idempotency-key-required"));
+                    }
+                }
+                lines.add(value);
             }
             case "remove" -> {
                 require(args, 6, "/npc buyer " + type + " <buyer> <slot> remove <index>");

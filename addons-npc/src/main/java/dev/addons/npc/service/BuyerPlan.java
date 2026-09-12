@@ -5,7 +5,6 @@ import dev.addons.npc.model.BuyerDefinition;
 import dev.addons.npc.model.BuyerOffer;
 import java.util.Map;
 import java.util.Optional;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -53,6 +52,9 @@ public final class BuyerPlan implements DeliveryPlan {
     @Override public String summary() { return sale.summary(); }
     @Override public String encode() { return sale.encode(); }
     @Override public boolean playerDataStep(int index) { return sale.itemStep(index); }
+    @Override public boolean advanceBeforeEffect(int index) {
+        return sale.commandAt(index).map(ClaimCommand::advanceBeforeEffect).orElse(false);
+    }
 
     @Override
     public void step(Player player, int index, Outcome outcome) {
@@ -64,19 +66,12 @@ public final class BuyerPlan implements DeliveryPlan {
             pay(player, outcome);
             return;
         }
-        Optional<String> command = sale.commandAt(index);
+        Optional<ClaimCommand> command = sale.commandAt(index);
         if (command.isEmpty()) {
             outcome.quarantine("step " + index + " is not part of this sale");
             return;
         }
-        try {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command.get());
-        } catch (RuntimeException failure) {
-            // Retrying an arbitrary console command is not safe, so the step
-            // counts as done and the failure is loud in the log instead.
-            plugin.getLogger().warning("Buyer command failed: " + failure.getMessage());
-        }
-        outcome.done();
+        ClaimCommandRunner.run(plugin, "Buyer", command.get(), outcome);
     }
 
     /**

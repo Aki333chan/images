@@ -194,11 +194,18 @@ public final class BuyerService implements Listener {
         values.put("base_price", economy.format(basePayout));
         values.put("player", player.getName());
         values.put("balance", economy.format(economy.balance(player)));
-        List<String> commands = offer.commands().stream()
-                .map(command -> stripSlash(MessageService.replace(command, values)))
-                .toList();
-
         String operation = UUID.randomUUID().toString();
+        List<ClaimCommand> commands;
+        try {
+            commands = ClaimCommand.prepareAll(offer.commands().stream()
+                    .map(command -> MessageService.replace(command, values)).toList(),
+                    "npc-buyer-command:" + operation);
+        } catch (IllegalArgumentException invalidCommand) {
+            plugin.getLogger().warning("Invalid buyer claim command: " + invalidCommand.getMessage());
+            transactions.remove(player.getUniqueId());
+            messages.send(player, "buyer-sale-failed");
+            return;
+        }
         SaleClaim sale = new SaleClaim(operation, buyer.id(), offer.slot(), finalQuote.amount(),
                 payout, now + saleDeadlineMillis(), commands);
         ClaimRequest request;
@@ -287,8 +294,6 @@ public final class BuyerService implements Listener {
         }
         return requested - remaining;
     }
-
-    private static String stripSlash(String command) { return command.startsWith("/") ? command.substring(1) : command; }
 
     private static final class BuyerHolder implements InventoryHolder {
         private final String buyerId;

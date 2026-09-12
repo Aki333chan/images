@@ -147,7 +147,12 @@ public final class ShopService implements Listener {
         }
         double price = activePrice.finalPrice();
         if (price <= 0) {
-            applyFreePurchase(player, shop, offer, activePrice, holder);
+            if (!delivery.available()) {
+                messages.send(player, "delivery-unavailable");
+                return;
+            }
+            if (!pending.add(player.getUniqueId())) return;
+            promiseFreePurchase(player, shop, offer, activePrice, holder);
             return;
         }
         if (!economy.available() && !economy.hook()) {
@@ -211,12 +216,18 @@ public final class ShopService implements Listener {
         }
 
         Map<String, Object> values = placeholders(player, offer, price, economy.balance(player), now);
-        List<String> commands = offer.commands().stream()
-                // Substituted now, while the price that was paid is still the
-                // current one. Resolving them at delivery time would describe
-                // tomorrow's balance and today's promise.
-                .map(command -> stripSlash(MessageService.replace(command, values)))
-                .toList();
+        List<ClaimCommand> commands;
+        try {
+            commands = ClaimCommand.prepareAll(offer.commands().stream()
+                    // Substituted now, while the price that was paid is still
+                    // current. Tomorrow's values must not rewrite today's debt.
+                    .map(command -> MessageService.replace(command, values))
+                    .toList(), "npc-shop-command:" + hold.idempotencyKey());
+        } catch (IllegalArgumentException invalidCommand) {
+            plugin.getLogger().warning("Invalid shop claim command: " + invalidCommand.getMessage());
+            releaseHold(hold, player, "purchase-failed");
+            return;
+        }
         PurchaseClaim purchase = new PurchaseClaim(Optional.of(hold.idempotencyKey()), shop.id(),
                 offer.slot(), offer.product(), commands);
 
@@ -270,22 +281,54 @@ public final class ShopService implements Listener {
         }));
     }
 
-    private void applyFreePurchase(Player player, ShopDefinition shop, ShopOffer offer,
-                                   ActivePrice price, ShopHolder holder) {
-        ItemStack reward = offer.product();
+    private void promiseFreePurchase(Player player, ShopDefinition shop, ShopOffer offer,
+                                     ActivePrice price, ShopHolder holder) {
+        String operation = UUID.randomUUID().toString();
         int stockBefore = offer.stock();
         Map<String, Object> values = placeholders(player, offer, price, economy.balance(player), System.currentTimeMillis());
+        PurchaseClaim purchase;
         try {
-            if (!player.getInventory().addItem(reward).isEmpty()) throw new IllegalStateException("Inventory changed");
-            offer.consume(); repository.save();
-            for (String command : offer.commands()) Bukkit.dispatchCommand(Bukkit.getConsoleSender(),
-                    stripSlash(MessageService.replace(command, values)));
-            refreshOffer(player, holder, shop, offer); player.updateInventory();
-            messages.send(player, "purchase-success", values);
-        } catch (RuntimeException error) {
-            offer.stock(stockBefore); player.getInventory().removeItem(reward); repository.save();
+            List<ClaimCommand> commands = ClaimCommand.prepareAll(offer.commands().stream()
+                    .map(command -> MessageService.replace(command, values)).toList(),
+                    "npc-shop-free-command:" + operation);
+            purchase = new PurchaseClaim(Optional.empty(), shop.id(), offer.slot(), offer.product(), commands);
+        } catch (IllegalArgumentException invalidCommand) {
+            pending.remove(player.getUniqueId());
+            plugin.getLogger().warning("Invalid free shop claim command: " + invalidCommand.getMessage());
             messages.send(player, "purchase-failed");
+            return;
         }
+
+        offer.consume();
+        repository.save();
+        ClaimRequest request;
+        try {
+            request = new ClaimRequest("npc-shop-free-claim:" + operation, ClaimGateway.PLUGIN,
+                    player.getUniqueId(), ShopPlan.KIND, purchase.stepCount(), purchase.summary(),
+                    purchase.encode());
+        } catch (IllegalArgumentException invalid) {
+            pending.remove(player.getUniqueId());
+            offer.stock(stockBefore);
+            repository.save();
+            plugin.getLogger().warning("Could not describe free NPC purchase as a claim: "
+                    + invalid.getMessage());
+            messages.send(player, "purchase-failed");
+            return;
+        }
+
+        delivery.promise(request).whenComplete((promised, failure) -> runMain(() -> {
+            pending.remove(player.getUniqueId());
+            if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
+                offer.stock(stockBefore);
+                repository.save();
+                messages.send(player, "purchase-failed");
+                return;
+            }
+            refreshOffer(player, holder, shop, offer);
+            messages.send(player, "purchase-success", values);
+            delivery.deliver(player, promised.claim().orElseThrow(),
+                    new ShopPlan(plugin, economy, messages, repository, delivery, purchase));
+        }));
     }
 
     private void refreshOffer(Player player, ShopHolder holder, ShopDefinition shop, ShopOffer offer) {
@@ -351,10 +394,6 @@ public final class ShopService implements Listener {
             }
         }
         return false;
-    }
-
-    private static String stripSlash(String command) {
-        return command.startsWith("/") ? command.substring(1) : command;
     }
 
     private static final class ShopHolder implements InventoryHolder {

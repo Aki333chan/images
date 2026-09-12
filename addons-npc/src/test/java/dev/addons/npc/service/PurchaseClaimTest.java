@@ -20,16 +20,20 @@ import org.junit.jupiter.api.Test;
  */
 class PurchaseClaimTest {
 
+    private static List<ClaimCommand> commands(String... values) {
+        return java.util.Arrays.stream(values).map(ClaimCommand::stored).toList();
+    }
+
     @Test
     void платнаяПокупкаНачинаетсяСоСписанияДенег() {
         PurchaseClaim purchase = new PurchaseClaim(Optional.of("npc-shop:abc"), "food", 11,
-                new ItemStack(Material.BREAD, 3), List.of("lp user %player% parent add vip", "say hi"));
+                new ItemStack(Material.BREAD, 3), commands("lp user %player% parent add vip", "say hi"));
 
         assertEquals(4, purchase.stepCount(), "деньги, предмет и две команды");
         assertTrue(purchase.paymentStep(0));
         assertEquals(1, purchase.itemStep());
-        assertEquals(Optional.of("lp user %player% parent add vip"), purchase.commandAt(2));
-        assertEquals(Optional.of("say hi"), purchase.commandAt(3));
+        assertEquals(Optional.of(ClaimCommand.stored("lp user %player% parent add vip")), purchase.commandAt(2));
+        assertEquals(Optional.of(ClaimCommand.stored("say hi")), purchase.commandAt(3));
         assertEquals(Optional.empty(), purchase.commandAt(1), "шаг предмета — не команда");
         assertEquals(Optional.empty(), purchase.commandAt(4), "за последним шагом ничего нет");
     }
@@ -37,12 +41,24 @@ class PurchaseClaimTest {
     @Test
     void бесплатнаяПокупкаНеИмеетШагаОплаты() {
         PurchaseClaim purchase = new PurchaseClaim(Optional.empty(), "food", 11,
-                new ItemStack(Material.BREAD), List.of("say hi"));
+                new ItemStack(Material.BREAD), commands("say hi"));
 
         assertEquals(2, purchase.stepCount());
         assertFalse(purchase.paymentStep(0));
         assertEquals(0, purchase.itemStep(), "предмет идёт первым: списывать нечего");
-        assertEquals(Optional.of("say hi"), purchase.commandAt(1));
+        assertEquals(Optional.of(ClaimCommand.stored("say hi")), purchase.commandAt(1));
+    }
+
+    @Test
+    void режимКомандыСохраняетсяВПланеПокупки() {
+        ClaimCommand once = ClaimCommand.prepare("say once", "purchase:0");
+        ClaimCommand idempotent = ClaimCommand.prepare(
+                "idempotent:reward {idempotency_key}", "purchase:1");
+        PurchaseClaim purchase = new PurchaseClaim(Optional.empty(), "food", 11,
+                new ItemStack(Material.BREAD), List.of(once, idempotent));
+
+        assertTrue(purchase.commandAt(1).orElseThrow().advanceBeforeEffect());
+        assertFalse(purchase.commandAt(2).orElseThrow().advanceBeforeEffect());
     }
 
     // ПОЧЕМУ ЗДЕСЬ НЕТ ТЕСТА НА ПОЛНЫЙ КРУГ encode → decode.
@@ -70,7 +86,7 @@ class PurchaseClaimTest {
     @Test
     void описаниеДляАдминистратораНазываетПредметИКоманды() {
         PurchaseClaim purchase = new PurchaseClaim(Optional.of("k"), "food", 11,
-                new ItemStack(Material.BREAD, 3), List.of("say hi"));
+                new ItemStack(Material.BREAD, 3), commands("say hi"));
 
         String summary = purchase.summary();
         assertTrue(summary.contains("3x bread"), summary);

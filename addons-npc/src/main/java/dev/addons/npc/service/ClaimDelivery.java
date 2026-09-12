@@ -184,14 +184,57 @@ public final class ClaimDelivery implements Listener {
             close(claimId, () -> claims.pause(claimId, "player left before delivery finished"));
             return;
         }
-        StepOutcome outcome = new StepOutcome(owner, claimId, plan, index);
         if (plan.playerDataStep(index) && receipts.has(player, claimId, index)) {
             // The item mutation and receipt survived one player-data snapshot,
             // while the database cursor did not. Only record the missing half.
-            outcome.done();
+            new StepOutcome(owner, claimId, plan, index).done();
             return;
         }
-        plan.step(player, index, outcome);
+        if (plan.advanceBeforeEffect(index)) {
+            advanceThenRun(player, owner, claimId, plan, index);
+            return;
+        }
+        plan.step(player, index, new StepOutcome(owner, claimId, plan, index));
+    }
+
+    /**
+     * Commit an at-most-once step before dispatching its external effect.
+     *
+     * A lost database reply runs nothing and a retry sees whichever cursor was
+     * actually committed. Once Core confirms the advance, the command is never
+     * eligible again — including after a crash between this callback and the
+     * dispatch. That tiny skip window is the unavoidable price of preventing
+     * duplicate arbitrary commands.
+     */
+    private void advanceThenRun(Player player, UUID owner, UUID claimId, DeliveryPlan plan, int index) {
+        int completed = index + 1;
+        claims.advance(claimId, completed).whenComplete((result, error) -> onMain(() -> {
+            if (error != null || result == null || !result.ok()) {
+                running.remove(claimId);
+                return;
+            }
+            plan.step(player, index, new DeliveryPlan.Outcome() {
+                private boolean used;
+
+                @Override public void done() { continueOnce(null); }
+                @Override public void defer(String reason) { continueOnce("defer: " + reason); }
+                @Override public void abandon(String reason) { continueOnce("abandon: " + reason); }
+                @Override public void quarantine(String reason) { continueOnce("quarantine: " + reason); }
+
+                private void continueOnce(String contractViolation) {
+                    if (used) return;
+                    used = true;
+                    if (contractViolation != null) {
+                        // Cursor is already durable and cannot honestly be
+                        // rolled back. Plans must only mark console commands as
+                        // pre-committed, and those always answer done().
+                        plugin.getLogger().severe("Pre-committed delivery step " + index + " of claim "
+                                + claimId + " requested " + contractViolation + "; continuing");
+                    }
+                    step(owner, claimId, plan, completed);
+                }
+            });
+        }));
     }
 
     /** One step's answer, usable exactly once. */

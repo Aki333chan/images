@@ -150,8 +150,13 @@ the claim step into the player's PDC, save the inventory and stamp in the same
 player-data snapshot, and only then advance MariaDB. A retry that sees the stamp
 records the missing cursor without applying the item mutation again. The forced
 save happens once per completed item hand-off, never in a join or periodic loop.
-Arbitrary console commands remain outside this guarantee unless their target
-accepts the claim/step key idempotently.
+AddonsNPC 2.1.0 makes this boundary explicit per console command. Plain and
+`once:` commands advance the cursor first and are therefore at-most-once: they
+cannot duplicate, but a crash in the short pre-dispatch window can skip them.
+An `idempotent:` command runs before `advance`, contains a stable
+`{idempotency_key}`, and may be retried; its receiving plugin must persist and
+deduplicate that key. Core cannot manufacture exactly-once semantics for an
+arbitrary command owned by another plugin.
 
 Payloads are opaque. Core stores them, hands them back and never parses them —
 items, commands and their encoding belong to the plugin. Core owns only what a

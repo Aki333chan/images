@@ -39,6 +39,15 @@ public interface DeliveryPlan {
      */
     default boolean playerDataStep(int index) { return false; }
 
+    /**
+     * Whether Core must persist this cursor before the external effect.
+     *
+     * Only at-most-once arbitrary commands use this. A persisted cursor makes
+     * a crash skip rather than duplicate the command; item and idempotent
+     * database steps keep the normal effect-then-cursor order.
+     */
+    default boolean advanceBeforeEffect(int index) { return false; }
+
     void step(Player player, int index, Outcome outcome);
 
     /**

@@ -1,6 +1,7 @@
 locale-name: Polski
 messages:
   prefix: "&8[&6NPC&8] &r"
+  command-idempotency-key-required: "Komenda idempotentna musi zawierać {idempotency_key}."
   no-permission: "&cNie masz uprawnień."
   player-only: "&cTej komendy może użyć tylko gracz."
   npc-not-found: "&cNie znaleziono NPC '&f{id}&c'."
@@ -142,7 +143,7 @@ tab:
   title-examples: ["&eTytuł|&7Podtytuł"]
   message-examples: ["&eWiadomość_dla_{player}"]
   buyer-lore-examples: ["&7Cena:_{unit_price}", "&7Hurtowo:_{bulk_amount}_za_{bulk_price}"]
-  buyer-command-examples: ["say_{player}_sprzedał_{amount}_{item}_za_{price}"]
+  buyer-command-examples: ["once:say_{player}_sprzedał_{amount}_{item}_za_{price}", "idempotent:rewards_grant_{player}_{idempotency_key}"]
   guild-lore-examples: ["&7Bonus:_{bonus_value}", "&7Czas:_{duration}", "&6Cena:_{price}"]
   exchange-lore-examples: ["&7Oddajesz:_{source}", "&7Otrzymujesz:_{receive}", "&7Opłata:_{fee}"]
 literal-replacements:

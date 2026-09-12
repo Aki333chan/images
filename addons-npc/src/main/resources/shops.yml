@@ -19,6 +19,8 @@ schema-version: 4
 #         amount: -1 # stock; 0 or a negative value means unlimited
 #         quantity: 8 # items received per purchase
 #         permission: ""
+#         # Plain / once: commands are at-most-once. idempotent: commands must
+#         # contain {idempotency_key}, and their receiver must deduplicate it.
 #         commands: []
 #         discount: # optional slot discount; active slot discount overrides the shop-wide one
 #           percent: 25.0

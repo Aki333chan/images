@@ -28,6 +28,7 @@ messages:
   shop-price-changed: "&eThe price or discount changed. The offer was refreshed; click again to confirm."
   buyer-bonus-changed: "&eThe payout bonus changed. The offer was refreshed; click again to confirm."
   offer-replace-confirm: "&eSlot &f{slot} &eis already occupied. Repeat the same command within &f{seconds}s &eto replace it."
+  command-idempotency-key-required: "An idempotent command must contain {idempotency_key}."
   guild-trader-not-found: "&cGuild trader '&f{trader}&c' was not found."
   guilds-unavailable: "&cAurumGuilds is unavailable; guild bonuses cannot be purchased."
   guild-required: "&cYou must be a member of a guild to buy this bonus."
@@ -146,7 +147,7 @@ tab:
   title-examples: ["&eTitle|&7Subtitle"]
   message-examples: ["&eMessage_for_{player}"]
   buyer-lore-examples: ["&7Price:_{unit_price}", "&7Bulk:_{bulk_amount}_for_{bulk_price}"]
-  buyer-command-examples: ["say_{player}_sold_{amount}_{item}_for_{price}"]
+  buyer-command-examples: ["once:say_{player}_sold_{amount}_{item}_for_{price}", "idempotent:rewards_grant_{player}_{idempotency_key}"]
   guild-lore-examples: ["&7Boost:_{bonus_value}", "&7Duration:_{duration}", "&6Price:_{price}"]
   exchange-lore-examples: ["&7Give:_{source}", "&7Receive:_{receive}", "&7Fee:_{fee}"]
 literal-replacements: []

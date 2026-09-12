@@ -6,7 +6,6 @@ import dev.addons.npc.model.ShopOffer;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.logging.Level;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -48,6 +47,9 @@ public final class ShopPlan implements DeliveryPlan {
     @Override public String summary() { return purchase.summary(); }
     @Override public String encode() { return purchase.encode(); }
     @Override public boolean playerDataStep(int index) { return index == purchase.itemStep(); }
+    @Override public boolean advanceBeforeEffect(int index) {
+        return purchase.commandAt(index).map(ClaimCommand::advanceBeforeEffect).orElse(false);
+    }
 
     @Override
     public void step(Player player, int index, Outcome outcome) {
@@ -57,10 +59,9 @@ public final class ShopPlan implements DeliveryPlan {
             collect("npc-claim:" + purchase.holdKey().orElseThrow(), outcome);
             return;
         }
-        Optional<String> command = purchase.commandAt(index);
+        Optional<ClaimCommand> command = purchase.commandAt(index);
         if (command.isPresent()) {
-            runCommand(command.get());
-            outcome.done();
+            ClaimCommandRunner.run(plugin, "Shop", command.get(), outcome);
             return;
         }
         giveItem(player, outcome);
@@ -89,17 +90,6 @@ public final class ShopPlan implements DeliveryPlan {
         }
         player.updateInventory();
         outcome.done();
-    }
-
-    private void runCommand(String command) {
-        try {
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-        } catch (RuntimeException failure) {
-            // The command ran and threw. Retrying an arbitrary console command
-            // is not safe, so the step counts as done and the failure is loud
-            // in the log instead.
-            plugin.getLogger().warning("Shop command failed: " + failure.getMessage());
-        }
     }
 
     /**
@@ -161,10 +151,10 @@ public final class ShopPlan implements DeliveryPlan {
             ShopDefinition shop = shops.get(purchase.shopId());
             ShopOffer offer = shop == null ? null : shop.offers().get(purchase.slot());
             if (offer == null || offer.unlimited()) return;
-            offer.stock(offer.stock() + 1);
+            offer.stock(offer.stock() + purchase.item().getAmount());
             shops.save();
         } catch (RuntimeException failure) {
-            // One unit of stock is not money. Losing it is a cosmetic drift
+            // Stock is not money. Losing one purchase quantity is a drift
             // worth a log line, not a reason to leave the claim open.
             plugin.getLogger().log(Level.WARNING, "Could not restore shop stock", failure);
         }

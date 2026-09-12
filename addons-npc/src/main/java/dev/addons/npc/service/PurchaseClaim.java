@@ -1,6 +1,5 @@
 package dev.addons.npc.service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -48,7 +47,7 @@ import org.bukkit.inventory.ItemStack;
  * delivery time would use tomorrow's balance and today's promise.
  */
 public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, ItemStack item,
-                            List<String> commands) {
+                            List<ClaimCommand> commands) {
 
     public PurchaseClaim {
         commands = List.copyOf(commands);
@@ -65,7 +64,7 @@ public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, I
     }
 
     /** The command a given step runs, or empty when that step is not a command. */
-    public Optional<String> commandAt(int step) {
+    public Optional<ClaimCommand> commandAt(int step) {
         int first = itemStep() + 1;
         return step >= first && step < first + commands.size()
                 ? Optional.of(commands.get(step - first))
@@ -95,7 +94,7 @@ public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, I
      */
     public String encode() {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 1);
+        yaml.set("schema", 2);
         holdKey.ifPresent(key -> yaml.set("hold", key));
         yaml.set("shop", shopId);
         yaml.set("slot", slot);
@@ -104,7 +103,7 @@ public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, I
         // Hand-rolling that encoding is how a claim ends up handing back a
         // sword that lost its enchantments.
         yaml.set("item", item);
-        yaml.set("commands", new ArrayList<>(commands));
+        yaml.set("commands", commands.stream().map(ClaimCommand::encode).toList());
         return yaml.saveToString();
     }
 
@@ -123,12 +122,16 @@ public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, I
             ItemStack item = yaml.getItemStack("item");
             if (item == null || item.getAmount() <= 0) return Optional.empty();
             String hold = yaml.getString("hold", "");
+            int schema = yaml.getInt("schema", 1);
             return Optional.of(new PurchaseClaim(
                     hold.isBlank() ? Optional.<String>empty() : Optional.of(hold),
                     yaml.getString("shop", ""),
                     yaml.getInt("slot", -1),
                     item,
-                    yaml.getStringList("commands")));
+                    yaml.getStringList("commands").stream()
+                            .map(command -> schema >= 2 ? ClaimCommand.stored(command)
+                                    : new ClaimCommand(ClaimCommand.Mode.AT_MOST_ONCE, command))
+                            .toList()));
         } catch (Exception unreadable) {
             return Optional.empty();
         }

@@ -1,6 +1,7 @@
 locale-name: Русский
 messages:
   prefix: "&8[&6NPC&8] &r"
+  command-idempotency-key-required: "Идемпотентная команда должна содержать {idempotency_key}."
   no-permission: "&cНедостаточно прав."
   player-only: "&cЭту команду может выполнить только игрок."
   npc-not-found: "&cNPC '&f{id}&c' не найден."
@@ -142,7 +143,7 @@ tab:
   title-examples: ["&eЗаголовок|&7Подзаголовок"]
   message-examples: ["&eСообщение_для_{player}"]
   buyer-lore-examples: ["&7Цена:_{unit_price}", "&7Оптом:_{bulk_amount}_за_{bulk_price}"]
-  buyer-command-examples: ["say_{player}_продал_{amount}_{item}_за_{price}"]
+  buyer-command-examples: ["once:say_{player}_продал_{amount}_{item}_за_{price}", "idempotent:rewards_grant_{player}_{idempotency_key}"]
   guild-lore-examples: ["&7Бонус:_{bonus_value}", "&7Срок:_{duration}", "&6Цена:_{price}"]
   exchange-lore-examples: ["&7Отдаёте:_{source}", "&7Получаете:_{receive}", "&7Комиссия:_{fee}"]
 literal-replacements:

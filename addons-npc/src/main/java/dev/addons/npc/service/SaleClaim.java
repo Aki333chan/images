@@ -1,7 +1,6 @@
 package dev.addons.npc.service;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -45,7 +44,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
  *                  between the click and the delivery, but the quote may not
  */
 public record SaleClaim(String operation, String buyerId, int slot, int amount, BigDecimal payout,
-                        long deadline, List<String> commands) {
+                        long deadline, List<ClaimCommand> commands) {
 
     public SaleClaim {
         commands = List.copyOf(commands);
@@ -64,7 +63,7 @@ public record SaleClaim(String operation, String buyerId, int slot, int amount, 
         return step == 1;
     }
 
-    public Optional<String> commandAt(int step) {
+    public Optional<ClaimCommand> commandAt(int step) {
         return step >= 2 && step < 2 + commands.size()
                 ? Optional.of(commands.get(step - 2))
                 : Optional.empty();
@@ -83,7 +82,7 @@ public record SaleClaim(String operation, String buyerId, int slot, int amount, 
 
     public String encode() {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 1);
+        yaml.set("schema", 2);
         yaml.set("operation", operation);
         yaml.set("buyer", buyerId);
         yaml.set("slot", slot);
@@ -92,7 +91,7 @@ public record SaleClaim(String operation, String buyerId, int slot, int amount, 
         // and money that changes when it is written down is not money.
         yaml.set("payout", payout.toPlainString());
         yaml.set("deadline", deadline);
-        yaml.set("commands", new ArrayList<>(commands));
+        yaml.set("commands", commands.stream().map(ClaimCommand::encode).toList());
         return yaml.saveToString();
     }
 
@@ -108,8 +107,13 @@ public record SaleClaim(String operation, String buyerId, int slot, int amount, 
             if (operation.isBlank() || buyer.isBlank() || amount <= 0 || payout.signum() <= 0) {
                 return Optional.empty();
             }
+            int schema = yaml.getInt("schema", 1);
             return Optional.of(new SaleClaim(operation, buyer, yaml.getInt("slot", -1), amount, payout,
-                    yaml.getLong("deadline", 0L), yaml.getStringList("commands")));
+                    yaml.getLong("deadline", 0L),
+                    yaml.getStringList("commands").stream()
+                            .map(command -> schema >= 2 ? ClaimCommand.stored(command)
+                                    : new ClaimCommand(ClaimCommand.Mode.AT_MOST_ONCE, command))
+                            .toList()));
         } catch (Exception unreadable) {
             return Optional.empty();
         }

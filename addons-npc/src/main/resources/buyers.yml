@@ -17,6 +17,8 @@ schema-version: 2
 #         bulk-amount: 64
 #         bulk-price: 110.0
 #         permission: ""
+#         # Plain / once: commands are at-most-once. idempotent: commands must
+#         # contain {idempotency_key}, and their receiver must deduplicate it.
 #         commands: []
 #         bonus: # optional slot bonus; active slot bonus overrides the buyer-wide one
 #           percent: 20.0
