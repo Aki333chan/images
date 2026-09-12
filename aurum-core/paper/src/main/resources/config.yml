@@ -131,9 +131,34 @@ claims:
   max-attempts: 5
 
 trading:
+  # Guaranteed player-to-player trade: /trade <player>.
+  #
+  # OFF BY DEFAULT because it changes how items move on the server. Turn it on
+  # deliberately, not by upgrading.
+  #
+  # An item put on the table LEAVES the player's inventory immediately and
+  # exists only as a durable record in MariaDB. There is no second, live copy
+  # anywhere: two places that can disagree about an item are two places that
+  # can duplicate it.
+  #
+  # Every edit to either offer clears BOTH confirmations, and a confirmation
+  # names the revision it was given for. That is what stops the oldest trade
+  # scam there is — swapping the goods between the other player's look and
+  # their click.
+  #
+  # Whatever ends a trade — settling, cancelling, timing out — ends it by owing
+  # the goods to somebody through a delivery claim. Nothing is ever dropped on
+  # the floor, and nothing waits on an inventory having room right now.
   enabled: false
+
+  # How long an unanswered invitation stands.
   invite-timeout-seconds: 30
+
+  # How long an open trade may sit idle. Real activity pushes this out: the
+  # timeout is meant to clear abandoned tables, not to cut off two people who
+  # are still arranging things.
   session-timeout-seconds: 300
+
   require-final-confirmation: true
   # Items that cannot be delivered stay claimable; they are never dropped.
   claim-expire-days: 30

@@ -10,7 +10,7 @@ loadbefore: [Essentials, AddonsNPC, AurumSlots, AurumArena, AurumGuilds]
 commands:
   aurum:
     description: AurumCore balance and diagnostics
-    usage: /aurum <balance|status|treasury|migrate|economy|policy|exchange>
+    usage: /aurum <balance|status|treasury|migrate|economy|policy|exchange|claims>
     aliases: [acore]
   abal:
     description: Short form of /aurum balance
@@ -28,6 +28,9 @@ commands:
   pay:
     description: Safely transfer currency to another player
     usage: /pay <player> <amount> [reason]
+  trade:
+    description: Guaranteed trade with another player
+    usage: /trade <player|accept|item|money <amount>|clear|confirm|cancel|view>
   apay:
     description: Conflict-free form of /pay
     usage: /apay <player> <amount> [reason]
@@ -66,3 +69,6 @@ permissions:
   aurum.admin.claims:
     description: Inspect, retry and drop quarantined delivery claims
     default: op
+  aurum.trade:
+    description: Trade items and currency with another player
+    default: true

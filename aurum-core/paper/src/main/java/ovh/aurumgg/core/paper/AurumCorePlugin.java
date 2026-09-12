@@ -31,6 +31,7 @@ import ovh.aurumgg.core.engine.ExchangeRepository;
 import ovh.aurumgg.core.engine.ExchangeService;
 import ovh.aurumgg.core.engine.ClaimService;
 import ovh.aurumgg.core.engine.HoldService;
+import ovh.aurumgg.core.engine.TradeService;
 import ovh.aurumgg.core.engine.MultiCurrencyEconomyService;
 import ovh.aurumgg.core.engine.PassiveEconomyService;
 import ovh.aurumgg.core.engine.PolicyRegistry;
@@ -60,6 +61,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile ExchangeCoordinator exchanges;
     private volatile ClaimService claims;
     private volatile ClaimCoordinator claimCommands;
+    private volatile TradeCoordinator tradeCommands;
+    private volatile TradeDelivery tradeDelivery;
 
     @Override
     public void onEnable() {
@@ -98,7 +101,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
 
         AurumCommand command = new AurumCommand(this);
         for (String commandName : new String[] {
-                "aurum", "abal", "atreasury", "amigrate", "aeco", "apolicy", "aexchange", "pay", "apay"}) {
+                "aurum", "abal", "atreasury", "amigrate", "aeco", "apolicy", "aexchange", "pay", "apay",
+                "trade"}) {
             var registered = getCommand(commandName);
             if (registered != null) {
                 registered.setExecutor(command);
@@ -176,6 +180,16 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                             Clock.systemUTC(), Duration.ofSeconds(settings.claimMaxLeaseSeconds()),
                             settings.claimMaxAttempts());
                     claimCommands = new ClaimCoordinator(this, claims);
+                    if (settings.tradingEnabled()) {
+                        // Сделка опирается и на деньги, и на заявки: без заявок
+                        // отданные предметы было бы некуда записать.
+                        TradeService tradeService = new TradeService(opened.tradeRepository(), service,
+                                databaseExecutor, Clock.systemUTC(),
+                                Duration.ofSeconds(settings.tradeInviteTimeoutSeconds()),
+                                Duration.ofSeconds(settings.tradeSessionTimeoutSeconds()));
+                        tradeDelivery = new TradeDelivery(this, claims, messages);
+                        tradeCommands = new TradeCoordinator(this, tradeService, tradeDelivery);
+                    }
                     activeEconomy = service;
                     economy = service;
                     if (getServer().isPrimaryThread()) enableActiveServices();
@@ -284,6 +298,14 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         if (claims != null) {
             getServer().getServicesManager().register(AurumClaimApi.class, claims,
                     this, ServicePriority.Highest);
+        }
+        if (tradeDelivery != null) {
+            getServer().getPluginManager().registerEvents(tradeDelivery, this);
+            // Один и тот же обход убирает брошенные столы и доводит доставку,
+            // которую не удалось завершить сразу: у обоих один и тот же повод —
+            // что-то осталось незакрытым.
+            getServer().getScheduler().runTaskTimer(this,
+                    () -> { if (tradeCommands != null) tradeCommands.sweep(); }, 200L, 200L);
         }
         vaultEconomy = new AurumVaultEconomy(this, activeEconomy.primaryService(), settings.currency());
         getServer().getServicesManager().register(Economy.class, vaultEconomy,
@@ -397,6 +419,10 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
 
     ClaimCoordinator claimCommands() {
         return claimCommands;
+    }
+
+    TradeCoordinator tradeCommands() {
+        return tradeCommands;
     }
     Optional<BalanceSnapshot> cachedBalance(AccountId account) {
         if (activeEconomy != null) return activeEconomy.cachedBalance(account);
