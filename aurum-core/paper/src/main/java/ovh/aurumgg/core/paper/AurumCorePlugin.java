@@ -63,6 +63,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile ClaimCoordinator claimCommands;
     private volatile TradeCoordinator tradeCommands;
     private volatile TradeDelivery tradeDelivery;
+    private volatile TradeWindow tradeWindow;
 
     @Override
     public void onEnable() {
@@ -189,6 +190,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                                 Duration.ofSeconds(settings.tradeSessionTimeoutSeconds()));
                         tradeDelivery = new TradeDelivery(this, claims, messages);
                         tradeCommands = new TradeCoordinator(this, tradeService, tradeDelivery);
+                        tradeWindow = new TradeWindow(this, tradeCommands);
+                        tradeCommands.openWith(tradeWindow::show);
                     }
                     activeEconomy = service;
                     economy = service;
@@ -301,6 +304,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         }
         if (tradeDelivery != null) {
             getServer().getPluginManager().registerEvents(tradeDelivery, this);
+            getServer().getPluginManager().registerEvents(tradeWindow, this);
             // Один и тот же обход убирает брошенные столы и доводит доставку,
             // которую не удалось завершить сразу: у обоих один и тот же повод —
             // что-то осталось незакрытым.

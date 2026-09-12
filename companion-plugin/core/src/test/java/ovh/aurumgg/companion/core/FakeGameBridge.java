@@ -342,7 +342,8 @@ public final class FakeGameBridge implements GameBridge {
         }
         entries.sort(Comparator.comparingDouble(EconomySummary.TopEntry::balance).reversed());
         if (entries.size() > topLimit) entries = new ArrayList<>(entries.subList(0, topLimit));
-        return Optional.of(new EconomySummary(total, money(total), "монет", balances.size(), List.copyOf(entries)));
+        return Optional.of(new EconomySummary(total, money(total), "монет", balances.size(),
+                List.copyOf(entries), null));
     }
 
     // -------------------------------------------------------- сброс пароля

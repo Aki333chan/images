@@ -30,7 +30,7 @@ commands:
     usage: /pay <player> <amount> [reason]
   trade:
     description: Guaranteed trade with another player
-    usage: /trade <player|accept|item|money <amount>|clear|confirm|cancel|view>
+    usage: /trade <player|accept|item|money <amount>|clear|confirm|cancel|view|window>
   apay:
     description: Conflict-free form of /pay
     usage: /apay <player> <amount> [reason]

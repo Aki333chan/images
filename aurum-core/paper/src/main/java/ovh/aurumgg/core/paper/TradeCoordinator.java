@@ -49,6 +49,15 @@ final class TradeCoordinator {
     private final TradeDelivery delivery;
     /** Players with a command in flight; two clicks must not race one table. */
     private final Set<UUID> busy = ConcurrentHashMap.newKeySet();
+    /**
+     * Кому сообщать, что стол изменился.
+     *
+     * Окно — оболочка над этим сервисом, а не второе место, где записаны
+     * правила. Поэтому оно не опрашивает состояние, а получает его тогда же,
+     * когда игрокам уходит сообщение: правку сделал СОСЕД, и перерисовать надо
+     * обоим.
+     */
+    private volatile java.util.function.Consumer<TradeSession> onChanged = trade -> {};
 
     TradeCoordinator(AurumCorePlugin plugin, TradeService trades, TradeDelivery delivery) {
         this.plugin = plugin;
@@ -70,6 +79,7 @@ final class TradeCoordinator {
             case "confirm" -> withOpen(player, (trade, offers) -> confirm(player, trade));
             case "cancel" -> withAny(player, trade -> cancel(trade, "cancelled by " + player.getName()));
             case "view" -> view(player);
+            case "window" -> openWindow(player);
             default -> invite(player, args[0]);
         };
     }
@@ -113,12 +123,28 @@ final class TradeCoordinator {
             player.sendMessage(plugin.messages().component("trade-nothing-in-hand"));
             return;
         }
+        putItem(player, trade, offers, held.clone(),
+                () -> player.getInventory().setItemInMainHand(null));
+    }
+
+    /**
+     * Put one stack on the table.
+     *
+     * <p>The stack is named by the caller rather than read from the hand,
+     * because the window offers what was CLICKED. Re-reading the hand after an
+     * asynchronous hop would offer whatever ended up there in the meantime.
+     *
+     * @param takeFromPlayer removes the stack from wherever it was; runs only
+     *                       once the offer has been recorded well enough to be
+     *                       written, and never before
+     */
+    void putItem(Player player, TradeSession trade, List<TradeOffer> offers, ItemStack offered,
+                 Runnable takeFromPlayer) {
         List<ItemStack> table = new ArrayList<>(items(player.getUniqueId(), offers));
-        if (table.size() >= 27) {
+        if (table.size() >= TradeWindow.SIDE_SLOTS) {
             player.sendMessage(plugin.messages().component("trade-table-full"));
             return;
         }
-        ItemStack offered = held.clone();
         TradeOffer current = mine(player.getUniqueId(), offers);
         table.add(offered);
 
@@ -127,12 +153,12 @@ final class TradeCoordinator {
             blob = TradeItems.encode(table);
         } catch (RuntimeException failure) {
             // Refusing is right: an offer whose stored half is wrong is worse
-            // than an offer that could not be made.
+            // than an offer that could not be made. Nothing has been taken yet.
             plugin.getLogger().warning("Could not record a trade item: " + failure.getMessage());
             player.sendMessage(plugin.messages().component("trade-item-rejected"));
             return;
         }
-        player.getInventory().setItemInMainHand(null);
+        takeFromPlayer.run();
         player.updateInventory();
 
         TradeOffer updated = new TradeOffer(trade.id(), player.getUniqueId(),
@@ -143,6 +169,7 @@ final class TradeCoordinator {
                 // the inventory, so it goes back the only durable way there is.
                 returnItems(trade.id(), player.getUniqueId(), TradeItems.encode(List.of(offered)),
                         "trade-return:" + trade.id() + ":" + player.getUniqueId() + ":" + System.nanoTime());
+                deliverTo(player.getUniqueId());
                 answered(player, result, error);
                 return;
             }
@@ -283,6 +310,17 @@ final class TradeCoordinator {
 
     // ------------------------------------------------------------- просмотр
 
+    private volatile java.util.function.Consumer<Player> windowOpener = player -> { };
+
+    void openWith(java.util.function.Consumer<Player> opener) {
+        this.windowOpener = opener == null ? player -> { } : opener;
+    }
+
+    private boolean openWindow(Player player) {
+        windowOpener.accept(player);
+        return true;
+    }
+
     private boolean view(Player player) {
         trades.activeFor(player.getUniqueId()).whenComplete((found, error) -> onMain(() -> {
             TradeSession trade = found == null ? null : found.orElse(null);
@@ -369,7 +407,61 @@ final class TradeCoordinator {
         return false;
     }
 
+    void notifyChanges(java.util.function.Consumer<TradeSession> listener) {
+        this.onChanged = listener == null ? trade -> {} : listener;
+    }
+
+    /** Забрать со стола один конкретный предмет — то, чего командой не сделать. */
+    void takeBack(Player player, TradeSession trade, List<TradeOffer> offers, int index) {
+        List<ItemStack> table = new ArrayList<>(items(player.getUniqueId(), offers));
+        if (index < 0 || index >= table.size()) return;
+        ItemStack removed = table.remove(index);
+        TradeOffer current = mine(player.getUniqueId(), offers);
+        TradeOffer updated = new TradeOffer(trade.id(), player.getUniqueId(), current.currencyId(),
+                current.money(), TradeItems.encode(table), TradeItems.FORMAT);
+        trades.offer(trade.id(), updated).whenComplete((result, error) -> onMain(() -> {
+            if (!answered(player, result, error)) return;
+            // Через заявку, а не прямо в инвентарь: запись в базу и изменение
+            // инвентаря не бывают одной транзакцией, и здесь то же правило,
+            // что и везде.
+            returnItems(trade.id(), player.getUniqueId(), TradeItems.encode(List.of(removed)),
+                    "trade-take:" + trade.id() + ":" + player.getUniqueId() + ":"
+                            + result.trade().map(TradeSession::revision).orElse(0L));
+            deliverTo(player.getUniqueId());
+            announce(result.trade().orElse(trade), "trade-changed", Map.of("player", player.getName()));
+        }));
+    }
+
+    /**
+     * Подтвердить ту ревизию, которую игрок ВИДЕЛ, а не текущую.
+     *
+     * Окно рисуется по снимку; между отрисовкой и кликом сосед мог поменять
+     * стол. Отправить сюда текущую ревизию значило бы подтвердить вместо игрока
+     * то, чего он не видел, — ровно тот обман, от которого ревизия и защищает.
+     */
+    void confirmDrawn(Player player, UUID tradeId, long drawnRevision) {
+        trades.confirm(tradeId, player.getUniqueId(), drawnRevision)
+                .whenComplete((result, error) -> onMain(() -> {
+            if (!answered(player, result, error)) return;
+            TradeSession confirmed = result.trade().orElseThrow();
+            announce(confirmed, "trade-confirmed", Map.of("player", player.getName()));
+            if (confirmed.ready()) settle(confirmed);
+        }));
+    }
+
+    /** Оферты этого стола — для отрисовки окна. */
+    void refresh(TradeSession trade, java.util.function.BiConsumer<TradeSession, List<TradeOffer>> sink) {
+        trades.offers(trade.id()).whenComplete((offers, error) -> onMain(() ->
+                sink.accept(trade, offers == null ? List.of() : offers)));
+    }
+
+    /** Открытая сделка игрока вместе с офертами, или сообщение о том, что её нет. */
+    void current(Player player, java.util.function.BiConsumer<TradeSession, List<TradeOffer>> sink) {
+        withOpen(player, sink::accept);
+    }
+
     private void announce(TradeSession trade, String key, Map<String, String> values) {
+        onChanged.accept(trade);
         for (UUID side : List.of(trade.first(), trade.second())) {
             Player online = Bukkit.getPlayer(side);
             if (online != null) online.sendMessage(plugin.messages().component(key, values));
@@ -412,6 +504,6 @@ final class TradeCoordinator {
     }
 
     List<String> actions() {
-        return List.of("accept", "item", "money", "clear", "confirm", "cancel", "view");
+        return List.of("accept", "item", "money", "clear", "confirm", "cancel", "view", "window");
     }
 }

@@ -257,6 +257,11 @@
   "stats.economy.cached": " (z pamięci podręcznej)",
   "stats.economy.hideRich": "Ukryj najbogatszych",
   "stats.economy.showRich": "Najbogatsi",
+  "stats.economy.supply": "cała podaż pieniądza",
+  "stats.economy.treasury": "Skarbiec",
+  "stats.economy.treasuryHint": "konto serwera",
+  "stats.economy.taxes": "Podatki",
+  "stats.economy.taxesHint": "zebrane od zawsze",
   "stats.players": {
     "one": "{count} gracz",
     "few": "{count} gracze",

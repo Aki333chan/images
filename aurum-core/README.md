@@ -181,8 +181,30 @@ attribute modifiers — it hands back a sword that quietly lost them, and the
 player who paid for it cannot prove what it was. An unreadable blob is
 quarantined for `/aurum claims`, never guessed at.
 
-The window is not built yet: the safety lives in the revision, not the pixels,
-so the commands exercise exactly the machinery a GUI would later sit on.
+### The window
+
+The trade window opens for both players as soon as the invitation is accepted,
+and it is a **view of the table, nothing more**. Every slot holds a display
+copy; the real goods left the player's inventory when they were offered and
+exist only as the record in Core. A window that held the real stacks would be a
+second place that can disagree with the first, and the moment those two
+disagree, an item has been duplicated.
+
+So every click is cancelled and turned into a call on the same service the
+commands use. Click a stack in your inventory or drop one on your half of the
+table to offer it; click an offered stack to take just that one back.
+
+**The confirm button sends the revision the window was drawn with** — not
+whatever is current. If the table changed in between, Core refuses, and the
+refusal is the point.
+
+**Closing the window calls the trade off.** There are other people's goods on
+the table; walking away silently would leave them stranded until the session
+timeout, so the close is the cancellation, and cancelling gives both tables
+back.
+
+Money is set with `/trade money <amount>` and shown in the window: a chat
+command takes a number, an inventory slot does not.
 
 ## Runtime behavior
 

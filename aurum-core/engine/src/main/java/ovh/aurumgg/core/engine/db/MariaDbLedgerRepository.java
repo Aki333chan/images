@@ -18,6 +18,7 @@ import java.util.UUID;
 import javax.sql.DataSource;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
 import ovh.aurumgg.core.engine.LedgerCommit;
@@ -84,6 +85,40 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                 return result.next() ? Optional.of(result.getBigDecimal(1).setScale(currency.scale())) : Optional.empty();
             }
         }
+    }
+
+    @Override
+    public List<BalanceSnapshot> richest(CurrencySpec currency, int limit)
+            throws SQLException {
+        // Только PLAYER: казна или эскроу с большим остатком — не новость, а на
+        // доске богатства она делает доску бессмысленной.
+        String sql = "SELECT reference_id, balance FROM aurum_accounts "
+                + "WHERE currency_id = ? AND account_type = 'PLAYER' AND balance > 0 "
+                + "ORDER BY balance DESC, reference_id ASC LIMIT ?";
+        List<BalanceSnapshot> result = new ArrayList<>();
+        Instant now = Instant.now(clock);
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            connection.setReadOnly(true);
+            statement.setString(1, currency.id());
+            statement.setInt(2, Math.clamp(limit, 1, 200));
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    UUID player;
+                    try {
+                        player = UUID.fromString(rows.getString("reference_id"));
+                    } catch (IllegalArgumentException notAPlayer) {
+                        // Счёт типа PLAYER с адресом, который не UUID, — это
+                        // испорченная строка, а не игрок. Пропускаем молча:
+                        // доска богатства не то место, где о ней докладывать.
+                        continue;
+                    }
+                    result.add(new BalanceSnapshot(AccountId.player(player), currency,
+                            rows.getBigDecimal("balance").setScale(currency.scale()), now, true));
+                }
+            }
+        }
+        return List.copyOf(result);
     }
 
     @Override

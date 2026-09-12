@@ -507,12 +507,36 @@ export interface MinecraftEconomyDto {
   available: boolean;
   reason?: string;
   code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
-  /** Сумма балансов всех, кто когда-либо заходил на сервер. */
+  /**
+   * Откуда числа.
+   *
+   * `aurum` — из ledger AurumCore, одним запросом: он и есть источник истины,
+   * и только у него существуют казна, денежная масса и собранные налоги.
+   * `vault` — по-старому, обходом всех, кто когда-либо заходил.
+   */
+  source?: 'aurum' | 'vault';
+  /**
+   * Сколько всего денег панель видит: сумма кошельков у Vault, денежная масса
+   * у ledger. Второе точнее — оно включает и казну, и счета гильдий, и эскроу,
+   * то есть всё, что на сервере действительно есть.
+   */
   total?: number;
   totalFormatted?: string;
   currency?: string;
-  /** Сколько игроков учтено в сумме. */
+  /**
+   * Сколько игроков учтено в сумме. Отсутствует у ledger: там сумма берётся
+   * запросом, а не обходом, и считать игроков незачем.
+   */
   playersCounted?: number;
+  /** Казна сервера. Только у ledger: у Vault её не существует. */
+  treasury?: number;
+  treasuryFormatted?: string;
+  /** Вся денежная масса, включая казну, гильдии и эскроу. Только у ledger. */
+  moneySupply?: number;
+  moneySupplyFormatted?: string;
+  /** Сколько собрано налогов за всё время. Только у ledger. */
+  taxesCollected?: number;
+  taxesFormatted?: string;
   /** Доска богатства: топ по балансу. */
   top?: { name: string; uuid: string; balance: number; formatted: string }[];
   /**

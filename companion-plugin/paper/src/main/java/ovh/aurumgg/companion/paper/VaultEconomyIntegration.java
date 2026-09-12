@@ -121,7 +121,11 @@ final class VaultEconomyIntegration {
             List<EconomySummary.TopEntry> top =
                     entries.size() > topLimit ? List.copyOf(entries.subList(0, topLimit)) : List.copyOf(entries);
 
-            return new EconomySummary(total, economy.format(total), economy.currencyNamePlural(), counted, top);
+            // ledger = null: у Vault нет ни казны сервера, ни понятия налога.
+            // Отдавать там нули значило бы показать в панели то, чего на этом
+            // сервере не существует.
+            return new EconomySummary(total, economy.format(total), economy.currencyNamePlural(),
+                    counted, top, null);
         });
     }
 

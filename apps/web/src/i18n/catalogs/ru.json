@@ -257,6 +257,11 @@
   "stats.economy.cached": " (из кэша)",
   "stats.economy.hideRich": "Скрыть богатейших",
   "stats.economy.showRich": "Богатейшие",
+  "stats.economy.supply": "вся денежная масса",
+  "stats.economy.treasury": "Казна",
+  "stats.economy.treasuryHint": "счёт сервера",
+  "stats.economy.taxes": "Налоги",
+  "stats.economy.taxesHint": "собрано за всё время",
   "stats.players": {
     "one": "{count} игрок",
     "few": "{count} игрока",
