@@ -124,8 +124,9 @@
 6. [ ] Закрыть внешние crash gaps AddonsNPC и trade: item escrow/receipt для
    изъятия и выдачи, безопасная повторная доставка команд, затем включаемые
    staging-тесты с аварией между каждым внешним шагом и `advance`.
-7. [ ] Исправить атомарность роспуска гильдии с ненулевым счётом и убрать
-   блокирующие ledger-вызовы Companion с главного Paper thread.
+7. [~] Роспуск гильдии больше не удаляет данные при отказе расчёта leader/treasury;
+   чтение ledger Companion больше не блокирует Paper thread. Осталось: persisted
+   disband plan для multi-recipient `split` и native write routes вместо синхронного Vault.
 8. [ ] Опционально мигрировать динамические настройки арен, NPC, автоматов и
    связей гильдий. WorldGuard остаётся владельцем самих регионов.
 9. [ ] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,

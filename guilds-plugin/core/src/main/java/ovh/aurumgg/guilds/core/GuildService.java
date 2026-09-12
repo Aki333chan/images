@@ -516,7 +516,8 @@ public final class GuildService implements AutoCloseable {
                 // Последний участник он же лидер: гильдия из нуля человек
                 // существовать не может, и просить его отдельно её распустить
                 // значит требовать лишнюю команду ради очевидного.
-                deleteGuild(guild, "последний участник вышел");
+                BankResult settled = deleteGuild(guild, "последний участник вышел");
+                if (!settled.ok()) return GuildActionResult.fail(settled.messageKey());
                 return GuildActionResult.ok("guild.leftAndDisbanded");
             }
 
@@ -604,7 +605,8 @@ public final class GuildService implements AutoCloseable {
                 return GuildActionResult.fail("guild.err.disbandLeaderOnly");
             }
 
-            deleteGuild(guild, "распущена лидером " + names.nameOf(actor));
+            BankResult settled = deleteGuild(guild, "распущена лидером " + names.nameOf(actor));
+            if (!settled.ok()) return GuildActionResult.fail(settled.messageKey());
             return GuildActionResult.ok("guild.disbanded", Map.of("guild", guild.name()));
         });
     }
@@ -828,7 +830,8 @@ public final class GuildService implements AutoCloseable {
         return async(() -> {
             StoredGuild guild = guilds.get(guildId);
             if (guild == null) return GuildActionResult.fail("guild.err.noSuchGuild");
-            deleteGuild(guild, "распущена администратором " + actor);
+            BankResult settled = deleteGuild(guild, "распущена администратором " + actor);
+            if (!settled.ok()) return GuildActionResult.fail(settled.messageKey());
             return GuildActionResult.ok("guild.disbanded", Map.of("guild", guild.name()));
         });
     }
@@ -865,7 +868,9 @@ public final class GuildService implements AutoCloseable {
             StoredGuild guild = found.get();
             UUID target = byUsername(guild, targetName).orElseThrow().uuid();
             String guildName = guild.name();
-            forceRemove(guild, target, "исключён администратором " + actor);
+            if (!forceRemove(guild, target, "исключён администратором " + actor)) {
+                return GuildActionResult.fail("guild.err.bankOff");
+            }
             return GuildActionResult.ok("guild.admin.removed", Map.of(
                     "player", targetName, "guild", guildName));
         });
@@ -887,7 +892,9 @@ public final class GuildService implements AutoCloseable {
             StoredGuild guild = guilds.get(memberOf.get(player));
             if (guild == null) return GuildActionResult.ok("guild.admin.wasNotInGuild");
             String guildName = guild.name();
-            forceRemove(guild, player, "аккаунт " + username + " удалён");
+            if (!forceRemove(guild, player, "аккаунт " + username + " удалён")) {
+                return GuildActionResult.fail("guild.err.bankOff");
+            }
             return GuildActionResult.ok("guild.admin.removed", Map.of(
                     "player", username, "guild", guildName));
         });
@@ -1223,21 +1230,21 @@ public final class GuildService implements AutoCloseable {
      * потому единственное, где записано правило наследования. Оно одинаково и
      * для административного исключения, и для удалённого аккаунта.
      */
-    private void forceRemove(StoredGuild guild, UUID player, String reason) {
+    private boolean forceRemove(StoredGuild guild, UUID player, String reason) {
         boolean wasLeader = guild.leader().equals(player);
         if (!wasLeader) {
             removeMember(guild, player, reason);
-            return;
+            return true;
         }
 
         Optional<GuildMember> heir = successor(guild, player);
         if (heir.isEmpty()) {
             // Лидер был единственным — распускать больше нечего.
-            deleteGuild(guild, reason + ", участников не осталось");
-            return;
+            return deleteGuild(guild, reason + ", участников не осталось").ok();
         }
         applyLeader(guild, heir.get().uuid());
         removeMember(guilds.get(guild.id()), player, reason);
+        return true;
     }
 
     /**
@@ -1287,10 +1294,15 @@ public final class GuildService implements AutoCloseable {
                 guild.bank(), guild.createdAt(), guild.settings(), updated));
     }
 
-    private void deleteGuild(StoredGuild guild, String reason) {
+    private BankResult deleteGuild(StoredGuild guild, String reason) {
         // Деньги — ПЕРЕД удалением строки: после него ни счёта гильдии в
         // ledger, ни её баланса в памяти уже не к чему привязать.
-        settleBank(guild);
+        BankResult settlement = settleBank(guild);
+        if (!settlement.ok()) {
+            logger.warning("Гильдия «" + guild.name() + "» НЕ удалена: общак не рассчитан ("
+                    + settlement.messageKey() + ")");
+            return settlement;
+        }
 
         write(() -> repository.deleteGuild(guild.id()), "удалить гильдию " + guild.name());
         for (GuildMember member : guild.members()) {
@@ -1304,6 +1316,7 @@ public final class GuildService implements AutoCloseable {
         hooks.guildDeleted(guild.id());
 
         logger.info("Гильдия «" + guild.name() + "» удалена: " + reason);
+        return BankResult.success();
     }
 
     /**
@@ -1326,9 +1339,9 @@ public final class GuildService implements AutoCloseable {
      * Роспуск может оборваться на середине списка получателей — например,
      * если сервер упал. Повтор с теми же ключами не заплатит дважды.
      */
-    private void settleBank(StoredGuild guild) {
+    private BankResult settleBank(StoredGuild guild) {
         double balance = guild.bank();
-        if (!(balance > 0)) return;
+        if (!(balance > 0)) return BankResult.success();
 
         if (!economy.available() || !bankReady(guild.id())) {
             // Ни трогать счёт, ни делать вид, что денег не было. Громко в
@@ -1336,20 +1349,29 @@ public final class GuildService implements AutoCloseable {
             logger.warning("Гильдия «" + guild.name() + "» распускается, когда экономика "
                     + "недоступна. Общак " + economy.format(balance) + " остался на счёте "
                     + "гильдии и потребует ручного разбора");
-            return;
+            return BankResult.unavailable();
         }
 
         switch (config.bankOnDisband()) {
-            case KEEP -> logger.info("Общак гильдии «" + guild.name() + "» ("
-                    + economy.format(balance) + ") оставлен на её счёте: bank.on-disband: keep");
+            case KEEP -> {
+                logger.info("Общак гильдии «" + guild.name() + "» ("
+                        + economy.format(balance) + ") оставлен на её счёте: bank.on-disband: keep");
+                return BankResult.success();
+            }
             case TREASURY -> {
                 BankResult result = economy.toTreasury(
                         guild.id(), balance, "guild-disband:" + guild.id() + ":treasury");
                 logSettlement(guild, guild.leader(), balance, balance, result, "казна сервера");
+                return result;
             }
-            case LEADER -> payShare(guild, guild.leader(), balance, balance);
-            case SPLIT -> splitBank(guild, balance);
+            case LEADER -> {
+                return payShare(guild, guild.leader(), balance, balance);
+            }
+            case SPLIT -> {
+                return splitBank(guild, balance);
+            }
         }
+        throw new IllegalStateException("Unknown bank disband policy");
     }
 
     /**
@@ -1359,11 +1381,10 @@ public final class GuildService implements AutoCloseable {
      * раздавать частное — верный способ раздать на копейку больше или меньше,
      * чем было в банке, а расхождение в ledger не спишешь на округление.
      */
-    private void splitBank(StoredGuild guild, double balance) {
+    private BankResult splitBank(StoredGuild guild, double balance) {
         List<GuildMember> members = guild.members();
         if (members.isEmpty()) {
-            payShare(guild, guild.leader(), balance, balance);
-            return;
+            return payShare(guild, guild.leader(), balance, balance);
         }
 
         long cents = Math.round(balance * 100);
@@ -1376,8 +1397,11 @@ public final class GuildService implements AutoCloseable {
             long share = leader ? each + extra : each;
             if (share <= 0) continue;
             double amount = share / 100.0;
-            left = payShare(guild, member.uuid(), amount, left);
+            BankResult result = payShare(guild, member.uuid(), amount, left);
+            if (!result.ok()) return result;
+            left -= amount;
         }
+        return BankResult.success(Math.max(0, left));
     }
 
     /**
@@ -1386,12 +1410,12 @@ public final class GuildService implements AutoCloseable {
      * @param left сколько было в банке до этой выдачи
      * @return сколько осталось после
      */
-    private double payShare(StoredGuild guild, UUID recipient, double amount, double left) {
+    private BankResult payShare(StoredGuild guild, UUID recipient, double amount, double left) {
         double after = left - amount;
         BankResult result = economy.disburse(
                 guild.id(), recipient, amount, "guild-disband:" + guild.id() + ":" + recipient);
         logSettlement(guild, recipient, amount, after, result, names.nameOf(recipient));
-        return after;
+        return result;
     }
 
     /**
@@ -1409,8 +1433,9 @@ public final class GuildService implements AutoCloseable {
                     + ". Деньги остались на счёте гильдии");
             return;
         }
+        double recordedBalance = result.balance().orElse(Math.max(0, balanceAfter));
         GuildBankEntry entry = new GuildBankEntry(clock.get(), guild.id(), actor,
-                names.nameOf(actor), false, amount, Math.max(0, balanceAfter));
+                names.nameOf(actor), false, amount, recordedBalance);
         write(() -> repository.logBank(entry), "записать выдачу из общака гильдии " + guild.name());
         logger.info("Общак гильдии «" + guild.name() + "»: " + economy.format(amount)
                 + " → " + where);

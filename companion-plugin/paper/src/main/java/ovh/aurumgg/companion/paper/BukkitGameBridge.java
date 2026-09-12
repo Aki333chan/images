@@ -65,9 +65,25 @@ public final class BukkitGameBridge implements GameBridge {
     private static final long ECONOMY_TIMEOUT_SECONDS = 30;
 
     private final Plugin plugin;
+    private final AurumCoreEconomyIntegration aurumEconomy;
 
     public BukkitGameBridge(Plugin plugin) {
         this.plugin = plugin;
+        // Provider lookup happens once on the main thread during onEnable.
+        // Ledger futures themselves are awaited by the HTTP worker, never by Paper.
+        AurumCoreEconomyIntegration selected = null;
+        if (plugin.getServer().getPluginManager().getPlugin("AurumCore") != null) {
+            try {
+                selected = new AurumCoreEconomyIntegration(plugin, uuid -> callSync(() -> {
+                    String name = Bukkit.getOfflinePlayer(uuid).getName();
+                    return name == null ? uuid.toString() : name;
+                }, uuid.toString()));
+            } catch (LinkageError incompatibleCore) {
+                plugin.getLogger().warning("AurumCore economy API is unavailable: "
+                        + incompatibleCore.getClass().getSimpleName());
+            }
+        }
+        this.aurumEconomy = selected;
     }
 
     /**
@@ -601,9 +617,8 @@ public final class BukkitGameBridge implements GameBridge {
         // Vault за ним — прослойка совместимости. Числа совпадут, но спрашивать
         // прослойку о том, что знает первоисточник, значит зависеть от того,
         // насколько аккуратно она это отражает.
-        Optional<BalanceInfo> ledger = callSync(
-                () -> AurumCoreEconomyIntegration.balance(playerUuid), Optional.empty(),
-                ECONOMY_TIMEOUT_SECONDS);
+        Optional<BalanceInfo> ledger = aurumEconomy == null
+                ? Optional.empty() : aurumEconomy.balance(playerUuid);
         if (ledger.isPresent()) return ledger;
         return callSync(() -> VaultEconomyIntegration.balance(playerUuid), Optional.empty());
     }
@@ -623,9 +638,8 @@ public final class BukkitGameBridge implements GameBridge {
         // Ledger отвечает двумя запросами; Vault-версия обходит всех, кто
         // когда-либо заходил, и спрашивает баланс каждого. Пробуем первый и
         // откатываемся на второй, только если Core нет или он не ответил.
-        Optional<EconomySummary> ledger = callSync(
-                () -> AurumCoreEconomyIntegration.summary(topLimit), Optional.empty(),
-                ECONOMY_TIMEOUT_SECONDS);
+        Optional<EconomySummary> ledger = aurumEconomy == null
+                ? Optional.empty() : aurumEconomy.summary(topLimit);
         if (ledger.isPresent()) return ledger;
         return callSync(
                 () -> VaultEconomyIntegration.summary(topLimit), Optional.empty(), ECONOMY_TIMEOUT_SECONDS);

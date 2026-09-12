@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import org.bukkit.Bukkit;
+import java.util.function.Function;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.core.api.AccountId;
@@ -43,18 +43,25 @@ final class AurumCoreEconomyIntegration {
     /** Ledger живёт в MariaDB рядом; дольше пары секунд — это уже неполадка. */
     private static final long TIMEOUT_SECONDS = 3;
 
-    private AurumCoreEconomyIntegration() {}
+    private final AurumEconomyApi economy;
+    private final Function<UUID, String> playerName;
 
-    /** Есть ли Core и ведёт ли он экономику сам, а не в режиме наблюдателя. */
-    static boolean active() {
-        return api() != null;
+    /** Constructed by BukkitGameBridge on the main thread during onEnable. */
+    AurumCoreEconomyIntegration(org.bukkit.plugin.Plugin plugin, Function<UUID, String> playerName) {
+        this.playerName = playerName;
+        this.economy = findApi(plugin);
     }
 
-    private static AurumEconomyApi api() {
-        if (Bukkit.getPluginManager().getPlugin(PLUGIN_NAME) == null) return null;
+    /** Есть ли Core и ведёт ли он экономику сам, а не в режиме наблюдателя. */
+    boolean active() {
+        return economy != null;
+    }
+
+    private static AurumEconomyApi findApi(org.bukkit.plugin.Plugin plugin) {
+        if (plugin.getServer().getPluginManager().getPlugin(PLUGIN_NAME) == null) return null;
         try {
             RegisteredServiceProvider<AurumEconomyApi> registration =
-                    Bukkit.getServer().getServicesManager().getRegistration(AurumEconomyApi.class);
+                    plugin.getServer().getServicesManager().getRegistration(AurumEconomyApi.class);
             AurumEconomyApi found = registration == null ? null : registration.getProvider();
             // PASSIVE означает, что деньгами распоряжается кто-то другой, и
             // числа ledger в этом режиме описывают не тот сервер, который видят
@@ -65,8 +72,7 @@ final class AurumCoreEconomyIntegration {
         }
     }
 
-    static Optional<BalanceInfo> balance(UUID playerUuid) {
-        AurumEconomyApi economy = api();
+    Optional<BalanceInfo> balance(UUID playerUuid) {
         if (economy == null) return Optional.empty();
         CurrencySpec currency = economy.primaryCurrency();
         return await(economy.balance(AccountId.player(playerUuid)))
@@ -82,8 +88,7 @@ final class AurumCoreEconomyIntegration {
      * случае вызывающий честно откатывается на Vault, вместо того чтобы
      * показать в панели нули.
      */
-    static Optional<EconomySummary> summary(int topLimit) {
-        AurumEconomyApi economy = api();
+    Optional<EconomySummary> summary(int topLimit) {
         if (economy == null) return Optional.empty();
         CurrencySpec currency = economy.primaryCurrency();
 
@@ -95,7 +100,7 @@ final class AurumCoreEconomyIntegration {
         for (BalanceSnapshot entry : await(economy.richest(currency.id(), topLimit)).orElse(List.of())) {
             UUID player = playerOf(entry.account());
             if (player == null) continue;
-            String name = Bukkit.getOfflinePlayer(player).getName();
+            String name = playerName.apply(player);
             top.add(new EconomySummary.TopEntry(
                     name == null ? player.toString() : name,
                     player.toString(),

@@ -178,6 +178,10 @@ Exchange engine использует версионированную котир
 - Guilds: переключение обратно с ledger на Vault не поддерживается намеренно. Если
   AurumCore выключить после переноса, банк отвечает «недоступно», а не работает по
   зеркалу.
+- Guilds: default `bank.on-disband: leader` и `treasury` теперь не удаляют гильдию,
+  если единственная денежная проводка отказала. `split` состоит из нескольких проводок:
+  ключи не дают заплатить одну долю дважды, но для полностью атомарного результата между
+  всеми участниками нужен persisted disband plan/escrow. Это отдельная переработка.
 
 ## Текущий этап
 
@@ -206,7 +210,7 @@ AurumUI 0.6.0.
 ## Очередь после текущего этапа
 
 1. Item escrow/receipts для NPC и trade; fault injection на каждой границе.
-2. Атомарный guild disband и неблокирующие вызовы Companion.
+2. Persisted plan для `bank.on-disband: split`; native write routes Companion.
 3. Экономические экраны AurumUI: trade и claims quarantine.
 4. Native Companion routes и экраны истории/правил веб-панели.
 5. Опциональная миграция динамических настроек.
@@ -231,6 +235,20 @@ AurumUI 0.6.0.
 - Исправлено завышенное обещание документации: claim даёт durable at-least-once delivery,
   не exactly-once внешний эффект. Торговля остаётся выключенной до item escrow/receipts.
 - Проверка: Core `clean test :paper:jar`, AddonsNPC Maven/JDK 25 `clean test package`.
+
+### 2026-09-12 — Codex, Guild disband guard + неблокирующее чтение Companion
+
+- `deleteGuild` больше не игнорирует отказ расчёта банка. При недоступной экономике или
+  отказе leader/treasury-проводки строка, состав и LP hooks остаются на месте; повтор
+  безопасен благодаря стабильному ключу. Добавлен регрессионный тест.
+- Сводка и баланс AurumCore в Companion больше не запускаются внутри `callSync`: provider
+  кешируется при `onEnable`, MariaDB futures ждёт HTTP worker. В главный поток уезжает
+  только короткое разрешение UUID → имя; Vault fallback остаётся синхронным по контракту.
+- В `companion-plugin/local-repo` добавлен отсутствовавший `aurum-api-0.10.0.jar`, из-за
+  которого чистая сборка Claude не воспроизводилась.
+- Ограничение: `bank.on-disband: split` всё ещё multi-transaction и требует persisted plan;
+  native записи Companion вместо Vault входят в следующий отдельный API-этап.
+- Проверка: Guilds Gradle `test`; Companion Gradle `test :paper:jar`.
 
 ### 2026-09-11 — Codex
 

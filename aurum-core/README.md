@@ -121,14 +121,17 @@ then is anything handed over:
    number recorded here is what a restarted server trusts.
 4. `settle`, or `defer` if it may work later, or `quarantine` if it cannot.
 
-A crash anywhere simply lets the lease run out: the claim returns to the queue
-with its cursor intact, and delivery resumes at the step that never ran. Steps
-are ordered, so one cursor is enough to say what has already happened.
+A crash lets the lease run out: the claim returns to the queue with its last
+recorded cursor. This is durable at-least-once delivery. A crash after a
+Minecraft effect but before `advance` is inherently ambiguous, so money steps
+need a stable idempotency key and item/command consumers need their own receipt,
+escrow or compensation. The lease prevents concurrent workers; it does not turn
+MariaDB and a Minecraft inventory into one transaction.
 
 Payloads are opaque. Core stores them, hands them back and never parses them —
 items, commands and their encoding belong to the plugin. Core owns only what a
 plugin cannot get right alone: the record survives a crash, one worker holds it
-at a time, and progress inside it is remembered.
+at a time, and recorded progress is remembered.
 
 `claims.max-lease-seconds` (120 by default, 10..600) caps how long a crashed
 server keeps a player's goods locked away; a live delivery renews its lease as

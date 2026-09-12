@@ -501,6 +501,22 @@ class GuildServiceTest {
     }
 
     @Test
+    @DisplayName("Отказ выплаты не удаляет гильдию и её общак")
+    void роспускОстанавливаетсяЕслиОбщакНеРассчитан() {
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 300);
+        service.deposit(MEMBER, 300).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+        economy.rejectDeposits = true;
+
+        assertFalse(service.disband(LEADER).join().ok());
+        assertTrue(service.byId(id).isPresent(), "строка гильдии остаётся до успешного расчёта");
+        assertEquals(300, economy.vault(id), "деньги не превращаются в бесхозный счёт");
+        assertTrue(service.guildOf(LEADER).isPresent(), "состав также не удаляется");
+    }
+
+    @Test
     @DisplayName("Настройка split делит общак между участниками, остаток лидеру")
     void роспускДелитОбщакПоровну() {
         service.applyConfig(GuildsConfig.fromMap(Map.of("bank.on-disband", "split")));
