@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import ovh.aurumgg.companion.core.CompanionConfig;
 import ovh.aurumgg.companion.core.FakeGameBridge;
 import ovh.aurumgg.companion.core.json.JsonParser;
+import ovh.aurumgg.companion.core.model.BalanceChange;
 
 /**
  * Тесты гоняют настоящий HTTP-сервер плагина на случайном порту.
@@ -714,7 +715,9 @@ class CompanionHttpServerTest {
         bridge.install("Vault");
 
         HttpResponse<String> response =
-                post(balancePath() + "/deposit", TOKEN, "{\"amount\":50,\"reason\":\"компенсация\"}");
+                post(balancePath() + "/deposit", TOKEN, "{\"amount\":50,"
+                        + "\"idempotencyKey\":\"e5e68b7a-b588-4c71-b221-bde3f9a87055\","
+                        + "\"actor\":\"user-1\",\"reason\":\"компенсация\"}");
 
         assertEquals(200, response.statusCode());
         Map<String, Object> body = JsonParser.parseObject(response.body());
@@ -722,6 +725,7 @@ class CompanionHttpServerTest {
         assertEquals(250.0, (Double) body.get("balanceBefore"));
         assertEquals(300.0, (Double) body.get("balanceAfter"));
         assertEquals(300.0, bridge.balances.get(FakeGameBridge.STEVE));
+        assertEquals("компенсация", bridge.balanceMutations.getFirst().reason());
     }
 
     @Test
@@ -729,7 +733,9 @@ class CompanionHttpServerTest {
     void withdrawTooMuchIsRejectedByProvider() throws Exception {
         bridge.install("Vault");
 
-        HttpResponse<String> response = post(balancePath() + "/withdraw", TOKEN, "{\"amount\":1000}");
+        HttpResponse<String> response = post(balancePath() + "/withdraw", TOKEN, "{\"amount\":1000,"
+                + "\"idempotencyKey\":\"f8aebd29-abf4-4db2-8843-a88c30cc071d\","
+                + "\"actor\":\"user-1\",\"reason\":\"исправление\"}");
 
         // Не 4xx: запрос корректен, отказал провайдер, и его текст нужен панели.
         assertEquals(200, response.statusCode());
@@ -751,6 +757,52 @@ class CompanionHttpServerTest {
         assertEquals(400, post(balancePath() + "/deposit", TOKEN, "{\"amount\":\"100\"}").statusCode());
         assertEquals(400, post(balancePath() + "/deposit", TOKEN, "").statusCode());
         assertEquals(250.0, bridge.balances.get(FakeGameBridge.STEVE));
+    }
+
+    @Test
+    @DisplayName("денежная запись требует ключ, автора и причину")
+    void balanceMutationRequiresAuditIdentity() throws Exception {
+        bridge.install("Vault");
+
+        assertEquals(400, post(balancePath() + "/deposit", TOKEN,
+                "{\"amount\":5,\"actor\":\"u\",\"reason\":\"r\"}").statusCode());
+        assertEquals(400, post(balancePath() + "/deposit", TOKEN,
+                "{\"amount\":5,\"idempotencyKey\":\"k\",\"reason\":\"r\"}").statusCode());
+        assertEquals(400, post(balancePath() + "/deposit", TOKEN,
+                "{\"amount\":5,\"idempotencyKey\":\"k\",\"actor\":\"u\"}").statusCode());
+        assertTrue(bridge.balanceMutations.isEmpty());
+    }
+
+    @Test
+    @DisplayName("неопределённый ответ ledger возвращает retryable 503")
+    void uncertainLedgerReplyIsUnavailable() throws Exception {
+        bridge.install("Vault");
+        bridge.balanceChangeOverride = new BalanceChange(false, "unavailable",
+                "Ledger mutation unavailable", 250, 250, null,
+                "retry-key", "aurum", false);
+
+        HttpResponse<String> response = post(balancePath() + "/deposit", TOKEN,
+                "{\"amount\":5,\"idempotencyKey\":\"retry-key\","
+                        + "\"actor\":\"u\",\"reason\":\"r\"}");
+
+        assertEquals(503, response.statusCode());
+        assertEquals("economy-unavailable", JsonParser.parseObject(response.body()).get("code"));
+    }
+
+    @Test
+    @DisplayName("повтор ключа с другим смыслом возвращает окончательный 409")
+    void reusedIdempotencyKeyIsConflict() throws Exception {
+        bridge.install("Vault");
+        bridge.balanceChangeOverride = new BalanceChange(false, "idempotency-conflict",
+                "IDEMPOTENCY_KEY_REUSED", 250, 250, null,
+                "reused-key", "aurum", false);
+
+        HttpResponse<String> response = post(balancePath() + "/withdraw", TOKEN,
+                "{\"amount\":5,\"idempotencyKey\":\"reused-key\","
+                        + "\"actor\":\"u\",\"reason\":\"r\"}");
+
+        assertEquals(409, response.statusCode());
+        assertEquals("idempotency-conflict", JsonParser.parseObject(response.body()).get("code"));
     }
 
     @Test

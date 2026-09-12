@@ -95,14 +95,19 @@ export const minecraftManifest: GameModuleManifest = {
     },
     {
       key: MINECRAFT_PERMISSIONS.economyView,
-      description: 'Просмотр баланса игроков и экономики сервера (нужен Vault)',
+      description: 'Просмотр баланса игроков и экономики сервера (AurumCore/Vault)',
       defaultRoles: ['ADMIN', 'MODERATOR'],
     },
     {
       // Начисления и списания — это выдача ценностей, отдельное право от
       // просмотра: модератор видит баланс, но не правит его.
       key: MINECRAFT_PERMISSIONS.economyEdit,
-      description: 'Начисление и списание валюты игрокам через Vault',
+      description: 'Устаревшее право изменения экономики (оставлено для совместимости)',
+      defaultRoles: ['ADMIN'],
+    },
+    {
+      key: MINECRAFT_PERMISSIONS.economyAdmin,
+      description: 'Идемпотентное начисление и списание через ledger AurumCore',
       defaultRoles: ['ADMIN'],
     },
     {

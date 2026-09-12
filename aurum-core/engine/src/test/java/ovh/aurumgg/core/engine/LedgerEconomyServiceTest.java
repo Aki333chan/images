@@ -68,6 +68,19 @@ class LedgerEconomyServiceTest {
     }
 
     @Test
+    void idempotencyKeyCannotDescribeAnotherTransfer() {
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
+
+        assertEquals(TransactionResult.Status.SUCCESS,
+                service.transfer(request("panel:one", "10.00")).toCompletableFuture().join().status());
+        assertEquals(TransactionResult.Status.REJECTED,
+                service.transfer(request("panel:one", "25.00")).toCompletableFuture().join().status());
+
+        assertEquals(new BigDecimal("90.00"), repository.value(ALICE));
+        assertEquals(new BigDecimal("10.00"), repository.value(BOB));
+    }
+
+    @Test
     void concurrentDebitsNeverMakeBalanceNegative() {
         LedgerEconomyService service = service(FinancialRuleResolver.none());
         List<CompletableFuture<TransactionResult>> futures = new ArrayList<>();
@@ -152,6 +165,7 @@ class LedgerEconomyServiceTest {
     private static final class MemoryLedger implements LedgerRepository {
         private final Map<AccountId, BigDecimal> balances = new HashMap<>();
         private final Map<String, LedgerCommit> committed = new HashMap<>();
+        private final Map<String, String> intents = new HashMap<>();
 
         void put(AccountId account, String balance) { balances.put(account, new BigDecimal(balance)); }
         synchronized BigDecimal value(AccountId account) {
@@ -187,9 +201,17 @@ class LedgerEconomyServiceTest {
 
         @Override public synchronized LedgerCommit commit(TransactionPlan plan, CurrencySpec currency) {
             LedgerCommit duplicate = committed.get(plan.request().idempotencyKey());
-            if (duplicate != null) return new LedgerCommit(LedgerCommit.Status.DUPLICATE,
-                    duplicate.transactionId(), duplicate.grossAmount(), duplicate.netAmount(), duplicate.taxAmount(),
-                    duplicate.sourceBalance(), duplicate.targetBalance(), "Duplicate");
+            if (duplicate != null) {
+                if (!intents.get(plan.request().idempotencyKey()).equals(TransactionIntent.hash(plan.request()))) {
+                    BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+                    return new LedgerCommit(LedgerCommit.Status.REJECTED, duplicate.transactionId(),
+                            currency.requireAmount(plan.request().amount()), zero, zero, zero, zero,
+                            "IDEMPOTENCY_KEY_REUSED");
+                }
+                return new LedgerCommit(LedgerCommit.Status.DUPLICATE,
+                        duplicate.transactionId(), duplicate.grossAmount(), duplicate.netAmount(),
+                        duplicate.taxAmount(), duplicate.sourceBalance(), duplicate.targetBalance(), "Duplicate");
+            }
             for (LedgerPosting posting : plan.postings()) {
                 BigDecimal after = value(posting.account()).add(posting.amount()).setScale(currency.scale());
                 if (after.signum() < 0 && posting.account().type() != AccountType.SYSTEM_SOURCE) {
@@ -206,6 +228,7 @@ class LedgerEconomyServiceTest {
                     currency.requireAmount(plan.request().amount()), plan.targetCredit(), plan.taxCredit(),
                     value(plan.request().from()), value(plan.request().to()), "Committed");
             committed.put(plan.request().idempotencyKey(), result);
+            intents.put(plan.request().idempotencyKey(), TransactionIntent.hash(plan.request()));
             return result;
         }
     }

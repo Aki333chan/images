@@ -184,7 +184,7 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Native write routes Companion.**
+**Экономические экраны AurumUI: trade и claims quarantine.**
 
 В Core устранён дедлок trade на общем однопоточном executor, расчёт встречных денег
 сведён в одну net-проводку, SETTLING возобновляется sweep-ом, а SETTLED ставится только
@@ -192,34 +192,56 @@ Exchange engine использует версионированную котир
 используют настроенный TTL и имеют `pause` без штрафа попытки. Hold idempotency key нельзя
 повторить с другим намерением даже при гонке разных Core-инстансов.
 
-Панель и Companion сняты с Vault-summary в части, которая была неправдой: сумма денег,
-доска богатства и баланс теперь берутся из ledger, когда AurumCore активен
-(Core 0.10.0 + Companion 0.6.0). Не сделана оставшаяся часть пункта 5 дорожной карты —
+Панель и Companion используют ledger для чтения и существующих deposit/withdraw, когда
+AurumCore активен (Core 0.12.0 + Companion 0.7.0). Запись передаёт stable UUID, автора,
+причину и `ADMIN_ADJUSTMENT`; migration 10 привязывает idempotency key к полному intent.
+Timeout активного Core не включает Vault fallback. Не сделана оставшаяся часть пункта 5 —
 оборот, источники/стоки, правила и ledger history: под них в панели нет ни экрана, ни
-маршрута, и это отдельный этап, а не хвост этого.
+маршрута, и это отдельный этап. HTTP `set` тоже отложен до отдельного семантического
+контракта: delta-transfer нельзя безопасно выдавать за абсолютную установку.
 
 Выдача/изъятие предметов AddonsNPC и обе стороны trade используют PDC receipt. Для
 исходящей оферты Core 0.11.0 сохраняет изменённый inventory и полную оферту вместе в
 player.dat, затем атомарно пишет offer + operation marker; отказ возвращает предмет через
 claim. Роспуск гильдии имеет persisted plan и восстанавливает multi-recipient split.
 В коде встроенные предметные границы закрыты; `trading.enabled` всё ещё выключен до
-живого Paper/MariaDB fault-injection. Текущая разработка — native Companion, затем
-незаконченные экраны AurumUI/панели.
+живого Paper/MariaDB fault-injection. Текущая разработка — окна trade и claims quarantine
+в AurumUI, затем незаконченные экраны истории/правил веб-панели.
 
-Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.11.0,
-AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.6.0,
+Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.12.0,
+AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.7.0,
 AurumUI 0.6.0.
 
 ## Очередь после текущего этапа
 
-1. Native write routes Companion.
-2. Экономические экраны AurumUI: trade и claims quarantine.
-3. Native Companion routes и экраны истории/правил веб-панели.
-4. Контракт idempotency произвольных команд оферт.
+1. Экономические экраны AurumUI: trade и claims quarantine.
+2. Native Companion routes и экраны истории/правил веб-панели.
+3. Контракт idempotency произвольных команд оферт.
+4. Отдельный безопасный контракт абсолютного `set` баланса, если он действительно нужен.
 5. Опциональная миграция динамических настроек.
 6. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
 
 ## Журнал передачи
+
+### 2026-09-12 — Codex, Core 0.12.0 + native Companion economy writes
+
+- Core migration 10 добавляет `request_hash`: общий ledger idempotency key теперь связан
+  с from/to/currency/canonical amount/category/sorted metadata. Старые строки с `NULL`
+  сохраняют прежнюю duplicate-семантику, новые отвергают другой intent кодом
+  `IDEMPOTENCY_KEY_REUSED`.
+- Companion 0.7.0 направляет deposit/withdraw прямо в `AurumEconomyApi` при `ACTIVE`:
+  `SYSTEM_SOURCE → PLAYER` или `PLAYER → SYSTEM_SINK`, категория `ADMIN_ADJUSTMENT`.
+  После таймаута активного Core Vault не вызывается, потому что мог потеряться только
+  ответ уже сохранённой проводки.
+- Панель требует UUID операции, автора текущей сессии и непустую причину. После
+  неопределённого ответа UI повторяет тот же UUID; ledger и аудит получают source,
+  duplicate и код результата. Доступ отделён правом `minecraft.economy.admin`.
+- Vault остаётся fallback только при отсутствующем/неактивном Core и не обещает
+  exactly-once. HTTP `set` не добавлен: безопасная абсолютная операция нуждается в
+  отдельном контракте, учитывающем промежуточные изменения баланса.
+- Проверка: Core clean test/jar; Companion clean test/jar; API Nest build и 684 Jest;
+  shared TypeScript; web TypeScript, 109 Jest и production Vite build.
+- Следующий шаг: AurumUI — окна торговли и разбора claims quarantine.
 
 ### 2026-09-12 — Codex, outgoing trade escrow receipt
 

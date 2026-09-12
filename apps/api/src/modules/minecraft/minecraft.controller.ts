@@ -299,7 +299,7 @@ export class MinecraftController {
   }
 
   @Post('players/:uuid/balance/deposit')
-  @RequirePermission(MINECRAFT_PERMISSIONS.economyEdit)
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
   @ServerScoped('serverId')
   deposit(
     @CurrentUser() user: AuthUser,
@@ -312,13 +312,14 @@ export class MinecraftController {
       uuid,
       'deposit',
       dto.amount,
-      dto.reason ?? null,
+      dto.reason,
       user.id,
+      dto.idempotencyKey,
     );
   }
 
   @Post('players/:uuid/balance/withdraw')
-  @RequirePermission(MINECRAFT_PERMISSIONS.economyEdit)
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
   @ServerScoped('serverId')
   withdraw(
     @CurrentUser() user: AuthUser,
@@ -331,8 +332,9 @@ export class MinecraftController {
       uuid,
       'withdraw',
       dto.amount,
-      dto.reason ?? null,
+      dto.reason,
       user.id,
+      dto.idempotencyKey,
     );
   }
 

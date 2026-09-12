@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
@@ -288,6 +289,9 @@ public final class FakeGameBridge implements GameBridge {
     public final Map<UUID, Double> balances = new LinkedHashMap<>(Map.of(STEVE, 250.0));
 
     public final Map<UUID, String> playerNames = new LinkedHashMap<>(Map.of(STEVE, "Steve"));
+    public final List<BalanceMutation> balanceMutations = new ArrayList<>();
+    /** Optional protocol-level failure injected by HTTP tests. */
+    public BalanceChange balanceChangeOverride;
 
     private boolean economyAvailable() {
         return has("Vault") && economyProvider;
@@ -305,18 +309,18 @@ public final class FakeGameBridge implements GameBridge {
     }
 
     @Override
-    public Optional<BalanceChange> deposit(UUID playerUuid, double amount) {
+    public Optional<BalanceChange> changeBalance(UUID playerUuid, BalanceMutation mutation) {
         if (!economyAvailable()) return Optional.empty();
+        balanceMutations.add(mutation);
+        if (balanceChangeOverride != null) return Optional.of(balanceChangeOverride);
         double before = balances.getOrDefault(playerUuid, 0.0);
-        double after = before + amount;
-        balances.put(playerUuid, after);
-        return Optional.of(new BalanceChange(true, null, before, after, money(after)));
-    }
-
-    @Override
-    public Optional<BalanceChange> withdraw(UUID playerUuid, double amount) {
-        if (!economyAvailable()) return Optional.empty();
-        double before = balances.getOrDefault(playerUuid, 0.0);
+        double amount = mutation.amount().doubleValue();
+        if (mutation.operation() == BalanceMutation.Operation.GIVE) {
+            double after = before + amount;
+            balances.put(playerUuid, after);
+            return Optional.of(new BalanceChange(true, "ok", null, before, after, money(after),
+                    mutation.idempotencyKey(), "aurum", false));
+        }
         if (amount > before) {
             // Ровно так ведёт себя настоящий провайдер: отказ с текстом, а не
             // уход баланса в минус.
@@ -324,7 +328,8 @@ public final class FakeGameBridge implements GameBridge {
         }
         double after = before - amount;
         balances.put(playerUuid, after);
-        return Optional.of(new BalanceChange(true, null, before, after, money(after)));
+        return Optional.of(new BalanceChange(true, "ok", null, before, after, money(after),
+                mutation.idempotencyKey(), "aurum", false));
     }
 
     @Override

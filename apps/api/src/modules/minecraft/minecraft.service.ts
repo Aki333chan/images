@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type {
   MinecraftBalanceChangeDto,
   MinecraftBalanceDto,
@@ -319,16 +324,17 @@ export class MinecraftService {
    * Начисление или списание с записью в журнал аудита.
    *
    * В журнал попадает и неудачная попытка: «модератор пытался списать больше,
-   * чем есть» — это ровно то, ради чего журнал заводят. Поле reason не
-   * обязательное для API, но именно оно потом отвечает на вопрос «за что».
+   * чем есть» — это ровно то, ради чего журнал заводят. Поле reason
+   * обязательно: mint/burn без ответа на вопрос «за что» не допускается.
    */
   async changeBalance(
     serverId: string,
     uuid: string,
     direction: 'deposit' | 'withdraw',
     amount: number,
-    reason: string | null,
+    reason: string,
     actorId: string,
+    idempotencyKey: string,
   ): Promise<MinecraftBalanceChangeDto> {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('mc.err.amountPositive');
@@ -337,12 +343,37 @@ export class MinecraftService {
     // сходится. Две цифры после запятой — то, что показывают все известные
     // плагины экономики.
     const rounded = Math.round(amount * 100) / 100;
+    if (rounded <= 0) {
+      throw new BadRequestException('mc.err.amountPositive');
+    }
+    const auditReason = reason.trim();
+    if (!auditReason) {
+      throw new BadRequestException('mc.bal.reason');
+    }
 
-    const result = await this.companion.changeBalance(serverId, uuid, direction, rounded);
+    const result = await this.companion.changeBalance(
+      serverId,
+      uuid,
+      direction,
+      rounded,
+      idempotencyKey,
+      actorId,
+      auditReason,
+    );
     if (!result.ok) {
       // Валюты на сервере нет — это не состоявшаяся операция, писать в журнал
       // «изменение баланса» было бы неправдой.
-      throw new BadRequestException(result.failure.reason ?? 'mc.err.ecoUnavailable');
+      const message = result.failure.reason ?? 'mc.err.ecoUnavailable';
+      if (result.operationCode === 'idempotency-conflict') {
+        throw new ConflictException({ message, code: 'idempotency-conflict' });
+      }
+      if (result.operationCode === 'economy-unavailable') {
+        throw new ServiceUnavailableException({ message, code: 'economy-unavailable' });
+      }
+      throw new BadRequestException({
+        message,
+        code: result.operationCode ?? result.failure.code ?? 'economy-unavailable',
+      });
     }
 
     // Ник ищем среди онлайна: в журнале «Steve» читается, а UUID — нет.
@@ -360,7 +391,11 @@ export class MinecraftService {
         playerUuid: uuid,
         playerName,
         amount: rounded,
-        reason: reason ?? null,
+        reason: auditReason,
+        idempotencyKey: result.change.idempotencyKey ?? idempotencyKey,
+        source: result.change.source ?? null,
+        duplicate: result.change.duplicate === true,
+        resultCode: result.change.code ?? null,
         ok: result.change.ok,
         error: result.change.error ?? null,
         balanceBefore: result.change.balanceBefore,
@@ -374,10 +409,9 @@ export class MinecraftService {
   /**
    * Экономика сервера: общий объём денег и доска богатства.
    *
-   * Считается не на каждое открытие страницы. Плагин ради этой цифры обходит
-   * всех, кто когда-либо заходил на сервер, и на выросшей базе это заметная
-   * работа — поэтому результат живёт в кэше, а «обновить» пользователь жмёт
-   * сам, когда цифра нужна свежая.
+   * Считается не на каждое открытие страницы. Для Core это один индексированный
+   * запрос, для Vault fallback — обход известных игроков; кэш сохраняет лёгким
+   * и старый режим, а «обновить» пользователь жмёт сам.
    */
   async getEconomy(serverId: string, options?: { refresh?: boolean }): Promise<MinecraftEconomyDto> {
     const now = Date.now();
@@ -388,8 +422,8 @@ export class MinecraftService {
 
     const fresh = await this.companion.getEconomy(serverId, ECONOMY_TOP_LIMIT);
     if (!fresh.available) {
-      // Отказ не кэшируем: поставили Vault — цифра должна появиться сразу,
-      // а не через пять минут.
+      // Отказ не кэшируем: подняли Core или поставили Vault — цифра должна
+      // появиться сразу, а не через пять минут.
       MinecraftService.economyCache.delete(serverId);
       return fresh;
     }

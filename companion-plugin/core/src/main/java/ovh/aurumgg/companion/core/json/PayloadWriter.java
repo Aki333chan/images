@@ -148,10 +148,14 @@ public final class PayloadWriter {
     public static String balanceChange(BalanceChange change) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("ok", change.ok() ? "true" : "false");
+        fields.put("code", Json.string(change.code()));
         fields.put("error", Json.string(change.error()));
         fields.put("balanceBefore", Json.number(change.before()));
         fields.put("balanceAfter", Json.number(change.after()));
         fields.put("formatted", Json.string(change.formatted()));
+        fields.put("idempotencyKey", Json.string(change.idempotencyKey()));
+        fields.put("source", Json.string(change.source()));
+        fields.put("duplicate", change.duplicate() ? "true" : "false");
         return Json.object(fields);
     }
 

@@ -663,11 +663,10 @@ export class CompanionService {
 
   // ---------------------------------------------------------- Экономика
   //
-  // Всё идёт через Vault, поэтому недоступность бывает трёх видов, и панель
-  // должна их различать: нет companion-плагина (ставить плагин панели),
-  // нет Vault (ставить Vault) и Vault без провайдера (ставить плагин
-  // экономики). Один общий текст «валюта недоступна» отправил бы человека
-  // искать причину вслепую.
+  // В ACTIVE запись и чтение идут прямо через AurumCore; если его нет или он
+  // в SHADOW, сохраняется совместимый Vault fallback. Панель различает
+  // отсутствие Companion, Vault и его провайдера, а также временный отказ
+  // ledger: один общий текст заставил бы администратора искать вслепую.
 
   /** Баланс игрока по UUID. Работает и для тех, кого сейчас нет в сети. */
   async getBalance(serverId: string, uuid: string): Promise<MinecraftBalanceDto> {
@@ -688,15 +687,25 @@ export class CompanionService {
    * Возвращает либо результат операции (в том числе отказ провайдера —
    * с ok:false и его текстом), либо отказ на уровне доступности экономики.
    * Разделение важно для журнала: отказ «не хватило денег» — это состоявшаяся
-   * попытка с балансом до и после, а «нет Vault» — вообще не операция.
+   * попытка с балансом до и после, а недоступный backend — вообще не
+   * подтверждённая операция. Один и тот же idempotency key можно повторить.
    */
   async changeBalance(
     serverId: string,
     uuid: string,
     direction: 'deposit' | 'withdraw',
     amount: number,
+    idempotencyKey: string,
+    actor: string,
+    reason: string,
   ): Promise<
-    { ok: true; change: MinecraftBalanceChangeDto } | { ok: false; failure: MinecraftBalanceDto }
+    | { ok: true; change: MinecraftBalanceChangeDto }
+    | {
+        ok: false;
+        failure: MinecraftBalanceDto;
+        operationCode?: string | null;
+        status?: number | null;
+      }
   > {
     if (!(await this.isConfigured(serverId))) {
       return { ok: false, failure: economyFailure('no-companion', null) };
@@ -704,9 +713,16 @@ export class CompanionService {
     const result = await this.callRaw<RawBalanceChange>(
       serverId,
       `/players/${uuid}/balance/${direction}`,
-      { method: 'POST', body: { amount } },
+      { method: 'POST', body: { amount, idempotencyKey, actor, reason } },
     );
-    if (!result.ok) return { ok: false, failure: economyFailure(result.code, result.error) };
+    if (!result.ok) {
+      return {
+        ok: false,
+        failure: economyFailure(result.code, result.error),
+        operationCode: result.code,
+        status: result.status,
+      };
+    }
     return {
       ok: true,
       change: {
@@ -715,6 +731,10 @@ export class CompanionService {
         balanceBefore: numberOr(result.body.balanceBefore, 0),
         balanceAfter: numberOr(result.body.balanceAfter, 0),
         formatted: result.body.formatted ?? undefined,
+        code: result.body.code ?? undefined,
+        idempotencyKey: result.body.idempotencyKey ?? idempotencyKey,
+        source: result.body.source === 'aurum' ? 'aurum' : 'vault',
+        duplicate: result.body.duplicate === true,
       },
     };
   }
@@ -1133,10 +1153,14 @@ interface RawPasswordReset {
 
 interface RawBalanceChange {
   ok?: boolean;
+  code?: string | null;
   error?: string | null;
   balanceBefore?: number;
   balanceAfter?: number;
   formatted?: string | null;
+  idempotencyKey?: string | null;
+  source?: string | null;
+  duplicate?: boolean;
 }
 
 interface RawTopEntry {

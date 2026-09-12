@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
@@ -209,10 +210,7 @@ public interface GameBridge {
      *
      * @return пусто, если экономики нет; иначе результат с балансом до и после
      */
-    Optional<BalanceChange> deposit(UUID playerUuid, double amount);
-
-    /** Списание. Симметрично deposit. */
-    Optional<BalanceChange> withdraw(UUID playerUuid, double amount);
+    Optional<BalanceChange> changeBalance(UUID playerUuid, BalanceMutation mutation);
 
     /**
      * Экономика сервера целиком: сумма по всем, кто когда-либо заходил, и

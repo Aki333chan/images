@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   Max,
   Matches,
   MaxLength,
@@ -89,11 +90,15 @@ export class BalanceChangeDto {
   @Max(1_000_000_000)
   amount!: number;
 
-  /** За что. Не обязательна для API, но именно она делает журнал полезным. */
-  @IsOptional()
+  /** Generated once by the UI and reused after an uncertain network reply. */
+  @IsUUID()
+  idempotencyKey!: string;
+
+  /** За что. Для mint/burn пустая причина больше не допускается. */
   @IsString()
+  @MinLength(1)
   @MaxLength(200)
-  reason?: string;
+  reason!: string;
 }
 
 /**

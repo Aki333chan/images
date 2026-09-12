@@ -1,6 +1,6 @@
 process.env.NODE_ENV = 'test';
 
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { MinecraftService } from './minecraft.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { MinecraftConfigService } from '../minecraft-shared/minecraft-config.service';
@@ -185,7 +185,8 @@ describe('MinecraftService — валюта', () => {
   it('в журнал попадают сумма, причина и баланс до и после', async () => {
     const { service, logged } = setup({});
 
-    await service.changeBalance('s1', STEVE, 'deposit', 50, 'компенсация за откат', 'user-1');
+    await service.changeBalance('s1', STEVE, 'deposit', 50, 'компенсация за откат', 'user-1',
+      '75f222de-57bb-48f7-8abc-9a9fdb52c50e');
 
     expect(logged).toHaveLength(1);
     const entry = logged[0]!;
@@ -214,7 +215,8 @@ describe('MinecraftService — валюта', () => {
       },
     });
 
-    const result = await service.changeBalance('s1', STEVE, 'withdraw', 100, null, 'user-1');
+    const result = await service.changeBalance('s1', STEVE, 'withdraw', 100, 'исправление', 'user-1',
+      '255e325f-768c-48d7-865e-e879486bde70');
 
     expect(result.ok).toBe(false);
     const entry = logged[0]!;
@@ -230,19 +232,60 @@ describe('MinecraftService — валюта', () => {
       },
     });
 
-    await expect(service.changeBalance('s1', STEVE, 'deposit', 50, null, 'user-1')).rejects.toThrow(
+    await expect(service.changeBalance('s1', STEVE, 'deposit', 50, 'тест', 'user-1',
+      'a99d122b-d6d8-42e8-84b0-0b49ff8a8117')).rejects.toThrow(
       BadRequestException,
     );
     expect(logged).toHaveLength(0);
   });
 
+  it('неопределённый commit и конфликт ключа сохраняют разные HTTP-смыслы', async () => {
+    const unavailable = setup({
+      change: {
+        ok: false,
+        failure: { available: false, code: 'error', reason: 'Ledger timeout' },
+        operationCode: 'economy-unavailable',
+        status: 503,
+      },
+    });
+    const conflict = setup({
+      change: {
+        ok: false,
+        failure: { available: false, code: 'error', reason: 'Key reused' },
+        operationCode: 'idempotency-conflict',
+        status: 409,
+      },
+    });
+
+    await expect(unavailable.service.changeBalance('s1', STEVE, 'deposit', 5, 'тест', 'u',
+      'f9a34593-324d-476c-a25c-54c6f2092ef1')).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    await expect(conflict.service.changeBalance('s1', STEVE, 'deposit', 5, 'тест', 'u',
+      'f9a34593-324d-476c-a25c-54c6f2092ef2')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(unavailable.logged).toHaveLength(0);
+    expect(conflict.logged).toHaveLength(0);
+  });
+
   it('неположительная сумма отвергается до обращения к серверу', async () => {
     const { service, logged } = setup({});
 
-    await expect(service.changeBalance('s1', STEVE, 'deposit', 0, null, 'u')).rejects.toThrow(
+    await expect(service.changeBalance('s1', STEVE, 'deposit', 0, 'тест', 'u',
+      'f9a34593-324d-476c-a25c-54c6f2092ef0')).rejects.toThrow(
       BadRequestException,
     );
-    await expect(service.changeBalance('s1', STEVE, 'deposit', -5, null, 'u')).rejects.toThrow(
+    await expect(service.changeBalance('s1', STEVE, 'deposit', -5, 'тест', 'u',
+      '3b657b64-755d-42b0-88d4-e05b8348b45a')).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.changeBalance('s1', STEVE, 'deposit', 0.001, 'тест', 'u',
+      '3b657b64-755d-42b0-88d4-e05b8348b45b')).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.changeBalance('s1', STEVE, 'deposit', 5, '   ', 'u',
+      '3b657b64-755d-42b0-88d4-e05b8348b45c')).rejects.toThrow(
       BadRequestException,
     );
     expect(logged).toHaveLength(0);

@@ -25,6 +25,7 @@ import org.bukkit.plugin.Plugin;
 import ovh.aurumgg.companion.core.GameBridge;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.InventoryInfo;
@@ -624,13 +625,15 @@ public final class BukkitGameBridge implements GameBridge {
     }
 
     @Override
-    public Optional<BalanceChange> deposit(UUID playerUuid, double amount) {
-        return callSync(() -> VaultEconomyIntegration.change(playerUuid, amount, true), Optional.empty());
-    }
-
-    @Override
-    public Optional<BalanceChange> withdraw(UUID playerUuid, double amount) {
-        return callSync(() -> VaultEconomyIntegration.change(playerUuid, amount, false), Optional.empty());
+    public Optional<BalanceChange> changeBalance(UUID playerUuid, BalanceMutation mutation) {
+        // Active Core is authoritative. Never fall back after a timeout: the
+        // ledger write may have committed and only its reply may be missing.
+        if (aurumEconomy != null && aurumEconomy.active()) {
+            return Optional.of(aurumEconomy.change(playerUuid, mutation));
+        }
+        boolean deposit = mutation.operation() == BalanceMutation.Operation.GIVE;
+        return callSync(() -> VaultEconomyIntegration.change(
+                playerUuid, mutation.amount().doubleValue(), deposit), Optional.empty());
     }
 
     @Override

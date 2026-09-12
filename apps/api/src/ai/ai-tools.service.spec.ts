@@ -536,7 +536,7 @@ describe('инструменты по игроку', () => {
 
   it('начисление идёт через тот же сервис, что и блок «Валюта», с причиной', async () => {
     const { service, calls } = setup({
-      permissions: [MINECRAFT_PERMISSIONS.economyEdit],
+      permissions: [MINECRAFT_PERMISSIONS.economyAdmin],
       servers: ['s1'],
     });
 
@@ -551,7 +551,8 @@ describe('инструменты по игроку', () => {
     const call = calls.find((c) => c.startsWith('balance:'));
     expect(call).toContain('"deposit"');
     expect(call).toContain('компенсация');
-    // Последним аргументом — тот, от чьего имени всё происходит.
+    // Предпоследний аргумент — тот, от чьего имени всё происходит;
+    // последний — новый UUID операции.
     expect(call).toContain('user-1');
   });
 
@@ -599,8 +600,9 @@ describe('инструменты по игроку', () => {
         player: 'Steve',
         direction: 'deposit',
         amount: 1,
+        reason: 'test',
       }),
-    ).rejects.toThrow(/minecraft\.economy\.edit/);
+    ).rejects.toThrow(/minecraft\.economy\.admin/);
   });
 
   it('быстрые действия берутся из каталога панели, а не выдумываются', async () => {

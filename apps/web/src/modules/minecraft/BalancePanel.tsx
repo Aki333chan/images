@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MinecraftBalanceChangeDto, MinecraftBalanceDto } from '@aurum/shared';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Button, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import { useApiText, useT } from '../../i18n';
@@ -8,11 +8,9 @@ import { useApiText, useT } from '../../i18n';
 /**
  * Блок «Валюта» в карточке игрока.
  *
- * Работает через Vault: панель не разговаривает ни с одним конкретным
- * плагином экономики и знать про него не обязана — за Vault может стоять
- * EssentialsX, CMI или любой другой. Если Vault (или провайдера за ним) нет,
- * блок не прячется, а показывает, чего именно не хватает: возможность есть,
- * её нужно доустановить на игровой сервер.
+ * При ACTIVE работает прямо через AurumCore, иначе — через совместимый Vault
+ * fallback. Панель не разговаривает с конкретным старым провайдером и
+ * показывает точную причину, если экономика недоступна.
  *
  * Каждое начисление и списание уходит в журнал аудита на бэкенде — вместе с
  * суммой, причиной и балансом до и после. Здесь это только сообщается
@@ -28,8 +26,9 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const pending = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  const canEdit = hasPermission('minecraft.economy.edit');
+  const canEdit = hasPermission('minecraft.economy.admin');
   const base = `/api/modules/minecraft/servers/${serverId}/players/${uuid}/balance`;
 
   const load = useCallback(() => {
@@ -47,6 +46,17 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
       setError(t('mc.bal.positive'));
       return;
     }
+    const why = reason.trim();
+    if (!why) {
+      setError(t('mc.bal.reason'));
+      return;
+    }
+    const rounded = Math.round(value * 100) / 100;
+    const fingerprint = `${direction}\n${rounded}\n${why}`;
+    const idempotencyKey = pending.current?.fingerprint === fingerprint
+      ? pending.current.key
+      : crypto.randomUUID();
+    pending.current = { fingerprint, key: idempotencyKey };
     setBusy(true);
     setError('');
     setResult('');
@@ -56,10 +66,15 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
         body: JSON.stringify({
           // Округление до копеек — то же, что делает бэкенд: пусть в поле и
           // в журнале будет одна и та же величина.
-          amount: Math.round(value * 100) / 100,
-          ...(reason.trim() ? { reason: reason.trim() } : {}),
+          amount: rounded,
+          reason: why,
+          idempotencyKey,
         }),
       });
+      // A successful API round-trip is definitive (including ok:false from
+      // the economy provider). A thrown timeout/unavailable response keeps
+      // the key for the next click with unchanged fields.
+      pending.current = null;
       if (!res.ok) {
         // Отказ провайдера («недостаточно средств») — это его текст, а не
         // сбой панели, и подменять его своим было бы неправдой.
@@ -83,6 +98,11 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
           : prev,
       );
     } catch (e) {
+      // Conflict is definitive: this key can never describe this operation.
+      // Unavailable/transport errors deliberately retain it for safe retry.
+      if (e instanceof ApiError && e.code === 'idempotency-conflict') {
+        pending.current = null;
+      }
       setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -144,7 +164,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              disabled={unavailable || busy || !amount.trim()}
+              disabled={unavailable || busy || !amount.trim() || !reason.trim()}
               title={unavailable ? `${t('mc.bal.deposit')} — ${shortHint}` : t('mc.bal.depositHint')}
               onClick={() => void change('deposit')}
             >
@@ -154,7 +174,7 @@ export function BalancePanel({ serverId, uuid }: { serverId: string; uuid: strin
             <Button
               size="sm"
               variant="outline"
-              disabled={unavailable || busy || !amount.trim()}
+              disabled={unavailable || busy || !amount.trim() || !reason.trim()}
               title={unavailable ? `${t('mc.bal.withdraw')} — ${shortHint}` : t('mc.bal.withdrawHint')}
               onClick={() => void change('withdraw')}
             >

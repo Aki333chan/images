@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,6 +21,7 @@ import ovh.aurumgg.companion.core.json.JsonParser;
 import ovh.aurumgg.companion.core.json.PayloadWriter;
 import ovh.aurumgg.companion.core.model.BalanceChange;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.companion.core.model.GiveResult;
 import ovh.aurumgg.companion.core.model.GuildActionOutcome;
@@ -472,23 +474,29 @@ public final class CompanionHttpServer {
             return;
         }
 
-        // POST /players/{uuid}/balance/{deposit|withdraw} — тело {"amount":100}
-        //
-        // Поле reason панель присылает для журнала аудита, и оно здесь
-        // намеренно игнорируется: журнал ведёт панель, у которой есть автор
-        // операции. Плагину знать причину незачем, а писать её в лог сервера
-        // значит дублировать запись без пользы.
+        // POST /players/{uuid}/balance/{deposit|withdraw}. The panel supplies
+        // the stable key, actor and reason; active AurumCore records all three
+        // in the same ledger transaction as the balance mutation.
         if (parts.length == 4
                 && parts[0].equals("players")
                 && parts[2].equals("balance")
                 && method.equals("POST")
                 && (parts[3].equals("deposit") || parts[3].equals("withdraw"))) {
             UUID uuid = parseUuid(parts[1]);
-            double amount = parseAmount(readBody(exchange));
             boolean deposit = parts[3].equals("deposit");
-            Optional<BalanceChange> change = deposit ? bridge.deposit(uuid, amount) : bridge.withdraw(uuid, amount);
+            BalanceMutation mutation = parseBalanceMutation(readBody(exchange), deposit);
+            Optional<BalanceChange> change = bridge.changeBalance(uuid, mutation);
             if (change.isEmpty()) {
                 respondNoEconomy(exchange);
+                return;
+            }
+            if (change.get().code().equals("unavailable")) {
+                respond(exchange, 503, PayloadWriter.error(change.get().error(), "economy-unavailable"));
+                return;
+            }
+            if (change.get().code().equals("idempotency-conflict")) {
+                respond(exchange, 409, PayloadWriter.error(
+                        "Idempotency key belongs to another operation", "idempotency-conflict"));
                 return;
             }
             // Отказ провайдера («не хватает денег») — 200 с ok:false: запрос
@@ -681,6 +689,23 @@ public final class CompanionHttpServer {
             throw new IllegalArgumentException("Поле amount должно быть больше нуля");
         }
         return amount;
+    }
+
+    static BalanceMutation parseBalanceMutation(String body, boolean deposit) {
+        if (body == null || body.isBlank()) throw new IllegalArgumentException("Пустое тело запроса");
+        Map<String, Object> parsed = JsonParser.parseObject(body);
+        Object rawAmount = parsed.get("amount");
+        if (!(rawAmount instanceof Double amount) || !Double.isFinite(amount)
+                || amount <= 0 || amount > 1_000_000_000D) {
+            throw new IllegalArgumentException("Поле amount должно быть положительным числом");
+        }
+        String key = stringField(parsed, "idempotencyKey");
+        String actor = stringField(parsed, "actor");
+        String reason = stringField(parsed, "reason");
+        String currency = stringField(parsed, "currency");
+        return new BalanceMutation(key,
+                deposit ? BalanceMutation.Operation.GIVE : BalanceMutation.Operation.TAKE,
+                BigDecimal.valueOf(amount), currency, actor, reason);
     }
 
     static int parseTopLimit(String raw) {

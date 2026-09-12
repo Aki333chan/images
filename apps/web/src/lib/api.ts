@@ -49,6 +49,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -63,7 +64,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       onSessionExpired?.();
     }
   }
-  if (!res.ok) throw new ApiError(res.status, await messageFor(res));
+  if (!res.ok) {
+    const details = await errorFor(res);
+    throw new ApiError(res.status, details.message, details.code);
+  }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -77,21 +81,23 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
  * человеку не говорит ничего, поэтому у кодов, которые панель может получить
  * от прокси, есть собственная формулировка.
  */
-async function messageFor(res: Response): Promise<string> {
+async function errorFor(res: Response): Promise<{ message: string; code?: string }> {
   try {
-    const body = (await res.json()) as { message?: string | string[] };
+    const body = (await res.json()) as { message?: string | string[]; code?: string };
     const message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
-    if (message) return message;
+    if (message) return { message, code: body.code };
   } catch {
     // тело не JSON — значит, отвечал не бэкенд
   }
   if (res.status === 413) {
-    return translateOutside('net.tooLarge', { limit: formatTransferLimit(translateOutside) });
+    return {
+      message: translateOutside('net.tooLarge', { limit: formatTransferLimit(translateOutside) }),
+    };
   }
   if (res.status === 502 || res.status === 504) {
-    return translateOutside('net.gateway');
+    return { message: translateOutside('net.gateway') };
   }
-  return translateOutside('net.status', { status: res.status });
+  return { message: translateOutside('net.status', { status: res.status }) };
 }
 
 /**
@@ -119,7 +125,10 @@ export async function apiRaw<T>(path: string, body: Blob | File): Promise<T> {
  */
 export async function apiDownload(path: string, fileName: string): Promise<void> {
   const res = await rawFetch(path);
-  if (!res.ok) throw new ApiError(res.status, await messageFor(res));
+  if (!res.ok) {
+    const details = await errorFor(res);
+    throw new ApiError(res.status, details.message, details.code);
+  }
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

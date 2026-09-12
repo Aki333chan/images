@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   ASCII_ART_LIMITS,
   LOCALE_LABELS,
@@ -636,10 +637,10 @@ const TOOLS: ToolDefinition[] = [
   {
     name: 'change_player_balance',
     description:
-      'Начислить игроку валюту или списать её (через Vault). Сумма всегда положительная — ' +
+      'Начислить игроку валюту или списать её (через AurumCore, с Vault fallback). Сумма всегда положительная — ' +
       'списание задаётся полем direction, а не минусом. Причина попадает в журнал аудита.',
     kind: 'destructive',
-    permission: MINECRAFT_PERMISSIONS.economyEdit,
+    permission: MINECRAFT_PERMISSIONS.economyAdmin,
     parameters: {
       type: 'object',
       properties: {
@@ -649,7 +650,7 @@ const TOOLS: ToolDefinition[] = [
         amount: { type: 'number', description: 'сумма, больше нуля' },
         reason: { type: 'string', description: 'за что — попадёт в журнал' },
       },
-      required: ['serverId', 'player', 'direction', 'amount'],
+      required: ['serverId', 'player', 'direction', 'amount', 'reason'],
     },
     summary: (a, t) => {
       const reason = str(a, 'reason');
@@ -672,8 +673,9 @@ const TOOLS: ToolDefinition[] = [
         uuid,
         direction,
         num(args, 'amount'),
-        str(args, 'reason') || null,
+        str(args, 'reason'),
         ctx.userId,
+        randomUUID(),
       );
       if (!result.ok) {
         // Отказ плагина экономики — это ответ, а не сбой: показываем его текст.

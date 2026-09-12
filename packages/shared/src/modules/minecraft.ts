@@ -425,6 +425,8 @@ export const MINECRAFT_PERMISSIONS = {
   permissionsEdit: 'minecraft.permissions.edit',
   economyView: 'minecraft.economy.view',
   economyEdit: 'minecraft.economy.edit',
+  /** Native ledger mint/burn operations; intentionally ADMIN-only by default. */
+  economyAdmin: 'minecraft.economy.admin',
   /**
    * Сброс пароля игрока.
    *
@@ -475,14 +477,13 @@ export interface MinecraftPerformanceDto {
 
 // ------------------------------------------------------------- Экономика
 //
-// Работает через Vault — прослойку, за которой может стоять любой плагин
-// экономики (EssentialsX, CMI и прочие). Панель с конкретным плагином не
-// разговаривает и знать про него не обязана.
+// При ACTIVE работает через ledger AurumCore; на старой или shadow-схеме —
+// через Vault. Панель с конкретным legacy-провайдером не разговаривает.
 
 /** Баланс игрока. */
 export interface MinecraftBalanceDto {
   available: boolean;
-  /** Почему недоступно: нет companion-плагина, нет Vault, нет провайдера. */
+  /** Почему недоступно: нет Companion, active Core либо Vault-провайдера. */
   reason?: string;
   code?: 'no-companion' | 'requires-vault' | 'no-provider' | 'error';
   balance?: number;
@@ -495,11 +496,15 @@ export interface MinecraftBalanceDto {
 /** Результат начисления или списания. */
 export interface MinecraftBalanceChangeDto {
   ok: boolean;
+  code?: string;
   /** Текст ошибки от провайдера, если не вышло. */
   error?: string;
   balanceBefore: number;
   balanceAfter: number;
   formatted?: string;
+  idempotencyKey?: string;
+  source?: 'aurum' | 'vault';
+  duplicate?: boolean;
 }
 
 /** Экономика сервера целиком: общий объём денег и самые богатые. */

@@ -102,4 +102,17 @@ describe('сообщения об ошибках API', () => {
     respondWith(413, '<html>413</html>', 'text/html');
     await expect(api('/api/x')).rejects.toMatchObject({ status: 413 });
   });
+
+  it('машиночитаемый код бэкенда доезжает до вызывающего', async () => {
+    respondWith(
+      409,
+      JSON.stringify({ message: 'Ключ уже занят', code: 'idempotency-conflict' }),
+      'application/json',
+    );
+    await expect(api('/api/x')).rejects.toMatchObject({
+      status: 409,
+      code: 'idempotency-conflict',
+      message: 'Ключ уже занят',
+    });
+  });
 });

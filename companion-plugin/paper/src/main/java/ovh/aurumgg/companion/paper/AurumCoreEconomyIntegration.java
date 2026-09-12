@@ -8,13 +8,19 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import ovh.aurumgg.companion.core.model.BalanceInfo;
+import ovh.aurumgg.companion.core.model.BalanceChange;
+import ovh.aurumgg.companion.core.model.BalanceMutation;
 import ovh.aurumgg.companion.core.model.EconomySummary;
 import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
+import ovh.aurumgg.core.api.TransactionCategory;
+import ovh.aurumgg.core.api.TransactionRequest;
+import ovh.aurumgg.core.api.TransactionResult;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
 /**
@@ -79,6 +85,58 @@ final class AurumCoreEconomyIntegration {
                 .flatMap(found -> found)
                 .map(snapshot -> new BalanceInfo(snapshot.balance().doubleValue(),
                         format(snapshot.balance(), currency), currency.displayName()));
+    }
+
+    /** Native ledger mutation; an unavailable reply is never retried through Vault. */
+    BalanceChange change(UUID playerUuid, BalanceMutation mutation) {
+        CurrencySpec currency = mutation.currencyId().isBlank()
+                ? economy.primaryCurrency() : economy.currency(mutation.currencyId()).orElse(null);
+        if (currency == null) {
+            return failed("currency-unknown", "Unknown currency", 0, mutation, "aurum");
+        }
+        AccountId player = AccountId.player(playerUuid);
+        Optional<BalanceSnapshot> beforeSnapshot = await(economy.balance(player, currency.id()))
+                .flatMap(found -> found);
+        if (beforeSnapshot.isEmpty()) {
+            return failed("unavailable", "Ledger balance unavailable", 0, mutation, "aurum");
+        }
+        BigDecimal before = beforeSnapshot.get().balance();
+        AccountId system = new AccountId(
+                mutation.operation() == BalanceMutation.Operation.GIVE
+                        ? AccountType.SYSTEM_SOURCE : AccountType.SYSTEM_SINK,
+                "global");
+        TransactionRequest request = new TransactionRequest(
+                "companion:" + mutation.idempotencyKey(),
+                mutation.operation() == BalanceMutation.Operation.GIVE ? system : player,
+                mutation.operation() == BalanceMutation.Operation.GIVE ? player : system,
+                currency.id(), mutation.amount(), TransactionCategory.ADMIN_ADJUSTMENT,
+                java.util.Map.of(
+                        "actor", mutation.actor(),
+                        "reason", mutation.reason(),
+                        "source", "panel",
+                        "operation", mutation.operation().name().toLowerCase(java.util.Locale.ROOT)));
+        Optional<TransactionResult> answered = await(economy.transfer(request));
+        if (answered.isEmpty() || answered.get().status() == TransactionResult.Status.UNAVAILABLE) {
+            return failed("unavailable", "Ledger mutation unavailable", before.doubleValue(), mutation, "aurum");
+        }
+        TransactionResult result = answered.get();
+        BigDecimal after = await(economy.balance(player, currency.id()))
+                .flatMap(found -> found).map(BalanceSnapshot::balance).orElse(before);
+        boolean success = result.status() == TransactionResult.Status.SUCCESS
+                || result.status() == TransactionResult.Status.DUPLICATE;
+        boolean duplicate = result.status() == TransactionResult.Status.DUPLICATE;
+        String code = success ? (duplicate ? "duplicate" : "ok")
+                : result.message().contains("IDEMPOTENCY_KEY_REUSED")
+                        ? "idempotency-conflict" : "rejected";
+        return new BalanceChange(success, code, success ? null : result.message(),
+                before.doubleValue(), after.doubleValue(), format(after, currency),
+                mutation.idempotencyKey(), "aurum", duplicate);
+    }
+
+    private static BalanceChange failed(String code, String error, double balance,
+                                        BalanceMutation mutation, String source) {
+        return new BalanceChange(false, code, error, balance, balance, null,
+                mutation.idempotencyKey(), source, false);
     }
 
     /**

@@ -362,6 +362,12 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> transactionIntentHashes = List.of(
+                """
+                ALTER TABLE aurum_transactions
+                    ADD COLUMN IF NOT EXISTS request_hash CHAR(64) NULL AFTER idempotency_key
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -380,7 +386,9 @@ public final class CoreMigrations {
                 new SchemaMigration(8, "durable delivery claims and quarantine",
                         checksum(deliveryClaims), deliveryClaims),
                 new SchemaMigration(9, "idempotent outgoing trade item offers",
-                        checksum(tradeOfferOperations), tradeOfferOperations)
+                        checksum(tradeOfferOperations), tradeOfferOperations),
+                new SchemaMigration(10, "bind ledger idempotency keys to transaction intents",
+                        checksum(transactionIntentHashes), transactionIntentHashes)
         );
     }
 

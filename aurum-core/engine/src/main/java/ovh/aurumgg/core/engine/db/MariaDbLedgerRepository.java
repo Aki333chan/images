@@ -25,6 +25,7 @@ import ovh.aurumgg.core.engine.LedgerCommit;
 import ovh.aurumgg.core.engine.LedgerPosting;
 import ovh.aurumgg.core.engine.LedgerRepository;
 import ovh.aurumgg.core.engine.TransactionPlan;
+import ovh.aurumgg.core.engine.TransactionIntent;
 
 /** MariaDB ledger implementation; every balance mutation and audit row commits together. */
 public final class MariaDbLedgerRepository implements LedgerRepository {
@@ -175,7 +176,7 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
             try {
                 if (!insertPendingTransaction(connection, transactionId, plan, currency)) {
                     connection.rollback();
-                    return findDuplicate(plan.request().idempotencyKey(), currency);
+                    return findDuplicate(plan, currency);
                 }
 
                 List<LedgerPosting> ordered = plan.postings().stream()
@@ -261,22 +262,23 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
                                              CurrencySpec currency) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO aurum_transactions(
-                    id, idempotency_key, currency_id, category, status, gross_amount,
+                    id, idempotency_key, request_hash, currency_id, category, status, gross_amount,
                     net_amount, tax_amount, tax_rule_id, policy_rule_ids_json,
                     policy_amounts_json, metadata_json)
-                VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             statement.setString(1, id.toString());
             statement.setString(2, plan.request().idempotencyKey());
-            statement.setString(3, currency.id());
-            statement.setString(4, plan.request().category().name());
-            statement.setBigDecimal(5, currency.requireAmount(plan.request().amount()));
-            statement.setBigDecimal(6, plan.targetCredit());
-            statement.setBigDecimal(7, plan.taxCredit());
-            statement.setString(8, plan.appliedRuleId());
-            statement.setString(9, plan.appliedRuleIds().isEmpty() ? null : jsonArray(plan.appliedRuleIds()));
-            statement.setString(10, plan.policyAmounts().isEmpty() ? null : jsonAmounts(plan.policyAmounts()));
-            statement.setString(11, jsonObject(plan.request().metadata()));
+            statement.setString(3, TransactionIntent.hash(plan.request()));
+            statement.setString(4, currency.id());
+            statement.setString(5, plan.request().category().name());
+            statement.setBigDecimal(6, currency.requireAmount(plan.request().amount()));
+            statement.setBigDecimal(7, plan.targetCredit());
+            statement.setBigDecimal(8, plan.taxCredit());
+            statement.setString(9, plan.appliedRuleId());
+            statement.setString(10, plan.appliedRuleIds().isEmpty() ? null : jsonArray(plan.appliedRuleIds()));
+            statement.setString(11, plan.policyAmounts().isEmpty() ? null : jsonAmounts(plan.policyAmounts()));
+            statement.setString(12, jsonObject(plan.request().metadata()));
             statement.executeUpdate();
             return true;
         } catch (SQLException exception) {
@@ -285,15 +287,24 @@ public final class MariaDbLedgerRepository implements LedgerRepository {
         }
     }
 
-    private LedgerCommit findDuplicate(String idempotencyKey, CurrencySpec currency) throws SQLException {
+    private LedgerCommit findDuplicate(TransactionPlan plan, CurrencySpec currency) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT id, gross_amount, net_amount, tax_amount, status, failure_reason
+                     SELECT id, request_hash, gross_amount, net_amount, tax_amount, status, failure_reason
                      FROM aurum_transactions WHERE idempotency_key = ?
                      """)) {
-            statement.setString(1, idempotencyKey);
+            statement.setString(1, plan.request().idempotencyKey());
             try (ResultSet result = statement.executeQuery()) {
-                if (!result.next()) throw new SQLException("Duplicate transaction disappeared: " + idempotencyKey);
+                if (!result.next()) throw new SQLException(
+                        "Duplicate transaction disappeared: " + plan.request().idempotencyKey());
+                String storedHash = result.getString("request_hash");
+                if (storedHash != null && !storedHash.equals(TransactionIntent.hash(plan.request()))) {
+                    BigDecimal zero = BigDecimal.ZERO.setScale(currency.scale());
+                    return new LedgerCommit(LedgerCommit.Status.REJECTED,
+                            UUID.fromString(result.getString("id")),
+                            currency.requireAmount(plan.request().amount()), zero, zero, zero, zero,
+                            "IDEMPOTENCY_KEY_REUSED");
+                }
                 String storedStatus = result.getString("status");
                 LedgerCommit.Status status = "REJECTED".equals(storedStatus)
                         ? LedgerCommit.Status.REJECTED : LedgerCommit.Status.DUPLICATE;
