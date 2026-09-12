@@ -2,6 +2,7 @@ package ovh.aurumgg.core.paper;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -93,6 +94,206 @@ final class TradeCoordinator implements Listener {
             case "window" -> openWindow(player);
             default -> invite(player, args[0]);
         };
+    }
+
+    // --------------------------------------------------------------- AurumUI
+
+    /** Request-driven trade state. No polling task and no Bukkit access off-thread. */
+    CompletionStage<List<Map<String, String>>> uiSnapshot(Player player) {
+        if (!player.hasPermission("aurum.trade")) return CompletableFuture.completedFuture(List.of());
+        if (!plugin.activeReady()) return CompletableFuture.completedFuture(
+                List.of(uiStatus("error.trade.unavailable", false)));
+        if (!plugin.settings().tradingEnabled()) return CompletableFuture.completedFuture(
+                List.of(uiStatus("error.trade.disabled", false)));
+        if (deposits.has(player)) {
+            recoverDeposit(player, false);
+            return CompletableFuture.completedFuture(List.of(uiStatus("error.trade.unavailable", false)));
+        }
+        return trades.activeFor(player.getUniqueId()).thenCompose(found -> {
+            TradeSession trade = found == null ? null : found.orElse(null);
+            if (trade == null) return onMainValue(() -> List.of(uiInvite()));
+            return trades.offers(trade.id()).thenCompose(offers -> onMainValue(() ->
+                    List.of(uiTrade(player, trade, offers == null ? List.of() : offers))));
+        }).exceptionally(error -> List.of(uiStatus("error.trade.unavailable", false)));
+    }
+
+    /** Typed UI actions over the same TradeService used by commands and the inventory window. */
+    Object uiAction(Player player, String id, String action, Map<String, String> arguments) {
+        if (!plugin.activeReady() || !plugin.settings().tradingEnabled()) return "error.trade.disabled";
+        if (!player.hasPermission("aurum.trade")) return "error.permission";
+        if (deposits.has(player)) {
+            recoverDeposit(player, false);
+            return "error.trade.unavailable";
+        }
+        return switch (action) {
+            case "invite" -> uiInvite(player, arguments.get("player"));
+            case "accept" -> uiAccept(player, id);
+            case "open" -> uiOpen(player);
+            case "money" -> uiMoney(player, id, arguments.get("amount"));
+            case "confirm" -> uiConfirm(player, id, arguments.get("revision"));
+            case "cancel" -> uiCancel(player, id);
+            default -> "error.unknown_action";
+        };
+    }
+
+    private CompletionStage<String> uiInvite(Player player, String targetName) {
+        Player target = targetName == null ? null : Bukkit.getPlayerExact(targetName.trim());
+        if (target == null) return CompletableFuture.completedFuture("error.trade.player-offline");
+        return trades.invite(player.getUniqueId(), target.getUniqueId())
+                .thenCompose(result -> onMainValue(() -> {
+                    if (!result.ok()) return uiFailure(result);
+                    player.sendMessage(plugin.messages().component("trade-invited", Map.of("player", target.getName())));
+                    target.sendMessage(plugin.messages().component("trade-invite-received", Map.of("player", player.getName())));
+                    return "trade.invited";
+                })).exceptionally(error -> "error.trade.unavailable");
+    }
+
+    private CompletionStage<String> uiAccept(Player player, String rawId) {
+        return active(player, rawId, TradeState.INVITED).thenCompose(trade -> {
+            if (trade.isEmpty()) return CompletableFuture.completedFuture("error.trade.changed");
+            return trades.accept(trade.get().id(), player.getUniqueId()).thenCompose(result ->
+                    onMainValue(() -> {
+                        if (!result.ok()) return uiFailure(result);
+                        announce(result.trade().orElse(trade.get()), "trade-opened", Map.of());
+                        return "trade.accepted";
+                    }));
+        }).exceptionally(error -> "error.trade.unavailable");
+    }
+
+    private String uiOpen(Player player) {
+        openWindow(player);
+        return "trade.opening";
+    }
+
+    private CompletionStage<String> uiMoney(Player player, String rawId, String rawAmount) {
+        CurrencySpec currency = plugin.settings().currency();
+        BigDecimal amount;
+        try {
+            amount = currency.requireAmount(new BigDecimal(rawAmount == null ? "" : rawAmount.trim()));
+        } catch (RuntimeException invalid) {
+            return CompletableFuture.completedFuture("error.trade.amount");
+        }
+        if (amount.signum() < 0) return CompletableFuture.completedFuture("error.trade.amount");
+        BigDecimal selected = amount;
+        return active(player, rawId, TradeState.OPEN).thenCompose(trade -> {
+            if (trade.isEmpty()) return CompletableFuture.completedFuture("error.trade.changed");
+            return trades.offers(trade.get().id()).thenCompose(offers -> {
+                List<TradeOffer> currentOffers = offers == null ? List.of() : offers;
+                TradeOffer current = mine(player.getUniqueId(), currentOffers);
+                TradeOffer updated = new TradeOffer(trade.get().id(), player.getUniqueId(),
+                        selected.signum() > 0 ? Optional.of(currency.id()) : Optional.empty(), selected,
+                        current.items(), current.itemsFormatVersion());
+                return trades.offer(trade.get().id(), updated).thenCompose(result -> onMainValue(() -> {
+                    if (!result.ok()) return uiFailure(result);
+                    announce(result.trade().orElse(trade.get()), "trade-changed", Map.of("player", player.getName()));
+                    return "trade.changed";
+                }));
+            });
+        }).exceptionally(error -> "error.trade.unavailable");
+    }
+
+    private CompletionStage<String> uiConfirm(Player player, String rawId, String rawRevision) {
+        UUID id;
+        long revision;
+        try {
+            id = UUID.fromString(rawId);
+            revision = Long.parseLong(rawRevision);
+        } catch (RuntimeException invalid) {
+            return CompletableFuture.completedFuture("error.trade.changed");
+        }
+        return trades.confirm(id, player.getUniqueId(), revision).thenCompose(result -> onMainValue(() -> {
+            if (!result.ok()) return uiFailure(result);
+            TradeSession confirmed = result.trade().orElseThrow();
+            announce(confirmed, "trade-confirmed", Map.of("player", player.getName()));
+            if (confirmed.ready()) settle(confirmed);
+            return "trade.confirmed";
+        })).exceptionally(error -> "error.trade.unavailable");
+    }
+
+    private CompletionStage<String> uiCancel(Player player, String rawId) {
+        return active(player, rawId, null).thenCompose(trade -> {
+            if (trade.isEmpty()) return CompletableFuture.completedFuture("error.trade.changed");
+            return cancelAsync(trade.get(), "cancelled by " + player.getName() + " through AurumUI")
+                    .thenApply(result -> result.ok() ? "trade.cancelled" : uiFailure(result));
+        }).exceptionally(error -> "error.trade.unavailable");
+    }
+
+    private CompletionStage<Optional<TradeSession>> active(Player player, String rawId, TradeState required) {
+        UUID expected;
+        try {
+            expected = UUID.fromString(rawId);
+        } catch (RuntimeException invalid) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        return trades.activeFor(player.getUniqueId()).thenApply(found -> found.filter(trade ->
+                trade.id().equals(expected) && (required == null || trade.state() == required)));
+    }
+
+    private Map<String, String> uiInvite() {
+        return Map.of("id", "invite", "kind", "trade", "title", "",
+                "titleKey", "screen.aurumui.trade.new", "state", "NONE", "actions", "invite");
+    }
+
+    private Map<String, String> uiTrade(Player player, TradeSession trade, List<TradeOffer> offers) {
+        UUID viewerId = player.getUniqueId();
+        UUID other = trade.other(viewerId);
+        TradeOffer myOffer = mine(viewerId, offers);
+        TradeOffer theirOffer = mine(other, offers);
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("id", trade.id().toString());
+        fields.put("kind", "trade");
+        fields.put("title", name(other));
+        fields.put("state", trade.state().name());
+        fields.put("revision", Long.toString(trade.revision()));
+        fields.put("mineConfirmed", Boolean.toString(trade.confirmed(viewerId)));
+        fields.put("otherConfirmed", Boolean.toString(trade.confirmed(other)));
+        fields.put("mineMoney", myOffer.money().stripTrailingZeros().toPlainString());
+        fields.put("otherMoney", theirOffer.money().stripTrailingZeros().toPlainString());
+        fields.put("symbol", plugin.settings().currency().symbol());
+        fields.put("mineItems", shorten(TradeItems.describe(items(viewerId, offers)), 900));
+        fields.put("otherItems", shorten(TradeItems.describe(items(other, offers)), 900));
+        fields.put("expires", trade.expiresAt().toString());
+        String actions = switch (trade.state()) {
+            case INVITED -> trade.second().equals(viewerId) ? "accept,cancel" : "cancel";
+            case OPEN -> "open,money,confirm,cancel";
+            default -> "";
+        };
+        fields.put("actions", actions);
+        return Map.copyOf(fields);
+    }
+
+    private static Map<String, String> uiStatus(String message, boolean success) {
+        return Map.of("id", "status", "kind", "status", "title", "",
+                "message", message, "success", Boolean.toString(success));
+    }
+
+    private static String shorten(String value, int maximum) {
+        if (value == null) return "";
+        return value.length() <= maximum ? value : value.substring(0, maximum - 1) + "…";
+    }
+
+    private static String uiFailure(TradeResult result) {
+        if (result == null) return "error.trade.unavailable";
+        return switch (result.status()) {
+            case BUSY -> "error.trade.busy";
+            case NOT_FOUND -> "error.trade.none";
+            case INSUFFICIENT_FUNDS -> "error.trade.insufficient";
+            case UNAVAILABLE -> "error.trade.unavailable";
+            default -> "error.trade.changed";
+        };
+    }
+
+    private <T> CompletionStage<T> onMainValue(java.util.function.Supplier<T> supplier) {
+        if (Bukkit.isPrimaryThread()) return CompletableFuture.completedFuture(supplier.get());
+        CompletableFuture<T> future = new CompletableFuture<>();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            try {
+                future.complete(supplier.get());
+            } catch (RuntimeException failure) {
+                future.completeExceptionally(failure);
+            }
+        });
+        return future;
     }
 
     // ------------------------------------------------------------- действия
@@ -399,9 +600,16 @@ final class TradeCoordinator implements Listener {
 
     /** Call a trade off and give both tables back. */
     void cancel(TradeSession trade, String reason) {
-        trades.cancel(trade.id(), reason).whenComplete((result, error) -> onMain(() -> {
-            if (result == null || !result.ok()) return;
-            trades.offers(trade.id()).whenComplete((offers, offersError) -> onMain(() -> {
+        cancelAsync(trade, reason).exceptionally(error -> {
+            plugin.getLogger().warning("Could not cancel trade " + trade.id() + ": " + error.getMessage());
+            return null;
+        });
+    }
+
+    private CompletionStage<TradeResult> cancelAsync(TradeSession trade, String reason) {
+        return trades.cancel(trade.id(), reason).thenCompose(result -> {
+            if (result == null || !result.ok()) return CompletableFuture.completedFuture(result);
+            return trades.offers(trade.id()).thenCompose(offers -> onMainValue(() -> {
                 if (offers != null) {
                     for (TradeOffer offer : offers) {
                         if (offer.items() == null || offer.items().length == 0) continue;
@@ -409,11 +617,12 @@ final class TradeCoordinator implements Listener {
                                 "trade-return:" + trade.id() + ":" + offer.owner());
                     }
                 }
-                announce(trade, "trade-cancelled", Map.of("reason", reason));
+                announce(result.trade().orElse(trade), "trade-cancelled", Map.of("reason", reason));
                 deliverTo(trade.first());
                 deliverTo(trade.second());
+                return result;
             }));
-        }));
+        });
     }
 
     /** Clear out tables nobody finished in time. */

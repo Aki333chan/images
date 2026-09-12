@@ -1,5 +1,23 @@
 # AurumUI
 
+## Trade and delivery quarantine (0.7.0)
+
+Requires AurumCompanion 0.8.0 and AurumCore 0.13.0. The Economy tab now also
+contains the scopes exposed to the current player:
+
+- Trade (`aurum.trade`): invite an online player, accept or cancel an invite,
+  set the money side of the offer, open the protected item table and confirm
+  the exact revision shown on screen. Changing either offer still clears both
+  confirmations in AurumCore.
+- Delivery quarantine (`aurumui.admin` plus `aurum.admin.claims`): inspect up
+  to 50 failed durable deliveries, retry one, or deliberately drop it after a
+  confirmation screen. Dropping retains the database audit record and does
+  not reverse money that has already moved.
+
+These views are request-driven. They do not poll the database or scan players
+in the background; a snapshot is fetched only while the menu is being opened,
+explicitly refreshed, or refreshed after an action.
+
 ## Economy (0.6.0)
 
 Requires AurumCompanion 0.6.0 and AurumCore 0.10.0 in active mode. Press U and
@@ -72,7 +90,7 @@ public port or panel token is needed.
 
 Server (`plugins/`):
 
-1. Replace AurumCompanion with version 0.4.0 or newer. Older Companion versions
+1. Replace AurumCompanion with version 0.8.0 or newer. Older Companion versions
    remain compatible with the HUD, but do not expose the object editor.
 2. Replace AurumGuilds with version 0.2.0 or newer.
 3. Replace AurumArena with version 1.4.0, AddonsNPC with 1.7.0 and AurumSlots
@@ -84,7 +102,7 @@ Client (`mods/`):
 1. Minecraft Java 26.2.
 2. Fabric Loader 0.19.5 or newer.
 3. Fabric API for 26.2.
-4. `AurumUI-0.4.0.jar`.
+4. `AurumUI-0.7.0.jar`.
 
 ## Client controls
 

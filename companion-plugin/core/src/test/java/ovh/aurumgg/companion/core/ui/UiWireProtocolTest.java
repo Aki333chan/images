@@ -81,10 +81,19 @@ class UiWireProtocolTest {
 
     @Test
     void olderClientsNeverSeeCapabilityBitsTheyCannotRender() throws Exception {
-        int everything = UiWireProtocol.SOCIAL | UiWireProtocol.ECONOMY | UiWireProtocol.ADMIN_ECONOMY;
+        int everything = UiWireProtocol.SOCIAL | UiWireProtocol.ECONOMY | UiWireProtocol.ADMIN_ECONOMY
+                | UiWireProtocol.TRADE | UiWireProtocol.ADMIN_CLAIMS;
 
         assertEquals(UiWireProtocol.SOCIAL, capabilities(3, everything));
         assertEquals(everything, capabilities(UiWireProtocol.VERSION, everything));
+    }
+
+    @Test
+    void protocolFourCarriesTradeAndClaimCapabilitiesInTheExistingByte() throws Exception {
+        int financial = UiWireProtocol.ECONOMY | UiWireProtocol.ADMIN_ECONOMY
+                | UiWireProtocol.TRADE | UiWireProtocol.ADMIN_CLAIMS;
+
+        assertEquals(financial, capabilities(4, financial));
     }
 
     private static int capabilities(int protocol, int bits) throws Exception {

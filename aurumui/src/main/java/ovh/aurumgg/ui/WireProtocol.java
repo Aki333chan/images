@@ -21,6 +21,10 @@ final class WireProtocol {
     static final int ECONOMY = 1 << 4;
     /** Balance adjustments and treasury. Server protocol 4 and newer. */
     static final int ADMIN_ECONOMY = 1 << 5;
+    /** Guaranteed player-to-player trade. */
+    static final int TRADE = 1 << 6;
+    /** Administrative delivery quarantine. */
+    static final int ADMIN_CLAIMS = 1 << 7;
 
     private WireProtocol() {}
 

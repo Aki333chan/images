@@ -54,7 +54,7 @@ final class AurumSettingsScreen extends Screen {
         if (has(WireProtocol.ADMIN_ARENA)) available.add(Tab.ARENA);
         if (has(WireProtocol.ADMIN_NPC)) available.add(Tab.NPC);
         if (has(WireProtocol.ADMIN_SLOTS)) available.add(Tab.SLOTS);
-        if (has(WireProtocol.ECONOMY) || has(WireProtocol.ADMIN_ECONOMY)) available.add(Tab.ECONOMY);
+        if (!economyScopes().isEmpty()) available.add(Tab.ECONOMY);
         if (!available.contains(tab)) tab = Tab.HUD;
         int each = Math.min(92, (contentWidth() - GAP * (available.size() - 1)) / available.size());
         int total = each * available.size() + GAP * (available.size() - 1);
@@ -109,9 +109,12 @@ final class AurumSettingsScreen extends Screen {
                     .bounds(left() + 134, top, contentWidth() - 134, 20).build());
             top += 26;
         }
-        if (tab == Tab.ECONOMY && has(WireProtocol.ECONOMY) && has(WireProtocol.ADMIN_ECONOMY)) {
-            addEconomyScope("economy", "screen.aurumui.economy.mine", top, 0);
-            addEconomyScope("economy-admin", "screen.aurumui.economy.manage", top, 1);
+        List<String[]> economyScopes = economyScopes();
+        if (tab == Tab.ECONOMY && economyScopes.size() > 1) {
+            for (int index = 0; index < economyScopes.size(); index++) {
+                String[] option = economyScopes.get(index);
+                addEconomyScope(option[0], option[1], top, index, economyScopes.size());
+            }
             top += 26;
         }
         if (social()) {
@@ -174,8 +177,8 @@ final class AurumSettingsScreen extends Screen {
         addRenderableWidget(button);
     }
 
-    private void addEconomyScope(String scope, String key, int y, int index) {
-        int each = (contentWidth() - GAP) / 2;
+    private void addEconomyScope(String scope, String key, int y, int index, int count) {
+        int each = (contentWidth() - GAP * (count - 1)) / count;
         Button button = Button.builder(Component.translatable(key), ignored -> { economyScope = scope; changeScope(); })
                 .bounds(left() + index * (each + GAP), y, each, 20).build();
         button.active = !economyScope().equals(scope);
@@ -244,6 +247,8 @@ final class AurumSettingsScreen extends Screen {
                     AurumUiClient.adminAction(scope(), object.id(), "currency",
                             Map.of("id", object.get("currency"))));
             case "target" -> targetActions(result, object);
+            case "trade" -> tradeActions(result, object);
+            case "claim" -> claimActions(result, object);
             default -> { }
         }
         return result;
@@ -312,6 +317,31 @@ final class AurumSettingsScreen extends Screen {
         action(list, key, () -> form(o, action, List.of(
                 new AurumFormScreen.Field("amount", "screen.aurumui.social.amount", "", 24),
                 new AurumFormScreen.Field("reason", "screen.aurumui.field.reason", "", 64))));
+    }
+
+    private void tradeActions(List<UiAction> list, WireProtocol.AdminObject object) {
+        for (String value : object.get("actions").split(",")) {
+            String action = value.trim();
+            if (action.isEmpty()) continue;
+            switch (action) {
+                case "invite" -> action(list, "screen.aurumui.trade.invite", () -> form(object, "invite", List.of(
+                        new AurumFormScreen.Field("player", "screen.aurumui.field.player", "", 16))));
+                case "money" -> action(list, "screen.aurumui.trade.money", () -> form(object, "money", List.of(
+                        new AurumFormScreen.Field("amount", "screen.aurumui.social.amount", object.get("mineMoney"), 24))));
+                case "confirm" -> action(list, "screen.aurumui.trade.confirm", () ->
+                        AurumUiClient.adminAction(scope(), object.id(), "confirm",
+                                Map.of("revision", object.get("revision"))));
+                case "cancel" -> action(list, "screen.aurumui.trade.cancel", () ->
+                        confirm("screen.aurumui.trade.confirmCancel", () -> send(object, "cancel")));
+                default -> action(list, "screen.aurumui.trade." + action, () -> send(object, action));
+            }
+        }
+    }
+
+    private void claimActions(List<UiAction> list, WireProtocol.AdminObject object) {
+        action(list, "screen.aurumui.claim.retry", () -> send(object, "retry"));
+        action(list, "screen.aurumui.claim.drop", () ->
+                confirm("screen.aurumui.claim.confirmDrop", () -> send(object, "drop")));
     }
 
     private void arenaActions(List<UiAction> list, WireProtocol.AdminObject o) {
@@ -498,7 +528,17 @@ final class AurumSettingsScreen extends Screen {
     /** Свой счёт по умолчанию; если его смотреть нельзя — сразу управление. */
     private String economyScope() {
         if (!economyScope.isBlank()) return economyScope;
-        return has(WireProtocol.ECONOMY) ? "economy" : "economy-admin";
+        List<String[]> available = economyScopes();
+        return available.isEmpty() ? "" : available.getFirst()[0];
+    }
+
+    private List<String[]> economyScopes() {
+        List<String[]> result = new ArrayList<>();
+        if (has(WireProtocol.ECONOMY)) result.add(new String[]{"economy", "screen.aurumui.economy.mine"});
+        if (has(WireProtocol.TRADE)) result.add(new String[]{"trade", "screen.aurumui.economy.trade"});
+        if (has(WireProtocol.ADMIN_ECONOMY)) result.add(new String[]{"economy-admin", "screen.aurumui.economy.manage"});
+        if (has(WireProtocol.ADMIN_CLAIMS)) result.add(new String[]{"claims-admin", "screen.aurumui.economy.claims"});
+        return result;
     }
     private int contentWidth() { return Math.min(430, width - 20); }
     private int left() { return (width - contentWidth()) / 2; }
@@ -531,9 +571,10 @@ final class AurumSettingsScreen extends Screen {
                 int x = left() + 134;
                 int y = adminObjectsTop();
                 graphics.text(font, Component.literal(font.plainSubstrByWidth(clean(object.title()), contentWidth() - 134)), x, y, 0xFFFFC85C, false);
-                if (object.kind().equals("social") && object.get("actions").isBlank()) {
+                if ((object.kind().equals("social") && object.get("actions").isBlank())
+                        || object.kind().equals("trade") || object.kind().equals("claim")) {
                     int lineY = y + 12;
-                    for (var line : font.split(Component.literal(summary(object)), contentWidth() - 134)) {
+                    for (var line : font.split(Component.literal(details(object)), contentWidth() - 134)) {
                         if (lineY >= height - 52) break;
                         graphics.text(font, line, x, lineY, 0xFFAAAAAA, false);
                         lineY += 10;
@@ -546,7 +587,9 @@ final class AurumSettingsScreen extends Screen {
     @Override public void tick() {
         super.tick();
         // Retry a list request dropped while a previous asynchronous action was pending.
-        if (social() && !scope().equals(adminState.scope()) && System.currentTimeMillis() - requestedAt > 1500) {
+        // This only runs while a non-HUD screen is open; it is not a background poll.
+        if (tab != Tab.HUD && !scope().isBlank() && !scope().equals(adminState.scope())
+                && System.currentTimeMillis() - requestedAt > 1500) {
             requestedAt = System.currentTimeMillis();
             AurumUiClient.requestAdmin(scope());
         }
@@ -580,7 +623,25 @@ final class AurumSettingsScreen extends Screen {
             case "treasury" -> money(object, "treasury") + " · " + money(object, "supply")
                     + " · " + money(object, "taxes");
             case "currency", "find" -> "";
+            case "trade" -> object.get("state");
+            case "claim" -> object.get("owner") + " · " + object.get("progress") + " · " + object.get("attempts");
             default -> object.get("material") + " · slot " + object.get("slot");
+        };
+    }
+
+    private String details(WireProtocol.AdminObject object) {
+        return switch (object.kind()) {
+            case "trade" -> object.get("state") + "\n"
+                    + Component.translatable("screen.aurumui.trade.mine").getString() + ": "
+                    + object.get("mineMoney") + " " + object.get("symbol") + " · " + object.get("mineItems") + "\n"
+                    + Component.translatable("screen.aurumui.trade.theirs").getString() + ": "
+                    + object.get("otherMoney") + " " + object.get("symbol") + " · " + object.get("otherItems") + "\n"
+                    + Component.translatable("screen.aurumui.trade.confirmations",
+                            object.get("mineConfirmed"), object.get("otherConfirmed")).getString();
+            case "claim" -> object.get("owner") + " · " + object.get("progress") + " · "
+                    + Component.translatable("screen.aurumui.claim.attempts").getString() + " " + object.get("attempts")
+                    + "\n" + object.get("summary") + "\n" + object.get("error") + "\n" + object.get("payload");
+            default -> summary(object);
         };
     }
     /**
@@ -599,7 +660,7 @@ final class AurumSettingsScreen extends Screen {
     }
 
     private boolean economyScopeRow() {
-        return tab == Tab.ECONOMY && has(WireProtocol.ECONOMY) && has(WireProtocol.ADMIN_ECONOMY);
+        return tab == Tab.ECONOMY && economyScopes().size() > 1;
     }
     private Component connectionStatus() {
         if (serverProtocol == 0) return Component.translatable("screen.aurumui.connection.waiting");

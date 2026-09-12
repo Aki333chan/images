@@ -163,9 +163,11 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
                 return;
             }
             boolean action = !request.action().isEmpty();
-            Object rawResult = action
-                    ? provider.action(player, request.id(), request.action(), request.arguments())
-                    : "";
+            if (!action) {
+                sendWithSnapshot(player, request, provider, true, "", uuid);
+                return;
+            }
+            Object rawResult = provider.action(player, request.id(), request.action(), request.arguments());
             if (rawResult instanceof java.util.concurrent.CompletionStage<?> future) {
                 pendingRequests.add(uuid);
                 future.whenComplete((result, failure) -> {
@@ -176,18 +178,23 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
                         try {
                             Provider current = provider(player, request.scope());
                             String text = failure == null ? String.valueOf(result) : "error.internal";
-                            sendAdminState(player, request.scope(), failure == null && !text.startsWith("error."), text,
-                                    current == null ? List.of() : current.snapshot(player, request.scope()));
+                            if (current == null) {
+                                pendingRequests.remove(uuid);
+                                sendAdminState(player, request.scope(), false, "error.permission", List.of());
+                                return;
+                            }
+                            sendWithSnapshot(player, request, current,
+                                    failure == null && !text.startsWith("error."), text, uuid);
                         } catch (ReflectiveOperationException | IOException error) {
-                            plugin.getLogger().log(Level.WARNING, "Could not refresh social UI", error);
+                            pendingRequests.remove(uuid);
+                            plugin.getLogger().log(Level.WARNING, "Could not refresh AurumUI", error);
                         }
                     });
                 });
                 return;
             }
             String result = String.valueOf(rawResult);
-            List<Map<String, String>> objects = provider.snapshot(player, request.scope());
-            sendAdminState(player, request.scope(), !result.startsWith("error."), result, objects);
+            sendWithSnapshot(player, request, provider, !result.startsWith("error."), result, uuid);
         } catch (IOException | ReflectiveOperationException | RuntimeException error) {
             Throwable cause = error instanceof InvocationTargetException invocation && invocation.getCause() != null
                     ? invocation.getCause() : error;
@@ -198,6 +205,37 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
                 // The original problem has already been logged.
             }
         }
+    }
+
+    /** Resolve synchronous and database-backed snapshots without ever blocking Paper. */
+    private void sendWithSnapshot(Player player, UiWireProtocol.AdminRequest request, Provider provider,
+                                  boolean success, String message, UUID uuid)
+            throws InvocationTargetException, IllegalAccessException, IOException {
+        Object raw = provider.snapshot(player, request.scope());
+        if (!(raw instanceof java.util.concurrent.CompletionStage<?> future)) {
+            pendingRequests.remove(uuid);
+            sendAdminState(player, request.scope(), success, message, Provider.objects(raw));
+            return;
+        }
+        pendingRequests.add(uuid);
+        future.whenComplete((value, failure) -> {
+            if (!plugin.isEnabled()) return;
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                pendingRequests.remove(uuid);
+                if (!player.isOnline() || plugin.getServer().getPlayer(uuid) != player || !authenticated(player)) return;
+                try {
+                    if (provider(player, request.scope()) == null) {
+                        sendAdminState(player, request.scope(), false, "error.permission", List.of());
+                        return;
+                    }
+                    sendAdminState(player, request.scope(), failure == null && success,
+                            failure == null ? message : "error.internal",
+                            failure == null ? Provider.objects(value) : List.of());
+                } catch (ReflectiveOperationException | IOException error) {
+                    plugin.getLogger().log(Level.WARNING, "Could not finish AurumUI snapshot", error);
+                }
+            });
+        });
     }
 
     private Provider provider(Player player, String scope) throws ReflectiveOperationException {
@@ -220,6 +258,19 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
             return new Provider(core,
                     core.getClass().getMethod("aurumEconomySnapshot", Player.class, String.class),
                     core.getClass().getMethod("aurumEconomyAction", Player.class, String.class, String.class, Map.class));
+        }
+        if (scope.equals("trade") || scope.equals("claims-admin")) {
+            if (scope.equals("trade") && !player.hasPermission("aurum.trade")) return null;
+            if (scope.equals("claims-admin")
+                    && !(player.hasPermission("aurumui.admin") && player.hasPermission("aurum.admin.claims"))) {
+                return null;
+            }
+            Plugin core = plugin.getServer().getPluginManager().getPlugin("AurumCore");
+            if (core == null || !core.isEnabled() || !authenticated(player)) return null;
+            String prefix = scope.equals("trade") ? "aurumTrade" : "aurumClaims";
+            return new Provider(core,
+                    core.getClass().getMethod(prefix + "Snapshot", Player.class, String.class),
+                    core.getClass().getMethod(prefix + "Action", Player.class, String.class, String.class, Map.class));
         }
         String pluginName;
         String permission;
@@ -260,9 +311,12 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
 
     private record Provider(Plugin plugin, Method snapshotMethod, Method actionMethod) {
         @SuppressWarnings("unchecked")
-        List<Map<String, String>> snapshot(Player player, String scope)
+        Object snapshot(Player player, String scope)
                 throws InvocationTargetException, IllegalAccessException {
-            Object raw = snapshotMethod.invoke(plugin, player, scope);
+            return snapshotMethod.invoke(plugin, player, scope);
+        }
+
+        static List<Map<String, String>> objects(Object raw) {
             if (!(raw instanceof List<?> list)) return List.of();
             List<Map<String, String>> result = new ArrayList<>();
             for (Object entry : list) {
@@ -289,8 +343,15 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
         }
         if (authenticated(player) && hasEconomyProvider()) {
             if (player.hasPermission("aurum.balance")) result |= UiWireProtocol.ECONOMY;
+            if (player.hasPermission("aurum.trade") && hasCoreUiProvider("aurumTrade")) {
+                result |= UiWireProtocol.TRADE;
+            }
             if (player.hasPermission("aurumui.admin") && player.hasPermission("aurum.admin.economy")) {
                 result |= UiWireProtocol.ADMIN_ECONOMY;
+            }
+            if (player.hasPermission("aurumui.admin") && player.hasPermission("aurum.admin.claims")
+                    && hasCoreUiProvider("aurumClaims")) {
+                result |= UiWireProtocol.ADMIN_CLAIMS;
             }
         }
         if (!player.hasPermission("aurumui.admin")) return result;
@@ -319,6 +380,18 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
         try {
             core.getClass().getMethod("aurumEconomySnapshot", Player.class, String.class);
             core.getClass().getMethod("aurumEconomyAction", Player.class, String.class, String.class, Map.class);
+            return true;
+        } catch (NoSuchMethodException ignored) {
+            return false;
+        }
+    }
+
+    private boolean hasCoreUiProvider(String prefix) {
+        Plugin core = plugin.getServer().getPluginManager().getPlugin("AurumCore");
+        if (core == null || !core.isEnabled()) return false;
+        try {
+            core.getClass().getMethod(prefix + "Snapshot", Player.class, String.class);
+            core.getClass().getMethod(prefix + "Action", Player.class, String.class, String.class, Map.class);
             return true;
         } catch (NoSuchMethodException ignored) {
             return false;

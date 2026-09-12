@@ -21,6 +21,10 @@ public final class UiWireProtocol {
     public static final int ECONOMY = 1 << 4;
     /** Balance adjustments and treasury. Protocol 4 and newer. */
     public static final int ADMIN_ECONOMY = 1 << 5;
+    /** Guaranteed player-to-player trade. */
+    public static final int TRADE = 1 << 6;
+    /** Administrative delivery quarantine. */
+    public static final int ADMIN_CLAIMS = 1 << 7;
 
     /**
      * Capability bits an older client is able to render.

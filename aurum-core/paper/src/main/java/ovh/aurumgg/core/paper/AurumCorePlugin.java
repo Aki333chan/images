@@ -61,6 +61,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile ExchangeCoordinator exchanges;
     private volatile ClaimService claims;
     private volatile ClaimCoordinator claimCommands;
+    private volatile ClaimsUiBridge claimsUi;
     private volatile TradeCoordinator tradeCommands;
     private volatile TradeDelivery tradeDelivery;
     private volatile TradeWindow tradeWindow;
@@ -183,6 +184,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                             Clock.systemUTC(), Duration.ofSeconds(settings.claimMaxLeaseSeconds()),
                             settings.claimMaxAttempts());
                     claimCommands = new ClaimCoordinator(this, claims);
+                    claimsUi = new ClaimsUiBridge(this, claims);
                     if (settings.tradingEnabled()) {
                         // Сделка опирается и на деньги, и на заявки: без заявок
                         // отданные предметы было бы некуда записать.
@@ -447,6 +449,36 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                                      java.util.Map<String, String> arguments) {
         return economyUi.action(viewer, id, action,
                 arguments == null ? java.util.Map.of() : java.util.Map.copyOf(arguments));
+    }
+
+    /** Database-backed guaranteed-trade snapshot for AurumUI. */
+    public Object aurumTradeSnapshot(org.bukkit.entity.Player viewer, String scope) {
+        TradeCoordinator current = tradeCommands;
+        return current == null ? java.util.concurrent.CompletableFuture.completedFuture(java.util.List.of())
+                : current.uiSnapshot(viewer);
+    }
+
+    /** Guaranteed-trade action; TradeCoordinator remains the only owner of its rules. */
+    public Object aurumTradeAction(org.bukkit.entity.Player viewer, String id, String action,
+                                   java.util.Map<String, String> arguments) {
+        TradeCoordinator current = tradeCommands;
+        if (current == null) return "error.trade.disabled";
+        return current.uiAction(viewer, id, action,
+                arguments == null ? java.util.Map.of() : java.util.Map.copyOf(arguments));
+    }
+
+    /** Quarantined delivery claims for AurumUI administrators. */
+    public Object aurumClaimsSnapshot(org.bukkit.entity.Player viewer, String scope) {
+        ClaimsUiBridge current = claimsUi;
+        return current == null ? java.util.concurrent.CompletableFuture.completedFuture(java.util.List.of())
+                : current.snapshot(viewer);
+    }
+
+    /** Retry or deliberately drop one quarantined delivery claim. */
+    public Object aurumClaimsAction(org.bukkit.entity.Player viewer, String id, String action,
+                                    java.util.Map<String, String> arguments) {
+        ClaimsUiBridge current = claimsUi;
+        return current == null ? "error.claims.unavailable" : current.action(viewer, id, action);
     }
     ExchangeCoordinator exchanges() { return exchanges; }
 

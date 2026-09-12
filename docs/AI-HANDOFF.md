@@ -184,7 +184,7 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Экономические экраны AurumUI: trade и claims quarantine.**
+**Native read routes и ретроспективные экономические экраны веб-панели.**
 
 В Core устранён дедлок trade на общем однопоточном executor, расчёт встречных денег
 сведён в одну net-проводку, SETTLING возобновляется sweep-ом, а SETTLED ставится только
@@ -193,7 +193,7 @@ Exchange engine использует версионированную котир
 повторить с другим намерением даже при гонке разных Core-инстансов.
 
 Панель и Companion используют ledger для чтения и существующих deposit/withdraw, когда
-AurumCore активен (Core 0.12.0 + Companion 0.7.0). Запись передаёт stable UUID, автора,
+AurumCore активен (Core 0.13.0 + Companion 0.8.0). Запись передаёт stable UUID, автора,
 причину и `ADMIN_ADJUSTMENT`; migration 10 привязывает idempotency key к полному intent.
 Timeout активного Core не включает Vault fallback. Не сделана оставшаяся часть пункта 5 —
 оборот, источники/стоки, правила и ledger history: под них в панели нет ни экрана, ни
@@ -205,23 +205,42 @@ Timeout активного Core не включает Vault fallback. Не сд�
 player.dat, затем атомарно пишет offer + operation marker; отказ возвращает предмет через
 claim. Роспуск гильдии имеет persisted plan и восстанавливает multi-recipient split.
 В коде встроенные предметные границы закрыты; `trading.enabled` всё ещё выключен до
-живого Paper/MariaDB fault-injection. Текущая разработка — окна trade и claims quarantine
-в AurumUI, затем незаконченные экраны истории/правил веб-панели.
+живого Paper/MariaDB fault-injection. AurumUI 0.7.0 показывает trade и карантин выдач;
+следующая разработка — маршруты и экраны истории/источников/стоков/правил веб-панели.
 
-Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.12.0,
-AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.7.0,
-AurumUI 0.6.0.
+Не выпущены в Addons (JAR собраны, тегов и релизов нет): AurumCore 0.13.0,
+AddonsNPC 2.0.0, AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.8.0,
+AurumUI 0.7.0.
 
 ## Очередь после текущего этапа
 
-1. Экономические экраны AurumUI: trade и claims quarantine.
-2. Native Companion routes и экраны истории/правил веб-панели.
+1. Native Companion routes и экраны чтения истории/правил веб-панели.
+2. Редактор версионированных налогов, комиссий и курсов в веб-панели.
 3. Контракт idempotency произвольных команд оферт.
 4. Отдельный безопасный контракт абсолютного `set` баланса, если он действительно нужен.
 5. Опциональная миграция динамических настроек.
 6. Полный staging Paper 26.2 + MariaDB + VaultUnlocked, fault injection и Spark.
 
 ## Журнал передачи
+
+### 2026-09-12 — Codex, AurumUI 0.7.0: trade и карантин выдач
+
+- Core 0.13.0 публикует два узких request-driven provider: состояние гарантированной
+  сделки и административный карантин claims. Действия делегируются существующим
+  `TradeService`/`ClaimService`; правила, ревизии и ledger не дублируются в UI.
+- В trade игрок приглашает, принимает, задаёт денежную часть, открывает защищённый
+  Bukkit-стол, подтверждает именно показанную ревизию и отменяет с подтверждением.
+- Карантин показывает до 50 проблемных выдач; `retry` возвращает запись в очередь,
+  `drop` требует подтверждения и оставляет статус в неизменяемом аудите.
+- Companion 0.8.0 умеет передавать асинхронные snapshots без ожидания на Paper thread.
+  Фонового polling и нового обхода игроков нет: запрос только при открытии scope,
+  завершении действия, ручном refresh либо редком повторе потерянного ответа пока окно открыто.
+- Права: trade — `aurum.trade`; карантин — одновременно `aurumui.admin` и
+  `aurum.admin.claims`, с повторной проверкой Core. Формат protocol 4 не менялся;
+  заняты последние два бита capability-byte, старому протоколу они маскируются.
+- Проверка: clean test/jar Core, clean test/jar Companion и clean build AurumUI на JDK 25.
+  Живого Minecraft/Paper прогона не было, поэтому `trading.enabled` остаётся `false`.
+- Следующий шаг: native read routes и ретроспективные экраны веб-панели.
 
 ### 2026-09-12 — Codex, Core 0.12.0 + native Companion economy writes
 

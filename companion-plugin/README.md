@@ -1,5 +1,19 @@
 # Aurum Companion
 
+## Release 0.8.0
+
+AurumUI can now open a player's guaranteed trade and the administrative
+delivery quarantine. The new `trade` scope requires `aurum.trade`; the
+`claims-admin` scope requires both `aurumui.admin` and
+`aurum.admin.claims`. Companion only transports bounded typed actions. Trade
+revisions, money, item escrow and claim state remain owned and revalidated by
+AurumCore.
+
+Database-backed snapshots are asynchronous all the way through the plugin
+message channel. No database future is joined on the Paper thread, and no new
+periodic player or database scan was added: state is requested when the screen
+opens, after an action, or when the player explicitly refreshes it.
+
 ## Release 0.7.0
 
 Начисления и списания панели при активном AurumCore теперь идут прямо через
@@ -58,6 +72,11 @@ are rate-limited, and allow only one outstanding mutation per player.
 и Core проверяет второе ещё раз. Ставки налогов, комиссии и курсы через этот
 канал не редактируются — они принадлежат веб-панели, см.
 [`../docs/aurum-core-architecture.md`](../docs/aurum-core-architecture.md).
+
+С 0.8.0 тот же протокол 4 использует оставшиеся capability-биты для `trade` и
+`claims-admin`; формат пакета не менялся. Сделка управляется обычным правом
+`aurum.trade`, а карантин требует одновременно `aurumui.admin` и
+`aurum.admin.claims`. Старым клиентам незнакомые биты безопасно маскируются.
 
 В ответе admin_state пишется **согласованная** версия протокола, а не версия
 сборки сервера: клиент сверяет её со своей и отказывается от любой другой, так
