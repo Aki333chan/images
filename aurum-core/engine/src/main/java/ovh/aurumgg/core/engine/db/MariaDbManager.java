@@ -10,6 +10,7 @@ import ovh.aurumgg.core.engine.PolicyRepository;
 import ovh.aurumgg.core.engine.ExchangeRepository;
 import ovh.aurumgg.core.engine.ClaimRepository;
 import ovh.aurumgg.core.engine.HoldRepository;
+import ovh.aurumgg.core.engine.TradeRepository;
 import ovh.aurumgg.core.engine.migration.MigrationRepository;
 
 public final class MariaDbManager implements AutoCloseable {
@@ -65,6 +66,8 @@ public final class MariaDbManager implements AutoCloseable {
     public HoldRepository holdRepository() { return new MariaDbHoldRepository(dataSource); }
 
     public ClaimRepository claimRepository() { return new MariaDbClaimRepository(dataSource); }
+
+    public TradeRepository tradeRepository() { return new MariaDbTradeRepository(dataSource); }
 
     @Override
     public void close() {
