@@ -271,7 +271,11 @@ final class EconomyUiBridge {
         fields.put("id", "status");
         fields.put("kind", "status");
         fields.put("title", "");
-        fields.put("message", outcome == null ? "" : outcome.key());
+        // Тот же ключ, что уходит каналом: у отказов он с префиксом error.
+        // Класть сюда голый ключ значило бы, что строка состояния ищет перевод
+        // по одному имени, а всплывающая подпись — по другому, и один из них
+        // обязательно окажется несуществующим.
+        fields.put("message", outcome == null ? "" : messageKey(outcome));
         fields.put("success", Boolean.toString(outcome == null || outcome.success()));
         if (outcome != null) {
             // Подстановки в переводе позиционные, а карта порядка не имеет.
@@ -287,6 +291,11 @@ final class EconomyUiBridge {
 
     private String remember(Player viewer, Outcome outcome) {
         session(viewer.getUniqueId()).lastOutcome = outcome;
+        return messageKey(outcome);
+    }
+
+    /** Ключ сообщения: отказы канал различает по префиксу error. */
+    private static String messageKey(Outcome outcome) {
         return outcome.success() ? outcome.key() : "error." + outcome.key();
     }
 
