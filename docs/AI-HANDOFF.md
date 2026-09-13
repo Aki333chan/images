@@ -64,7 +64,7 @@ Exchange engine использует версионированную котир
 На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
 `companion-v0.13.1`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
 `npc-v2.1.0`, `arena-v1.6.0`, `slots-v1.5.0`. Старые releases и tags удалены;
-актуальный Addons commit — `9f0a8d3`.
+актуальный Addons commit — `09ecf9b`.
 
 ## Исторические выпуски и этапы
 
@@ -237,6 +237,8 @@ destination, повтор команды и Spark.
 
 ### 2026-09-13 — Codex, forced transfer между managed accounts
 
+- Source commit `1c9c112`; Addons commit `09ecf9b`; release `companion-v0.13.1`;
+  SHA-256 `59C339BFBD356CC9064BC2E6DA066B8728786AD52AF92F7F5397552F9D164893`.
 - Панель получила отдельное модальное окно для принудительного перевода: два независимых
   серверных поиска, фильтр/сортировка по типу, выбор member role, сумма, валюта и обязательная
   причина. Доступ остаётся под `minecraft.economy.admin` и отражается в аудите панели/Core.
