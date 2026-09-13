@@ -258,7 +258,9 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   Addons `aa3174b`; release `core-v0.17.3`; SHA-256
   `A0543FD3F43CC07121FD80E8D4C065BC014BE9F40D4E1D76FE2EBF2658DDDF28`.
 - В account details добавлена on-demand история последних ledger-проводок: выбор member
-  role и валюты, отдельные `bet`/`final`, без polling. Web production build и 111 tests.
+  role и валюты, отдельные `bet`/`final`, без polling. Source commit `e13110e` развернут
+  на VDS; production build, Prisma deploy, readiness PostgreSQL/Redis и 111 web tests
+  успешны.
 - Для оставшейся live-проверки нужны созданные игровые Arena/Slots/NPC/Guild и два
   одновременно доступных тестовых игрока; на текущем сервере эти списки пусты.
 
