@@ -17,7 +17,9 @@ import java.util.concurrent.Executor;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumAccountRegistryApi;
 import ovh.aurumgg.core.api.CurrencySpec;
+import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.ManagedAccount;
+import ovh.aurumgg.core.api.ManagedAccountAdjustRequest;
 import ovh.aurumgg.core.api.ManagedAccountCloseRequest;
 import ovh.aurumgg.core.api.ManagedAccountMember;
 import ovh.aurumgg.core.api.ManagedAccountMutationResult;
@@ -132,6 +134,60 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
             case DUPLICATE -> outcome(ManagedAccountMutationResult.Status.DUPLICATE, refreshed, "transferred");
             case REJECTED -> outcome(ManagedAccountMutationResult.Status.REJECTED, refreshed, transferred.message());
             case UNAVAILABLE -> outcome(ManagedAccountMutationResult.Status.UNAVAILABLE, refreshed, transferred.message());
+        };
+    }
+
+    @Override
+    public CompletionStage<ManagedAccountMutationResult> adjust(ManagedAccountAdjustRequest request) {
+        return supply(() -> adjustBlocking(request)).exceptionally(this::unavailable);
+    }
+
+    /**
+     * Начисление и списание администратором.
+     *
+     * <p>В отличие от перевода, у операции одна сторона: деньги приходят из
+     * системного источника или уходят в системный сток, то есть меняется
+     * денежная масса сервера. Поэтому проверки те же, что у перевода, но
+     * причина обязательна всегда — это единственный след того, зачем масса
+     * изменилась.</p>
+     *
+     * <p>Технические профили отклоняются: начислить самому источнику нечего, а
+     * попытка сделать это означала бы, что кто-то перепутал счёт.</p>
+     */
+    private ManagedAccountMutationResult adjustBlocking(ManagedAccountAdjustRequest request) throws Exception {
+        ManagedAccount profile = repository.find(request.profileKey(), currencies).orElse(null);
+        if (profile == null) {
+            return outcome(ManagedAccountMutationResult.Status.NOT_FOUND, null, "profile-not-found");
+        }
+        if (profile.technical()) {
+            return outcome(ManagedAccountMutationResult.Status.REJECTED, profile, "technical-profile-not-adjustable");
+        }
+        if (profile.status() != ManagedAccountStatus.ACTIVE) {
+            return outcome(ManagedAccountMutationResult.Status.REJECTED, profile, "profile-not-active");
+        }
+        AccountId member = member(profile, request.role());
+        if (member == null) {
+            return outcome(ManagedAccountMutationResult.Status.NOT_FOUND, profile, "member-role-not-found");
+        }
+        CurrencySpec currency = currencies.get(request.currencyId());
+        if (currency == null) return outcome(ManagedAccountMutationResult.Status.REJECTED, profile, "unknown-currency");
+
+        AccountId source = request.credit() ? new AccountId(AccountType.SYSTEM_SOURCE, "global") : member;
+        AccountId target = request.credit() ? member : new AccountId(AccountType.SYSTEM_SINK, "global");
+        TransactionResult applied = economy.required(currency.id()).transferBlocking(new TransactionRequest(
+                "account-adjust:" + hash(request.idempotencyKey()), source, target, currency.id(), request.amount(),
+                TransactionCategory.ADMIN_ADJUSTMENT, Map.of(
+                        "actor", request.actor(), "reason", request.reason(),
+                        "profile", profile.profileKey(), "role", request.role(),
+                        "direction", request.credit() ? "credit" : "debit")));
+        ManagedAccount refreshed = repository.find(profile.profileKey(), currencies).orElse(profile);
+        return switch (applied.status()) {
+            case SUCCESS -> outcome(ManagedAccountMutationResult.Status.SUCCESS, refreshed,
+                    request.credit() ? "credited" : "debited");
+            case DUPLICATE -> outcome(ManagedAccountMutationResult.Status.DUPLICATE, refreshed,
+                    request.credit() ? "credited" : "debited");
+            case REJECTED -> outcome(ManagedAccountMutationResult.Status.REJECTED, refreshed, applied.message());
+            case UNAVAILABLE -> outcome(ManagedAccountMutationResult.Status.UNAVAILABLE, refreshed, applied.message());
         };
     }
 

@@ -687,10 +687,12 @@ export class MinecraftController {
     return result;
   }
 
+  // Тело здесь НЕ прячется от аудита намеренно: в нём нет ничего секретного —
+  // ключ профиля, сумма, валюта и причина. Ровно это и должно остаться в
+  // журнале: «кто-то менял счета» без суммы и причины — не запись, а отметка.
   @Post('economy/accounts/action')
   @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
   @ServerScoped('serverId')
-  @AuditRedactBody()
   async mutateManagedAccount(
     @CurrentUser() user: AuthUser,
     @Param('serverId') serverId: string,

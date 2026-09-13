@@ -17,5 +17,5 @@ public record ManagedAccountMutation(
         String actor,
         String reason
 ) {
-    public enum Operation { CREATE_FUND, TRANSFER, FREEZE, UNFREEZE, CLOSE }
+    public enum Operation { CREATE_FUND, TRANSFER, CREDIT, DEBIT, FREEZE, UNFREEZE, CLOSE }
 }

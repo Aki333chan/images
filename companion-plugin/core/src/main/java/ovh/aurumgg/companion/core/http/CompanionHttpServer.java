@@ -1111,6 +1111,8 @@ public final class CompanionHttpServer {
         ManagedAccountMutation.Operation operation = switch (stringField(values, "operation")) {
             case "create-fund" -> ManagedAccountMutation.Operation.CREATE_FUND;
             case "transfer" -> ManagedAccountMutation.Operation.TRANSFER;
+            case "credit" -> ManagedAccountMutation.Operation.CREDIT;
+            case "debit" -> ManagedAccountMutation.Operation.DEBIT;
             case "freeze" -> ManagedAccountMutation.Operation.FREEZE;
             case "unfreeze" -> ManagedAccountMutation.Operation.UNFREEZE;
             case "close" -> ManagedAccountMutation.Operation.CLOSE;

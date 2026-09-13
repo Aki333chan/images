@@ -1345,5 +1345,15 @@
   "mc.accounts.history": "Historia konta",
   "mc.accounts.historyHint": "Najnowsze operacje dla wybranej roli konta i waluty.",
   "mc.accounts.historyShow": "Pokaż historię",
-  "mc.accounts.historyHide": "Ukryj historię"
+  "mc.accounts.historyHide": "Ukryj historię",
+  "mc.accounts.openOnly": "Konta robocze",
+  "mc.accounts.hiddenClosed": "ukryto zamkniętych: {count}",
+  "mc.accounts.quickActions": "Szybkie akcje",
+  "mc.accounts.quickHint": "Każdą zmianę księguje Core i trafia ona do dziennika wraz z powodem.",
+  "mc.accounts.role": "Konto profilu",
+  "mc.accounts.noCurrency": "Brak walut",
+  "mc.accounts.reasonHint": "Po co, w dwóch słowach",
+  "mc.accounts.credit": "Dopisz",
+  "mc.accounts.debit": "Pobierz",
+  "mc.accounts.transferFrom": "Przelej stąd"
 }

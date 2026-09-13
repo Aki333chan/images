@@ -1341,5 +1341,15 @@
   "mc.accounts.history": "Account history",
   "mc.accounts.historyHint": "The latest ledger entries for the selected account member and currency.",
   "mc.accounts.historyShow": "Show history",
-  "mc.accounts.historyHide": "Hide history"
+  "mc.accounts.historyHide": "Hide history",
+  "mc.accounts.openOnly": "Working accounts",
+  "mc.accounts.hiddenClosed": "{count} closed hidden",
+  "mc.accounts.quickActions": "Quick actions",
+  "mc.accounts.quickHint": "Every change is booked by Core and recorded in the audit log with its reason.",
+  "mc.accounts.role": "Account",
+  "mc.accounts.noCurrency": "No currencies",
+  "mc.accounts.reasonHint": "Why, in a few words",
+  "mc.accounts.credit": "Credit",
+  "mc.accounts.debit": "Debit",
+  "mc.accounts.transferFrom": "Transfer from here"
 }
