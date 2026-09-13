@@ -56,7 +56,14 @@ Exchange engine использует версионированную котир
 учитывает активные holds. Текущая реализация рассчитана на один авторитетный экземпляр Core,
 а не на конкурентный кластер серверов.
 
-## Уже выпущено
+## Актуальные релизы Addons
+
+На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
+`companion-v0.12.0`, `core-v0.16.0`, `auth-v0.1.0`, `guilds-v0.4.0`,
+`npc-v2.1.0`, `arena-v1.5.0`, `slots-v1.4.0`. Старые releases и tags удалены;
+актуальный Addons commit — `554afd8`.
+
+## Исторические выпуски и этапы
 
 ### AurumCore 0.7.0
 
@@ -105,7 +112,7 @@ Exchange engine использует версионированную котир
 ### AurumArena 1.5.0
 
 - Sources commit: см. ветку `claude/pterodactyl-admin-panel-core-984zye`
-- Release/tag: ещё не выпущен — JAR собран, публикация в Addons не выполнена
+- Release/tag: `arena-v1.5.0`, опубликован в Addons 2026-09-13
 - Ставки, отмена, возврат при ничьей, выплаты победителям, доля чемпиона и взнос
   в финальную кассу переведены на holds и native API. Зависимости VaultAPI в сборке
   нет; `softdepend` — AurumCore.
@@ -187,7 +194,7 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Живой staging чистого первого развёртывания.**
+**Живой smoke/fault-injection после чистого первого развёртывания.**
 
 Безопасный абсолютный `set` закрыт в Core 0.16.0 и Companion 0.12.0. Панель передаёт
 показанный expected и target; Core сравнивает и проводит под одной MariaDB-транзакцией.
@@ -195,11 +202,11 @@ Conflict — terminal receipt, повтор потерянного успешн�
 позднюю проводку. Ноль и no-op поддержаны. Панель использует прежнее право
 `minecraft.economy.admin`, обязательную причину и strict-native маршрут без Vault fallback.
 
-Фактический сервер и развернутая панель всё ещё находятся в состоянии до начала разработки
-экосистемы: AurumCore не установлен, старые версии плагинов работают через Vault, новые
-маршруты панели не развернуты. Из динамических тестовых данных заявлены несколько NPC и одна
-арена; пользователь разрешил их удалить и пересоздать. Поэтому универсальные импортёры
-Arena/NPC/Slots не делать. WorldGuard-регионы не принадлежат Core и остаются как есть.
+Пользователь выполнил clean cutover: AurumCore стартует в `ACTIVE`, MariaDB отвечает
+`READY`, Vault provider — AurumCore, записи включены. Обновлённая панель развернута,
+capability-вкладка «Экономика» и AurumCore в supported plugins появились. Тестовые NPC,
+Arena и Slots разрешено пересоздать; универсальные импортёры для них не делать.
+WorldGuard-регионы не принадлежат Core и остаются как есть.
 
 Vault-балансы есть только у трёх тестеров, были накручены вручную и ценности не имеют.
 Пользователь готов их обнулить, поэтому shadow snapshot/import для production cutover не
@@ -214,28 +221,41 @@ Essentials economy provider не удалять до проверки откат
 ценные Guilds/Slots данные, оценить их отдельно до удаления, не возвращаясь к универсальной
 миграции.
 
-Точный runbook подготовлен в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md`. Он фиксирует
-версии JAR, отдельную пустую логическую MariaDB для Core, резервные копии, обновление
-панели, три запуска Minecraft (passive, первый active, контрольный active с закрытым
-gate), команды проверки и откат. Проверенный локальный staging-комплект лежит в
-`outputs/aurum-ecosystem-staging-2026-09-12` вместе с `SHA256SUMS.txt`.
+Точный runbook остаётся в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md` как инструкция для
+следующих установок и отката. Локальные старые staging-копии очищены; актуальные JAR
+лежат по одному в `outputs` и опубликованы в Addons.
 
-Следующая работа: выполнить этот runbook на Paper 26.2 + MariaDB + VaultUnlocked,
-собрать фактические логи каждого запуска, затем провести fault injection и Spark.
+Следующая работа: smoke-тесты переводов, Arena, Slots, NPC и Guilds на Paper 26.2,
+затем fault injection незавершённых holds/claims/payouts и Spark.
 
-`trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. Не выпущены в
-Addons (JAR собраны, тегов и релизов нет): AurumCore 0.16.0, AddonsNPC 2.1.0,
-AurumGuilds 0.4.0, AurumArena 1.5.0, AurumCompanion 0.12.0, AurumUI 0.7.0.
+`trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. Все семь
+серверных компонентов опубликованы в Addons; AurumUI 0.7.0 остаётся отдельным клиентским
+Fabric-модом.
 
 ## Очередь после текущего этапа
 
-1. Выполнить `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md` на остановленном тестовом сервере,
-   проверить панель и базовые проводки, зафиксировать логи/версии/backup baseline.
-2. Полный staging Paper 26.2 + MariaDB + VaultUnlocked: fault injection, Spark и проверка
-   package installer/cutover.
-3. После успешного staging — синхронизация Addons, теги, GitHub Releases и `.sha256`.
+1. Проверить базовые проводки, policy limits/tax, Arena, Slots, NPC и Guilds на уже
+   развёрнутом Paper 26.2 + MariaDB + VaultUnlocked.
+2. Провести fault injection и Spark; после этого отдельно включать guaranteed trade.
+3. Реализовать account registry/named funds по
+   `docs/aurum-account-registry-todo.md`: панель счетов, lifecycle Arena/Slots,
+   procurement, guild support и dormant support для city/region treasuries.
 
 ## Журнал передачи
+
+### 2026-09-13 — Codex, account registry TODO и актуализация Addons
+
+- В `docs/aurum-account-registry-todo.md` записан следующий финансовый этап: управляемые
+  счета с founder/controller, именованные фонды, список и карточка счёта в панели.
+- Каждая Arena и Slots machine получает отдельный managed account profile. У Arena
+  сохраняются два ledger-subaccount (`bet` и `final`), потому что объединение нарушило бы
+  изоляцию возвратов и чемпионского пула. При удалении остатки по умолчанию уходят в
+  `TREASURY:global`, либо в настроенный активный фонд через restart-safe close plan.
+- В план включены procurement, guild support и будущие city/region treasuries. Cashback
+  и subsidy по умолчанию остаются на глобальной казне. Отдельный event fund не нужен.
+- В Addons commit `554afd8` опубликованы семь текущих releases с `.sha256`; старые
+  releases/tags удалены. Локальные устаревшие сборки отправлены в Корзину, `outputs`
+  содержит только актуальные JAR, AurumUI 0.7.0 и справочные файлы.
 
 ### 2026-09-12 — Codex, runbook первого live cutover
 
