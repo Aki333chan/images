@@ -59,9 +59,9 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.12.0`, `core-v0.16.0`, `auth-v0.1.0`, `guilds-v0.4.0`,
-`npc-v2.1.0`, `arena-v1.5.0`, `slots-v1.4.0`. Старые releases и tags удалены;
-актуальный Addons commit — `554afd8`.
+`companion-v0.13.0`, `core-v0.17.0`, `auth-v0.1.0`, `guilds-v0.5.0`,
+`npc-v2.1.0`, `arena-v1.6.0`, `slots-v1.5.0`. Старые releases и tags удалены;
+актуальный Addons commit — `251a814`.
 
 ## Исторические выпуски и этапы
 
@@ -191,6 +191,11 @@ Exchange engine использует версионированную котир
   режимов. Участники и суммы не меняются после частичного расчёта; оплаченная доля и
   bank log отмечаются одной DB-транзакцией, restart продолжает неоплаченные строки.
   Exactly-once потерянного ответа обеспечивается AurumCore stable key; у Vault его нет.
+- Managed accounts: `FROZEN` уже запрещает операции через registry API, но пока не
+  перехватывает прямые native-проводки плагинов и расходы policy engine. До общего
+  in-memory gate не считать freeze аварийной блокировкой всего ledger-счёта.
+- Managed accounts: профиль существующей гильдии впервые получает founder=current leader,
+  потому что старая схема Guilds не сохраняла отдельного исходного создателя.
 
 ## Текущий этап
 
@@ -227,6 +232,28 @@ Guilds должен закрывать managed profile только после �
 5. После fault injection отдельно включать guaranteed trade.
 
 ## Журнал передачи
+
+### 2026-09-13 — Codex, managed accounts generation
+
+- Sources commit `1001c23`, Addons commit `251a814`.
+- Core 0.17.0: migration 12, `AurumAccountRegistryApi`, карточки/участники счёта,
+  именованные фонды, list/inspect/create/transfer/pay/collect/freeze/close, durable
+  multi-currency sweep и восстановление незавершённых close plans.
+- Companion 0.13.0 и панель: strict-native on-demand список и детали, фильтры,
+  точные decimal strings, административные действия под `minecraft.economy.admin`,
+  обязательная причина и идемпотентный ключ. Vault fallback отсутствует.
+- Core регистрирует player wallet при входе. Guilds 0.5.0 синхронизирует карточку и
+  текущего лидера. Arena 1.6.0 группирует `bet`/`final`; Slots 1.5.0 регистрирует каждую
+  машину. Arena/Slots сохраняют `closing`, блокируют новые операции, проверяют
+  обязательства и удаляют игровой объект только после успешного sweep.
+- Проверки: Core 74 tests; Companion 172 tests; Guilds 126 tests; Arena 25 tests;
+  Slots 13 tests; API 693 tests; shared TypeScript, Nest build, web TypeScript/Vite и
+  шесть JSON-каталогов успешны. Maven shade предупреждает только о штатных совпадениях
+  manifest/module-info у драйверов Arena.
+- SHA-256: Core `15FDB627...55473`; Companion `C6961999...E8A94`; Guilds
+  `A68ECC54...3168`; Arena `5E8D9D23...0D82`; Slots `C8927A5F...107F`.
+- Следующий обязательный hardening: общий status gate для прямых ledger/hold/policy
+  операций и закрытие managed guild profile после durable disband settlement.
 
 ### 2026-09-13 — Codex, account registry TODO и актуализация Addons
 
