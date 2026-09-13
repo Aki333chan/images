@@ -33,7 +33,10 @@ public record GuildDisbandPlan(
         if (mode != BankOnDisband.KEEP && allocated != totalCents) {
             throw new IllegalArgumentException("payouts do not equal frozen balance");
         }
-        if (mode == BankOnDisband.TREASURY
+        if (totalCents == 0 && !shares.isEmpty()) {
+            throw new IllegalArgumentException("zero-balance plan cannot have payouts");
+        }
+        if (totalCents > 0 && mode == BankOnDisband.TREASURY
                 && (shares.size() != 1
                 || shares.getFirst().destination() != GuildDisbandShare.Destination.TREASURY)) {
             throw new IllegalArgumentException("treasury plan must have one treasury payout");
@@ -43,7 +46,7 @@ public record GuildDisbandPlan(
                 share.destination() != GuildDisbandShare.Destination.PLAYER)) {
             throw new IllegalArgumentException("player plan contains a non-player destination");
         }
-        if (mode == BankOnDisband.LEADER && shares.size() != 1) {
+        if (totalCents > 0 && mode == BankOnDisband.LEADER && shares.size() != 1) {
             throw new IllegalArgumentException("leader plan must have one payout");
         }
     }

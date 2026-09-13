@@ -814,9 +814,26 @@ Citizens спавнит своих NPC настоящими сущностями
 ./gradlew :core:test     # логика — любым JDK 21+
 ```
 
-Готовый `AurumGuilds-0.5.0.jar` кладётся в `plugins/`. Зависимости (HikariCP,
+Готовый `AurumGuilds-0.5.1.jar` кладётся в `plugins/`. Зависимости (HikariCP,
 драйвер MariaDB) уже внутри. API AurumCore лежит в `local-repo/` и внутрь jar
 не попадает: зависимость `compileOnly`, классы приходят от плагина AurumCore.
+
+# Release 0.5.1: crash-safe managed account retirement
+
+Guild deletion now has one final durable barrier after all persisted bank shares
+are paid and before the guild row is removed. With AurumCore, `leader`, `split`
+and `treasury` close `guild:<id>` and sweep every remaining currency to the
+configured account destination. `keep` preserves its documented meaning by
+freezing the orphaned account for explicit administrator review instead of
+silently sweeping it.
+
+A failed or timed-out registry operation leaves the guild and its persisted
+disband plan intact. Retrying the command or restarting the server resumes the
+same idempotent operation without repeating already-paid shares. Even a zero
+balance now gets a short-lived persisted plan, so the deletion barrier cannot
+be lost. Before freezing the plan, ledger mode reads the authoritative Core
+balance instead of trusting the local HUD mirror; direct panel transfers are
+therefore included in the configured disband policy.
 
 # Release 0.5.0: managed guild account cards
 

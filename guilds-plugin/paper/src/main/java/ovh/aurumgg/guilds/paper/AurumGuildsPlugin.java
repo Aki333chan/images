@@ -154,15 +154,6 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         boolean worldGuardFound = WorldGuardBridge.installed();
         if (worldGuardFound) worldGuard = new WorldGuardBridge(getLogger());
 
-        // Состав региона держится в согласии с составом гильдии тем же
-        // механизмом, что и группы LuckPerms: обоим нужно знать о вступлении и
-        // выходе, и оба узнают об этом одним и тем же вызовом.
-        GuildAccountRegistryHooks accountRegistryHooks = new GuildAccountRegistryHooks(this, () -> this.guilds);
-        GuildHooks hooks = GuildHooks.composite(
-                luckPerms ? luckPermsBridge : GuildHooks.noop(),
-                worldGuardFound ? new RegionSyncHooks(this, () -> this.guilds, worldGuard) : GuildHooks.noop(),
-                accountRegistryHooks);
-
         // А ВОТ С ЭКОНОМИКОЙ ТАК НЕЛЬЗЯ, И ЗДЕСЬ БЫЛА ОШИБКА.
         //
         // Провайдера экономики регистрирует ТРЕТИЙ плагин — за Vault это
@@ -206,6 +197,16 @@ public final class AurumGuildsPlugin extends JavaPlugin {
                 if (failure == null && guilds.hasPendingDisbands()) guilds.resumeDisbands();
             });
         });
+
+        // Состав региона, LuckPerms и managed profile получают одни события.
+        // Lifecycle-барьер спрашивает режим именно у GuildEconomy: standalone
+        // Vault не должен внезапно зависеть от установленного passive Core.
+        GuildAccountRegistryHooks accountRegistryHooks = new GuildAccountRegistryHooks(
+                this, () -> this.guilds, economy::guildAccounts);
+        GuildHooks hooks = GuildHooks.composite(
+                luckPerms ? luckPermsBridge : GuildHooks.noop(),
+                worldGuardFound ? new RegionSyncHooks(this, () -> this.guilds, worldGuard) : GuildHooks.noop(),
+                accountRegistryHooks);
 
         guilds = new GuildService(config, repository, hooks, economy, names, getLogger(), Instant::now);
         try {

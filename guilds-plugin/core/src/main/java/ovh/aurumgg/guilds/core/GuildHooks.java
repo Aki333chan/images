@@ -25,6 +25,18 @@ import java.util.UUID;
  */
 public interface GuildHooks {
 
+    /**
+     * Последний внешний барьер перед физическим удалением гильдии.
+     *
+     * Денежный расчёт уже завершён, но строка гильдии и persisted disband plan
+     * ещё существуют. Поэтому интеграция с AurumCore может безопасно закрыть
+     * managed profile, а при временной ошибке вернуть отказ: следующий запуск
+     * или повтор команды продолжит тот же сохранённый роспуск.
+     */
+    default BankResult prepareGuildDeletion(long guildId, BankOnDisband mode) {
+        return BankResult.success();
+    }
+
     /** Гильдия создана: завести группу и повесить на неё суффикс с тегом. */
     void guildCreated(long guildId, String tag);
 
@@ -62,6 +74,15 @@ public interface GuildHooks {
      */
     static GuildHooks composite(GuildHooks... targets) {
         return new GuildHooks() {
+            @Override
+            public BankResult prepareGuildDeletion(long guildId, BankOnDisband mode) {
+                for (GuildHooks target : targets) {
+                    BankResult result = target.prepareGuildDeletion(guildId, mode);
+                    if (!result.ok()) return result;
+                }
+                return BankResult.success();
+            }
+
             @Override
             public void guildCreated(long guildId, String tag) {
                 for (GuildHooks target : targets) target.guildCreated(guildId, tag);

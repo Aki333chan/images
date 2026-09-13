@@ -110,6 +110,11 @@ final class GuildEconomy implements EconomyBridge, Listener {
     }
 
     @Override
+    public BankResult balance(long guildId) {
+        return delegate.balance(guildId);
+    }
+
+    @Override
     public BankResult deposit(long guildId, UUID player, double amount) {
         return delegate.deposit(guildId, player, amount);
     }

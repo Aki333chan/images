@@ -62,7 +62,7 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.0`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.0`,
+`companion-v0.13.0`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
 `npc-v2.1.0`, `arena-v1.6.0`, `slots-v1.5.0`. Старые releases и tags удалены;
 актуальный Addons commit — `baad0ea`.
 
@@ -199,7 +199,7 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Закрыть managed guild profile после disband, затем живой fault-injection.**
+**Живой fault-injection managed accounts на Paper 26.2 + MariaDB.**
 
 Core 0.17.1 содержит MariaDB migration 12 и реестр карточек поверх существующего ledger.
 Companion 0.13.0 и web-панель дают on-demand список, детали и управление именованными
@@ -210,8 +210,10 @@ Arena/Slots перед удалением сохраняют план, блок�
 
 Общий status gate готов: один SQL-запрос строит индекс при старте, затем hot path читает
 ConcurrentHashMap. Прямые проводки, holds, exchange, admin set и policy postings уважают
-`FROZEN/CLOSING/CLOSED`; SQL на каждый платёж не добавлен. Осталось связать существующий
-durable disband Guilds с закрытием managed profile после последней выплаты. Затем — живые
+`FROZEN/CLOSING/CLOSED`; SQL на каждый платёж не добавлен. Guilds 0.5.1 связал durable
+disband с managed profile: после последней выплаты, но до удаления строки гильдии,
+профиль закрывается; `keep` замораживает его для ручного решения. Даже нулевой баланс
+сохраняет барьер, а план строится по авторитетному ledger balance. Теперь нужны живые
 сценарии Paper/MariaDB: закрытие с hold, падение между sweep-проводками, недоступная
 destination, повтор команды и Spark.
 
@@ -220,15 +222,27 @@ destination, повтор команды и Spark.
 
 ## Очередь после текущего этапа
 
-1. После завершения существующего durable guild-disband закрывать/архивировать профиль
-   гильдии в реестре, не дублируя уже выплаченные доли.
-2. Проверить Core 0.17.1 generation на Paper 26.2 + MariaDB + VaultUnlocked: базовые
+1. Проверить Core 0.17.1 generation на Paper 26.2 + MariaDB + VaultUnlocked: базовые
    проводки, policy limits/tax, Arena, Slots, NPC, Guilds, close fault injection и Spark.
-3. Решить источник bankroll для Slots и бюджет NPC buyers; затем procurement и guild
+2. Решить источник bankroll для Slots и бюджет NPC buyers; затем procurement и guild
    support. City/region accounts оставить dormant до дизайна городов/регионов.
-4. После fault injection отдельно включать guaranteed trade.
+3. После fault injection отдельно включать guaranteed trade.
 
 ## Журнал передачи
+
+### 2026-09-13 — Codex, durable managed guild retirement
+
+- Guilds 0.5.1 закрывает `guild:<id>` после завершения persisted disband payouts, но до
+  удаления guild row. Любой отказ/таймаут Core сохраняет гильдию и план для безопасного
+  повтора; stable lifecycle key переживает сбой между закрытием profile и удалением строки.
+- `leader`, `split` и `treasury` закрывают профиль и отправляют остатки всех валют в его
+  close destination. `keep` замораживает оставленный профиль вместо скрытого sweep.
+- Нулевой общак тоже получает persisted plan. В ledger-режиме сумма плана берётся из
+  авторитетного Core balance, поэтому прямой перевод из панели не теряется в старом зеркале.
+- Проверки: 119 core tests и 13 paper tests (132 всего), включая отказ lifecycle после
+  уже проведённых выплат, сохранение нулевого барьера, прямое изменение ledger balance,
+  создание отсутствующего profile, close rejection и `keep` freeze.
+- Следующий этап: живой fault-injection Paper 26.2 + MariaDB + VaultUnlocked.
 
 ### 2026-09-13 — Codex, managed accounts generation
 

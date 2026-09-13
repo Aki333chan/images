@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -543,6 +544,61 @@ class GuildServiceTest {
     }
 
     @Test
+    @DisplayName("Сбой закрытия managed-счёта сохраняет оплаченный план для повтора")
+    void закрытиеManagedСчетаПовторяетсяПослеВыплат() {
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 300);
+        service.deposit(MEMBER, 300).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+        hooks.deletionPreparation = BankResult.fail("guild.err.accountLifecycle");
+
+        assertFalse(service.disband(LEADER).join().ok());
+        assertTrue(service.byId(id).isPresent(), "гильдия остаётся до закрытия profile");
+        assertTrue(repository.disbandPlan(id).orElseThrow().complete(),
+                "выплаты уже отмечены и не должны повторяться");
+        assertEquals(300, economy.balance(LEADER));
+        assertEquals(0, hooks.count("deleted "));
+
+        hooks.deletionPreparation = BankResult.success();
+        assertTrue(service.disband(LEADER).join().ok());
+        assertTrue(service.byId(id).isEmpty());
+        assertEquals(300, economy.balance(LEADER), "повтор не выдаёт общак ещё раз");
+        assertEquals(2, hooks.count("prepare-delete "));
+        assertEquals(1, hooks.count("deleted "));
+    }
+
+    @Test
+    @DisplayName("Роспуск использует актуальный ledger balance, а не устаревшее зеркало")
+    void роспускЧитаетАвторитетныйБаланс() {
+        economy.guildAccounts = true;
+        buildGuild();
+        economy.give(MEMBER, 300);
+        service.deposit(MEMBER, 300).join();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+        economy.giveGuild(id, 50); // например, прямой перевод администратором из панели
+
+        assertTrue(service.disband(LEADER).join().ok());
+        assertEquals(350, economy.balance(LEADER));
+        assertEquals(0, economy.vault(id));
+    }
+
+    @Test
+    @DisplayName("Даже нулевой общак сохраняет барьер закрытия managed-счёта")
+    void нулевойОбщакЖдетManagedСчет() {
+        economy.guildAccounts = true;
+        buildGuild();
+        long id = service.guildOf(LEADER).orElseThrow().id();
+        hooks.deletionPreparation = BankResult.fail("guild.err.accountLifecycle");
+
+        assertFalse(service.disband(LEADER).join().ok());
+        assertTrue(service.hasPendingDisbands());
+        assertEquals(0, repository.disbandPlan(id).orElseThrow().totalCents());
+        assertEquals("guild.err.disbandPending",
+                service.invite(LEADER, STRANGER).join().messageKey());
+    }
+
+    @Test
     @DisplayName("Настройка split делит общак между участниками, остаток лидеру")
     void роспускДелитОбщакПоровну() {
         service.applyConfig(GuildsConfig.fromMap(Map.of("bank.on-disband", "split")));
@@ -625,6 +681,7 @@ class GuildServiceTest {
         assertTrue(service.disband(LEADER).join().ok());
         assertEquals(250, economy.vault(id), "деньги остались там, где были");
         assertEquals(0, economy.balance(LEADER));
+        assertEquals(List.of(BankOnDisband.KEEP), hooks.deletionModes);
     }
 
     @Test

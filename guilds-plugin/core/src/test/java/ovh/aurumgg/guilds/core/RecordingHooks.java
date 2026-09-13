@@ -16,6 +16,15 @@ import java.util.UUID;
 final class RecordingHooks implements GuildHooks {
 
     final List<String> calls = new ArrayList<>();
+    final List<BankOnDisband> deletionModes = new ArrayList<>();
+    BankResult deletionPreparation = BankResult.success();
+
+    @Override
+    public BankResult prepareGuildDeletion(long guildId, BankOnDisband mode) {
+        calls.add("prepare-delete " + guildId + " " + mode);
+        deletionModes.add(mode);
+        return deletionPreparation;
+    }
 
     @Override
     public void guildCreated(long guildId, String tag) {

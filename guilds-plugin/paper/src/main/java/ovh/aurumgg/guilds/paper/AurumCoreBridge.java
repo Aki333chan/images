@@ -243,6 +243,14 @@ final class AurumCoreBridge implements EconomyBridge {
      * Не ответил — пустой результат: вызывающий посчитает зеркало сам, и это
      * не ошибка, а всего лишь менее точное число на экране.
      */
+    @Override
+    public BankResult balance(long guildId) {
+        AurumEconomyApi current = lookup(plugin);
+        api = current;
+        if (current == null || Bukkit.isPrimaryThread()) return BankResult.unavailable();
+        return balance(current, guildId);
+    }
+
     private BankResult balance(AurumEconomyApi current, long guildId) {
         Optional<Optional<BalanceSnapshot>> answer =
                 await(current.balance(guild(guildId)), "баланс счёта гильдии " + guildId);

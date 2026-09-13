@@ -130,9 +130,12 @@ money-routing decisions.
 7. Add procurement and guild-support administration.
 8. Leave city/region gameplay integration dormant until that system is designed.
 
-Additional follow-up: close/archive the managed guild profile only after the existing durable
-guild disband settlement completes. At first adoption of a legacy guild, the current leader is
-the best available founder because the old schema did not retain the original creator.
+Additional follow-up completed in Guilds 0.5.1: the managed guild profile is closed only after
+the existing durable guild-disband settlement completes and before the guild row is deleted.
+`keep` freezes the retained profile for manual administration. A zero balance also persists the
+barrier, and ledger mode snapshots the authoritative Core balance before building the plan.
+At first adoption of a legacy guild, the current leader remains the best available founder
+because the old schema did not retain the original creator.
 
 ## Acceptance tests
 

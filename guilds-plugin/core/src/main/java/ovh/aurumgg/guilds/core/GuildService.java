@@ -1339,6 +1339,16 @@ public final class GuildService implements AutoCloseable {
             return settlement;
         }
 
+        GuildDisbandPlan persistedPlan = disbandPlans.get(guild.id());
+        BankOnDisband mode = persistedPlan == null
+                ? config.bankOnDisband() : persistedPlan.mode();
+        BankResult accountLifecycle = hooks.prepareGuildDeletion(guild.id(), mode);
+        if (!accountLifecycle.ok()) {
+            logger.warning("Гильдия «" + guild.name() + "» НЕ удалена: managed-счёт "
+                    + "не подготовлен к закрытию (" + accountLifecycle.messageKey() + ")");
+            return accountLifecycle;
+        }
+
         try {
             // The repository verifies that the persisted plan has no unpaid
             // rows and deletes guild + plan in one transaction.
@@ -1389,10 +1399,19 @@ public final class GuildService implements AutoCloseable {
     private BankResult settleBank(StoredGuild guild) {
         GuildDisbandPlan plan = disbandPlans.get(guild.id());
         if (plan == null) {
-            long cents = Math.round(guild.bank() * 100);
-            if (cents <= 0) return BankResult.success();
+            double balance = guild.bank();
+            if (economy.guildAccounts()) {
+                BankResult authoritative = economy.balance(guild.id());
+                if (!authoritative.ok() || authoritative.balance().isEmpty()) {
+                    logger.warning("Гильдия «" + guild.name() + "» не распущена: "
+                            + "AurumCore не вернул авторитетный баланс её счёта");
+                    return BankResult.fail("guild.err.accountLifecycle");
+                }
+                balance = authoritative.balance().getAsDouble();
+            }
+            long cents = Math.round(balance * 100);
             BankOnDisband mode = config.bankOnDisband();
-            if (mode != BankOnDisband.KEEP
+            if (cents > 0 && mode != BankOnDisband.KEEP
                     && (!economy.available() || !accountReady(guild.id()))) {
                 logger.warning("Гильдия «" + guild.name() + "» не распущена: экономика "
                         + "недоступна или её ledger-счёт ещё не готов; общак "
@@ -1423,7 +1442,9 @@ public final class GuildService implements AutoCloseable {
     private GuildDisbandPlan makeDisbandPlan(
             StoredGuild guild, BankOnDisband mode, long totalCents) {
         List<GuildDisbandShare> shares = new ArrayList<>();
-        if (mode == BankOnDisband.TREASURY) {
+        if (totalCents == 0) {
+            return new GuildDisbandPlan(guild.id(), mode, 0, clock.get(), shares);
+        } else if (mode == BankOnDisband.TREASURY) {
             shares.add(new GuildDisbandShare(0, GuildDisbandShare.Destination.TREASURY,
                     null, totalCents, false));
         } else if (mode == BankOnDisband.LEADER) {

@@ -171,9 +171,10 @@
     cutover подготовлена в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md`; live-прогон ещё
     предстоит.
 10. [~] Реестр управляемых счетов и именованных фондов. Core 0.17.1, Companion 0.13.0,
-    Guilds 0.5.0, Arena 1.6.0 и Slots 1.5.0 добавляют схему, API, панель, автоматическую
+    Guilds 0.5.1, Arena 1.6.0 и Slots 1.5.0 добавляют схему, API, панель, автоматическую
     регистрацию, общий in-memory status gate и crash-resumable закрытие Arena/Slots.
-    Остались архивирование профиля после роспуска гильдии и живой fault-injection.
+    Guilds закрывает профиль только после durable-расчёта роспуска; `keep` замораживает
+    оставленный счёт. Остался живой fault-injection.
     Полные требования и порядок реализации
     зафиксированы в `docs/aurum-account-registry-todo.md`: список player/guild/plugin
     счетов в панели, неизменяемый founder отдельно от текущего controller, казны городов

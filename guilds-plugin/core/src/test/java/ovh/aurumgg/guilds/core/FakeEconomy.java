@@ -53,6 +53,15 @@ final class FakeEconomy implements EconomyBridge {
     }
 
     @Override
+    public BankResult balance(long guildId) {
+        return guildAccounts ? BankResult.success(vault(guildId)) : BankResult.success();
+    }
+
+    void giveGuild(long guildId, double amount) {
+        vaults.merge(guildId, amount, Double::sum);
+    }
+
+    @Override
     public BankResult deposit(long guildId, UUID player, double amount) {
         double have = balance(player);
         if (have < amount) return BankResult.notEnough();
