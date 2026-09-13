@@ -40,6 +40,7 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
     private final Map<String, CurrencySpec> currencies;
     private final Executor executor;
     private final String defaultCloseDestination;
+    private final AccountStatusGate statusGate;
     @SuppressWarnings("unused") private final Clock clock;
 
     public AccountRegistryService(AccountRegistryRepository repository,
@@ -47,7 +48,7 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
                                   Map<String, CurrencySpec> currencies,
                                   Executor executor,
                                   Clock clock,
-                                  String defaultCloseDestination) {
+                                  String defaultCloseDestination) throws java.sql.SQLException {
         this.repository = repository;
         this.economy = economy;
         this.currencies = Map.copyOf(currencies);
@@ -58,7 +59,10 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
         if (this.defaultCloseDestination.length() > 191) {
             throw new IllegalArgumentException("Default close destination is too long");
         }
+        this.statusGate = new AccountStatusGate(repository.memberStatuses());
     }
+
+    public AccountStatusGate statusGate() { return statusGate; }
 
     @Override
     public CompletionStage<ManagedAccountPage> list(ManagedAccountQuery query) {
@@ -74,7 +78,9 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
     public CompletionStage<ManagedAccountMutationResult> register(ManagedAccountRegistration request) {
         return supply(() -> {
             AccountRegistryRepository.WriteResult result = repository.register(request, hashRegistration(request));
-            return result(result, repository.find(request.profileKey(), currencies).orElse(null));
+            ManagedAccount account = repository.find(request.profileKey(), currencies).orElse(null);
+            if (account != null) statusGate.update(account);
+            return result(result, account);
         }).exceptionally(this::unavailable);
     }
 
@@ -82,7 +88,9 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
     public CompletionStage<ManagedAccountMutationResult> synchronize(ManagedAccountRegistration request) {
         return supply(() -> {
             AccountRegistryRepository.WriteResult result = repository.synchronize(request, hashRegistration(request));
-            return result(result, repository.find(request.profileKey(), currencies).orElse(null));
+            ManagedAccount account = repository.find(request.profileKey(), currencies).orElse(null);
+            if (account != null) statusGate.update(account);
+            return result(result, account);
         }).exceptionally(this::unavailable);
     }
 
@@ -133,7 +141,9 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
                             request.actor(), request.reason()),
                     request.profileKey(), request.frozen() ? ManagedAccountStatus.ACTIVE : ManagedAccountStatus.FROZEN,
                     target, target, request.frozen() ? "FREEZE" : "UNFREEZE", request.actor(), request.reason());
-            return result(write, repository.find(request.profileKey(), currencies).orElse(null));
+            ManagedAccount account = repository.find(request.profileKey(), currencies).orElse(null);
+            if (account != null) statusGate.update(account);
+            return result(write, account);
         }).exceptionally(this::unavailable);
     }
 
@@ -197,6 +207,7 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
             return result(begun, repository.find(before.profileKey(), currencies).orElse(before));
         }
         ManagedAccount closing = repository.find(before.profileKey(), currencies).orElse(before);
+        statusGate.update(closing);
         List<AccountId> members = closing.members().stream().map(ManagedAccountMember::account).toList();
         if (repository.hasUnresolvedHolds(members)) {
             return outcome(ManagedAccountMutationResult.Status.REJECTED, closing, "unresolved-holds");
@@ -232,6 +243,7 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
         }
         repository.completeClose(request.idempotencyKey(), closing.profileKey());
         ManagedAccount closed = repository.find(closing.profileKey(), currencies).orElse(closing);
+        statusGate.update(closed);
         return outcome(begun.status() == AccountRegistryRepository.WriteStatus.DUPLICATE
                 ? ManagedAccountMutationResult.Status.DUPLICATE
                 : ManagedAccountMutationResult.Status.SUCCESS, closed, "closed");

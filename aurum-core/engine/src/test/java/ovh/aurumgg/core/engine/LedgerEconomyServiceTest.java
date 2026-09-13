@@ -25,6 +25,7 @@ import ovh.aurumgg.core.api.BalanceSetRequest;
 import ovh.aurumgg.core.api.BalanceSetResult;
 import ovh.aurumgg.core.api.CurrencySpec;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
+import ovh.aurumgg.core.api.ManagedAccountStatus;
 import ovh.aurumgg.core.api.TransactionCategory;
 import ovh.aurumgg.core.api.TransactionRequest;
 import ovh.aurumgg.core.api.TransactionResult;
@@ -80,6 +81,20 @@ class LedgerEconomyServiceTest {
 
         assertEquals(new BigDecimal("90.00"), repository.value(ALICE));
         assertEquals(new BigDecimal("10.00"), repository.value(BOB));
+    }
+
+    @Test
+    void frozenManagedAccountIsRejectedBeforeTheLedgerCommit() {
+        LedgerEconomyService service = service(FinancialRuleResolver.none());
+        service.attachAccountStatusGate(new AccountStatusGate(Map.of(ALICE, ManagedAccountStatus.FROZEN)));
+
+        TransactionResult result = service.transfer(request("frozen:alice", "10.00"))
+                .toCompletableFuture().join();
+
+        assertEquals(TransactionResult.Status.REJECTED, result.status());
+        assertTrue(result.message().contains("ACCOUNT_STATUS:FROZEN"));
+        assertEquals(new BigDecimal("100.00"), repository.value(ALICE));
+        assertEquals(new BigDecimal("0.00"), repository.value(BOB));
     }
 
     @Test

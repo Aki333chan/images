@@ -121,9 +121,9 @@ money-routing decisions.
 
 1. [~] Finish current live smoke/fault-injection testing.
 2. [x] Add registry schema, read API and account list/details in Companion + panel.
-3. [~] Add named-fund create/transfer/freeze/close operations with permissions and
-   audit. Administrative registry transfers are status-gated; a lightweight universal
-   ledger gate for policy/plugin writes against frozen accounts is still required.
+3. [x] Add named-fund create/transfer/freeze/close operations with permissions and
+   audit. The status gate is an in-memory index loaded once and updated on registry
+   mutations; it adds no SQL query to the hot payment path.
 4. [x] Register existing player, guild, Arena and Slots accounts idempotently.
 5. [x] Implement Arena/Slots close plans and configurable sweep destination.
 6. Decide and implement Slots bankroll and NPC-buyer budget sources.

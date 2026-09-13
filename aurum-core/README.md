@@ -1,9 +1,15 @@
-# AurumCore 0.17.0
+# AurumCore 0.17.1
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
 registers the highest-priority Vault economy provider for third-party plugins.
 Vault remains the compatibility API; it is not the money store.
+
+Version 0.17.1 completes the registry status gate: one startup query builds an
+in-memory account-status index, then every ledger plan, hold capture, exchange,
+administrative set and policy-generated posting is checked without per-payment
+SQL. `FROZEN` and `CLOSED` reject incoming and outgoing money; `CLOSING` permits
+only its own `ACCOUNT_CLOSE` debit.
 
 Version 0.17.0 adds the managed-account registry. Ledger balances are still the
 only monetary authority; the registry adds names, immutable founder metadata,
@@ -47,7 +53,7 @@ instead of silently widening the audit to every account.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.17.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.17.1.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.

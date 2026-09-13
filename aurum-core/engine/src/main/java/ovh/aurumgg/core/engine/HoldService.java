@@ -175,6 +175,7 @@ public final class HoldService {
         return CompletableFuture.supplyAsync(() -> {
             try { return supplier.get(); }
             catch (PolicyRejectedException exception) { return rejected("POLICY:" + exception.getMessage()); }
+            catch (AccountStatusRejectedException exception) { return rejected(exception.getMessage()); }
             catch (Exception exception) { throw new CompletionException(exception); }
         }, executor).exceptionally(exception -> new HoldResult(HoldResult.Status.UNAVAILABLE,
                 Optional.empty(), "Hold storage unavailable"));

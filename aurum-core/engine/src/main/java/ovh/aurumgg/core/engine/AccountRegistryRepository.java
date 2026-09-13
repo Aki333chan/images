@@ -33,4 +33,5 @@ public interface AccountRegistryRepository {
     Optional<PendingClose> pendingClosure(String profileKey) throws SQLException;
     List<PendingClose> pendingClosures(int limit) throws SQLException;
     boolean hasUnresolvedHolds(List<AccountId> members) throws SQLException;
+    Map<AccountId, ManagedAccountStatus> memberStatuses() throws SQLException;
 }

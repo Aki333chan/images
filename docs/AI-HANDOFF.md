@@ -59,7 +59,7 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.0`, `core-v0.17.0`, `auth-v0.1.0`, `guilds-v0.5.0`,
+`companion-v0.13.0`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.0`,
 `npc-v2.1.0`, `arena-v1.6.0`, `slots-v1.5.0`. Старые releases и tags удалены;
 актуальный Addons commit — `251a814`.
 
@@ -191,45 +191,39 @@ Exchange engine использует версионированную котир
   режимов. Участники и суммы не меняются после частичного расчёта; оплаченная доля и
   bank log отмечаются одной DB-транзакцией, restart продолжает неоплаченные строки.
   Exactly-once потерянного ответа обеспечивается AurumCore stable key; у Vault его нет.
-- Managed accounts: `FROZEN` уже запрещает операции через registry API, но пока не
-  перехватывает прямые native-проводки плагинов и расходы policy engine. До общего
-  in-memory gate не считать freeze аварийной блокировкой всего ledger-счёта.
 - Managed accounts: профиль существующей гильдии впервые получает founder=current leader,
   потому что старая схема Guilds не сохраняла отдельного исходного создателя.
 
 ## Текущий этап
 
-**Завершить hardening managed-account registry, затем живой fault-injection.**
+**Закрыть managed guild profile после disband, затем живой fault-injection.**
 
-Core 0.17.0 содержит MariaDB migration 12 и реестр карточек поверх существующего ledger.
+Core 0.17.1 содержит MariaDB migration 12 и реестр карточек поверх существующего ledger.
 Companion 0.13.0 и web-панель дают on-demand список, детали и управление именованными
 фондами без Vault fallback. Player, Guild, Arena и Slots регистрируются идемпотентно;
 Arena/Slots перед удалением сохраняют план, блокируют новые операции, проверяют свои
 обязательства и переносят все валюты в настроенную казну. Падение или рестарт продолжает
 тот же close plan со стабильными ключами.
 
-Перед production-включением `freeze` нужен общий лёгкий status gate в денежном движке:
-сейчас статус гарантированно проверяется в операциях реестра, но прямые native-проводки
-плагинов и policy funding ещё не сверяются с `FROZEN`. Также существующий durable disband
-Guilds должен закрывать managed profile только после последней выплаты. После этих двух
-пунктов — живые сценарии Paper/MariaDB: закрытие с hold, падение между sweep-проводками,
-недоступная destination, повтор команды и Spark.
+Общий status gate готов: один SQL-запрос строит индекс при старте, затем hot path читает
+ConcurrentHashMap. Прямые проводки, holds, exchange, admin set и policy postings уважают
+`FROZEN/CLOSING/CLOSED`; SQL на каждый платёж не добавлен. Осталось связать существующий
+durable disband Guilds с закрытием managed profile после последней выплаты. Затем — живые
+сценарии Paper/MariaDB: закрытие с hold, падение между sweep-проводками, недоступная
+destination, повтор команды и Spark.
 
 `trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. AurumUI 0.7.0
 остаётся опциональным клиентским Fabric-модом.
 
 ## Очередь после текущего этапа
 
-1. Добавить общий in-memory status gate: `FROZEN/CLOSING/CLOSED` должны применяться ко
-   всем прямым ledger/hold/policy операциям без SQL-запроса на каждый платёж; `ACCOUNT_CLOSE`
-   — единственное разрешённое списание из `CLOSING`.
-2. После завершения существующего durable guild-disband закрывать/архивировать профиль
+1. После завершения существующего durable guild-disband закрывать/архивировать профиль
    гильдии в реестре, не дублируя уже выплаченные доли.
-3. Проверить Core 0.17.0 generation на Paper 26.2 + MariaDB + VaultUnlocked: базовые
+2. Проверить Core 0.17.1 generation на Paper 26.2 + MariaDB + VaultUnlocked: базовые
    проводки, policy limits/tax, Arena, Slots, NPC, Guilds, close fault injection и Spark.
-4. Решить источник bankroll для Slots и бюджет NPC buyers; затем procurement и guild
+3. Решить источник bankroll для Slots и бюджет NPC buyers; затем procurement и guild
    support. City/region accounts оставить dormant до дизайна городов/регионов.
-5. После fault injection отдельно включать guaranteed trade.
+4. После fault injection отдельно включать guaranteed trade.
 
 ## Журнал передачи
 

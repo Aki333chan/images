@@ -209,6 +209,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                     accountRegistry = new AccountRegistryService(opened.accountRegistryRepository(), service,
                             settings.currencies(), databaseExecutor, Clock.systemUTC(),
                             settings.defaultAccountCloseDestination());
+                    service.attachAccountStatusGate(accountRegistry.statusGate());
                     accountCommands = new AccountCommandCoordinator(this, accountRegistry);
                     var globalRegistration = new ManagedAccountRegistration(
                             "core-bootstrap:treasury:global", AccountRegistryService.GLOBAL_TREASURY_PROFILE,

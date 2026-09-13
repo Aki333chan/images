@@ -25,6 +25,7 @@ public final class ExchangeService {
     private final Clock clock;
     private final Duration quoteTtl;
     private final Object mutationLock;
+    private volatile AccountStatusGate accountStatusGate;
 
     public ExchangeService(Map<String, CurrencySpec> currencies, ExchangeRegistry registry,
                            ExchangeRepository repository, MultiCurrencyEconomyService economy,
@@ -72,8 +73,10 @@ public final class ExchangeService {
                     ExchangeRule rule = registry.snapshot().stream()
                             .filter(value -> value.id().equals(quote.ruleId())
                                     && value.revision() == quote.ruleRevision()).findFirst().orElseThrow();
-                    ExchangeCommit commit = repository.execute(ExchangePlanner.plan(request, quote,
-                            rule.settlement()), quote.fromCurrency(), quote.toCurrency());
+                    ExchangePlan plan = ExchangePlanner.plan(request, quote, rule.settlement());
+                    String blocked = accountStatusGate == null ? null : accountStatusGate.rejection(plan);
+                    if (blocked != null) return rejected(request, blocked);
+                    ExchangeCommit commit = repository.execute(plan, quote.fromCurrency(), quote.toCurrency());
                     return result(request, commit);
                 } catch (PolicyRejectedException exception) {
                     return rejected(request, exception.getMessage());
@@ -112,4 +115,6 @@ public final class ExchangeService {
         return new ExchangeResult(ExchangeResult.Status.REJECTED, request.idempotencyKey(),
                 Optional.empty(), message);
     }
+
+    void attachAccountStatusGate(AccountStatusGate gate) { this.accountStatusGate = gate; }
 }

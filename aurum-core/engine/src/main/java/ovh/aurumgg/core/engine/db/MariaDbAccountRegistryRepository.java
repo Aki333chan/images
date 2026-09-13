@@ -530,7 +530,7 @@ public final class MariaDbAccountRegistryRepository implements AccountRegistryRe
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      SELECT 1 FROM aurum_holds h JOIN aurum_accounts a ON a.id = h.account_id
-                     WHERE h.status IN ('HELD', 'CAPTURING') AND ((
+                     WHERE h.status IN ('HELD', 'CAPTURING') AND h.expires_at > CURRENT_TIMESTAMP(6) AND ((
                      """ + sourceConditions + ") OR (" + targetConditions + ")) LIMIT 1")) {
             int index = 1;
             for (AccountId member : members) {
@@ -542,6 +542,24 @@ public final class MariaDbAccountRegistryRepository implements AccountRegistryRe
                 statement.setString(index++, member.reference());
             }
             try (ResultSet result = statement.executeQuery()) { return result.next(); }
+        }
+    }
+
+    @Override
+    public Map<AccountId, ManagedAccountStatus> memberStatuses() throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT m.account_type, m.reference_id, p.status
+                     FROM aurum_account_profile_members m
+                     JOIN aurum_account_profiles p ON p.profile_key = m.profile_key
+                     """ );
+             ResultSet result = statement.executeQuery()) {
+            Map<AccountId, ManagedAccountStatus> statuses = new LinkedHashMap<>();
+            while (result.next()) {
+                statuses.put(new AccountId(AccountType.valueOf(result.getString(1)), result.getString(2)),
+                        ManagedAccountStatus.valueOf(result.getString(3)));
+            }
+            return Map.copyOf(statuses);
         }
     }
 

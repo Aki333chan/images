@@ -24,6 +24,7 @@ public final class MultiCurrencyEconomyService implements AurumEconomyApi {
     private final Map<String, LedgerEconomyService> services;
     private volatile ExchangeService exchangeService;
     private volatile HoldService holdService;
+    private volatile AccountStatusGate accountStatusGate;
 
     public MultiCurrencyEconomyService(CurrencySpec primary, Map<String, LedgerEconomyService> services) {
         this.primary = primary;
@@ -116,8 +117,16 @@ public final class MultiCurrencyEconomyService implements AurumEconomyApi {
         return current == null ? AurumEconomyApi.super.exchange(request) : current.exchange(request);
     }
 
-    public void attachExchangeService(ExchangeService service) { this.exchangeService = service; }
+    public void attachExchangeService(ExchangeService service) {
+        this.exchangeService = service;
+        if (accountStatusGate != null) service.attachAccountStatusGate(accountStatusGate);
+    }
     public void attachHoldService(HoldService service) { this.holdService = service; }
+    public void attachAccountStatusGate(AccountStatusGate gate) {
+        this.accountStatusGate = java.util.Objects.requireNonNull(gate, "gate");
+        services.values().forEach(service -> service.attachAccountStatusGate(gate));
+        if (exchangeService != null) exchangeService.attachAccountStatusGate(gate);
+    }
 
     public CompletionStage<TransactionResult> setPlayerBalance(AccountId account, String currencyId,
                                                                 BigDecimal target, String key,

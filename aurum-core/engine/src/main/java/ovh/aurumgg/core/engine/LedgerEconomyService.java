@@ -35,6 +35,7 @@ public final class LedgerEconomyService implements AurumEconomyApi {
     private final Object mutationLock;
     private final ConcurrentMap<AccountId, BigDecimal> balanceCache = new ConcurrentHashMap<>();
     private final AtomicReference<GlobalEconomySnapshot> globalCache = new AtomicReference<>();
+    private volatile AccountStatusGate accountStatusGate;
 
     public LedgerEconomyService(CurrencySpec currency, LedgerRepository repository,
                                 FinancialRuleResolver policies, Executor executor, Clock clock) {
@@ -113,6 +114,12 @@ public final class LedgerEconomyService implements AurumEconomyApi {
     /** Caller must hold the shared mutation lock. */
     TransactionResult commitPlanned(TransactionPlan plan, java.util.UUID excludedHold) throws Exception {
         TransactionRequest request = plan.request();
+        String blocked = accountStatusGate == null ? null : accountStatusGate.rejection(plan);
+        if (blocked != null) {
+            return new TransactionResult(TransactionResult.Status.REJECTED, request.idempotencyKey(),
+                    currency.requireAmount(request.amount()), currency.requireAmount(request.amount()),
+                    BigDecimal.ZERO.setScale(currency.scale()), blocked);
+        }
         LedgerCommit commit = repository.commit(plan, currency, excludedHold);
         if (commit.status() == LedgerCommit.Status.COMMITTED) {
             if (commit.balancesAfter().isEmpty()) {
@@ -137,8 +144,11 @@ public final class LedgerEconomyService implements AurumEconomyApi {
     }
 
     TransactionPlan planFor(TransactionRequest request) {
-        return TransactionPlanner.plan(request, currency,
+        TransactionPlan plan = TransactionPlanner.plan(request, currency,
                 policies.select(request, Instant.now(clock)), Instant.now(clock));
+        String blocked = accountStatusGate == null ? null : accountStatusGate.rejection(plan);
+        if (blocked != null) throw new AccountStatusRejectedException(blocked);
+        return plan;
     }
 
     /** Atomic compare-and-set used by Companion and other retrying clients. */
@@ -194,6 +204,8 @@ public final class LedgerEconomyService implements AurumEconomyApi {
             // would change that meaning, so administrative replacement does
             // not run through policy selection.
             TransactionPlan plan = TransactionPlanner.plan(transaction, currency, List.of(), Instant.now(clock));
+            String blocked = accountStatusGate == null ? null : accountStatusGate.rejection(plan);
+            if (blocked != null) return setRejected(request, blocked);
             LedgerCommit commit = repository.commit(plan, currency,
                     new BalanceExpectation(request.account(), expected));
             BigDecimal current = repository.balance(request.account(), currency)
@@ -303,6 +315,10 @@ public final class LedgerEconomyService implements AurumEconomyApi {
 
     public void applyCommittedBalance(AccountId account, BigDecimal balance) {
         balanceCache.put(account, currency.requireAmount(balance));
+    }
+
+    public void attachAccountStatusGate(AccountStatusGate gate) {
+        this.accountStatusGate = java.util.Objects.requireNonNull(gate, "gate");
     }
 
     private BalanceSnapshot snapshot(AccountId account, BigDecimal value) {
