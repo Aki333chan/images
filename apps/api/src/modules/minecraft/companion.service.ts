@@ -1030,7 +1030,9 @@ export class CompanionService {
       operation: 'create-fund' | 'transfer' | 'freeze' | 'unfreeze' | 'close';
       idempotencyKey: string;
       profileKey: string;
+      sourceRole?: string;
       secondaryProfile?: string;
+      targetRole?: string;
       currency?: string;
       amount?: string;
       displayName?: string;

@@ -46,6 +46,14 @@ The panel must be able to create a named fund, inspect it, transfer money betwee
 it and the global treasury, freeze/unfreeze it and close it. Every mutation needs
 an idempotency key, actor and reason. Deleting ledger history is never allowed.
 
+Administrators can also open one dedicated forced-transfer dialog and select
+any two active non-technical managed account members. Both selectors are
+server-side searchable, filterable and sorted by account type. The amount,
+currency and reason are explicit; Core performs one balanced atomic transfer.
+This does not bypass insufficient-funds or account-lifecycle checks and cannot
+select `SYSTEM_SOURCE`/`SYSTEM_SINK` to disguise issuance or destruction as a
+transfer.
+
 ## Arena and Slots ownership
 
 Each Arena and each Slots machine owns an independent managed economic entity.
@@ -126,9 +134,11 @@ money-routing decisions.
    mutations; it adds no SQL query to the hot payment path.
 4. [x] Register existing player, guild, Arena and Slots accounts idempotently.
 5. [x] Implement Arena/Slots close plans and configurable sweep destination.
-6. Decide and implement Slots bankroll and NPC-buyer budget sources.
-7. Add procurement and guild-support administration.
-8. Leave city/region gameplay integration dormant until that system is designed.
+6. [x] Add an administrator forced-transfer dialog for any active managed
+   account members, including Arena `bet`/`final` roles.
+7. Decide and implement Slots bankroll and NPC-buyer budget sources.
+8. Add procurement and guild-support administration.
+9. Leave city/region gameplay integration dormant until that system is designed.
 
 Additional follow-up completed in Guilds 0.5.1: the managed guild profile is closed only after
 the existing durable guild-disband settlement completes and before the guild row is deleted.

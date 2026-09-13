@@ -162,8 +162,18 @@ export class ManagedAccountActionDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^[a-zA-Z0-9._:-]{1,32}$/)
+  sourceRole?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(191)
   secondaryProfile?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z0-9._:-]{1,32}$/)
+  targetRole?: string;
 
   @IsOptional()
   @IsString()

@@ -382,8 +382,8 @@ final class AurumCoreEconomyIntegration {
                             mutation.actor(), mutation.reason()));
                 }
                 case TRANSFER -> accounts.transfer(new ManagedAccountTransferRequest(
-                        mutation.idempotencyKey(), mutation.profileKey(), "primary",
-                        mutation.secondaryProfile(), "primary", mutation.currency(), mutation.amount(),
+                        mutation.idempotencyKey(), mutation.profileKey(), mutation.sourceRole(),
+                        mutation.secondaryProfile(), mutation.targetRole(), mutation.currency(), mutation.amount(),
                         mutation.actor(), mutation.reason()));
                 case FREEZE, UNFREEZE -> accounts.setFrozen(new ManagedAccountStateRequest(
                         mutation.idempotencyKey(), mutation.profileKey(),

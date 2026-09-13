@@ -806,10 +806,13 @@ class CompanionHttpServerTest {
         HttpResponse<String> response = post("/economy/accounts/action", TOKEN,
                 "{\"operation\":\"transfer\",\"idempotencyKey\":\"4a156e26-d797-47c3-91a0-531f0a4ba04f\","+
                         "\"profileKey\":\"treasury:global\",\"secondaryProfile\":\"treasury:procurement\","+
+                        "\"sourceRole\":\"primary\",\"targetRole\":\"reserve\","+
                         "\"currency\":\"coin\",\"amount\":25,\"actor\":\"panel:gm\",\"reason\":\"budget\"}");
         assertEquals(200, response.statusCode(), response.body());
         assertEquals("panel:gm", bridge.lastAccountMutation.actor());
         assertEquals("budget", bridge.lastAccountMutation.reason());
+        assertEquals("primary", bridge.lastAccountMutation.sourceRole());
+        assertEquals("reserve", bridge.lastAccountMutation.targetRole());
         assertEquals(new java.math.BigDecimal("25.0"), bridge.lastAccountMutation.amount());
     }
 

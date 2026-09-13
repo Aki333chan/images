@@ -1321,5 +1321,21 @@
   "mc.accounts.closeConfirm": "Close this fund and sweep all currencies to the selected target? Ledger history will remain.",
   "mc.accounts.create": "Create named fund",
   "mc.accounts.name": "Display name",
-  "mc.accounts.purpose": "Purpose"
+  "mc.accounts.purpose": "Purpose",
+  "mc.accounts.forcedTransfer": "Force transfer",
+  "mc.accounts.forcedTransferTitle": "Transfer between accounts",
+  "mc.accounts.forcedTransferHint": "Move funds between any active ledger accounts. The operation is atomic and its administrator and reason are written to the audit log.",
+  "mc.accounts.sourceAccount": "Source account",
+  "mc.accounts.targetAccount": "Destination account",
+  "mc.accounts.searchAccounts": "Search accounts",
+  "mc.accounts.chooseAccount": "Choose an account",
+  "mc.accounts.loading": "Loading accounts…",
+  "mc.accounts.refineSearch": "Showing {shown} of {total}. Refine the search or select a type.",
+  "mc.accounts.currency": "Currency",
+  "mc.accounts.selectAccountsFirst": "Choose both accounts first",
+  "mc.accounts.transferReason": "Reason",
+  "mc.accounts.transferReasonHint": "Why is this administrator transfer required?",
+  "mc.accounts.sameAccount": "The source and destination must be different ledger accounts.",
+  "mc.accounts.confirmTransfer": "Confirm transfer",
+  "mc.accounts.transferring": "Transferring…"
 }

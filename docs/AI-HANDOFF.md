@@ -62,7 +62,7 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.0`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
+`companion-v0.13.1`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
 `npc-v2.1.0`, `arena-v1.6.0`, `slots-v1.5.0`. Старые releases и tags удалены;
 актуальный Addons commit — `9f0a8d3`.
 
@@ -202,7 +202,7 @@ Exchange engine использует версионированную котир
 **Живой fault-injection managed accounts на Paper 26.2 + MariaDB.**
 
 Core 0.17.1 содержит MariaDB migration 12 и реестр карточек поверх существующего ledger.
-Companion 0.13.0 и web-панель дают on-demand список, детали и управление именованными
+Companion 0.13.1 и web-панель дают on-demand список, детали и управление именованными
 фондами без Vault fallback. Player, Guild, Arena и Slots регистрируются идемпотентно;
 Arena/Slots перед удалением сохраняют план, блокируют новые операции, проверяют свои
 обязательства и переносят все валюты в настроенную казну. Падение или рестарт продолжает
@@ -220,6 +220,11 @@ destination, повтор команды и Spark.
 `trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. AurumUI 0.7.0
 остаётся опциональным клиентским Fabric-модом.
 
+В панели готов принудительный административный перевод между любыми двумя активными
+нетехническими managed account members. Селекторы ищут на сервере и сортируют по типу;
+для Arena адресуются отдельные роли `bet`/`final`. Сумма, валюта и причина обязательны,
+операция идёт одной сбалансированной Core-проводкой и не обходит lifecycle/остаток.
+
 ## Очередь после текущего этапа
 
 1. Проверить Core 0.17.1 generation на Paper 26.2 + MariaDB + VaultUnlocked: базовые
@@ -229,6 +234,20 @@ destination, повтор команды и Spark.
 3. После fault injection отдельно включать guaranteed trade.
 
 ## Журнал передачи
+
+### 2026-09-13 — Codex, forced transfer между managed accounts
+
+- Панель получила отдельное модальное окно для принудительного перевода: два независимых
+  серверных поиска, фильтр/сортировка по типу, выбор member role, сумма, валюта и обязательная
+  причина. Доступ остаётся под `minecraft.economy.admin` и отражается в аудите панели/Core.
+- Технические source/sink-профили и неактивные счета намеренно не предлагаются. Это только
+  сбалансированный transfer: недостаточный остаток, `FROZEN`, `CLOSING` и `CLOSED` Core
+  продолжает отклонять.
+- Companion 0.13.1 передаёт `sourceRole`/`targetRole`, поэтому роли Arena `bet` и `final`
+  больше не схлопываются в несуществующий `primary`.
+- Проверки: Companion 172 tests и clean Paper JAR; API 693 tests; web 111 tests; shared
+  CJS/ESM, Nest production build, TypeScript/Vite и EN/RU/PL JSON-каталоги успешны.
+- Следующий этап остаётся живым fault-injection Paper 26.2 + MariaDB + VaultUnlocked.
 
 ### 2026-09-13 — Codex, durable managed guild retirement
 

@@ -1325,5 +1325,21 @@
   "mc.accounts.closeConfirm": "Закрыть этот фонд и перевести все валюты на выбранный счёт? История ledger сохранится.",
   "mc.accounts.create": "Создать именованный фонд",
   "mc.accounts.name": "Отображаемое название",
-  "mc.accounts.purpose": "Назначение"
+  "mc.accounts.purpose": "Назначение",
+  "mc.accounts.forcedTransfer": "Принудительный перевод",
+  "mc.accounts.forcedTransferTitle": "Перевод между счетами",
+  "mc.accounts.forcedTransferHint": "Переводит средства между любыми активными счетами ledger. Операция атомарна, а администратор и причина записываются в аудит.",
+  "mc.accounts.sourceAccount": "Исходный счёт",
+  "mc.accounts.targetAccount": "Конечный счёт",
+  "mc.accounts.searchAccounts": "Поиск счетов",
+  "mc.accounts.chooseAccount": "Выберите счёт",
+  "mc.accounts.loading": "Загрузка счетов…",
+  "mc.accounts.refineSearch": "Показано {shown} из {total}. Уточните поиск или выберите тип.",
+  "mc.accounts.currency": "Валюта",
+  "mc.accounts.selectAccountsFirst": "Сначала выберите оба счёта",
+  "mc.accounts.transferReason": "Причина",
+  "mc.accounts.transferReasonHint": "Зачем нужен этот административный перевод?",
+  "mc.accounts.sameAccount": "Исходный и конечный ledger-счета должны отличаться.",
+  "mc.accounts.confirmTransfer": "Подтвердить перевод",
+  "mc.accounts.transferring": "Переводим…"
 }

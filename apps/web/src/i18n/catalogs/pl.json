@@ -1325,5 +1325,21 @@
   "mc.accounts.closeConfirm": "Zamknąć ten fundusz i przenieść wszystkie waluty na wybrane konto? Historia ledger pozostanie.",
   "mc.accounts.create": "Utwórz nazwany fundusz",
   "mc.accounts.name": "Nazwa wyświetlana",
-  "mc.accounts.purpose": "Przeznaczenie"
+  "mc.accounts.purpose": "Przeznaczenie",
+  "mc.accounts.forcedTransfer": "Wymuś przelew",
+  "mc.accounts.forcedTransferTitle": "Przelew między kontami",
+  "mc.accounts.forcedTransferHint": "Przenosi środki między dowolnymi aktywnymi kontami ledger. Operacja jest atomowa, a administrator i powód są zapisywani w audycie.",
+  "mc.accounts.sourceAccount": "Konto źródłowe",
+  "mc.accounts.targetAccount": "Konto docelowe",
+  "mc.accounts.searchAccounts": "Szukaj kont",
+  "mc.accounts.chooseAccount": "Wybierz konto",
+  "mc.accounts.loading": "Ładowanie kont…",
+  "mc.accounts.refineSearch": "Wyświetlono {shown} z {total}. Doprecyzuj wyszukiwanie lub wybierz typ.",
+  "mc.accounts.currency": "Waluta",
+  "mc.accounts.selectAccountsFirst": "Najpierw wybierz oba konta",
+  "mc.accounts.transferReason": "Powód",
+  "mc.accounts.transferReasonHint": "Dlaczego ten przelew administracyjny jest potrzebny?",
+  "mc.accounts.sameAccount": "Konto źródłowe i docelowe ledger muszą być różne.",
+  "mc.accounts.confirmTransfer": "Potwierdź przelew",
+  "mc.accounts.transferring": "Przelewanie…"
 }

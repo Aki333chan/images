@@ -1118,7 +1118,9 @@ public final class CompanionHttpServer {
         };
         String idempotency = stringField(values, "idempotencyKey");
         String key = stringField(values, "profileKey");
+        String sourceRole = stringField(values, "sourceRole");
         String secondary = stringField(values, "secondaryProfile");
+        String targetRole = stringField(values, "targetRole");
         String currency = stringField(values, "currency");
         String displayName = stringField(values, "displayName");
         String purpose = stringField(values, "purpose");
@@ -1131,7 +1133,8 @@ public final class CompanionHttpServer {
         BigDecimal amount = null;
         Object rawAmount = values.get("amount");
         if (rawAmount != null) amount = new BigDecimal(String.valueOf(rawAmount));
-        return new ManagedAccountMutation(operation, idempotency, key, secondary, currency, amount,
+        return new ManagedAccountMutation(operation, idempotency, key, sourceRole,
+                secondary, targetRole, currency, amount,
                 displayName, purpose, actor, reason);
     }
 

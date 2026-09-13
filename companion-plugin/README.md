@@ -1,5 +1,14 @@
 # Aurum Companion
 
+## Release 0.13.1
+
+The managed-account mutation bridge now transports source and destination
+member roles. This lets an administrator move money between any two active
+managed ledger accounts from the panel, including the separate `bet` and
+`final` members of an Arena profile. The operation remains one atomic Core
+transfer with an idempotency key, actor and mandatory reason; technical
+source/sink profiles are not offered by the panel.
+
 ## Release 0.13.0
 
 The Companion now exposes AurumCore's managed-account registry through strict

@@ -5,9 +5,19 @@ import type {
   MinecraftManagedAccountPageDto,
 } from '@aurum/shared';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../../components/ui';
+import { Modal } from '../../components/Modal';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
 import { useT } from '../../i18n';
+
+const ACCOUNT_TYPES = [
+  'TREASURY', 'PLAYER', 'GUILD', 'ARENA', 'SLOTS', 'NPC_SHOP', 'NPC_BUYER', 'CITY', 'REGION',
+];
+
+interface AccountEndpoint {
+  account: MinecraftManagedAccountDto;
+  role: string;
+}
 
 /** On-demand registry browser and named-fund administration. It never polls. */
 export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
@@ -33,11 +43,28 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
   const [currency, setCurrency] = useState('');
   const [reason, setReason] = useState('');
   const [createReason, setCreateReason] = useState('');
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferSource, setTransferSource] = useState<AccountEndpoint | null>(null);
+  const [transferTarget, setTransferTarget] = useState<AccountEndpoint | null>(null);
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferCurrency, setTransferCurrency] = useState('');
+  const [transferReason, setTransferReason] = useState('');
 
   const selected = page?.accounts.find((account) => account.key === selectedKey) ?? null;
   const currencies = useMemo(() => selected ? Object.keys(selected.balances).sort() : [], [selected]);
   const amountValid = /^(?:0|[1-9]\d{0,12})(?:\.\d{1,8})?$/.test(amount)
     && Number(amount) > 0;
+  const transferAmountValid = /^(?:0|[1-9]\d{0,12})(?:\.\d{1,8})?$/.test(transferAmount)
+    && Number(transferAmount) > 0;
+  const transferCurrencies = useMemo(() => {
+    if (!transferSource || !transferTarget) return [];
+    const targetCurrencies = new Set(Object.keys(transferTarget.account.balances));
+    return Object.keys(transferSource.account.balances)
+      .filter((value) => targetCurrencies.has(value)).sort();
+  }, [transferSource, transferTarget]);
+  const sameEndpoint = transferSource !== null && transferTarget !== null
+    && transferSource.account.key === transferTarget.account.key
+    && transferSource.role === transferTarget.role;
 
   const load = useCallback(async (newOffset = offset) => {
     setBusy(true);
@@ -69,7 +96,13 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
     if (selected && !currency) setCurrency(Object.keys(selected.balances).sort()[0] ?? '');
   }, [currency, selected]);
 
-  async function mutate(body: Record<string, unknown>, mutationReason = reason) {
+  useEffect(() => {
+    if (!transferCurrencies.includes(transferCurrency)) {
+      setTransferCurrency(transferCurrencies[0] ?? '');
+    }
+  }, [transferCurrencies, transferCurrency]);
+
+  async function mutate(body: Record<string, unknown>, mutationReason = reason): Promise<boolean> {
     setBusy(true);
     setError('');
     setNotice('');
@@ -82,11 +115,38 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
         },
       );
       setNotice(`${result.status}: ${result.message}`);
-      await load(offset);
+      if (open) await load(offset);
+      return true;
     } catch (failure) {
       setError((failure as Error).message);
+      return false;
     } finally {
       setBusy(false);
+    }
+  }
+
+  function resetTransfer() {
+    setTransferSource(null);
+    setTransferTarget(null);
+    setTransferAmount('');
+    setTransferCurrency('');
+    setTransferReason('');
+  }
+
+  async function submitForcedTransfer() {
+    if (!transferSource || !transferTarget || sameEndpoint) return;
+    const ok = await mutate({
+      operation: 'transfer',
+      profileKey: transferSource.account.key,
+      sourceRole: transferSource.role,
+      secondaryProfile: transferTarget.account.key,
+      targetRole: transferTarget.role,
+      amount: transferAmount,
+      currency: transferCurrency,
+    }, transferReason);
+    if (ok) {
+      setTransferOpen(false);
+      resetTransfer();
     }
   }
 
@@ -98,6 +158,9 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
           <p className="mt-1 text-xs text-muted">{t('mc.accounts.hint')}</p>
         </div>
         <div className="flex gap-2">
+          {admin ? <Button size="sm" onClick={() => { setError(''); setNotice(''); setTransferOpen(true); }}>
+            {t('mc.accounts.forcedTransfer')}
+          </Button> : null}
           {open ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void load(offset)}>{t('common.refresh')}</Button> : null}
           <Button size="sm" variant="outline" onClick={() => setOpen((value) => !value)}>
             {t(open ? 'mc.accounts.hide' : 'mc.accounts.show')}
@@ -110,7 +173,7 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
           <Input value={search} placeholder={t('mc.accounts.search')} onChange={(event) => setSearch(event.target.value)} />
           <Select value={type} onChange={setType} options={[
             { value: '', label: t('mc.accounts.allTypes') },
-            ...['TREASURY', 'PLAYER', 'GUILD', 'ARENA', 'SLOTS', 'NPC_SHOP', 'NPC_BUYER']
+            ...ACCOUNT_TYPES
               .map((value) => ({ value, label: value })),
           ]} />
           <Select value={status} onChange={setStatus} options={[
@@ -219,8 +282,135 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
           </Button>
         </div> : null}
       </> : null}
+
+      {transferOpen ? <Modal title={t('mc.accounts.forcedTransferTitle')} size="lg"
+        onClose={() => { if (!busy) { setTransferOpen(false); resetTransfer(); } }}>
+        <div className="space-y-4">
+          <p className="text-sm text-muted">{t('mc.accounts.forcedTransferHint')}</p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <TransferAccountPicker serverId={serverId} label={t('mc.accounts.sourceAccount')}
+              value={transferSource} onChange={setTransferSource} />
+            <TransferAccountPicker serverId={serverId} label={t('mc.accounts.targetAccount')}
+              value={transferTarget} onChange={setTransferTarget} />
+          </div>
+          {sameEndpoint ? <ErrorText>{t('mc.accounts.sameAccount')}</ErrorText> : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>{t('mc.accounts.amount')}</Label>
+              <Input value={transferAmount} inputMode="decimal" placeholder="0.00"
+                onChange={(event) => setTransferAmount(event.target.value)} />
+            </div>
+            <div>
+              <Label>{t('mc.accounts.currency')}</Label>
+              <Select value={transferCurrency} onChange={setTransferCurrency}
+                options={transferCurrencies.length
+                  ? transferCurrencies.map((value) => ({ value, label: value }))
+                  : [{ value: '', label: t('mc.accounts.selectAccountsFirst') }]} />
+            </div>
+          </div>
+          <div>
+            <Label>{t('mc.accounts.transferReason')}</Label>
+            <Input value={transferReason} maxLength={255} placeholder={t('mc.accounts.transferReasonHint')}
+              onChange={(event) => setTransferReason(event.target.value)} />
+          </div>
+          <ErrorText>{error}</ErrorText>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" disabled={busy}
+              onClick={() => { setTransferOpen(false); resetTransfer(); }}>{t('common.cancel')}</Button>
+            <Button disabled={!transferSource || !transferTarget || sameEndpoint || !transferAmountValid
+              || !transferCurrency || transferReason.trim().length < 3 || busy}
+              onClick={() => void submitForcedTransfer()}>
+              {busy ? t('mc.accounts.transferring') : t('mc.accounts.confirmTransfer')}
+            </Button>
+          </div>
+        </div>
+      </Modal> : null}
     </Card>
   );
+}
+
+function TransferAccountPicker({
+  serverId,
+  label,
+  value,
+  onChange,
+}: {
+  serverId: string;
+  label: string;
+  value: AccountEndpoint | null;
+  onChange: (value: AccountEndpoint | null) => void;
+}) {
+  const t = useT();
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState('');
+  const [accounts, setAccounts] = useState<MinecraftManagedAccountDto[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setError('');
+      // System source/sink profiles must never appear in this dialog: selecting one
+      // would turn an ordinary transfer into money creation or destruction.
+      const query = new URLSearchParams({ status: 'active', offset: '0', limit: '100' });
+      if (search.trim()) query.set('search', search.trim());
+      if (type) query.set('type', type);
+      void api<MinecraftManagedAccountPageDto>(
+        `/api/modules/minecraft/servers/${serverId}/economy/accounts?${query.toString()}`,
+      ).then((result) => {
+        if (cancelled) return;
+        setAccounts([...result.accounts].sort((left, right) => left.type.localeCompare(right.type)
+          || left.name.localeCompare(right.name) || left.key.localeCompare(right.key)));
+        setTotal(result.total);
+      }).catch((failure) => {
+        if (!cancelled) setError((failure as Error).message);
+      }).finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [search, serverId, type]);
+
+  const endpoints = useMemo(() => accounts.flatMap((account) => account.members
+    .slice().sort((left, right) => left.order - right.order || left.role.localeCompare(right.role))
+    .map((member) => ({ account, role: member.role }))), [accounts]);
+  const selectedValue = value ? endpointKey(value) : '';
+  const options = endpoints.some((endpoint) => endpointKey(endpoint) === selectedValue) || !value
+    ? endpoints : [value, ...endpoints];
+
+  return <div className="space-y-2 rounded-md border border-border bg-neutral-950/30 p-3">
+    <Label>{label}</Label>
+    <div className="grid gap-2 sm:grid-cols-[140px_1fr]">
+      <Select value={type} onChange={(next) => { setType(next); onChange(null); }} options={[
+        { value: '', label: t('mc.accounts.allTypes') },
+        ...ACCOUNT_TYPES.map((item) => ({ value: item, label: item })),
+      ]} />
+      <Input value={search} placeholder={t('mc.accounts.searchAccounts')}
+        onChange={(event) => { setSearch(event.target.value); onChange(null); }} />
+    </div>
+    <Select value={selectedValue} onChange={(key) => {
+      onChange(options.find((endpoint) => endpointKey(endpoint) === key) ?? null);
+    }} options={[
+      { value: '', label: loading ? t('mc.accounts.loading') : t('mc.accounts.chooseAccount') },
+      ...options.map((endpoint) => ({
+        value: endpointKey(endpoint),
+        label: `${endpoint.account.type} · ${endpoint.account.name} · ${endpoint.role} · ${endpoint.account.key}`,
+      })),
+    ]} />
+    {value ? <div className="rounded bg-neutral-900/70 p-2 text-xs">
+      <div className="font-medium">{value.account.name} · {value.role}</div>
+      <code className="break-all text-muted">{value.account.key}</code>
+    </div> : null}
+    {total > 100 ? <p className="text-xs text-muted">{t('mc.accounts.refineSearch', { shown: 100, total })}</p> : null}
+    <ErrorText>{error}</ErrorText>
+  </div>;
+}
+
+function endpointKey(endpoint: AccountEndpoint) {
+  return `${endpoint.account.key}\u0000${endpoint.role}`;
 }
 
 function Balances({ account, large = false }: { account: MinecraftManagedAccountDto; large?: boolean }) {
