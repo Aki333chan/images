@@ -1341,5 +1341,9 @@
   "mc.accounts.transferReasonHint": "Зачем нужен этот административный перевод?",
   "mc.accounts.sameAccount": "Исходный и конечный ledger-счета должны отличаться.",
   "mc.accounts.confirmTransfer": "Подтвердить перевод",
-  "mc.accounts.transferring": "Переводим…"
+  "mc.accounts.transferring": "Переводим…",
+  "mc.accounts.history": "История счёта",
+  "mc.accounts.historyHint": "Последние проводки выбранной роли счёта и валюты.",
+  "mc.accounts.historyShow": "Показать историю",
+  "mc.accounts.historyHide": "Скрыть историю"
 }

@@ -129,6 +129,8 @@ money-routing decisions.
 
 1. [~] Finish current live smoke/fault-injection testing.
 2. [x] Add registry schema, read API and account list/details in Companion + panel.
+   Account details include on-demand ledger history with explicit member-role
+   and currency selectors, so Arena `bet` and `final` are never mixed.
 3. [x] Add named-fund create/transfer/freeze/close operations with permissions and
    audit. The status gate is an in-memory index loaded once and updated on registry
    mutations; it adds no SQL query to the hot payment path.

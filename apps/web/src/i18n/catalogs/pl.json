@@ -1341,5 +1341,9 @@
   "mc.accounts.transferReasonHint": "Dlaczego ten przelew administracyjny jest potrzebny?",
   "mc.accounts.sameAccount": "Konto źródłowe i docelowe ledger muszą być różne.",
   "mc.accounts.confirmTransfer": "Potwierdź przelew",
-  "mc.accounts.transferring": "Przelewanie…"
+  "mc.accounts.transferring": "Przelewanie…",
+  "mc.accounts.history": "Historia konta",
+  "mc.accounts.historyHint": "Najnowsze operacje dla wybranej roli konta i waluty.",
+  "mc.accounts.historyShow": "Pokaż historię",
+  "mc.accounts.historyHide": "Ukryj historię"
 }

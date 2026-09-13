@@ -1337,5 +1337,9 @@
   "mc.accounts.transferReasonHint": "Why is this administrator transfer required?",
   "mc.accounts.sameAccount": "The source and destination must be different ledger accounts.",
   "mc.accounts.confirmTransfer": "Confirm transfer",
-  "mc.accounts.transferring": "Transferring…"
+  "mc.accounts.transferring": "Transferring…",
+  "mc.accounts.history": "Account history",
+  "mc.accounts.historyHint": "The latest ledger entries for the selected account member and currency.",
+  "mc.accounts.historyShow": "Show history",
+  "mc.accounts.historyHide": "Hide history"
 }

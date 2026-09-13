@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  MinecraftEconomyAuditDto,
   MinecraftManagedAccountDto,
   MinecraftManagedAccountMutationDto,
   MinecraftManagedAccountPageDto,
@@ -228,6 +229,8 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
               <dt className="text-muted">{t('mc.accounts.destination')}</dt><dd>{selected.closeDestination || t('mc.accounts.serverDefault')}</dd>
             </dl>
 
+            <AccountHistory key={selected.key} serverId={serverId} account={selected} />
+
             {admin && selected.type === 'TREASURY' && selected.status !== 'closed' ? <>
               <div className="border-t border-border pt-3">
                 <Label>{t('mc.accounts.reason')}</Label>
@@ -411,6 +414,105 @@ function TransferAccountPicker({
 
 function endpointKey(endpoint: AccountEndpoint) {
   return `${endpoint.account.key}\u0000${endpoint.role}`;
+}
+
+function AccountHistory({ serverId, account }: { serverId: string; account: MinecraftManagedAccountDto }) {
+  const t = useT();
+  const members = useMemo(() => account.members.slice()
+    .sort((left, right) => left.order - right.order || left.role.localeCompare(right.role)), [account.members]);
+  const currencies = useMemo(() => Object.keys(account.balances).sort(), [account.balances]);
+  const [open, setOpen] = useState(false);
+  const [role, setRole] = useState(members[0]?.role ?? '');
+  const [currency, setCurrency] = useState(currencies[0] ?? '');
+  const [data, setData] = useState<MinecraftEconomyAuditDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const requestId = useRef(0);
+  const member = members.find((value) => value.role === role) ?? members[0] ?? null;
+
+  const load = useCallback(() => {
+    if (!open || !member || !currency) return;
+    const currentRequest = ++requestId.current;
+    setBusy(true);
+    setError('');
+    const query = new URLSearchParams({ account: member.account, currency, limit: '25' });
+    api<MinecraftEconomyAuditDto>(
+      `/api/modules/minecraft/servers/${serverId}/economy/audit/ledger?${query.toString()}`,
+    ).then((result) => {
+      if (requestId.current === currentRequest) setData(result);
+    }).catch((failure) => {
+      if (requestId.current === currentRequest) {
+        setData(null);
+        setError((failure as Error).message);
+      }
+    }).finally(() => {
+      if (requestId.current === currentRequest) setBusy(false);
+    });
+  }, [currency, member, open, serverId]);
+
+  useEffect(() => {
+    load();
+    return () => { requestId.current += 1; };
+  }, [load]);
+
+  return <div className="space-y-2 border-t border-border pt-3">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h5 className="text-sm font-semibold">{t('mc.accounts.history')}</h5>
+        <p className="text-xs text-muted">{t('mc.accounts.historyHint')}</p>
+      </div>
+      <div className="flex gap-2">
+        {open ? <Button size="sm" variant="ghost" disabled={busy} onClick={load}>{t('common.refresh')}</Button> : null}
+        <Button size="sm" variant="outline" onClick={() => setOpen((value) => !value)}>
+          {t(open ? 'mc.accounts.historyHide' : 'mc.accounts.historyShow')}
+        </Button>
+      </div>
+    </div>
+    {open ? <>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select value={member?.role ?? ''} onChange={setRole} options={members.map((value) => ({
+          value: value.role,
+          label: `${value.role} · ${value.account}`,
+        }))} />
+        <Select value={currency} onChange={setCurrency}
+          options={currencies.map((value) => ({ value, label: value }))} />
+      </div>
+      {busy && !data ? <Spinner /> : null}
+      <ErrorText>{error}</ErrorText>
+      {data ? <>
+        <div className="flex flex-wrap gap-3 text-[11px] text-muted">
+          <span>{member?.account}</span>
+          <span>{data.currency}</span>
+          <span>{new Date(data.generatedAt).toLocaleString()}</span>
+        </div>
+        {data.records.length ? <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+          {data.records.map((record, index) => <details
+            key={`${record.type}:${record.fields.id ?? record.fields.key ?? index}`}
+            className="rounded-md border border-neutral-800 bg-neutral-950/40 px-3 py-2">
+            <summary className="cursor-pointer text-xs font-medium text-neutral-200">
+              {historyRecordTitle(record.type, record.fields)}
+            </summary>
+            <dl className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[minmax(110px,0.35fr)_1fr]">
+              {Object.entries(record.fields).map(([key, value]) => <div key={key} className="contents">
+                <dt className="text-muted">{historyFieldLabel(t, key)}</dt>
+                <dd className="break-all font-mono text-[11px] text-neutral-300">{value || '—'}</dd>
+              </div>)}
+            </dl>
+          </details>)}
+        </div> : <p className="text-xs text-muted">{t('mc.audit.empty')}</p>}
+      </> : null}
+    </> : null}
+  </div>;
+}
+
+function historyRecordTitle(type: string, fields: Record<string, string>): string {
+  return [fields.id ?? fields.key ?? type, fields.category ?? fields.kind, fields.status]
+    .filter(Boolean).join(' · ');
+}
+
+function historyFieldLabel(t: (key: string) => string, key: string): string {
+  const translated = t(`mc.audit.field.${key}`);
+  return translated === `mc.audit.field.${key}` ? key : translated;
 }
 
 function Balances({ account, large = false }: { account: MinecraftManagedAccountDto; large?: boolean }) {

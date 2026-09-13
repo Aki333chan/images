@@ -62,9 +62,9 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.1`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
+`companion-v0.13.1`, `core-v0.17.3`, `auth-v0.1.0`, `guilds-v0.5.1`,
 `npc-v2.1.0`, `arena-v1.6.0`, `slots-v1.5.0`. Старые releases и tags удалены;
-актуальный Addons commit — `09ecf9b`.
+актуальный Addons commit — `aa3174b`.
 
 ## Исторические выпуски и этапы
 
@@ -201,7 +201,7 @@ Exchange engine использует версионированную котир
 
 **Живой fault-injection managed accounts на Paper 26.2 + MariaDB.**
 
-Core 0.17.1 содержит MariaDB migration 12 и реестр карточек поверх существующего ledger.
+Core 0.17.3 содержит MariaDB migration 12 и реестр карточек поверх существующего ledger.
 Companion 0.13.1 и web-панель дают on-demand список, детали и управление именованными
 фондами без Vault fallback. Player, Guild, Arena и Slots регистрируются идемпотентно;
 Arena/Slots перед удалением сохраняют план, блокируют новые операции, проверяют свои
@@ -213,9 +213,11 @@ ConcurrentHashMap. Прямые проводки, holds, exchange, admin set и 
 `FROZEN/CLOSING/CLOSED`; SQL на каждый платёж не добавлен. Guilds 0.5.1 связал durable
 disband с managed profile: после последней выплаты, но до удаления строки гильдии,
 профиль закрывается; `keep` замораживает его для ручного решения. Даже нулевой баланс
-сохраняет барьер, а план строится по авторитетному ledger balance. Теперь нужны живые
-сценарии Paper/MariaDB: закрытие с hold, падение между sweep-проводками, недоступная
-destination, повтор команды и Spark.
+сохраняет барьер, а план строится по авторитетному ledger balance. Live smoke на
+пользовательском Paper/MariaDB уже подтвердил обычный transfer, повтор idempotency key,
+freeze/unfreeze, отказ при frozen destination, restart persistence, close sweep,
+Vault/PAPI и idle Spark. Остались предметные сценарии Arena/Slots/NPC/Guilds, закрытие
+с живым hold и контролируемый сбой между sweep-проводками.
 
 `trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. AurumUI 0.7.0
 остаётся опциональным клиентским Fabric-модом.
@@ -227,13 +229,38 @@ destination, повтор команды и Spark.
 
 ## Очередь после текущего этапа
 
-1. Проверить Core 0.17.1 generation на Paper 26.2 + MariaDB + VaultUnlocked: базовые
-   проводки, policy limits/tax, Arena, Slots, NPC, Guilds, close fault injection и Spark.
+1. Довести live fault-injection на Paper 26.2 + MariaDB + VaultUnlocked: Arena, Slots,
+   NPC, Guilds, policy limits/tax, закрытие с hold и сбой между sweep-проводками.
 2. Решить источник bankroll для Slots и бюджет NPC buyers; затем procurement и guild
    support. City/region accounts оставить dormant до дизайна городов/регионов.
 3. После fault injection отдельно включать guaranteed trade.
 
 ## Журнал передачи
+
+### 2026-09-13 — Codex, первый live fault-injection и история счёта
+
+- Панель на VDS была чистой, но оставалась на старой Claude-ветке `9346f0c`, поэтому
+  обычный pull не получал `main`. После успешного `aurum-backup.service` checkout исправлен
+  на `main`, production build и Prisma deploy успешны, readiness: PostgreSQL/Redis `ok`.
+- Перед заменой JAR создан locked Pterodactyl backup
+  `6889c978-5011-4f26-b355-2fded521baed` (11.8 GB). На сервер установлены Core 0.17.3,
+  Companion 0.13.1, Guilds 0.5.1, Arena 1.6.0, Slots 1.5.0; NPC/Auth уже были актуальны.
+- Live ledger: два временных фонда получили 55/25, Companion forced transfer дал 50/30,
+  точный retry вернул `duplicate` без второго списания. Frozen source отклонил transfer;
+  frozen destination отклонил close до изменения source. Restart сохранил 50/30; оба
+  close перевели остатки в global и оставили CLOSED-аудит. Cleanup вернул treasury и
+  money supply к нулю. Vault provider и `%vault_eco_balance%` подтвердили Core.
+- Spark idle: TPS 20.0; tick median/p95 0.1 ms, max 2.5 ms; process CPU 0/0/1%.
+  Report: `https://spark.lucko.me/2BHZf7ESxF`.
+- Live upgrade выявил старые locale-файлы без новых ключей. Core 0.17.3 материализует
+  недостающие строки из bundled EN/RU/PL в памяти, не перезаписывая правки администратора;
+  проверено на фактической старой `messages_ru.yml`. Source commits `f10cb57`, `41b376d`;
+  Addons `aa3174b`; release `core-v0.17.3`; SHA-256
+  `A0543FD3F43CC07121FD80E8D4C065BC014BE9F40D4E1D76FE2EBF2658DDDF28`.
+- В account details добавлена on-demand история последних ledger-проводок: выбор member
+  role и валюты, отдельные `bet`/`final`, без polling. Web production build и 111 tests.
+- Для оставшейся live-проверки нужны созданные игровые Arena/Slots/NPC/Guild и два
+  одновременно доступных тестовых игрока; на текущем сервере эти списки пусты.
 
 ### 2026-09-13 — Codex, forced transfer между managed accounts
 
