@@ -385,6 +385,14 @@ final class AurumCoreEconomyIntegration {
                         mutation.idempotencyKey(), mutation.profileKey(), mutation.sourceRole(),
                         mutation.secondaryProfile(), mutation.targetRole(), mutation.currency(), mutation.amount(),
                         mutation.actor(), mutation.reason()));
+                // Начисление и списание — не перевод: деньги приходят из системного
+                // источника или уходят в сток, то есть меняется денежная масса.
+                // Поэтому у них отдельный запрос Core со своей проверкой.
+                case CREDIT, DEBIT -> accounts.adjust(new ovh.aurumgg.core.api.ManagedAccountAdjustRequest(
+                        mutation.idempotencyKey(), mutation.profileKey(), mutation.sourceRole(),
+                        mutation.currency(), mutation.amount(),
+                        mutation.operation() == ManagedAccountMutation.Operation.CREDIT,
+                        mutation.actor(), mutation.reason()));
                 case FREEZE, UNFREEZE -> accounts.setFrozen(new ManagedAccountStateRequest(
                         mutation.idempotencyKey(), mutation.profileKey(),
                         mutation.operation() == ManagedAccountMutation.Operation.FREEZE,

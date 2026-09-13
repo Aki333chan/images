@@ -20,6 +20,10 @@ final class AurumSettingsScreen extends Screen {
     private final int activePanels;
     private WireProtocol.AdminState adminState;
     private Tab tab = Tab.HUD;
+    /** Сколько рядов заняли вкладки: от этого зависит, где начинается содержимое. */
+    private int tabRows = 1;
+    /** Столько же для ряда разделов экономики. */
+    private int economyScopeRows = 1;
     private String npcScope = "npc";
     private String socialScope = "guild";
     private String economyScope = "";
@@ -56,16 +60,42 @@ final class AurumSettingsScreen extends Screen {
         if (has(WireProtocol.ADMIN_SLOTS)) available.add(Tab.SLOTS);
         if (!economyScopes().isEmpty()) available.add(Tab.ECONOMY);
         if (!available.contains(tab)) tab = Tab.HUD;
-        int each = Math.min(92, (contentWidth() - GAP * (available.size() - 1)) / available.size());
-        int total = each * available.size() + GAP * (available.size() - 1);
-        int x = (width - total) / 2;
-        for (Tab value : available) {
-            Button button = Button.builder(Component.translatable(value.translation), ignored -> select(value))
-                    .bounds(x, tabsY(), each, 20).build();
-            button.active = value != tab;
+        tabRows = addButtonRows(available, tabsY(),
+                value -> Component.translatable(value.translation),
+                value -> value != tab, this::select);
+    }
+
+    /**
+     * Ряд кнопок, который переносится, когда подписи не помещаются.
+     *
+     * <p>Раньше ширина делилась поровну между всеми вкладками, и «Панель
+     * гильдии» превращалась в «нель гильди»: узнать вкладку по такой подписи
+     * нельзя. Теперь ширина берётся по самой длинной подписи, а что не влезло
+     * в строку — уезжает на следующую.</p>
+     *
+     * @return сколько рядов занято
+     */
+    private <T> int addButtonRows(List<T> values, int top,
+                                  java.util.function.Function<T, Component> label,
+                                  java.util.function.Predicate<T> enabled,
+                                  java.util.function.Consumer<T> action) {
+        int widest = values.stream().mapToInt(value -> font.width(label.apply(value)) + 12).max().orElse(60);
+        int each = Math.min(Math.max(widest, 44), contentWidth());
+        int perRow = Math.max(1, (contentWidth() + GAP) / (each + GAP));
+        int rows = (values.size() + perRow - 1) / perRow;
+        for (int index = 0; index < values.size(); index++) {
+            int row = index / perRow;
+            int column = index % perRow;
+            int inRow = Math.min(perRow, values.size() - row * perRow);
+            int rowWidth = inRow * each + (inRow - 1) * GAP;
+            int x = (width - rowWidth) / 2 + column * (each + GAP);
+            T value = values.get(index);
+            Button button = Button.builder(label.apply(value), ignored -> action.accept(value))
+                    .bounds(x, top + row * 24, each, 20).build();
+            button.active = enabled.test(value);
             addRenderableWidget(button);
-            x += each + GAP;
         }
+        return rows;
     }
 
     private void addHudSettings() {
@@ -111,13 +141,16 @@ final class AurumSettingsScreen extends Screen {
         }
         List<String[]> economyScopes = economyScopes();
         if (tab == Tab.ECONOMY && economyScopes.size() > 1) {
-            for (int index = 0; index < economyScopes.size(); index++) {
-                String[] option = economyScopes.get(index);
-                addEconomyScope(option[0], option[1], top, index, economyScopes.size());
-            }
-            top += 26;
+            economyScopeRows = addButtonRows(economyScopes, top,
+                    option -> Component.translatable(option[1]),
+                    option -> !economyScope().equals(option[0]),
+                    option -> { economyScope = option[0]; changeScope(); });
+            top += economyScopeRows * 24 + 2;
         }
-        if (social()) {
+        // «Назад» показывается только когда есть куда возвращаться. Раньше он
+        // висел и на корневом списке гильдий, где нажатие ничего не меняло:
+        // кнопка, которая ничего не делает, хуже отсутствующей — на неё жмут.
+        if (social() && !socialScope.equals(tab == Tab.GUILD ? "guild" : "party")) {
             addRenderableWidget(Button.builder(Component.translatable("screen.aurumui.action.back"), ignored -> {
                 socialScope = tab == Tab.GUILD ? "guild" : "party"; changeScope();
             }).bounds(left(), top, contentWidth(), 20).build());
@@ -177,14 +210,6 @@ final class AurumSettingsScreen extends Screen {
         addRenderableWidget(button);
     }
 
-    private void addEconomyScope(String scope, String key, int y, int index, int count) {
-        int each = (contentWidth() - GAP * (count - 1)) / count;
-        Button button = Button.builder(Component.translatable(key), ignored -> { economyScope = scope; changeScope(); })
-                .bounds(left() + index * (each + GAP), y, each, 20).build();
-        button.active = !economyScope().equals(scope);
-        addRenderableWidget(button);
-    }
-
     /**
      * Подпись строки списка.
      *
@@ -204,7 +229,11 @@ final class AurumSettingsScreen extends Screen {
         int x = left() + 134;
         int availableWidth = contentWidth() - 134;
         int footer = height - 26;
-        int actionTop = top + 29;
+        // Подробности рисуются в той же колонке, что и кнопки. Раньше кнопки
+        // начинались на фиксированной высоте и многострочное описание сделки
+        // уезжало прямо под них — читались обе половины одновременно и ни одна
+        // до конца. Теперь кнопки начинаются там, где описание закончилось.
+        int actionTop = top + 29 + detailHeight(object);
         int rows = Math.max(1, (footer - actionTop - 26) / 24);
         int perPage = rows * 2;
         int pages = Math.max(1, (actions.size() + perPage - 1) / perPage);
@@ -241,7 +270,7 @@ final class AurumSettingsScreen extends Screen {
             case "buyerOffer" -> buyerOfferActions(result, object);
             case "social" -> socialActions(result, object);
             case "limits" -> payAction(result, object);
-            case "find" -> action(result, "screen.aurumui.economy.find", () -> form(object, "find", List.of(
+            case "find" -> action(result, "screen.aurumui.economy.enterName", () -> form(object, "find", List.of(
                     new AurumFormScreen.Field("player", "screen.aurumui.field.player", "", 16))));
             case "currency" -> action(result, "screen.aurumui.economy.select", () ->
                     AurumUiClient.adminAction(scope(), object.id(), "currency",
@@ -259,7 +288,7 @@ final class AurumSettingsScreen extends Screen {
     private void socialActions(List<UiAction> list, WireProtocol.AdminObject object) {
         for (String action : object.get("actions").split(",")) {
             if (action.isBlank()) continue;
-            action(list, "screen.aurumui.social." + action, () -> {
+            action(list, dynamic("screen.aurumui.social.", action), () -> {
                 String group = object.id().contains(":") ? object.id().split(":")[1] : "";
                 switch (action) {
                     case "guild_members", "guild_players", "party_members", "party_players", "guild_details", "guild_bonuses" -> {
@@ -520,7 +549,7 @@ final class AurumSettingsScreen extends Screen {
     void adminUpdated(WireProtocol.AdminState state) {
         adminState = state;
         if (!state.message().isBlank() && minecraft.player != null) {
-            minecraft.player.sendOverlayMessage(Component.translatable("message.aurumui." + state.message()));
+            minecraft.player.sendOverlayMessage(dynamic("message.aurumui.", state.message()));
         }
         if (state.scope().equals(scope())) rebuildWidgets();
         if (social() && state.scope().equals(scope()) && repeatSocialAction != null
@@ -559,7 +588,16 @@ final class AurumSettingsScreen extends Screen {
     private int contentWidth() { return Math.min(430, width - 20); }
     private int left() { return (width - contentWidth()) / 2; }
     private int tabsY() { return height < 220 ? 31 : 42; }
-    private int contentTop() { return tabsY() + 26; }
+    /**
+     * Верх содержимого — под всеми рядами вкладок.
+     *
+     * <p>На вкладке экономики одна строка зарезервирована под ответ сервера
+     * всегда, а не только когда он есть: иначе интерфейс подпрыгивал бы на
+     * десять пикселей после каждой операции.</p>
+     */
+    private int contentTop() {
+        return tabsY() + tabRows * 24 + 6 + (tab == Tab.ECONOMY ? 12 : 0);
+    }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
         super.extractRenderState(graphics, mouseX, mouseY, delta);
@@ -586,9 +624,8 @@ final class AurumSettingsScreen extends Screen {
             adminState.objects().stream().filter(o -> o.id().equals(selectedId)).findFirst().ifPresent(object -> {
                 int x = left() + 134;
                 int y = adminObjectsTop();
-                graphics.text(font, Component.literal(font.plainSubstrByWidth(clean(object.title()), contentWidth() - 134)), x, y, 0xFFFFC85C, false);
-                if ((object.kind().equals("social") && object.get("actions").isBlank())
-                        || object.kind().equals("trade") || object.kind().equals("claim")) {
+                graphics.text(font, label(object), x, y, 0xFFFFC85C, false);
+                if (detailed(object)) {
                     int lineY = y + 12;
                     for (var line : font.split(Component.literal(details(object)), contentWidth() - 134)) {
                         if (lineY >= height - 52) break;
@@ -620,10 +657,12 @@ final class AurumSettingsScreen extends Screen {
      */
     private Component statusMessage(WireProtocol.AdminObject object) {
         String declared = object.get("args");
-        if (declared.isBlank()) return Component.translatable("message.aurumui." + object.get("message"));
+        if (declared.isBlank()) return dynamic("message.aurumui.", object.get("message"));
         Object[] arguments = java.util.Arrays.stream(declared.split(","))
                 .map(name -> object.get("arg." + name.trim())).toArray();
-        return Component.translatable("message.aurumui." + object.get("message"), arguments);
+        String key = "message.aurumui." + object.get("message");
+        return net.minecraft.locale.Language.getInstance().has(key)
+                ? Component.translatable(key, arguments) : Component.literal(object.get("message"));
     }
 
     private String summary(WireProtocol.AdminObject object) {
@@ -639,21 +678,33 @@ final class AurumSettingsScreen extends Screen {
             case "treasury" -> money(object, "treasury") + " · " + money(object, "supply")
                     + " · " + money(object, "taxes");
             case "currency", "find" -> "";
-            case "trade" -> object.get("state");
+            case "trade" -> tradeState(object);
             case "claim" -> object.get("owner") + " · " + object.get("progress") + " · " + object.get("attempts");
             default -> object.get("material") + " · slot " + object.get("slot");
         };
     }
 
+    /** Многострочное описание — у тех же видов, что и в отрисовке. */
+    private boolean detailed(WireProtocol.AdminObject object) {
+        return (object.kind().equals("social") && object.get("actions").isBlank())
+                || object.kind().equals("trade") || object.kind().equals("claim");
+    }
+
+    /** Сколько места займёт описание: считается тем же шрифтом, что и рисует. */
+    private int detailHeight(WireProtocol.AdminObject object) {
+        if (!detailed(object)) return 0;
+        return Math.max(0, font.split(Component.literal(details(object)), contentWidth() - 134).size() - 1) * 10;
+    }
+
     private String details(WireProtocol.AdminObject object) {
         return switch (object.kind()) {
-            case "trade" -> object.get("state") + "\n"
+            case "trade" -> tradeState(object) + "\n"
                     + Component.translatable("screen.aurumui.trade.mine").getString() + ": "
                     + object.get("mineMoney") + " " + object.get("symbol") + " · " + object.get("mineItems") + "\n"
                     + Component.translatable("screen.aurumui.trade.theirs").getString() + ": "
                     + object.get("otherMoney") + " " + object.get("symbol") + " · " + object.get("otherItems") + "\n"
                     + Component.translatable("screen.aurumui.trade.confirmations",
-                            object.get("mineConfirmed"), object.get("otherConfirmed")).getString();
+                            yesNo(object.bool("mineConfirmed")), yesNo(object.bool("otherConfirmed"))).getString();
             case "claim" -> object.get("owner") + " · " + object.get("progress") + " · "
                     + Component.translatable("screen.aurumui.claim.attempts").getString() + " " + object.get("attempts")
                     + "\n" + object.get("summary") + "\n" + object.get("error") + "\n" + object.get("payload");
@@ -666,13 +717,50 @@ final class AurumSettingsScreen extends Screen {
      * <p>Баланс офлайн-игрока приходит вторым ответом, и до него поле пустое.
      * Нарисовать там ноль значило бы сказать, что у человека ничего нет.</p>
      */
+    /**
+     * Перевод по ключу, собранному из имени, пришедшего с сервера.
+     *
+     * <p>Сервер волен прислать имя, которого этот клиент ещё не знает —
+     * например, после обновления плагина. Показать в таком случае
+     * «message.aurumui.player-unknown» значит показать устройство программы
+     * вместо сообщения; само имя хотя бы что-то говорит.</p>
+     */
+    static Component dynamic(String prefix, String name) {
+        if (name == null || name.isBlank()) return Component.empty();
+        String key = prefix + name;
+        return net.minecraft.locale.Language.getInstance().has(key)
+                ? Component.translatable(key) : Component.literal(name);
+    }
+
+    /**
+     * Состояние сделки словами.
+     *
+     * <p>Сервер присылает имя элемента перечисления: «NONE» в интерфейсе — это
+     * не состояние, а утечка внутреннего устройства наружу.</p>
+     */
+    private static String tradeState(WireProtocol.AdminObject object) {
+        String state = object.get("state");
+        if (state.isBlank()) return "";
+        String key = "screen.aurumui.trade.state." + state.toLowerCase(java.util.Locale.ROOT);
+        // Если перевода нет — показываем то, что прислал сервер. Это некрасиво,
+        // но понятно; ключ на экране не говорит человеку вообще ничего.
+        return net.minecraft.locale.Language.getInstance().has(key)
+                ? Component.translatable(key).getString() : state;
+    }
+
+    private static String yesNo(boolean value) {
+        return Component.translatable(value ? "screen.aurumui.yes" : "screen.aurumui.no").getString();
+    }
+
     private String money(WireProtocol.AdminObject object, String field) {
         String value = object.get(field);
         return value.isBlank() ? "…" : value + " " + object.get("symbol");
     }
 
     private int adminObjectsTop() {
-        return contentTop() + (tab == Tab.NPC || social() || economyScopeRow() ? 26 : 0);
+        if (economyScopeRow()) return contentTop() + economyScopeRows * 24 + 2;
+        boolean socialBack = social() && !socialScope.equals(tab == Tab.GUILD ? "guild" : "party");
+        return contentTop() + (tab == Tab.NPC || socialBack ? 26 : 0);
     }
 
     private boolean economyScopeRow() {

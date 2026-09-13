@@ -30,7 +30,10 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
   const [selectedKey, setSelectedKey] = useState('');
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
-  const [status, setStatus] = useState('');
+  // Закрытые профили остаются в реестре навсегда — они держат историю
+  // проводок. Поэтому по умолчанию они просто не показываются, а не
+  // удаляются: список чистый, аудит цел.
+  const [status, setStatus] = useState('open');
   const [technical, setTechnical] = useState(false);
   const [offset, setOffset] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -39,7 +42,7 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
   const [fundId, setFundId] = useState('');
   const [fundName, setFundName] = useState('');
   const [purpose, setPurpose] = useState('');
-  const [target, setTarget] = useState('');
+  const [role, setRole] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('');
   const [reason, setReason] = useState('');
@@ -51,8 +54,23 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
   const [transferCurrency, setTransferCurrency] = useState('');
   const [transferReason, setTransferReason] = useState('');
 
-  const selected = page?.accounts.find((account) => account.key === selectedKey) ?? null;
+  // Что реально показано: при фильтре «рабочие» закрытые профили скрыты.
+  // Строки остаются в реестре — они держат историю проводок, и удалять их
+  // значило бы стереть аудит вместе с мусором.
+  const visible = useMemo(() => {
+    const accounts = page?.accounts ?? [];
+    return status === 'open' ? accounts.filter((account) => account.status !== 'closed') : accounts;
+  }, [page, status]);
+  const hidden = (page?.accounts.length ?? 0) - visible.length;
+  const selected = visible.find((account) => account.key === selectedKey) ?? null;
   const currencies = useMemo(() => selected ? Object.keys(selected.balances).sort() : [], [selected]);
+  // У арены роли разные (ставки и призовой пул) — деньги лежат на разных
+  // счетах одного профиля, и выбирать надо именно счёт, а не профиль.
+  const roles = useMemo(() => selected
+    ? selected.members.slice().sort((left, right) => left.order - right.order
+      || left.role.localeCompare(right.role)).map((member) => member.role)
+    : [], [selected]);
+  const reasonValid = reason.trim().length >= 3;
   const amountValid = /^(?:0|[1-9]\d{0,12})(?:\.\d{1,8})?$/.test(amount)
     && Number(amount) > 0;
   const transferAmountValid = /^(?:0|[1-9]\d{0,12})(?:\.\d{1,8})?$/.test(transferAmount)
@@ -74,15 +92,19 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
       const query = new URLSearchParams({ offset: String(newOffset), limit: '25' });
       if (search.trim()) query.set('search', search.trim());
       if (type) query.set('type', type);
-      if (status) query.set('status', status);
+      // 'open' — не статус Core, а фильтр панели: сервер отдаёт всё, а
+      // закрытые отсеиваются здесь.
+      if (status && status !== 'open') query.set('status', status);
       if (technical && admin) query.set('technical', 'true');
       const result = await api<MinecraftManagedAccountPageDto>(
         `/api/modules/minecraft/servers/${serverId}/economy/accounts?${query.toString()}`,
       );
       setPage(result);
       setOffset(result.offset);
-      setSelectedKey((current) => result.accounts.some((account) => account.key === current)
-        ? current : (result.accounts[0]?.key ?? ''));
+      const shown = status === 'open'
+        ? result.accounts.filter((account) => account.status !== 'closed') : result.accounts;
+      setSelectedKey((current) => shown.some((account) => account.key === current)
+        ? current : (shown[0]?.key ?? ''));
     } catch (failure) {
       setPage(null);
       setError((failure as Error).message);
@@ -94,8 +116,12 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
   useEffect(() => { if (open) void load(0); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (selected && !currency) setCurrency(Object.keys(selected.balances).sort()[0] ?? '');
-  }, [currency, selected]);
+    if (selected && !currencies.includes(currency)) setCurrency(currencies[0] ?? '');
+  }, [currencies, currency, selected]);
+
+  useEffect(() => {
+    if (!roles.includes(role)) setRole(roles[0] ?? '');
+  }, [role, roles]);
 
   useEffect(() => {
     if (!transferCurrencies.includes(transferCurrency)) {
@@ -158,7 +184,7 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
           <h3 className="text-sm font-semibold">{t('mc.accounts.title')}</h3>
           <p className="mt-1 text-xs text-muted">{t('mc.accounts.hint')}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {admin ? <Button size="sm" onClick={() => { setError(''); setNotice(''); setTransferOpen(true); }}>
             {t('mc.accounts.forcedTransfer')}
           </Button> : null}
@@ -178,13 +204,17 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
               .map((value) => ({ value, label: value })),
           ]} />
           <Select value={status} onChange={setStatus} options={[
+            { value: 'open', label: t('mc.accounts.openOnly') },
             { value: '', label: t('mc.accounts.allStatuses') },
             ...['active', 'frozen', 'closing', 'closed'].map((value) => ({ value, label: value })),
           ]} />
           <Button size="sm" disabled={busy} onClick={() => void load(0)}>{t('common.search')}</Button>
         </div>
-        {admin ? <label className="flex items-center gap-2 text-xs text-muted">
-          <input type="checkbox" checked={technical} onChange={(event) => setTechnical(event.target.checked)} />
+        {/* items-start и shrink-0: на телефоне подпись переносится на две
+            строки, и выровненный по центру квадратик заезжает на текст. */}
+        {admin ? <label className="flex items-start gap-2 text-xs text-muted">
+          <input type="checkbox" className="mt-0.5 shrink-0" checked={technical}
+            onChange={(event) => setTechnical(event.target.checked)} />
           {t('mc.accounts.technical')}
         </label> : null}
 
@@ -194,7 +224,7 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
 
         {page ? <div className="grid gap-3 lg:grid-cols-[minmax(260px,0.8fr)_1.2fr]">
           <div className="space-y-2">
-            {page.accounts.map((account) => (
+            {visible.map((account) => (
               <button key={account.key} type="button" onClick={() => setSelectedKey(account.key)}
                 className={`w-full rounded-md border p-3 text-left ${selectedKey === account.key ? 'border-primary bg-primary/10' : 'border-border bg-neutral-950/30'}`}>
                 <div className="flex items-center justify-between gap-2">
@@ -205,11 +235,14 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
                 <Balances account={account} />
               </button>
             ))}
-            {!page.accounts.length ? <p className="text-sm text-muted">{t('mc.accounts.empty')}</p> : null}
+            {!visible.length ? <p className="text-sm text-muted">{t('mc.accounts.empty')}</p> : null}
             <div className="flex items-center justify-between">
               <Button size="sm" variant="ghost" disabled={offset === 0 || busy}
                 onClick={() => void load(Math.max(0, offset - 25))}>{t('common.back')}</Button>
-              <span className="text-xs text-muted">{offset + 1}–{Math.min(offset + page.limit, page.total)} / {page.total}</span>
+              <span className="text-xs text-muted">
+                {offset + 1}–{Math.min(offset + page.limit, page.total)} / {page.total}
+                {hidden > 0 ? ` · ${t('mc.accounts.hiddenClosed', { count: hidden })}` : ''}
+              </span>
               <Button size="sm" variant="ghost" disabled={offset + page.limit >= page.total || busy}
                 onClick={() => void load(offset + page.limit)}>{t('common.next')}</Button>
             </div>
@@ -231,39 +264,89 @@ export function ManagedAccountsPanel({ serverId }: { serverId: string }) {
 
             <AccountHistory key={selected.key} serverId={serverId} account={selected} />
 
-            {admin && selected.type === 'TREASURY' && selected.status !== 'closed' ? <>
+            {admin && selected.status === 'active' && !selected.technical ? <>
+              {/*
+                Быстрые действия есть у любого счёта, а не только у казны:
+                начислить компенсацию игроку или снять с лавки скупщика — та же
+                работа, и уводить её в другой экран значит заставить человека
+                искать счёт дважды.
+
+                Технические source/sink-профили сюда не попадают намеренно:
+                у них перевод запрещён самим Core, а «начислить источнику»
+                не значит ничего.
+              */}
               <div className="border-t border-border pt-3">
-                <Label>{t('mc.accounts.reason')}</Label>
-                <Input value={reason} maxLength={255} onChange={(event) => setReason(event.target.value)} />
+                <h5 className="text-sm font-semibold">{t('mc.accounts.quickActions')}</h5>
+                <p className="mt-1 text-xs text-muted">{t('mc.accounts.quickHint')}</p>
               </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Select value={target} onChange={setTarget} options={[
-                  { value: '', label: t('mc.accounts.target') },
-                  ...page.accounts.filter((account) => account.type === 'TREASURY'
-                    && account.key !== selected.key && account.status === 'active')
-                    .map((account) => ({ value: account.key, label: account.name })),
-                ]} />
-                <Input value={amount} inputMode="decimal" placeholder={t('mc.accounts.amount')}
-                  onChange={(event) => setAmount(event.target.value)} />
-                <Select value={currency} onChange={setCurrency}
-                  options={currencies.map((value) => ({ value, label: value }))} />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <Label>{t('mc.accounts.role')}</Label>
+                  <Select value={role} onChange={setRole}
+                    options={roles.map((value) => ({ value, label: value }))} />
+                </div>
+                <div>
+                  <Label>{t('mc.accounts.currency')}</Label>
+                  <Select value={currency} onChange={setCurrency}
+                    options={currencies.length
+                      ? currencies.map((value) => ({ value, label: value }))
+                      : [{ value: '', label: t('mc.accounts.noCurrency') }]} />
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <Label>{t('mc.accounts.amount')}</Label>
+                  <Input value={amount} inputMode="decimal" placeholder="0.00"
+                    onChange={(event) => setAmount(event.target.value)} />
+                </div>
+                <div>
+                  <Label>{t('mc.accounts.reason')}</Label>
+                  <Input value={reason} maxLength={255} placeholder={t('mc.accounts.reasonHint')}
+                    onChange={(event) => setReason(event.target.value)} />
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" disabled={!target || !amountValid || !currency || reason.trim().length < 3 || busy}
-                  onClick={() => void mutate({ operation: 'transfer', profileKey: selected.key,
-                    secondaryProfile: target, amount, currency })}>{t('mc.accounts.transfer')}</Button>
-                <Button size="sm" variant="outline" disabled={reason.trim().length < 3 || busy}
-                  onClick={() => void mutate({ operation: selected.status === 'frozen' ? 'unfreeze' : 'freeze', profileKey: selected.key })}>
-                  {t(selected.status === 'frozen' ? 'mc.accounts.unfreeze' : 'mc.accounts.freeze')}
+                <Button size="sm" disabled={!amountValid || !currency || !reasonValid || busy}
+                  onClick={() => void mutate({ operation: 'credit', profileKey: selected.key,
+                    sourceRole: role, amount, currency })}>{t('mc.accounts.credit')}</Button>
+                <Button size="sm" variant="outline" disabled={!amountValid || !currency || !reasonValid || busy}
+                  onClick={() => void mutate({ operation: 'debit', profileKey: selected.key,
+                    sourceRole: role, amount, currency })}>{t('mc.accounts.debit')}</Button>
+                <Button size="sm" variant="outline" disabled={busy}
+                  onClick={() => {
+                    setTransferSource({ account: selected, role });
+                    setTransferTarget(null);
+                    setTransferAmount(amount);
+                    setTransferReason(reason);
+                    setError('');
+                    setTransferOpen(true);
+                  }}>{t('mc.accounts.transferFrom')}</Button>
+                <Button size="sm" variant="outline" disabled={!reasonValid || busy}
+                  onClick={() => void mutate({ operation: 'freeze', profileKey: selected.key })}>
+                  {t('mc.accounts.freeze')}
                 </Button>
-                {selected.key !== 'treasury:global' ? <Button size="sm" variant="destructive"
-                  disabled={reason.trim().length < 3 || busy}
+                {selected.type === 'TREASURY' && selected.key !== 'treasury:global' ? <Button size="sm" variant="destructive"
+                  disabled={!reasonValid || busy}
                   onClick={() => {
                     if (window.confirm(t('mc.accounts.closeConfirm'))) void mutate({ operation: 'close',
-                      profileKey: selected.key, secondaryProfile: target });
+                      profileKey: selected.key });
                   }}>{t('mc.accounts.close')}</Button> : null}
               </div>
             </> : null}
+
+            {/*
+              Замороженный счёт умеет ровно одно — разморозиться. Показывать
+              рядом перевод и начисление значило бы предложить то, что Core
+              всё равно отклонит.
+            */}
+            {admin && selected.status === 'frozen' ? <div className="space-y-2 border-t border-border pt-3">
+              <Label>{t('mc.accounts.reason')}</Label>
+              <Input value={reason} maxLength={255} onChange={(event) => setReason(event.target.value)} />
+              <Button size="sm" disabled={!reasonValid || busy}
+                onClick={() => void mutate({ operation: 'unfreeze', profileKey: selected.key })}>
+                {t('mc.accounts.unfreeze')}
+              </Button>
+            </div> : null}
           </div> : null}
         </div> : null}
 

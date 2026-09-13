@@ -1,5 +1,25 @@
 # AurumUI
 
+## Readable screens (0.9.0)
+
+A layout and wording pass over the whole window; no new server capability.
+
+- Tabs now wrap onto as many rows as they need and are as wide as their longest
+  label. They used to share the width equally, which turned «Панель гильдии»
+  into «нель гильди» — a tab you cannot recognise is a tab you cannot use.
+  Economy scopes use the same rule.
+- The economy status line has its own reserved row instead of being drawn over
+  the tab buttons. The row is reserved even when there is no message, so the
+  screen does not jump after every operation.
+- Object details and the action buttons share one column, and long details used
+  to run underneath the buttons. The buttons now start where the details end,
+  measured with the same font that draws them.
+- Names that arrive from the server are translated when this client knows them
+  and shown as-is when it does not, instead of printing a translation key on
+  screen. Trade states are shown in words rather than as `NONE` or `SETTLED`.
+- The Back button in the guild and party tabs appears only when there is
+  somewhere to go back to. It used to sit on the root list and do nothing.
+
 ## Finite Slots and buyer budgets (0.8.0)
 
 The Slots and NPC buyer detail views expose their effective payout account and

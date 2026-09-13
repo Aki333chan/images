@@ -46,7 +46,7 @@ final class AurumFormScreen extends Screen {
             if (!options.isEmpty()) {
                 String selected = options.contains(field.value) ? field.value : options.getFirst();
                 choices.put(field.name, selected);
-                addRenderableWidget(CycleButton.builder(value -> Component.translatable("screen.aurumui.social.option." + value), selected)
+                addRenderableWidget(CycleButton.builder(value -> AurumSettingsScreen.dynamic("screen.aurumui.social.option.", value), selected)
                         .withValues(options).displayOnlyValue()
                         .create(x + column * (fieldWidth + 6), top + row * 30 + 10, fieldWidth, 20,
                                 Component.translatable(field.translation), (button, value) -> choices.put(field.name, value)));

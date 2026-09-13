@@ -1027,7 +1027,7 @@ export class CompanionService {
   async mutateManagedAccount(
     serverId: string,
     input: {
-      operation: 'create-fund' | 'transfer' | 'freeze' | 'unfreeze' | 'close';
+      operation: 'create-fund' | 'transfer' | 'credit' | 'debit' | 'freeze' | 'unfreeze' | 'close';
       idempotencyKey: string;
       profileKey: string;
       sourceRole?: string;

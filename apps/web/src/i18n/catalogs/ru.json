@@ -1345,5 +1345,15 @@
   "mc.accounts.history": "История счёта",
   "mc.accounts.historyHint": "Последние проводки выбранной роли счёта и валюты.",
   "mc.accounts.historyShow": "Показать историю",
-  "mc.accounts.historyHide": "Скрыть историю"
+  "mc.accounts.historyHide": "Скрыть историю",
+  "mc.accounts.openOnly": "Рабочие счета",
+  "mc.accounts.hiddenClosed": "скрыто закрытых: {count}",
+  "mc.accounts.quickActions": "Быстрые действия",
+  "mc.accounts.quickHint": "Каждое изменение проводит Core, и оно попадает в журнал вместе с причиной.",
+  "mc.accounts.role": "Счёт профиля",
+  "mc.accounts.noCurrency": "Валют нет",
+  "mc.accounts.reasonHint": "Зачем, в двух словах",
+  "mc.accounts.credit": "Начислить",
+  "mc.accounts.debit": "Списать",
+  "mc.accounts.transferFrom": "Перевести отсюда"
 }

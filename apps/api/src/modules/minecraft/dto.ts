@@ -149,8 +149,8 @@ export class EconomyRuleApplyDto {
 }
 
 export class ManagedAccountActionDto {
-  @IsIn(['create-fund', 'transfer', 'freeze', 'unfreeze', 'close'])
-  operation!: 'create-fund' | 'transfer' | 'freeze' | 'unfreeze' | 'close';
+  @IsIn(['create-fund', 'transfer', 'credit', 'debit', 'freeze', 'unfreeze', 'close'])
+  operation!: 'create-fund' | 'transfer' | 'credit' | 'debit' | 'freeze' | 'unfreeze' | 'close';
 
   @IsUUID()
   idempotencyKey!: string;
