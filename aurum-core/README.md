@@ -1,4 +1,10 @@
-# AurumCore 0.17.1
+# AurumCore 0.17.2
+
+Version 0.17.2 keeps existing customized locale files intact while using the
+locale bundled with the new JAR as defaults for newly introduced message keys.
+An upgraded server therefore receives new command messages immediately instead
+of printing `Missing language key`, without overwriting administrator wording.
+The locale test now also requires EN/RU/PL to expose identical key sets.
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
@@ -53,7 +59,7 @@ instead of silently widening the audit to every account.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.17.1.jar` to `plugins/`.
+2. Copy `AurumCore-0.17.2.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
