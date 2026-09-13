@@ -28,6 +28,10 @@ import ovh.aurumgg.companion.core.model.KnownPlayersPage;
 import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PermissionChange;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountPageInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutation;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutationInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
@@ -271,6 +275,20 @@ public interface GameBridge {
 
     /** Consume a preview token. Core compares the expected revision atomically. */
     default Optional<EconomyRuleApply> applyEconomyRule(String token, String actor, String reason) {
+        return Optional.empty();
+    }
+
+    /** Bounded account registry page; strict-native, never approximated through Vault. */
+    default Optional<ManagedAccountPageInfo> managedAccounts(
+            String search, String type, String status, boolean technical, int offset, int limit) {
+        return Optional.empty();
+    }
+
+    /** One managed account with all currency balances and linked ledger members. */
+    default Optional<ManagedAccountInfo> managedAccount(String profileKey) { return Optional.empty(); }
+
+    /** Idempotent named-fund/state/transfer mutation. */
+    default Optional<ManagedAccountMutationInfo> mutateManagedAccount(ManagedAccountMutation mutation) {
         return Optional.empty();
     }
 

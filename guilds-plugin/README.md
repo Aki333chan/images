@@ -814,9 +814,18 @@ Citizens спавнит своих NPC настоящими сущностями
 ./gradlew :core:test     # логика — любым JDK 21+
 ```
 
-Готовый `AurumGuilds-0.4.0.jar` кладётся в `plugins/`. Зависимости (HikariCP,
+Готовый `AurumGuilds-0.5.0.jar` кладётся в `plugins/`. Зависимости (HikariCP,
 драйвер MariaDB) уже внутри. API AurumCore лежит в `local-repo/` и внутрь jar
 не попадает: зависимость `compileOnly`, классы приходят от плагина AurumCore.
+
+# Release 0.5.0: managed guild account cards
+
+When AurumCore 0.17.0 is present, every existing and newly created guild is
+idempotently synchronized into the managed-account registry as `guild:<id>`.
+The card keeps its original founder once first registered while the current
+leader is refreshed as controller after leadership changes. The integration is
+isolated behind the existing soft-dependency boundary, so the legacy Vault mode
+still loads without AurumCore.
 
 # Release 0.4.0: guild bank on AurumCore accounts
 

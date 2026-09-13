@@ -35,3 +35,4 @@ include("guilds-api", "core", "paper")
 // авторизации (ovh.aurumgg:auth-events). Зависимость compileOnly и мягкая —
 // без AurumAuth плагин работает, просто не узнаёт об удалении аккаунтов.
 includeBuild("../auth-plugin")
+includeBuild("../aurum-core")

@@ -130,6 +130,11 @@ claims:
   # unfixable delivery failing on every single login, forever, in the log.
   max-attempts: 5
 
+managed-accounts:
+  # When a named fund is closed without an explicit destination, every
+  # configured currency is swept here. The destination must exist and be ACTIVE.
+  default-close-destination: "treasury:global"
+
 trading:
   # Guaranteed player-to-player trade: /trade <player>.
   #

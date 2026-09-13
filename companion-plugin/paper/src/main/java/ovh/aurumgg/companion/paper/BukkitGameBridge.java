@@ -43,6 +43,10 @@ import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
+import ovh.aurumgg.companion.core.model.ManagedAccountInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountPageInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutation;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutationInfo;
 
 /**
  * Реализация моста поверх Bukkit API.
@@ -697,6 +701,23 @@ public final class BukkitGameBridge implements GameBridge {
     public Optional<ovh.aurumgg.companion.core.model.EconomyRuleApply> applyEconomyRule(
             String token, String actor, String reason) {
         return aurumEconomy == null ? Optional.empty() : aurumEconomy.apply(token, actor, reason);
+    }
+
+    @Override
+    public Optional<ManagedAccountPageInfo> managedAccounts(
+            String search, String type, String status, boolean technical, int offset, int limit) {
+        return aurumEconomy == null ? Optional.empty()
+                : aurumEconomy.accounts(search, type, status, technical, offset, limit);
+    }
+
+    @Override
+    public Optional<ManagedAccountInfo> managedAccount(String profileKey) {
+        return aurumEconomy == null ? Optional.empty() : aurumEconomy.account(profileKey);
+    }
+
+    @Override
+    public Optional<ManagedAccountMutationInfo> mutateManagedAccount(ManagedAccountMutation mutation) {
+        return aurumEconomy == null ? Optional.empty() : aurumEconomy.mutate(mutation);
     }
 
     /**

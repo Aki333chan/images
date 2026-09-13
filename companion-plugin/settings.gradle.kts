@@ -81,6 +81,12 @@ includeSibling(
         "через который панель показывает гильдии и вмешивается в них.",
 )
 
+includeSibling(
+    "aurum-core",
+    "companion компилируется против ovh.aurumgg:aurum-api — строгого API ledger, " +
+        "реестра счетов и финансовых правил AurumCore.",
+)
+
 // core — чистая Java без Bukkit: HTTP-сервер, JSON, авторизация, клиент тикетов.
 //        Собирается и тестируется где угодно, включая CI без доступа к репозиторию Paper.
 // paper — адаптер к Bukkit/Paper API: точка входа плагина, команда /ticket.

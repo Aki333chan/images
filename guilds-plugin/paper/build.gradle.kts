@@ -62,7 +62,7 @@ dependencies {
     // API экономики AurumCore: счёт гильдии и атомарные проводки.
     // compileOnly и мягко — как и всё остальное здесь. Нет AurumCore →
     // AurumCoreBridge ни разу не загружается, банк работает через Vault.
-    compileOnly("ovh.aurumgg:aurum-api:0.7.0")
+    compileOnly("ovh.aurumgg:aurum-api:0.17.0")
 
     // События нашей системы авторизации: PlayerAccountDeletedEvent.
     // Разрешается из составной сборки, см. settings.gradle.kts.
@@ -99,7 +99,7 @@ dependencies {
     testImplementation("org.yaml:snakeyaml:2.3")
     testImplementation("io.papermc.paper:paper-api:26.2.build.+")
     testImplementation("org.mockito:mockito-core:5.23.0")
-    testImplementation("ovh.aurumgg:aurum-api:0.7.0")
+    testImplementation("ovh.aurumgg:aurum-api:0.17.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

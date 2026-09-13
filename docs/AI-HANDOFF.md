@@ -194,52 +194,37 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Живой smoke/fault-injection после чистого первого развёртывания.**
+**Завершить hardening managed-account registry, затем живой fault-injection.**
 
-Безопасный абсолютный `set` закрыт в Core 0.16.0 и Companion 0.12.0. Панель передаёт
-показанный expected и target; Core сравнивает и проводит под одной MariaDB-транзакцией.
-Conflict — terminal receipt, повтор потерянного успешного ответа не перезаписывает более
-позднюю проводку. Ноль и no-op поддержаны. Панель использует прежнее право
-`minecraft.economy.admin`, обязательную причину и strict-native маршрут без Vault fallback.
+Core 0.17.0 содержит MariaDB migration 12 и реестр карточек поверх существующего ledger.
+Companion 0.13.0 и web-панель дают on-demand список, детали и управление именованными
+фондами без Vault fallback. Player, Guild, Arena и Slots регистрируются идемпотентно;
+Arena/Slots перед удалением сохраняют план, блокируют новые операции, проверяют свои
+обязательства и переносят все валюты в настроенную казну. Падение или рестарт продолжает
+тот же close plan со стабильными ключами.
 
-Пользователь выполнил clean cutover: AurumCore стартует в `ACTIVE`, MariaDB отвечает
-`READY`, Vault provider — AurumCore, записи включены. Обновлённая панель развернута,
-capability-вкладка «Экономика» и AurumCore в supported plugins появились. Тестовые NPC,
-Arena и Slots разрешено пересоздать; универсальные импортёры для них не делать.
-WorldGuard-регионы не принадлежат Core и остаются как есть.
+Перед production-включением `freeze` нужен общий лёгкий status gate в денежном движке:
+сейчас статус гарантированно проверяется в операциях реестра, но прямые native-проводки
+плагинов и policy funding ещё не сверяются с `FROZEN`. Также существующий durable disband
+Guilds должен закрывать managed profile только после последней выплаты. После этих двух
+пунктов — живые сценарии Paper/MariaDB: закрытие с hold, падение между sweep-проводками,
+недоступная destination, повтор команды и Spark.
 
-Vault-балансы есть только у трёх тестеров, были накручены вручную и ценности не имеют.
-Пользователь готов их обнулить, поэтому shadow snapshot/import для production cutover не
-нужен: Core получает новую пустую БД и один раз запускается в active с
-`active.require-verified-migration: false`. Код дополнительно откажется от такого запуска,
-если обнаружит ненулевой player ledger. После первого успешного active старта вернуть флаг
-в `true`; сохранённый `active_cutover` позволит обычные последующие рестарты. Старый
-Essentials economy provider не удалять до проверки отката, но его тестовые балансы обнулить
-до контрольной резервной копии, иначе при rollback они снова станут видимыми.
-
-Перед переходом сохранить старые каталоги всех плагинов; если там неожиданно окажутся
-ценные Guilds/Slots данные, оценить их отдельно до удаления, не возвращаясь к универсальной
-миграции.
-
-Точный runbook остаётся в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md` как инструкция для
-следующих установок и отката. Локальные старые staging-копии очищены; актуальные JAR
-лежат по одному в `outputs` и опубликованы в Addons.
-
-Следующая работа: smoke-тесты переводов, Arena, Slots, NPC и Guilds на Paper 26.2,
-затем fault injection незавершённых holds/claims/payouts и Spark.
-
-`trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. Все семь
-серверных компонентов опубликованы в Addons; AurumUI 0.7.0 остаётся отдельным клиентским
-Fabric-модом.
+`trading.enabled` остаётся `false` до живого Paper/MariaDB fault-injection. AurumUI 0.7.0
+остаётся опциональным клиентским Fabric-модом.
 
 ## Очередь после текущего этапа
 
-1. Проверить базовые проводки, policy limits/tax, Arena, Slots, NPC и Guilds на уже
-   развёрнутом Paper 26.2 + MariaDB + VaultUnlocked.
-2. Провести fault injection и Spark; после этого отдельно включать guaranteed trade.
-3. Реализовать account registry/named funds по
-   `docs/aurum-account-registry-todo.md`: панель счетов, lifecycle Arena/Slots,
-   procurement, guild support и dormant support для city/region treasuries.
+1. Добавить общий in-memory status gate: `FROZEN/CLOSING/CLOSED` должны применяться ко
+   всем прямым ledger/hold/policy операциям без SQL-запроса на каждый платёж; `ACCOUNT_CLOSE`
+   — единственное разрешённое списание из `CLOSING`.
+2. После завершения существующего durable guild-disband закрывать/архивировать профиль
+   гильдии в реестре, не дублируя уже выплаченные доли.
+3. Проверить Core 0.17.0 generation на Paper 26.2 + MariaDB + VaultUnlocked: базовые
+   проводки, policy limits/tax, Arena, Slots, NPC, Guilds, close fault injection и Spark.
+4. Решить источник bankroll для Slots и бюджет NPC buyers; затем procurement и guild
+   support. City/region accounts оставить dormant до дизайна городов/регионов.
+5. После fault injection отдельно включать guaranteed trade.
 
 ## Журнал передачи
 

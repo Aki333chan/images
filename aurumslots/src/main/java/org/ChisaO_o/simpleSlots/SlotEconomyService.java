@@ -3,12 +3,15 @@ package org.ChisaO_o.simpleSlots;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import org.bukkit.Bukkit;
@@ -21,7 +24,12 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.AurumEconomyApi;
+import ovh.aurumgg.core.api.AurumAccountRegistryApi;
 import ovh.aurumgg.core.api.EconomyMode;
+import ovh.aurumgg.core.api.ManagedAccountCloseRequest;
+import ovh.aurumgg.core.api.ManagedAccountMember;
+import ovh.aurumgg.core.api.ManagedAccountMutationResult;
+import ovh.aurumgg.core.api.ManagedAccountRegistration;
 import ovh.aurumgg.core.api.HoldRequest;
 import ovh.aurumgg.core.api.HoldResult;
 import ovh.aurumgg.core.api.HoldSnapshot;
@@ -36,6 +44,7 @@ final class SlotEconomyService implements Listener {
     private final Set<UUID> activeSpins = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Set<UUID> warned = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile AurumEconomyApi api;
+    private volatile AurumAccountRegistryApi accounts;
 
     SlotEconomyService(SimpleSlots plugin, SpinJournal journal) {
         this.plugin = plugin;
@@ -52,7 +61,87 @@ final class SlotEconomyService implements Listener {
             api = null;
             plugin.getLogger().warning("AurumCore API could not be linked: " + error.getClass().getSimpleName());
         }
+        hookAccounts();
         return api != null;
+    }
+
+    private boolean hookAccounts() {
+        try {
+            RegisteredServiceProvider<AurumAccountRegistryApi> registration = plugin.getServer().getServicesManager()
+                    .getRegistration(AurumAccountRegistryApi.class);
+            accounts = registration == null ? null : registration.getProvider();
+        } catch (LinkageError error) {
+            accounts = null;
+        }
+        return accounts != null;
+    }
+
+    boolean managedAccountsAvailable() { return accounts != null || hookAccounts(); }
+
+    void synchronizeMachine(SlotMachine machine, String destination) {
+        if (!managedAccountsAvailable() || machine.closing) return;
+        accounts.synchronize(machineRegistration(machine, destination))
+                .thenAccept(result -> {
+                    if (result.status() != ManagedAccountMutationResult.Status.SUCCESS
+                            && result.status() != ManagedAccountMutationResult.Status.DUPLICATE) {
+                        plugin.getLogger().warning("Could not synchronize managed account for slot machine "
+                                + machine.id + ": " + result.message());
+                    }
+                });
+    }
+
+    void closeMachine(SlotMachine machine, String destination, String actor,
+                      BiConsumer<Boolean, String> completion) {
+        closeMachineResult(machine, destination, actor).whenComplete((result, failure) -> {
+            if (failure != null || result == null) {
+                completion.accept(false, "AurumCore unavailable");
+                return;
+            }
+            boolean success = result.status() == ManagedAccountMutationResult.Status.SUCCESS
+                    || result.status() == ManagedAccountMutationResult.Status.DUPLICATE;
+            completion.accept(success, result.message());
+        });
+    }
+
+    private CompletionStage<ManagedAccountMutationResult> closeMachineResult(SlotMachine machine,
+                                                                              String destination, String actor) {
+        if (!managedAccountsAvailable()) return CompletableFuture.completedFuture(
+                new ManagedAccountMutationResult(ManagedAccountMutationResult.Status.UNAVAILABLE, null,
+                        "AurumCore account registry is unavailable"));
+        String profileKey = "slots:" + machine.id;
+        return accounts.find(profileKey).thenCompose(existing -> {
+            if (existing.isPresent()) return closeMachineProfile(profileKey, destination, actor);
+            return accounts.synchronize(machineRegistration(machine, destination)).thenCompose(created -> {
+                if (created.status() != ManagedAccountMutationResult.Status.SUCCESS
+                        && created.status() != ManagedAccountMutationResult.Status.DUPLICATE) {
+                    return CompletableFuture.completedFuture(created);
+                }
+                return closeMachineProfile(profileKey, destination, actor);
+            });
+        });
+    }
+
+    private CompletionStage<ManagedAccountMutationResult> closeMachineProfile(String profileKey,
+                                                                                String destination, String actor) {
+        return accounts.close(new ManagedAccountCloseRequest(UUID.randomUUID().toString(), profileKey,
+                destination, actor, "delete slot machine"));
+    }
+
+    private ManagedAccountRegistration machineRegistration(SlotMachine machine, String destination) {
+        String resolvedDestination = destination == null || destination.isBlank()
+                ? "treasury:global" : destination.toLowerCase(Locale.ROOT);
+        String revision = UUID.nameUUIDFromBytes((machine.id + "\u0000" + machine.founderUuid + "\u0000"
+                + resolvedDestination).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        return new ManagedAccountRegistration(
+                "slots-account-sync:" + machine.id + ":" + revision, "slots:" + machine.id, "SLOTS",
+                machine.id, "Slot machine bankroll", "SERVER", "global", machine.founderUuid,
+                "AurumSlots", "SLOTS", machine.id, resolvedDestination, false,
+                List.of(new ManagedAccountMember(new AccountId(AccountType.SLOTS, machine.id), "primary", 0)),
+                "system:AurumSlots", "synchronize slot machine account");
+    }
+
+    boolean hasPending(String machineId) {
+        return journal.all().stream().anyMatch(record -> record.machineId().equals(machineId));
     }
 
     boolean available() { return api != null; }
@@ -253,16 +342,27 @@ final class SlotEconomyService implements Listener {
 
     @EventHandler
     public void onServiceRegister(ServiceRegisterEvent event) {
+        if (event.getProvider().getService() == AurumAccountRegistryApi.class) {
+            hookAccounts();
+            plugin.synchronizeMachineAccounts();
+            return;
+        }
         if (available() || event.getProvider().getService() != AurumEconomyApi.class) return;
         if (hook()) {
             plugin.getLogger().info("AurumCore economy became available.");
             plugin.refreshPaymentDisplay();
             recover();
+            plugin.synchronizeMachineAccounts();
         }
     }
 
     @EventHandler
     public void onServiceUnregister(ServiceUnregisterEvent event) {
+        if (event.getProvider().getService() == AurumAccountRegistryApi.class
+                && accounts == event.getProvider().getProvider()) {
+            accounts = null;
+            return;
+        }
         if (!available() || event.getProvider().getService() != AurumEconomyApi.class
                 || !isProvider(event.getProvider().getProvider())) return;
         plugin.getLogger().warning("AurumCore economy was unregistered; payments and pending recovery are paused.");

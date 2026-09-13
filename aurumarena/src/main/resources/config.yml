@@ -13,6 +13,11 @@ economy:
   # Сколько секунд держится резерв денег, пока идёт приём ставки.
   # Резерв живёт секунды, а не между перезапусками.
   hold-ttl-seconds: 120
+  # Остатки обоих счетов арены при /arena delete. Сейчас поддерживаются
+  # именованные TREASURY-счета AurumCore; по умолчанию — центральная казна.
+  account-close-destination:
+    type: TREASURY
+    id: global
   commission:
     # Процент казино со ставок. Пусто — берётся из settings.casino_commission_percent.
     percent: 0.0

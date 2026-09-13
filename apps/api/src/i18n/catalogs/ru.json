@@ -358,5 +358,10 @@
   "addons.err.dependencyCycle": "В каталоге аддонов обнаружен цикл зависимостей",
   "mc.err.economyRuleType": "Неизвестный тип финансового правила",
   "mc.err.economyRulesUnavailable": "Для редактора финансовых правил нужны активный AurumCore 0.15 или новее и AurumCompanion 0.10 или новее",
-  "mc.err.economyRuleFields": "Поля правила должны быть небольшим объектом из строковых ключей и значений"
+  "mc.err.economyRuleFields": "Поля правила должны быть небольшим объектом из строковых ключей и значений",
+  "mc.err.economyAccountKey": "Некорректный ключ управляемого счёта",
+  "mc.err.economyAccountNotFound": "Управляемый счёт не найден",
+  "mc.err.economyAccountStatus": "Неизвестный статус управляемого счёта",
+  "mc.err.economyAccountMutation": "Операция с управляемым счётом отклонена",
+  "mc.err.economyAccountsUnavailable": "Для управляемых счетов нужны активный AurumCore 0.17 или новее и AurumCompanion 0.13 или новее"
 }

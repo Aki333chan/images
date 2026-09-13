@@ -350,5 +350,10 @@
   "addons.err.dependencyCycle": "The addon catalog contains a dependency cycle",
   "mc.err.economyRuleType": "Unknown financial rule type",
   "mc.err.economyRulesUnavailable": "The financial rule editor requires active AurumCore 0.15 or newer and AurumCompanion 0.10 or newer",
-  "mc.err.economyRuleFields": "Rule fields must be a small string-to-string object"
+  "mc.err.economyRuleFields": "Rule fields must be a small string-to-string object",
+  "mc.err.economyAccountKey": "Invalid managed account key",
+  "mc.err.economyAccountNotFound": "Managed account was not found",
+  "mc.err.economyAccountStatus": "Unknown managed account status",
+  "mc.err.economyAccountMutation": "The managed account operation was rejected",
+  "mc.err.economyAccountsUnavailable": "Managed accounts require active AurumCore 0.17 or newer and AurumCompanion 0.13 or newer"
 }

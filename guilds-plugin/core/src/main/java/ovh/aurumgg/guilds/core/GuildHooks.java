@@ -46,6 +46,9 @@ public interface GuildHooks {
     /** Игрок вышел или исключён: убрать наследование. */
     void memberLeft(long guildId, UUID player);
 
+    /** Mutable guild metadata changed (currently the leader/controller). */
+    default void guildUpdated(long guildId) {}
+
     /**
      * Несколько получателей одного и того же события.
      *
@@ -82,6 +85,11 @@ public interface GuildHooks {
             @Override
             public void memberLeft(long guildId, UUID player) {
                 for (GuildHooks target : targets) target.memberLeft(guildId, player);
+            }
+
+            @Override
+            public void guildUpdated(long guildId) {
+                for (GuildHooks target : targets) target.guildUpdated(guildId);
             }
         };
     }

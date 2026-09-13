@@ -779,6 +779,41 @@ class CompanionHttpServerTest {
     }
 
     @Test
+    @DisplayName("Реестр счетов закрыт токеном, листается и сохраняет точные строки балансов")
+    void managedAccountRegistryIsBoundedAndAuthenticated() throws Exception {
+        bridge.accountRegistryAvailable = true;
+        bridge.managedAccounts.add(new ovh.aurumgg.companion.core.model.ManagedAccountInfo(
+                "treasury:global", "TREASURY", "Global", "Central", "SERVER", "global", "",
+                "AurumCore", "TREASURY", "global", "active", "", false,
+                List.of(new ovh.aurumgg.companion.core.model.ManagedAccountInfo.Member(
+                        "primary", "treasury:global", 0)), Map.of("coin", "123.45"),
+                1_700_000_000_000L, 1_700_000_000_100L, null));
+
+        assertEquals(401, get("/economy/accounts", null).statusCode());
+        Map<String, Object> body = JsonParser.parseObject(
+                get("/economy/accounts?type=TREASURY&limit=1", TOKEN).body());
+        assertEquals(1.0, body.get("total"));
+        Map<?, ?> account = (Map<?, ?>) ((List<?>) body.get("accounts")).getFirst();
+        assertEquals("treasury:global", account.get("key"));
+        assertEquals("123.45", ((Map<?, ?>) account.get("balances")).get("coin"));
+        assertEquals(200, get("/economy/accounts/treasury%3Aglobal", TOKEN).statusCode());
+    }
+
+    @Test
+    @DisplayName("Действие со счетом передает идемпотентность, автора и причину")
+    void managedAccountMutationCarriesAuditIdentity() throws Exception {
+        bridge.accountRegistryAvailable = true;
+        HttpResponse<String> response = post("/economy/accounts/action", TOKEN,
+                "{\"operation\":\"transfer\",\"idempotencyKey\":\"4a156e26-d797-47c3-91a0-531f0a4ba04f\","+
+                        "\"profileKey\":\"treasury:global\",\"secondaryProfile\":\"treasury:procurement\","+
+                        "\"currency\":\"coin\",\"amount\":25,\"actor\":\"panel:gm\",\"reason\":\"budget\"}");
+        assertEquals(200, response.statusCode(), response.body());
+        assertEquals("panel:gm", bridge.lastAccountMutation.actor());
+        assertEquals("budget", bridge.lastAccountMutation.reason());
+        assertEquals(new java.math.BigDecimal("25.0"), bridge.lastAccountMutation.amount());
+    }
+
+    @Test
     @DisplayName("Редактор правил закрыт токеном и возвращает текущие ревизии")
     void listsVersionedEconomyRules() throws Exception {
         bridge.rulesAvailable = true;

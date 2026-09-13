@@ -1,6 +1,8 @@
 # Aurum account registry and named funds — TODO
 
-Status: planned after the first live economy smoke/fault-injection pass.
+Status: implementation in progress; Core/Companion/panel and first plugin lifecycle shipped in
+the 0.17.0 generation. Live MariaDB/Paper fault injection remains required before enabling
+destructive close workflows on production data.
 
 This stage turns ledger addresses that already exist into managed objects with a
 name, owner/founder, lifecycle and a safe destination for the remaining balance.
@@ -117,15 +119,20 @@ money-routing decisions.
 
 ## Delivery order
 
-1. Finish current live smoke/fault-injection testing.
-2. Add registry schema, read API and account list/details in Companion + panel.
-3. Add named-fund create/transfer/freeze/close operations with permissions and
-   audit.
-4. Register existing player, guild, Arena and Slots accounts idempotently.
-5. Implement Arena/Slots close plans and configurable sweep destination.
+1. [~] Finish current live smoke/fault-injection testing.
+2. [x] Add registry schema, read API and account list/details in Companion + panel.
+3. [~] Add named-fund create/transfer/freeze/close operations with permissions and
+   audit. Administrative registry transfers are status-gated; a lightweight universal
+   ledger gate for policy/plugin writes against frozen accounts is still required.
+4. [x] Register existing player, guild, Arena and Slots accounts idempotently.
+5. [x] Implement Arena/Slots close plans and configurable sweep destination.
 6. Decide and implement Slots bankroll and NPC-buyer budget sources.
 7. Add procurement and guild-support administration.
 8. Leave city/region gameplay integration dormant until that system is designed.
+
+Additional follow-up: close/archive the managed guild profile only after the existing durable
+guild disband settlement completes. At first adoption of a legacy guild, the current leader is
+the best available founder because the old schema did not retain the original creator.
 
 ## Acceptance tests
 

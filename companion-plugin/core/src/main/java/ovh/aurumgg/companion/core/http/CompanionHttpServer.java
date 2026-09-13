@@ -40,6 +40,10 @@ import ovh.aurumgg.companion.core.model.PasswordReset;
 import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
+import ovh.aurumgg.companion.core.model.ManagedAccountPageInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutation;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutationInfo;
 import ovh.aurumgg.companion.core.webtoken.WebTokenStore;
 
 /**
@@ -496,6 +500,39 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // Strict-native managed account registry. These endpoints never fall
+        // back to Vault because Vault has no named funds or account lifecycle.
+        if (parts.length == 2 && parts[0].equals("economy") && parts[1].equals("accounts")
+                && method.equals("GET")) {
+            Optional<ManagedAccountPageInfo> page = bridge.managedAccounts(
+                    value(queryParam(exchange, "search")), value(queryParam(exchange, "type")),
+                    value(queryParam(exchange, "status")), booleanQuery(queryParam(exchange, "technical")),
+                    parseOffset(queryParam(exchange, "offset")), parseAccountLimit(queryParam(exchange, "limit")));
+            if (page.isEmpty()) { respondNoAccountRegistry(exchange); return; }
+            respond(exchange, 200, PayloadWriter.managedAccounts(page.get()));
+            return;
+        }
+
+        if (parts.length == 3 && parts[0].equals("economy") && parts[1].equals("accounts")
+                && method.equals("GET")) {
+            Optional<ManagedAccountInfo> account = bridge.managedAccount(decode(parts[2]));
+            if (account.isEmpty()) {
+                respond(exchange, 404, PayloadWriter.error("Managed account was not found", "account-not-found"));
+                return;
+            }
+            respond(exchange, 200, PayloadWriter.managedAccount(account.get()));
+            return;
+        }
+
+        if (parts.length == 3 && parts[0].equals("economy") && parts[1].equals("accounts")
+                && parts[2].equals("action") && method.equals("POST")) {
+            Optional<ManagedAccountMutationInfo> result = bridge.mutateManagedAccount(
+                    parseManagedAccountMutation(readBody(exchange)));
+            if (result.isEmpty()) { respondNoAccountRegistry(exchange); return; }
+            respond(exchange, result.get().ok() ? 200 : 409, PayloadWriter.managedAccountMutation(result.get()));
+            return;
+        }
+
         // GET /economy/audit/{section} — один bounded read-only срез AurumCore.
         // Секции раздельны намеренно: открытие истории не тащит holds, claims
         // и правила одним тяжёлым запросом.
@@ -943,6 +980,11 @@ public final class CompanionHttpServer {
                 "Active AurumCore economy is unavailable", "requires-aurumcore"));
     }
 
+    private void respondNoAccountRegistry(HttpExchange exchange) throws IOException {
+        respond(exchange, 503, PayloadWriter.error(
+                "AurumCore managed account registry is unavailable", "account-registry-unavailable"));
+    }
+
     private void respondBalanceChange(HttpExchange exchange, BalanceChange change) throws IOException {
         if (change.code().equals("unavailable")) {
             respond(exchange, 503, PayloadWriter.error(change.error(), "economy-unavailable"));
@@ -1050,6 +1092,47 @@ public final class CompanionHttpServer {
         } catch (NumberFormatException e) {
             return 50;
         }
+    }
+
+    private static int parseAccountLimit(String raw) {
+        if (raw == null || raw.isBlank()) return 25;
+        try { return Math.max(1, Math.min(100, Integer.parseInt(raw.trim()))); }
+        catch (NumberFormatException invalid) { return 25; }
+    }
+
+    private static boolean booleanQuery(String raw) {
+        return raw != null && (raw.equalsIgnoreCase("true") || raw.equals("1"));
+    }
+
+    private static String value(String raw) { return raw == null ? "" : raw; }
+
+    static ManagedAccountMutation parseManagedAccountMutation(String body) {
+        Map<String, Object> values = JsonParser.parseObject(body);
+        ManagedAccountMutation.Operation operation = switch (stringField(values, "operation")) {
+            case "create-fund" -> ManagedAccountMutation.Operation.CREATE_FUND;
+            case "transfer" -> ManagedAccountMutation.Operation.TRANSFER;
+            case "freeze" -> ManagedAccountMutation.Operation.FREEZE;
+            case "unfreeze" -> ManagedAccountMutation.Operation.UNFREEZE;
+            case "close" -> ManagedAccountMutation.Operation.CLOSE;
+            default -> throw new IllegalArgumentException("Unknown managed-account operation");
+        };
+        String idempotency = stringField(values, "idempotencyKey");
+        String key = stringField(values, "profileKey");
+        String secondary = stringField(values, "secondaryProfile");
+        String currency = stringField(values, "currency");
+        String displayName = stringField(values, "displayName");
+        String purpose = stringField(values, "purpose");
+        String actor = stringField(values, "actor");
+        String reason = stringField(values, "reason");
+        if (idempotency.isBlank() || idempotency.length() > 191 || key.isBlank()
+                || actor.isBlank() || reason.isBlank()) {
+            throw new IllegalArgumentException("idempotencyKey, profileKey, actor and reason are required");
+        }
+        BigDecimal amount = null;
+        Object rawAmount = values.get("amount");
+        if (rawAmount != null) amount = new BigDecimal(String.valueOf(rawAmount));
+        return new ManagedAccountMutation(operation, idempotency, key, secondary, currency, amount,
+                displayName, purpose, actor, reason);
     }
 
     /** Отрицательного смещения не бывает — считаем его нулём, а не ошибкой. */

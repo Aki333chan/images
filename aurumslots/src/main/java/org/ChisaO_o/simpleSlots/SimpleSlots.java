@@ -234,6 +234,15 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
     private void configurePaymentMode() {
         vaultRequested = getConfig().getBoolean("use_vault", false);
 
+        if (Bukkit.getPluginManager().getPlugin("AurumCore") != null) {
+            if (spinJournal == null) spinJournal = new SpinJournal(this);
+            if (slotEconomy == null) {
+                slotEconomy = new SlotEconomyService(this, spinJournal);
+                getServer().getPluginManager().registerEvents(slotEconomy, this);
+            }
+            slotEconomy.hook();
+        }
+
         if (!vaultRequested) {
             getLogger().info("Payment mode: items.");
             return;
@@ -282,10 +291,14 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             SlotMachine machine = new SlotMachine(id);
             machine.bet = section.getDouble(id + ".bet", 1.0);
             machine.pool = Math.max(0, section.getInt(id + ".pool", 0));
+            machine.founderUuid = section.getString(id + ".founder", "");
+            machine.closing = section.getBoolean(id + ".closing", false);
             machine.shelfLoc = strToLoc(section.getString(id + ".shelf"), id, "shelf");
             machine.buttonLoc = strToLoc(section.getString(id + ".button"), id, "button");
             machine.hopperLoc = strToLoc(section.getString(id + ".hopper"), id, "hopper");
             machines.put(id, machine);
+            if (machine.closing) resumeMachineClosure(machine);
+            else synchronizeMachineAccount(machine);
         }
     }
 
@@ -293,6 +306,7 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         cancelPendingPoolSave();
         persistCasinoConfig();
         updateCache();
+        synchronizeMachineAccounts();
     }
 
     private void persistCasinoConfig() {
@@ -303,6 +317,8 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             SlotMachine machine = entry.getValue();
             getConfig().set(path + ".bet", machine.bet);
             getConfig().set(path + ".pool", machine.pool);
+            getConfig().set(path + ".founder", machine.founderUuid);
+            getConfig().set(path + ".closing", machine.closing);
             if (machine.shelfLoc != null) {
                 getConfig().set(path + ".shelf", locToStr(machine.shelfLoc));
             }
@@ -472,12 +488,8 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
 
         String id = args[1];
         if (subcommand.equals("remove")) {
-            SlotMachine removed = machines.remove(id);
-            if (removed != null) {
-                removeHolograms(removed);
-                saveCasinoConfig();
-                sender.sendMessage(getMsg("removed").replace("%id%", id));
-            }
+            SlotMachine machine = machines.get(id);
+            if (machine != null) requestMachineRemoval(sender, machine);
             return true;
         }
 
@@ -499,7 +511,11 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             return true;
         }
 
-        SlotMachine machine = machines.computeIfAbsent(id, SlotMachine::new);
+        SlotMachine machine = machines.computeIfAbsent(id, key -> {
+            SlotMachine created = new SlotMachine(key);
+            created.founderUuid = player.getUniqueId().toString();
+            return created;
+        });
         switch (subcommand) {
             case "shelf" -> {
                 machine.shelfLoc = target.getLocation();
@@ -658,11 +674,8 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             event.getPlayer().sendMessage(getMsg("machine_protected"));
             return;
         }
-        removeHolograms(machine);
-        machines.remove(machine.id);
-        saveCasinoConfig();
-        event.getPlayer().sendMessage(locales.format("messages.machine_broken",
-                Map.of("id", machine.id)));
+        event.setCancelled(true);
+        requestMachineRemoval(event.getPlayer(), machine);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -680,6 +693,11 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         }
 
         Player player = event.getPlayer();
+        if (machine.closing) {
+            event.setCancelled(true);
+            player.sendMessage(getMsg("machine_closing"));
+            return;
+        }
         if (bannedPlayers.contains(player.getName().toLowerCase(Locale.ROOT))) {
             event.setCancelled(true);
             player.sendMessage(getMsg("banned_play"));
@@ -727,6 +745,83 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
 
     private void recoverTransactions() {
         if (slotEconomy != null) slotEconomy.recover();
+    }
+
+    void synchronizeMachineAccounts() {
+        if (slotEconomy == null) return;
+        machines.values().forEach(machine -> {
+            if (machine.closing) resumeMachineClosure(machine);
+            else synchronizeMachineAccount(machine);
+        });
+    }
+
+    private void synchronizeMachineAccount(SlotMachine machine) {
+        if (slotEconomy != null) slotEconomy.synchronizeMachine(machine, accountCloseDestination());
+    }
+
+    private String accountCloseDestination() {
+        String type = getConfig().getString("economy.account-close-destination.type", "TREASURY");
+        String id = getConfig().getString("economy.account-close-destination.id", "global");
+        if (!"TREASURY".equalsIgnoreCase(type) || id == null || !id.matches("[A-Za-z0-9._:-]{1,64}")) {
+            getLogger().warning("Invalid economy.account-close-destination; TREASURY:global is used.");
+            return "treasury:global";
+        }
+        return "treasury:" + id.toLowerCase(Locale.ROOT);
+    }
+
+    private void requestMachineRemoval(CommandSender sender, SlotMachine machine) {
+        if (machine.isSpinning || machine.paymentPending
+                || (slotEconomy != null && slotEconomy.hasPending(machine.id))) {
+            sender.sendMessage(getMsg("machine_obligations").replace("%id%", machine.id));
+            return;
+        }
+        if (slotEconomy == null || !slotEconomy.managedAccountsAvailable()) {
+            if (vaultRequested) {
+                sender.sendMessage(getMsg("account_unavailable"));
+                return;
+            }
+            removeMachineNow(machine);
+            sender.sendMessage(getMsg("removed").replace("%id%", machine.id));
+            return;
+        }
+        machine.closing = true;
+        saveCasinoConfig();
+        String actor = sender instanceof Player player ? "player:" + player.getUniqueId() : "command:" + sender.getName();
+        slotEconomy.closeMachine(machine, accountCloseDestination(), actor, (success, reason) ->
+                onMain(() -> {
+                    if (!success) {
+                        sender.sendMessage(getMsg("close_failed").replace("%id%", machine.id)
+                                .replace("%reason%", reason));
+                        return;
+                    }
+                    removeMachineNow(machine);
+                    sender.sendMessage(getMsg("closed").replace("%id%", machine.id)
+                            .replace("%destination%", accountCloseDestination()));
+                }));
+    }
+
+    private void resumeMachineClosure(SlotMachine machine) {
+        if (machine.isSpinning || machine.paymentPending || slotEconomy == null
+                || slotEconomy.hasPending(machine.id) || !slotEconomy.managedAccountsAvailable()) return;
+        slotEconomy.closeMachine(machine, accountCloseDestination(), "system:AurumSlots-recovery",
+                (success, reason) -> onMain(() -> {
+                    if (success) {
+                        removeMachineNow(machine);
+                        getLogger().info("Completed pending deletion of slot machine " + machine.id + ".");
+                    }
+                }));
+    }
+
+    private void removeMachineNow(SlotMachine machine) {
+        removeHolograms(machine);
+        machines.remove(machine.id);
+        saveCasinoConfig();
+    }
+
+    private void onMain(Runnable task) {
+        if (!isEnabled()) return;
+        if (Bukkit.isPrimaryThread()) task.run();
+        else getServer().getScheduler().runTask(this, task);
     }
 
     private void takeAurumBetAndStart(Player player, SlotMachine machine) {

@@ -10,6 +10,8 @@ final class SlotMachine {
     int pool = 0;
     boolean isSpinning = false;
     boolean paymentPending = false;
+    boolean closing = false;
+    String founderUuid = "";
     Location shelfLoc;
     Location buttonLoc;
     Location hopperLoc;

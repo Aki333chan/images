@@ -429,6 +429,9 @@ public final class FakeGameBridge implements GameBridge {
     public EconomyRulePreview nextRulePreview;
     public String lastRuleApply = "";
     public EconomyRuleApply nextRuleApply;
+    public boolean accountRegistryAvailable;
+    public final List<ovh.aurumgg.companion.core.model.ManagedAccountInfo> managedAccounts = new ArrayList<>();
+    public ovh.aurumgg.companion.core.model.ManagedAccountMutation lastAccountMutation;
 
     @Override
     public Optional<EconomyAuditInfo> economyAudit(
@@ -457,6 +460,37 @@ public final class FakeGameBridge implements GameBridge {
     public Optional<EconomyRuleApply> applyEconomyRule(String token, String actor, String reason) {
         lastRuleApply = token + ":" + actor + ":" + reason;
         return rulesAvailable ? Optional.ofNullable(nextRuleApply) : Optional.empty();
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.ManagedAccountPageInfo> managedAccounts(
+            String search, String type, String status, boolean technical, int offset, int limit) {
+        if (!accountRegistryAvailable) return Optional.empty();
+        List<ovh.aurumgg.companion.core.model.ManagedAccountInfo> filtered = managedAccounts.stream()
+                .filter(value -> search == null || search.isBlank()
+                        || value.key().contains(search) || value.name().contains(search))
+                .filter(value -> type == null || type.isBlank() || value.type().equalsIgnoreCase(type))
+                .filter(value -> status == null || status.isBlank() || value.status().equalsIgnoreCase(status))
+                .filter(value -> technical || !value.technical()).toList();
+        int from = Math.min(Math.max(0, offset), filtered.size());
+        int to = Math.min(from + Math.max(1, limit), filtered.size());
+        return Optional.of(new ovh.aurumgg.companion.core.model.ManagedAccountPageInfo(
+                List.copyOf(filtered.subList(from, to)), from, limit, filtered.size()));
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.ManagedAccountInfo> managedAccount(String profileKey) {
+        if (!accountRegistryAvailable) return Optional.empty();
+        return managedAccounts.stream().filter(value -> value.key().equals(profileKey)).findFirst();
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.ManagedAccountMutationInfo> mutateManagedAccount(
+            ovh.aurumgg.companion.core.model.ManagedAccountMutation mutation) {
+        if (!accountRegistryAvailable) return Optional.empty();
+        lastAccountMutation = mutation;
+        return Optional.of(new ovh.aurumgg.companion.core.model.ManagedAccountMutationInfo(
+                true, "success", "done", managedAccounts.isEmpty() ? null : managedAccounts.getFirst()));
     }
 
     // -------------------------------------------------------- сброс пароля

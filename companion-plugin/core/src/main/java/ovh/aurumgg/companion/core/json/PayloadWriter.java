@@ -28,6 +28,9 @@ import ovh.aurumgg.companion.core.model.PermissionsInfo;
 import ovh.aurumgg.companion.core.model.PlayerInfo;
 import ovh.aurumgg.companion.core.model.PluginInfo;
 import ovh.aurumgg.companion.core.model.PluginToggle;
+import ovh.aurumgg.companion.core.model.ManagedAccountInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountPageInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutationInfo;
 
 /** Сериализация ответов плагина. Формат зафиксирован в docs/companion.md. */
 public final class PayloadWriter {
@@ -214,6 +217,52 @@ public final class PayloadWriter {
         }
         root.put("records", Json.array(records));
         return Json.object(root);
+    }
+
+    public static String managedAccounts(ManagedAccountPageInfo page) {
+        List<String> accounts = new ArrayList<>(page.accounts().size());
+        page.accounts().forEach(value -> accounts.add(managedAccount(value)));
+        return Json.object(Map.of(
+                "accounts", Json.array(accounts),
+                "offset", Json.number(page.offset()),
+                "limit", Json.number(page.limit()),
+                "total", Json.number(page.total())));
+    }
+
+    public static String managedAccount(ManagedAccountInfo value) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("key", Json.string(value.key()));
+        fields.put("type", Json.string(value.type()));
+        fields.put("name", Json.string(value.name()));
+        fields.put("purpose", Json.string(value.purpose()));
+        fields.put("ownerKind", Json.string(value.ownerKind()));
+        fields.put("ownerId", Json.string(value.ownerId()));
+        fields.put("founderUuid", Json.string(value.founderUuid()));
+        fields.put("sourcePlugin", Json.string(value.sourcePlugin()));
+        fields.put("linkedObjectType", Json.string(value.linkedObjectType()));
+        fields.put("linkedObjectId", Json.string(value.linkedObjectId()));
+        fields.put("status", Json.string(value.status()));
+        fields.put("closeDestination", Json.string(value.closeDestination()));
+        fields.put("technical", value.technical() ? "true" : "false");
+        List<String> members = new ArrayList<>(value.members().size());
+        value.members().forEach(member -> members.add(Json.object(Map.of(
+                "role", Json.string(member.role()), "account", Json.string(member.account()),
+                "order", Json.number(member.order())))));
+        fields.put("members", Json.array(members));
+        fields.put("balances", stringMap(value.balances()));
+        fields.put("createdAt", Json.number(value.createdAt()));
+        fields.put("updatedAt", Json.number(value.updatedAt()));
+        fields.put("closedAt", value.closedAt() == null ? "null" : Json.number(value.closedAt()));
+        return Json.object(fields);
+    }
+
+    public static String managedAccountMutation(ManagedAccountMutationInfo value) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("ok", value.ok() ? "true" : "false");
+        fields.put("status", Json.string(value.status()));
+        fields.put("message", Json.string(value.message()));
+        fields.put("account", value.account() == null ? "null" : managedAccount(value.account()));
+        return Json.object(fields);
     }
 
     public static String economyRules(List<EconomyRuleInfo> values) {

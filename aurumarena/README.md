@@ -1,4 +1,13 @@
-# AurumArena 1.5.0
+# AurumArena 1.6.0
+
+Version 1.6.0 registers every arena as a managed AurumCore account card. The
+ordinary-bet and final-prize escrows remain separate members and are shown both
+separately and as one logical arena. Arena deletion now enters a persisted
+closing state, rejects new interactions, refuses to proceed while fights,
+bets, holds, refunds or payouts remain, then moves every currency to the
+configured active treasury before removing the arena. An interrupted close is
+resumed after restart. The default destination is `TREASURY:global` under
+`economy.account-close-destination`.
 
 Version 1.4.0 adds the typed AurumUI provider: the mod lists configured arenas
 and edits the selected arena's final prize pool and other safe settings without
@@ -15,6 +24,7 @@ the AurumUI handshake receive the same live values as a compact right-edge
 panel and retain unrelated scoreboards such as TAB.
 
 Плагин гладиаторских арен со ставками для Paper/Spigot 26.2 и Java 25.
+Для денежного режима и управляемого жизненного цикла требуется AurumCore 0.17.0 или новее.
 
 ## Язык
 

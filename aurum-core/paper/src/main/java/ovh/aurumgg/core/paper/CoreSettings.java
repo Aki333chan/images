@@ -29,6 +29,7 @@ record CoreSettings(
         boolean tradingEnabled,
         int tradeInviteTimeoutSeconds,
         int tradeSessionTimeoutSeconds,
+        String defaultAccountCloseDestination,
         boolean databaseEnabled,
         MariaDbSettings database
 ) {
@@ -70,6 +71,11 @@ record CoreSettings(
                 config.getInt("trading.invite-timeout-seconds", 30)));
         int tradeSessionTimeoutSeconds = Math.max(30, Math.min(3600,
                 config.getInt("trading.session-timeout-seconds", 300)));
+        String defaultAccountCloseDestination = config.getString(
+                "managed-accounts.default-close-destination", "treasury:global").trim().toLowerCase(Locale.ROOT);
+        if (!defaultAccountCloseDestination.matches("[a-z_]+:[^\\p{Cntrl}]{1,128}")) {
+            throw new IllegalArgumentException("Invalid managed-accounts.default-close-destination");
+        }
         boolean enabled = config.getBoolean("database.enabled", false);
         MariaDbSettings database = new MariaDbSettings(
                 config.getString("database.jdbc-url", "jdbc:mariadb://127.0.0.1:3306/aurum_core"),
@@ -81,7 +87,7 @@ record CoreSettings(
                 requireVerifiedMigration, globalRefreshTicks, paymentsEnabled, paymentMinimum,
                 paymentMaximum, paymentCooldownSeconds, policies, exchange, holdMaxTtlSeconds, claimMaxLeaseSeconds, claimMaxAttempts,
                 tradingEnabled, tradeInviteTimeoutSeconds, tradeSessionTimeoutSeconds,
-                enabled, database);
+                defaultAccountCloseDestination, enabled, database);
     }
 
     private static Map<String, CurrencySpec> readCurrencies(FileConfiguration config) {

@@ -18,7 +18,8 @@ public final class PolicyValidator {
             TransactionCategory.TAX, TransactionCategory.FEE, TransactionCategory.COMMISSION,
             TransactionCategory.CASHBACK, TransactionCategory.SUBSIDY, TransactionCategory.TRADE_HOLD,
             TransactionCategory.REFUND, TransactionCategory.ADMIN_ADJUSTMENT, TransactionCategory.MIGRATION,
-            TransactionCategory.CURRENCY_EXCHANGE);
+            TransactionCategory.CURRENCY_EXCHANGE, TransactionCategory.TREASURY_TRANSFER,
+            TransactionCategory.ACCOUNT_CLOSE);
 
     private PolicyValidator() {}
 

@@ -122,6 +122,12 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             }
             return plugin.claimCommands().execute(sender, args);
         }
+        if (args[0].equalsIgnoreCase("accounts") || args[0].equalsIgnoreCase("fund")) {
+            if (!sender.hasPermission(args[0].equalsIgnoreCase("accounts")
+                    ? "aurum.admin.accounts" : "aurum.admin.funds")) return deny(sender);
+            if (plugin.accountCommands() == null) return activeUnavailable(sender);
+            return plugin.accountCommands().execute(sender, args);
+        }
         if (args[0].equalsIgnoreCase("exchange")) {
             if (!sender.hasPermission("aurum.admin.exchange")) return deny(sender);
             if (plugin.exchanges() == null) {
@@ -299,6 +305,8 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             case "aeco" -> "economy";
             case "apolicy" -> "policy";
             case "aexchange" -> "exchange";
+            case "aaccount" -> "accounts";
+            case "afund" -> "fund";
             case "pay", "apay" -> "pay";
             default -> null;
         };
@@ -329,8 +337,62 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
             return options.stream().filter(it -> it.toLowerCase().startsWith(args[0].toLowerCase())).toList();
         }
         String[] values = normalized(command.getName(), args);
-        if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy", "policy", "exchange", "claims").stream()
+        if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy", "policy", "exchange", "claims", "accounts", "fund").stream()
                 .filter(it -> it.startsWith(values[0].toLowerCase())).toList();
+        if (values.length == 2 && values[0].equalsIgnoreCase("accounts")) {
+            return List.of("list", "inspect").stream()
+                    .filter(it -> it.startsWith(values[1].toLowerCase())).toList();
+        }
+        if (values.length == 2 && values[0].equalsIgnoreCase("fund")) {
+            return List.of("list", "inspect", "create", "transfer", "pay", "collect", "freeze", "unfreeze", "close")
+                    .stream().filter(it -> it.startsWith(values[1].toLowerCase())).toList();
+        }
+        if (values.length == 3 && (values[0].equalsIgnoreCase("accounts")
+                && values[1].equalsIgnoreCase("inspect"))) {
+            return plugin.accountCommands() == null ? List.of() : plugin.accountCommands().profileKeys(values[2]);
+        }
+        if (values.length == 3 && values[0].equalsIgnoreCase("fund")
+                && List.of("inspect", "freeze", "unfreeze", "close").contains(values[1].toLowerCase())) {
+            return plugin.accountCommands() == null ? List.of() : plugin.accountCommands().fundIds(values[2]);
+        }
+        if (values.length == 4 && values[0].equalsIgnoreCase("fund")
+                && values[1].equalsIgnoreCase("close")) {
+            java.util.List<String> options = new java.util.ArrayList<>(List.of("CONFIRM"));
+            if (plugin.accountCommands() != null) options.addAll(plugin.accountCommands().fundIds(values[3]));
+            return options.stream().filter(it -> it.toLowerCase().startsWith(values[3].toLowerCase())).toList();
+        }
+        if (values.length == 5 && values[0].equalsIgnoreCase("fund")
+                && values[1].equalsIgnoreCase("close") && !values[3].equalsIgnoreCase("CONFIRM")) {
+            return List.of("CONFIRM").stream()
+                    .filter(it -> it.toLowerCase().startsWith(values[4].toLowerCase())).toList();
+        }
+        if (values.length == 3 && values[0].equalsIgnoreCase("fund")
+                && values[1].equalsIgnoreCase("pay")) {
+            return plugin.accountCommands() == null ? List.of() : plugin.accountCommands().fundIds(values[2]);
+        }
+        if (values.length == 3 && values[0].equalsIgnoreCase("fund")
+                && values[1].equalsIgnoreCase("collect")) {
+            return Bukkit.getOnlinePlayers().stream().map(Player::getName)
+                    .filter(it -> it.toLowerCase().startsWith(values[2].toLowerCase())).toList();
+        }
+        if (values.length >= 3 && values.length <= 4 && values[0].equalsIgnoreCase("fund")
+                && values[1].equalsIgnoreCase("transfer")) {
+            return plugin.accountCommands() == null ? List.of() : plugin.accountCommands().fundIds(values[values.length - 1]);
+        }
+        if (values.length == 4 && values[0].equalsIgnoreCase("fund")
+                && values[1].equalsIgnoreCase("pay")) {
+            return Bukkit.getOnlinePlayers().stream().map(Player::getName)
+                    .filter(it -> it.toLowerCase().startsWith(values[3].toLowerCase())).toList();
+        }
+        if (values.length == 4 && values[0].equalsIgnoreCase("fund")
+                && values[1].equalsIgnoreCase("collect")) {
+            return plugin.accountCommands() == null ? List.of() : plugin.accountCommands().fundIds(values[3]);
+        }
+        if (values.length == 6 && values[0].equalsIgnoreCase("fund")
+                && List.of("transfer", "pay", "collect").contains(values[1].toLowerCase())) {
+            return plugin.settings().currencies().keySet().stream().map(id -> "currency:" + id)
+                    .filter(it -> it.startsWith(values[5].toLowerCase())).toList();
+        }
         if (values.length == 2 && values[0].equalsIgnoreCase("balance")
                 && sender.hasPermission("aurum.balance.others")) {
             return Bukkit.getOnlinePlayers().stream().map(Player::getName)

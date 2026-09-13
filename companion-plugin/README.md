@@ -1,5 +1,13 @@
 # Aurum Companion
 
+## Release 0.13.0
+
+The Companion now exposes AurumCore's managed-account registry through strict
+native endpoints. The panel can page and search account cards, inspect grouped
+multi-currency balances, create named treasury funds, transfer, freeze/unfreeze
+and close them with an actor, reason and idempotency key. It never falls back to
+Vault, never polls, and preserves decimal amounts as strings end to end.
+
 ## Release 0.12.0
 
 The player balance card can now replace a balance absolutely without turning

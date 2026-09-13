@@ -170,7 +170,11 @@
     сбои БД/рестарты и Spark. Финальная инструкция переключения Essentials и fresh-ledger
     cutover подготовлена в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md`; live-прогон ещё
     предстоит.
-10. [ ] Реестр управляемых счетов и именованных фондов. Требования и порядок реализации
+10. [~] Реестр управляемых счетов и именованных фондов. Core 0.17.0, Companion 0.13.0,
+    Guilds 0.5.0, Arena 1.6.0 и Slots 1.5.0 добавляют схему, API, панель, автоматическую
+    регистрацию и crash-resumable закрытие Arena/Slots. Остались универсальная блокировка
+    ledger-операций для `FROZEN`, архивирование профиля после роспуска гильдии и живой
+    fault-injection. Полные требования и порядок реализации
     зафиксированы в `docs/aurum-account-registry-todo.md`: список player/guild/plugin
     счетов в панели, неизменяемый founder отдельно от текущего controller, казны городов
     и регионов, procurement/guild-support фонды, а также lifecycle Arena/Slots. Каждая

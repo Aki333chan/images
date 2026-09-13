@@ -3,6 +3,7 @@ package ovh.aurumgg.companion.paper;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -17,11 +18,16 @@ import ovh.aurumgg.companion.core.model.EconomyRuleApply;
 import ovh.aurumgg.companion.core.model.EconomyRuleInfo;
 import ovh.aurumgg.companion.core.model.EconomyRuleMutation;
 import ovh.aurumgg.companion.core.model.EconomyRulePreview;
+import ovh.aurumgg.companion.core.model.ManagedAccountInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountPageInfo;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutation;
+import ovh.aurumgg.companion.core.model.ManagedAccountMutationInfo;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.AurumAuditApi;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.AurumRulesAdminApi;
+import ovh.aurumgg.core.api.AurumAccountRegistryApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.BalanceSetRequest;
 import ovh.aurumgg.core.api.BalanceSetResult;
@@ -35,6 +41,15 @@ import ovh.aurumgg.core.api.RuleType;
 import ovh.aurumgg.core.api.TransactionCategory;
 import ovh.aurumgg.core.api.TransactionRequest;
 import ovh.aurumgg.core.api.TransactionResult;
+import ovh.aurumgg.core.api.ManagedAccount;
+import ovh.aurumgg.core.api.ManagedAccountCloseRequest;
+import ovh.aurumgg.core.api.ManagedAccountMember;
+import ovh.aurumgg.core.api.ManagedAccountMutationResult;
+import ovh.aurumgg.core.api.ManagedAccountQuery;
+import ovh.aurumgg.core.api.ManagedAccountRegistration;
+import ovh.aurumgg.core.api.ManagedAccountStateRequest;
+import ovh.aurumgg.core.api.ManagedAccountStatus;
+import ovh.aurumgg.core.api.ManagedAccountTransferRequest;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
 /**
@@ -66,6 +81,7 @@ final class AurumCoreEconomyIntegration {
     private final AurumEconomyApi economy;
     private final AurumAuditApi audit;
     private final AurumRulesAdminApi rules;
+    private final AurumAccountRegistryApi accounts;
     private final Function<UUID, String> playerName;
 
     /** Constructed by BukkitGameBridge on the main thread during onEnable. */
@@ -74,6 +90,7 @@ final class AurumCoreEconomyIntegration {
         this.economy = findApi(plugin);
         this.audit = findAudit(plugin);
         this.rules = findRules(plugin);
+        this.accounts = findAccounts(plugin);
     }
 
     /** Есть ли Core и ведёт ли он экономику сам, а не в режиме наблюдателя. */
@@ -121,6 +138,17 @@ final class AurumCoreEconomyIntegration {
         try {
             RegisteredServiceProvider<AurumRulesAdminApi> registration =
                     plugin.getServer().getServicesManager().getRegistration(AurumRulesAdminApi.class);
+            return registration == null ? null : registration.getProvider();
+        } catch (NoClassDefFoundError | Exception unavailable) {
+            return null;
+        }
+    }
+
+    private static AurumAccountRegistryApi findAccounts(org.bukkit.plugin.Plugin plugin) {
+        if (plugin.getServer().getPluginManager().getPlugin(PLUGIN_NAME) == null) return null;
+        try {
+            RegisteredServiceProvider<AurumAccountRegistryApi> registration =
+                    plugin.getServer().getServicesManager().getRegistration(AurumAccountRegistryApi.class);
             return registration == null ? null : registration.getProvider();
         } catch (NoClassDefFoundError | Exception unavailable) {
             return null;
@@ -309,6 +337,88 @@ final class AurumCoreEconomyIntegration {
         return await(rules.apply(token, actor, reason)).map(value -> new EconomyRuleApply(
                 value.status().name().toLowerCase(java.util.Locale.ROOT),
                 value.current() == null ? null : rule(value.current()), value.message()));
+    }
+
+    Optional<ManagedAccountPageInfo> accounts(String search, String type, String rawStatus,
+                                              boolean technical, int offset, int limit) {
+        if (economy == null || accounts == null) return Optional.empty();
+        ManagedAccountStatus status = null;
+        if (rawStatus != null && !rawStatus.isBlank()) {
+            try { status = ManagedAccountStatus.valueOf(rawStatus.trim().toUpperCase(java.util.Locale.ROOT)); }
+            catch (RuntimeException invalid) { return Optional.empty(); }
+        }
+        try {
+            ManagedAccountQuery query = new ManagedAccountQuery(search, type, status, technical,
+                    Math.max(0, offset), Math.clamp(limit, 1, 100));
+            return await(accounts.list(query)).map(page -> new ManagedAccountPageInfo(
+                    page.accounts().stream().map(AurumCoreEconomyIntegration::account).toList(),
+                    page.offset(), page.limit(), page.total()));
+        } catch (RuntimeException invalid) {
+            return Optional.empty();
+        }
+    }
+
+    Optional<ManagedAccountInfo> account(String profileKey) {
+        if (economy == null || accounts == null) return Optional.empty();
+        return await(accounts.find(profileKey)).flatMap(value -> value)
+                .map(AurumCoreEconomyIntegration::account);
+    }
+
+    Optional<ManagedAccountMutationInfo> mutate(ManagedAccountMutation mutation) {
+        if (economy == null || accounts == null) return Optional.empty();
+        try {
+            java.util.concurrent.CompletionStage<ManagedAccountMutationResult> stage = switch (mutation.operation()) {
+                case CREATE_FUND -> {
+                    String key = mutation.profileKey().toLowerCase(java.util.Locale.ROOT);
+                    String id = key.startsWith("treasury:") ? key.substring("treasury:".length()) : key;
+                    if (!id.matches("[a-z0-9][a-z0-9._:-]{0,63}")) {
+                        throw new IllegalArgumentException("Invalid treasury fund id");
+                    }
+                    yield accounts.register(new ManagedAccountRegistration(
+                            mutation.idempotencyKey(), "treasury:" + id, "TREASURY", mutation.displayName(),
+                            mutation.purpose(), "SERVER", "global", "", "AurumCore", "TREASURY", id,
+                            "", false, List.of(new ManagedAccountMember(
+                                    new AccountId(AccountType.TREASURY, id), "primary", 0)),
+                            mutation.actor(), mutation.reason()));
+                }
+                case TRANSFER -> accounts.transfer(new ManagedAccountTransferRequest(
+                        mutation.idempotencyKey(), mutation.profileKey(), "primary",
+                        mutation.secondaryProfile(), "primary", mutation.currency(), mutation.amount(),
+                        mutation.actor(), mutation.reason()));
+                case FREEZE, UNFREEZE -> accounts.setFrozen(new ManagedAccountStateRequest(
+                        mutation.idempotencyKey(), mutation.profileKey(),
+                        mutation.operation() == ManagedAccountMutation.Operation.FREEZE,
+                        mutation.actor(), mutation.reason()));
+                case CLOSE -> accounts.close(new ManagedAccountCloseRequest(
+                        mutation.idempotencyKey(), mutation.profileKey(), mutation.secondaryProfile(),
+                        mutation.actor(), mutation.reason()));
+            };
+            return await(stage).map(AurumCoreEconomyIntegration::mutation);
+        } catch (RuntimeException invalid) {
+            return Optional.of(new ManagedAccountMutationInfo(false, "rejected", invalid.getMessage(), null));
+        }
+    }
+
+    private static ManagedAccountMutationInfo mutation(ManagedAccountMutationResult value) {
+        boolean ok = value.status() == ManagedAccountMutationResult.Status.SUCCESS
+                || value.status() == ManagedAccountMutationResult.Status.DUPLICATE;
+        return new ManagedAccountMutationInfo(ok,
+                value.status().name().toLowerCase(java.util.Locale.ROOT), value.message(),
+                value.account() == null ? null : account(value.account()));
+    }
+
+    private static ManagedAccountInfo account(ManagedAccount value) {
+        java.util.Map<String, String> balances = new java.util.TreeMap<>();
+        value.balances().forEach((currency, balance) -> balances.put(currency,
+                balance.stripTrailingZeros().toPlainString()));
+        return new ManagedAccountInfo(value.profileKey(), value.profileType(), value.displayName(),
+                value.purpose(), value.ownerKind(), value.ownerId(), value.founderUuid(),
+                value.sourcePlugin(), value.linkedObjectType(), value.linkedObjectId(),
+                value.status().name().toLowerCase(java.util.Locale.ROOT), value.closeDestinationProfile(),
+                value.technical(), value.members().stream().map(member -> new ManagedAccountInfo.Member(
+                        member.role(), member.account().stableKey(), member.displayOrder())).toList(),
+                Map.copyOf(balances), value.createdAt().toEpochMilli(), value.updatedAt().toEpochMilli(),
+                value.closedAt() == null ? null : value.closedAt().toEpochMilli());
     }
 
     private static RuleType type(String raw) {

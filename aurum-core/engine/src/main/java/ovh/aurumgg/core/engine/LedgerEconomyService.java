@@ -153,6 +153,14 @@ public final class LedgerEconomyService implements AurumEconomyApi {
         });
     }
 
+    /** Same-executor registry lifecycle helper; never call from the Paper main thread. */
+    BigDecimal balanceBlocking(AccountId account) throws Exception {
+        BigDecimal value = repository.balance(account, currency)
+                .orElse(BigDecimal.ZERO.setScale(currency.scale()));
+        balanceCache.put(account, value);
+        return value;
+    }
+
     private BalanceSetResult setBalanceBlocking(BalanceSetRequest request) throws Exception {
         synchronized (mutationLock) {
             if (!currency.id().equalsIgnoreCase(request.currencyId())) {

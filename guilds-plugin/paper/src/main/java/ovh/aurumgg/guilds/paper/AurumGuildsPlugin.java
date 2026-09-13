@@ -157,9 +157,11 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         // Состав региона держится в согласии с составом гильдии тем же
         // механизмом, что и группы LuckPerms: обоим нужно знать о вступлении и
         // выходе, и оба узнают об этом одним и тем же вызовом.
+        GuildAccountRegistryHooks accountRegistryHooks = new GuildAccountRegistryHooks(this, () -> this.guilds);
         GuildHooks hooks = GuildHooks.composite(
                 luckPerms ? luckPermsBridge : GuildHooks.noop(),
-                worldGuardFound ? new RegionSyncHooks(this, () -> this.guilds, worldGuard) : GuildHooks.noop());
+                worldGuardFound ? new RegionSyncHooks(this, () -> this.guilds, worldGuard) : GuildHooks.noop(),
+                accountRegistryHooks);
 
         // А ВОТ С ЭКОНОМИКОЙ ТАК НЕЛЬЗЯ, И ЗДЕСЬ БЫЛА ОШИБКА.
         //
@@ -218,6 +220,8 @@ public final class AurumGuildsPlugin extends JavaPlugin {
         // есть что. Событие на случай, если AurumCore поднимется позже нас,
         // подписываем в любом случае.
         getServer().getPluginManager().registerEvents(economy, this);
+        getServer().getPluginManager().registerEvents(accountRegistryHooks, this);
+        accountRegistryHooks.start();
         if (config.bankEnabled()) economy.tryLedger();
         parties = new PartyService(
                 Instant::now, names, config.maxPartyMembers(), config.partyInviteTtl());

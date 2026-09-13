@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -11,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.logging.Level;
 import org.bukkit.event.EventHandler;
@@ -21,7 +23,12 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.AurumEconomyApi;
+import ovh.aurumgg.core.api.AurumAccountRegistryApi;
 import ovh.aurumgg.core.api.EconomyMode;
+import ovh.aurumgg.core.api.ManagedAccountCloseRequest;
+import ovh.aurumgg.core.api.ManagedAccountMember;
+import ovh.aurumgg.core.api.ManagedAccountMutationResult;
+import ovh.aurumgg.core.api.ManagedAccountRegistration;
 import ovh.aurumgg.core.api.HoldRequest;
 import ovh.aurumgg.core.api.HoldResult;
 import ovh.aurumgg.core.api.HoldSnapshot;
@@ -84,6 +91,7 @@ final class ArenaEconomyService implements Listener {
     /** О чём уже пожаловались в лог: иначе периодический recovery спамит. */
     private final Set<UUID> warned = ConcurrentHashMap.newKeySet();
     private volatile AurumEconomyApi api;
+    private volatile AurumAccountRegistryApi accounts;
 
     ArenaEconomyService(GladiatorArena plugin, BetJournal journal, BiPredicate<String, UUID> betRecorded) {
         this.plugin = plugin;
@@ -105,7 +113,88 @@ final class ArenaEconomyService implements Listener {
             api = null;
             plugin.getLogger().warning("AurumCore API недоступен: " + error.getClass().getSimpleName());
         }
+        hookAccounts();
         return api != null;
+    }
+
+    private boolean hookAccounts() {
+        try {
+            RegisteredServiceProvider<AurumAccountRegistryApi> registration = plugin.getServer()
+                    .getServicesManager().getRegistration(AurumAccountRegistryApi.class);
+            accounts = registration == null ? null : registration.getProvider();
+        } catch (LinkageError error) {
+            accounts = null;
+        }
+        return accounts != null;
+    }
+
+    boolean managedAccountsAvailable() {
+        return accounts != null || hookAccounts();
+    }
+
+    void synchronizeArena(String arena, String founderUuid, String closeDestination) {
+        if (!managedAccountsAvailable()) return;
+        accounts.synchronize(arenaRegistration(arena, founderUuid, closeDestination))
+                .thenAccept(result -> {
+                    if (result.status() != ManagedAccountMutationResult.Status.SUCCESS
+                            && result.status() != ManagedAccountMutationResult.Status.DUPLICATE) {
+                        plugin.getLogger().warning("Не удалось зарегистрировать счёт арены " + arena + ": "
+                                + result.message());
+                    }
+                });
+    }
+
+    void closeArena(String arena, String founderUuid, String destination, String actor,
+                    BiConsumer<Boolean, String> completion) {
+        closeArenaResult(arena, founderUuid, destination, actor).whenComplete((result, failure) -> {
+            if (failure != null || result == null) {
+                completion.accept(false, "AurumCore не ответил");
+                return;
+            }
+            boolean success = result.status() == ManagedAccountMutationResult.Status.SUCCESS
+                    || result.status() == ManagedAccountMutationResult.Status.DUPLICATE;
+            completion.accept(success, result.message());
+        });
+    }
+
+    private CompletionStage<ManagedAccountMutationResult> closeArenaResult(String arena, String founderUuid,
+                                                                            String destination, String actor) {
+        if (!managedAccountsAvailable()) {
+            return CompletableFuture.completedFuture(new ManagedAccountMutationResult(
+                    ManagedAccountMutationResult.Status.UNAVAILABLE, null, "Реестр счетов AurumCore недоступен"));
+        }
+        String profileKey = "arena:" + arena;
+        return accounts.find(profileKey).thenCompose(existing -> {
+            if (existing.isPresent()) return closeArenaProfile(profileKey, destination, actor);
+            return accounts.synchronize(arenaRegistration(arena, founderUuid, destination)).thenCompose(created -> {
+                if (created.status() != ManagedAccountMutationResult.Status.SUCCESS
+                        && created.status() != ManagedAccountMutationResult.Status.DUPLICATE) {
+                    return CompletableFuture.completedFuture(created);
+                }
+                return closeArenaProfile(profileKey, destination, actor);
+            });
+        });
+    }
+
+    private CompletionStage<ManagedAccountMutationResult> closeArenaProfile(String profileKey, String destination,
+                                                                             String actor) {
+        return accounts.close(new ManagedAccountCloseRequest(UUID.randomUUID().toString(), profileKey,
+                destination == null ? "" : destination, actor, "delete arena"));
+    }
+
+    private ManagedAccountRegistration arenaRegistration(String arena, String founderUuid, String closeDestination) {
+        String destination = closeDestination == null || closeDestination.isBlank()
+                ? "treasury:global" : closeDestination.toLowerCase(Locale.ROOT);
+        String revision = UUID.nameUUIDFromBytes((arena + "\u0000" + founderUuid + "\u0000" + destination)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        return new ManagedAccountRegistration(
+                "arena-account-sync:" + arena + ":" + revision, "arena:" + arena, "ARENA", arena,
+                "Arena betting and champion pools", "SERVER", "global", founderUuid,
+                "AurumArena", "ARENA", arena, destination, false,
+                List.of(
+                        new ManagedAccountMember(escrow(arena, BetTicket.Purpose.BET), "bet", 0),
+                        new ManagedAccountMember(escrow(arena, BetTicket.Purpose.FINAL), "final", 1)),
+                "system:AurumArena", "synchronize arena account");
     }
 
     boolean available() {
@@ -337,15 +426,26 @@ final class ArenaEconomyService implements Listener {
 
     @EventHandler
     public void onServiceRegister(ServiceRegisterEvent event) {
+        if (event.getProvider().getService() == AurumAccountRegistryApi.class) {
+            hookAccounts();
+            plugin.synchronizeArenaAccounts();
+            return;
+        }
         if (available() || event.getProvider().getService() != AurumEconomyApi.class) return;
         if (hook()) {
             plugin.getLogger().info("Экономика AurumCore доступна: денежный режим арены включён.");
             recover();
+            plugin.synchronizeArenaAccounts();
         }
     }
 
     @EventHandler
     public void onServiceUnregister(ServiceUnregisterEvent event) {
+        if (event.getProvider().getService() == AurumAccountRegistryApi.class
+                && accounts == event.getProvider().getProvider()) {
+            accounts = null;
+            return;
+        }
         if (!available() || event.getProvider().getService() != AurumEconomyApi.class
                 || api != event.getProvider().getProvider()) return;
         plugin.getLogger().warning("Экономика AurumCore отключена: ставки и восстановление приостановлены.");

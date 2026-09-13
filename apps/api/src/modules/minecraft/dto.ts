@@ -148,6 +148,49 @@ export class EconomyRuleApplyDto {
   reason!: string;
 }
 
+export class ManagedAccountActionDto {
+  @IsIn(['create-fund', 'transfer', 'freeze', 'unfreeze', 'close'])
+  operation!: 'create-fund' | 'transfer' | 'freeze' | 'unfreeze' | 'close';
+
+  @IsUUID()
+  idempotencyKey!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(191)
+  profileKey!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(191)
+  secondaryProfile?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  currency?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^(?:0|[1-9]\d{0,12})(?:\.\d{1,8})?$/)
+  amount?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  purpose?: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  reason!: string;
+}
+
 /**
  * Кого назначить лидером при принудительной передаче.
  *

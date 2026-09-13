@@ -23,6 +23,8 @@ public enum TransactionCategory {
     REFUND,
     PROCUREMENT,
     SUBSIDY,
+    TREASURY_TRANSFER,
+    ACCOUNT_CLOSE,
     ADMIN_ADJUSTMENT,
     MIGRATION
 }

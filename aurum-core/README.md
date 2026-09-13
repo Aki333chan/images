@@ -1,9 +1,18 @@
-# AurumCore 0.16.0
+# AurumCore 0.17.0
 
 Authoritative economy foundation for the Aurum ecosystem. AurumCore owns the
 MariaDB ledger in `active` mode, exposes `AurumEconomyApi` to our plugins and
 registers the highest-priority Vault economy provider for third-party plugins.
 Vault remains the compatibility API; it is not the money store.
+
+Version 0.17.0 adds the managed-account registry. Ledger balances are still the
+only monetary authority; the registry adds names, immutable founder metadata,
+current owner/controller, plugin linkage and `ACTIVE`/`FROZEN`/`CLOSING`/`CLOSED`
+lifecycle. It groups the two Arena escrows into one arena card, registers player,
+guild and Slots accounts, and supports named `TREASURY:<id>` funds. Closing is a
+durable, idempotent multi-currency sweep to another active treasury and resumes
+after restart. Companion and the panel expose bounded on-demand list/detail and
+audited administration; no polling or online-player scan was added.
 
 `passive` and `shadow` remain non-authoritative. They never change live
 Vault/Essentials balances. Shadow mode creates immutable snapshots, imports
@@ -38,7 +47,7 @@ instead of silently widening the audit to every account.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.16.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.17.0.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
@@ -66,6 +75,10 @@ deliberately fresh, empty ledger; a non-empty unverified ledger is rejected.
 - `/aurum policy ...`, short form `/apolicy ...` — `aurum.admin.policy`.
 - `/aurum exchange ...`, short form `/aexchange ...` — `aurum.admin.exchange`.
 - `/aurum claims [list [plugin]|inspect <id>|retry <id>|drop <id>]` — `aurum.admin.claims`.
+- `/aaccount list [page]` and `/aaccount inspect <profile-key>` — bounded registry view,
+  permission `aurum.admin.accounts`.
+- `/afund list|inspect|create|transfer|pay|collect|freeze|unfreeze|close ...` — named-fund
+  administration, permission `aurum.admin.funds`. Closing requires literal `CONFIRM`.
 - `/trade <player|accept|item|money <amount>|clear|confirm|cancel|view>` — `aurum.trade`.
 
 The top-level commands `give`, `take` and `set` are intentionally not

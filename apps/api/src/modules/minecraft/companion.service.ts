@@ -16,6 +16,9 @@ import type {
   MinecraftEconomyRuleDto,
   MinecraftEconomyRulePreviewDto,
   MinecraftEconomyRuleType,
+  MinecraftManagedAccountDto,
+  MinecraftManagedAccountPageDto,
+  MinecraftManagedAccountMutationDto,
   MinecraftGiveItemDto,
   MinecraftGiveResponse,
   MinecraftGuildBonusDto,
@@ -987,6 +990,69 @@ export class CompanionService {
     };
   }
 
+  async getManagedAccounts(
+    serverId: string,
+    query: { search?: string; type?: string; status?: string; technical?: boolean; offset?: number; limit?: number },
+  ): Promise<MinecraftManagedAccountPageDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const params = new URLSearchParams({
+      offset: String(Math.max(0, query.offset ?? 0)),
+      limit: String(Math.max(1, Math.min(100, query.limit ?? 25))),
+    });
+    if (query.search?.trim()) params.set('search', query.search.trim());
+    if (query.type?.trim()) params.set('type', query.type.trim());
+    if (query.status?.trim()) params.set('status', query.status.trim());
+    if (query.technical) params.set('technical', 'true');
+    const result = await this.callRaw<RawManagedAccountPage>(
+      serverId, `/economy/accounts?${params.toString()}`, { timeoutMs: 8_000 },
+    );
+    if (!result.ok || !Array.isArray(result.body.accounts)) return null;
+    return {
+      accounts: result.body.accounts.map(toManagedAccount)
+        .filter((value): value is MinecraftManagedAccountDto => value !== null),
+      offset: Math.max(0, Math.trunc(numberOr(result.body.offset, 0))),
+      limit: Math.max(1, Math.min(100, Math.trunc(numberOr(result.body.limit, 25)))),
+      total: Math.max(0, Math.trunc(numberOr(result.body.total, 0))),
+    };
+  }
+
+  async getManagedAccount(serverId: string, key: string): Promise<MinecraftManagedAccountDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<RawManagedAccount>(
+      serverId, `/economy/accounts/${encodeURIComponent(key)}`, { timeoutMs: 8_000 },
+    );
+    return result.ok ? toManagedAccount(result.body) : null;
+  }
+
+  async mutateManagedAccount(
+    serverId: string,
+    input: {
+      operation: 'create-fund' | 'transfer' | 'freeze' | 'unfreeze' | 'close';
+      idempotencyKey: string;
+      profileKey: string;
+      secondaryProfile?: string;
+      currency?: string;
+      amount?: string;
+      displayName?: string;
+      purpose?: string;
+      actor: string;
+      reason: string;
+    },
+  ): Promise<MinecraftManagedAccountMutationDto | null> {
+    if (!(await this.isConfigured(serverId))) return null;
+    const result = await this.callRaw<RawManagedAccountMutation>(serverId, '/economy/accounts/action', {
+      method: 'POST', body: input, timeoutMs: 8_000,
+    });
+    const raw = result.body;
+    if (!raw || typeof raw.status !== 'string') return null;
+    return {
+      ok: raw.ok === true,
+      status: raw.status as MinecraftManagedAccountMutationDto['status'],
+      message: typeof raw.message === 'string' ? raw.message : (result.ok ? '' : (result.error ?? '')),
+      account: toManagedAccount(raw.account),
+    };
+  }
+
   /** Absolute compare-and-set. Retries preserve expectedBalance and the key. */
   async setBalance(
     serverId: string,
@@ -1358,6 +1424,72 @@ interface RawEconomyRuleApply {
   status?: unknown;
   current?: unknown;
   message?: unknown;
+}
+
+interface RawManagedAccount {
+  key?: unknown;
+  type?: unknown;
+  name?: unknown;
+  purpose?: unknown;
+  ownerKind?: unknown;
+  ownerId?: unknown;
+  founderUuid?: unknown;
+  sourcePlugin?: unknown;
+  linkedObjectType?: unknown;
+  linkedObjectId?: unknown;
+  status?: unknown;
+  closeDestination?: unknown;
+  technical?: unknown;
+  members?: unknown;
+  balances?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  closedAt?: unknown;
+}
+
+interface RawManagedAccountPage {
+  accounts?: RawManagedAccount[];
+  offset?: number;
+  limit?: number;
+  total?: number;
+}
+
+interface RawManagedAccountMutation {
+  ok?: boolean;
+  status?: string;
+  message?: string;
+  account?: RawManagedAccount | null;
+}
+
+function toManagedAccount(value: unknown): MinecraftManagedAccountDto | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as RawManagedAccount;
+  if (typeof raw.key !== 'string' || typeof raw.type !== 'string' || typeof raw.name !== 'string'
+      || !['active', 'frozen', 'closing', 'closed'].includes(String(raw.status))) return null;
+  const members = Array.isArray(raw.members) ? raw.members.flatMap((member) => {
+    if (!member || typeof member !== 'object' || Array.isArray(member)) return [];
+    const row = member as Record<string, unknown>;
+    return typeof row.role === 'string' && typeof row.account === 'string'
+      ? [{ role: row.role, account: row.account, order: Math.trunc(numberOr(row.order, 0)) }] : [];
+  }) : [];
+  const millis = (candidate: unknown, fallback: number) =>
+    typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : fallback;
+  return {
+    key: raw.key, type: raw.type, name: raw.name,
+    purpose: typeof raw.purpose === 'string' ? raw.purpose : '',
+    ownerKind: typeof raw.ownerKind === 'string' ? raw.ownerKind : '',
+    ownerId: typeof raw.ownerId === 'string' ? raw.ownerId : '',
+    founderUuid: typeof raw.founderUuid === 'string' ? raw.founderUuid : '',
+    sourcePlugin: typeof raw.sourcePlugin === 'string' ? raw.sourcePlugin : '',
+    linkedObjectType: typeof raw.linkedObjectType === 'string' ? raw.linkedObjectType : '',
+    linkedObjectId: typeof raw.linkedObjectId === 'string' ? raw.linkedObjectId : '',
+    status: raw.status as MinecraftManagedAccountDto['status'],
+    closeDestination: typeof raw.closeDestination === 'string' ? raw.closeDestination : '',
+    technical: raw.technical === true, members, balances: stringRecord(raw.balances),
+    createdAt: new Date(millis(raw.createdAt, Date.now())).toISOString(),
+    updatedAt: new Date(millis(raw.updatedAt, Date.now())).toISOString(),
+    closedAt: typeof raw.closedAt === 'number' ? new Date(raw.closedAt).toISOString() : null,
+  };
 }
 
 function stringRecord(value: unknown): Record<string, string> {

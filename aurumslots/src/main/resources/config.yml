@@ -22,3 +22,8 @@ machines: {}
 economy:
   hold-ttl-seconds: 300
   recovery-retry-seconds: 20
+  # Remaining machine-account balance on removal. Named AurumCore treasury
+  # IDs are supported; the global server treasury is the safe default.
+  account-close-destination:
+    type: TREASURY
+    id: global

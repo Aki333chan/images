@@ -615,6 +615,45 @@ export interface MinecraftEconomyRuleApplyDto {
   message: string;
 }
 
+export type MinecraftManagedAccountStatus = 'active' | 'frozen' | 'closing' | 'closed';
+
+/** One logical economy object; balances remain authoritative in Core ledger. */
+export interface MinecraftManagedAccountDto {
+  key: string;
+  type: string;
+  name: string;
+  purpose: string;
+  ownerKind: string;
+  ownerId: string;
+  founderUuid: string;
+  sourcePlugin: string;
+  linkedObjectType: string;
+  linkedObjectId: string;
+  status: MinecraftManagedAccountStatus;
+  closeDestination: string;
+  technical: boolean;
+  members: { role: string; account: string; order: number }[];
+  /** Exact decimal strings keyed by currency id. */
+  balances: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+}
+
+export interface MinecraftManagedAccountPageDto {
+  accounts: MinecraftManagedAccountDto[];
+  offset: number;
+  limit: number;
+  total: number;
+}
+
+export interface MinecraftManagedAccountMutationDto {
+  ok: boolean;
+  status: 'success' | 'duplicate' | 'not_found' | 'conflict' | 'rejected' | 'unavailable';
+  message: string;
+  account: MinecraftManagedAccountDto | null;
+}
+
 /**
  * Гильдия в панели.
  *

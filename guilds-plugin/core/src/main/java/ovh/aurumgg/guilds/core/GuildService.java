@@ -1328,6 +1328,7 @@ public final class GuildService implements AutoCloseable {
                 .toList();
         replace(guild, new StoredGuild(guild.id(), guild.name(), guild.tag(), newLeader,
                 guild.bank(), guild.createdAt(), guild.settings(), updated));
+        hooks.guildUpdated(guild.id());
     }
 
     private BankResult deleteGuild(StoredGuild guild, String reason) {

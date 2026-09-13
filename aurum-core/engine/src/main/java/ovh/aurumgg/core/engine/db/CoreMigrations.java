@@ -378,6 +378,62 @@ public final class CoreMigrations {
                     ADD INDEX IF NOT EXISTS ix_aurum_holds_currency_time (currency_id, created_at, id)
                 """
         );
+        List<String> managedAccountRegistry = List.of(
+                """
+                CREATE TABLE IF NOT EXISTS aurum_account_profiles (
+                    profile_key VARCHAR(191) PRIMARY KEY,
+                    profile_type VARCHAR(32) NOT NULL,
+                    display_name VARCHAR(128) NOT NULL,
+                    purpose VARCHAR(255) NOT NULL DEFAULT '',
+                    owner_kind VARCHAR(32) NOT NULL DEFAULT '',
+                    owner_id VARCHAR(128) NOT NULL DEFAULT '',
+                    founder_uuid CHAR(36) NULL,
+                    source_plugin VARCHAR(64) NOT NULL,
+                    linked_object_type VARCHAR(32) NOT NULL DEFAULT '',
+                    linked_object_id VARCHAR(128) NOT NULL DEFAULT '',
+                    status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+                    close_destination_profile VARCHAR(191) NOT NULL DEFAULT '',
+                    technical BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+                    closed_at TIMESTAMP(6) NULL,
+                    KEY ix_aurum_profile_list (technical, status, profile_type, profile_key),
+                    KEY ix_aurum_profile_owner (owner_kind, owner_id),
+                    KEY ix_aurum_profile_link (source_plugin, linked_object_type, linked_object_id)
+                ) ENGINE=InnoDB
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_account_profile_members (
+                    profile_key VARCHAR(191) NOT NULL,
+                    account_type VARCHAR(32) NOT NULL,
+                    reference_id VARCHAR(128) NOT NULL,
+                    member_role VARCHAR(32) NOT NULL,
+                    display_order INT UNSIGNED NOT NULL DEFAULT 0,
+                    PRIMARY KEY (profile_key, member_role),
+                    UNIQUE KEY uq_aurum_profile_member (account_type, reference_id),
+                    KEY ix_aurum_member_ledger (account_type, reference_id),
+                    CONSTRAINT fk_aurum_member_profile FOREIGN KEY (profile_key)
+                        REFERENCES aurum_account_profiles(profile_key) ON DELETE RESTRICT
+                ) ENGINE=InnoDB
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_account_operations (
+                    idempotency_key VARCHAR(191) PRIMARY KEY,
+                    intent_hash CHAR(64) NOT NULL,
+                    operation_type VARCHAR(32) NOT NULL,
+                    profile_key VARCHAR(191) NOT NULL,
+                    destination_profile VARCHAR(191) NOT NULL DEFAULT '',
+                    operation_status VARCHAR(16) NOT NULL,
+                    actor VARCHAR(128) NOT NULL,
+                    reason VARCHAR(255) NOT NULL,
+                    message VARCHAR(255) NOT NULL DEFAULT '',
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+                    KEY ix_aurum_account_operation_pending (operation_type, operation_status, updated_at),
+                    KEY ix_aurum_account_operation_profile (profile_key, created_at)
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -400,7 +456,9 @@ public final class CoreMigrations {
                 new SchemaMigration(10, "bind ledger idempotency keys to transaction intents",
                         checksum(transactionIntentHashes), transactionIntentHashes),
                 new SchemaMigration(11, "bounded economy audit read indexes",
-                        checksum(auditReadIndexes), auditReadIndexes)
+                        checksum(auditReadIndexes), auditReadIndexes),
+                new SchemaMigration(12, "managed account registry and durable lifecycle operations",
+                        checksum(managedAccountRegistry), managedAccountRegistry)
         );
     }
 

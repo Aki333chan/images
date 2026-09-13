@@ -29,6 +29,9 @@ import {
   type MinecraftEconomyRuleDto,
   type MinecraftEconomyRulePreviewDto,
   type MinecraftEconomyRuleType,
+  type MinecraftManagedAccountDto,
+  type MinecraftManagedAccountPageDto,
+  type MinecraftManagedAccountMutationDto,
   type MinecraftGiveResponse,
   type MinecraftGuildBonusDto,
   type MinecraftGuildDto,
@@ -62,6 +65,7 @@ import {
   GuildRemoveMemberDto,
   GuildTransferDto,
   InventoryClearDto,
+  ManagedAccountActionDto,
   JailDto,
   KickDto,
   PermissionChangeDto,
@@ -646,6 +650,65 @@ export class MinecraftController {
     return rules;
   }
 
+  @Get('economy/accounts')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  async managedAccounts(
+    @Param('serverId') serverId: string,
+    @Query('search') search?: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+    @Query('technical') technical?: string,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+  ): Promise<MinecraftManagedAccountPageDto> {
+    const result = await this.companion.getManagedAccounts(serverId, {
+      search: (search ?? '').slice(0, 128),
+      type: (type ?? '').slice(0, 32),
+      status: accountStatus(status),
+      technical: technical === '1' || technical === 'true',
+      offset: boundedInt(offset, 0, 1_000_000, 0),
+      limit: boundedInt(limit, 1, 100, 25),
+    });
+    if (!result) throw accountRegistryUnavailable();
+    return result;
+  }
+
+  @Get('economy/accounts/:key')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyView)
+  @ServerScoped('serverId')
+  async managedAccount(
+    @Param('serverId') serverId: string,
+    @Param('key') key: string,
+  ): Promise<MinecraftManagedAccountDto> {
+    if (!key || key.length > 191) throw new BadRequestException('mc.err.economyAccountKey');
+    const result = await this.companion.getManagedAccount(serverId, key);
+    if (!result) throw new NotFoundException('mc.err.economyAccountNotFound');
+    return result;
+  }
+
+  @Post('economy/accounts/action')
+  @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
+  @ServerScoped('serverId')
+  @AuditRedactBody()
+  async mutateManagedAccount(
+    @CurrentUser() user: AuthUser,
+    @Param('serverId') serverId: string,
+    @Body() dto: ManagedAccountActionDto,
+  ): Promise<MinecraftManagedAccountMutationDto> {
+    const result = await this.companion.mutateManagedAccount(serverId, {
+      ...dto,
+      actor: `panel:${await this.actorName(user.id)}`,
+    });
+    if (!result) throw accountRegistryUnavailable();
+    if (!result.ok) throw new ConflictException({
+      message: result.message || 'mc.err.economyAccountMutation',
+      code: `managed-account-${result.status}`,
+      result,
+    });
+    return result;
+  }
+
   @Post('economy/rules/:type/preview')
   @RequirePermission(MINECRAFT_PERMISSIONS.economyAdmin)
   @ServerScoped('serverId')
@@ -847,6 +910,28 @@ export class MinecraftController {
 function economyRuleType(raw: string): MinecraftEconomyRuleType {
   if (raw === 'policy' || raw === 'exchange') return raw;
   throw new BadRequestException('mc.err.economyRuleType');
+}
+
+function accountStatus(raw?: string): string {
+  if (!raw) return '';
+  const status = raw.trim().toLowerCase();
+  if (!['active', 'frozen', 'closing', 'closed'].includes(status)) {
+    throw new BadRequestException('mc.err.economyAccountStatus');
+  }
+  return status;
+}
+
+function boundedInt(raw: string | undefined, minimum: number, maximum: number, fallback: number): number {
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) ? Math.max(minimum, Math.min(maximum, value)) : fallback;
+}
+
+function accountRegistryUnavailable(): ServiceUnavailableException {
+  return new ServiceUnavailableException({
+    message: 'mc.err.economyAccountsUnavailable',
+    code: 'account-registry-unavailable',
+  });
 }
 
 function economyRuleFields(input: Record<string, string>): Record<string, string> {

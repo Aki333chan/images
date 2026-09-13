@@ -1,5 +1,5 @@
 name: AurumSlots
-version: '1.4.0'
+version: '1.5.0'
 main: org.ChisaO_o.simpleSlots.SimpleSlots
 api-version: '26.2'
 description: Плагин на кастомные слот-машины через полки

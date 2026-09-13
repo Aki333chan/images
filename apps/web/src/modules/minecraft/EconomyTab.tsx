@@ -3,6 +3,7 @@ import type { ModuleTabProps } from '../registry';
 import { EconomyAuditPanel } from './EconomyAuditPanel';
 import { EconomyOverviewPanel } from './EconomyOverviewPanel';
 import { EconomyRulesEditor } from './EconomyRulesEditor';
+import { ManagedAccountsPanel } from './ManagedAccountsPanel';
 
 /**
  * Нативная экономика Minecraft — вкладка игрового модуля, а не карточка
@@ -15,6 +16,7 @@ export function MinecraftEconomyTab({ serverId }: ModuleTabProps) {
   return (
     <div className="space-y-3">
       <EconomyOverviewPanel serverId={serverId} />
+      <ManagedAccountsPanel serverId={serverId} />
       <EconomyAuditPanel serverId={serverId} />
       {hasPermission('minecraft.economy.admin') ? (
         <EconomyRulesEditor serverId={serverId} />

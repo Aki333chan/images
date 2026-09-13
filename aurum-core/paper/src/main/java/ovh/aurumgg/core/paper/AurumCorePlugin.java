@@ -23,6 +23,10 @@ import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumClaimApi;
 import ovh.aurumgg.core.api.AurumAuditApi;
 import ovh.aurumgg.core.api.AurumRulesAdminApi;
+import ovh.aurumgg.core.api.AurumAccountRegistryApi;
+import ovh.aurumgg.core.api.AccountType;
+import ovh.aurumgg.core.api.ManagedAccountMember;
+import ovh.aurumgg.core.api.ManagedAccountRegistration;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.GlobalEconomySnapshot;
@@ -40,6 +44,7 @@ import ovh.aurumgg.core.engine.PassiveEconomyService;
 import ovh.aurumgg.core.engine.PolicyRegistry;
 import ovh.aurumgg.core.engine.PolicyRepository;
 import ovh.aurumgg.core.engine.RulesAdminService;
+import ovh.aurumgg.core.engine.AccountRegistryService;
 import ovh.aurumgg.core.engine.db.MariaDbManager;
 import ovh.aurumgg.core.engine.db.MariaDbStateRepository;
 import ovh.aurumgg.core.engine.migration.MigrationRepository;
@@ -66,6 +71,8 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     private volatile ClaimService claims;
     private volatile EconomyAuditService audit;
     private volatile RulesAdminService rulesAdmin;
+    private volatile AccountRegistryService accountRegistry;
+    private volatile AccountCommandCoordinator accountCommands;
     private volatile ClaimCoordinator claimCommands;
     private volatile ClaimsUiBridge claimsUi;
     private volatile TradeCoordinator tradeCommands;
@@ -112,7 +119,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
         AurumCommand command = new AurumCommand(this);
         for (String commandName : new String[] {
                 "aurum", "abal", "atreasury", "amigrate", "aeco", "apolicy", "aexchange", "pay", "apay",
-                "trade"}) {
+                "trade", "aaccount", "afund"}) {
             var registered = getCommand(commandName);
             if (registered != null) {
                 registered.setExecutor(command);
@@ -199,6 +206,32 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                             policyRepository, exchangeRepository, policyRegistry, exchangeRegistry,
                             databaseExecutor, Clock.systemUTC(), Duration.ofMinutes(5),
                             settings.policies().maxRules(), settings.exchange().maxRules());
+                    accountRegistry = new AccountRegistryService(opened.accountRegistryRepository(), service,
+                            settings.currencies(), databaseExecutor, Clock.systemUTC(),
+                            settings.defaultAccountCloseDestination());
+                    accountCommands = new AccountCommandCoordinator(this, accountRegistry);
+                    var globalRegistration = new ManagedAccountRegistration(
+                            "core-bootstrap:treasury:global", AccountRegistryService.GLOBAL_TREASURY_PROFILE,
+                            "TREASURY", "Global treasury", "Central server treasury",
+                            "SERVER", "global", "", "AurumCore", "TREASURY", "global", "",
+                            false, java.util.List.of(new ManagedAccountMember(
+                                    new AccountId(AccountType.TREASURY, "global"), "primary", 0)),
+                            "system", "AurumCore managed-account bootstrap");
+                    ovh.aurumgg.core.api.ManagedAccountMutationResult registeredGlobal;
+                    try {
+                        registeredGlobal = accountRegistry.register(globalRegistration)
+                                .toCompletableFuture().get(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new java.sql.SQLException("Global treasury registration was interrupted", interrupted);
+                    } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException failure) {
+                        throw new java.sql.SQLException("Global treasury registration failed", failure);
+                    }
+                    if (registeredGlobal.status() != ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.SUCCESS
+                            && registeredGlobal.status() != ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.DUPLICATE) {
+                        throw new java.sql.SQLException("Could not register global treasury: "
+                                + registeredGlobal.message());
+                    }
                     claimCommands = new ClaimCoordinator(this, claims);
                     claimsUi = new ClaimsUiBridge(this, claims);
                     if (settings.tradingEnabled()) {
@@ -330,6 +363,15 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
             getServer().getServicesManager().register(AurumRulesAdminApi.class, rulesAdmin,
                     this, ServicePriority.Highest);
         }
+        if (accountRegistry != null) {
+            getServer().getServicesManager().register(AurumAccountRegistryApi.class, accountRegistry,
+                    this, ServicePriority.Highest);
+            getServer().getOnlinePlayers().forEach(this::synchronizePlayerProfile);
+            accountRegistry.resumePendingClosures().thenAccept(completed -> {
+                if (completed > 0) getLogger().info("Resumed and completed " + completed
+                        + " managed account close plan(s).");
+            });
+        }
         if (tradeDelivery != null) {
             getServer().getPluginManager().registerEvents(tradeDelivery, this);
             getServer().getPluginManager().registerEvents(tradeCommands, this);
@@ -387,6 +429,27 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         refresh(event.getPlayer());
+        synchronizePlayerProfile(event.getPlayer());
+    }
+
+    private void synchronizePlayerProfile(Player player) {
+        AccountRegistryService registry = accountRegistry;
+        if (registry == null) return;
+        String uuid = player.getUniqueId().toString().toLowerCase(java.util.Locale.ROOT);
+        String name = player.getName();
+        String revision = name.toLowerCase(java.util.Locale.ROOT);
+        registry.synchronize(new ManagedAccountRegistration(
+                "core-player-sync:" + uuid + ":" + revision, "player:" + uuid, "PLAYER", name,
+                "Player wallet", "PLAYER", uuid, uuid, "AurumCore", "PLAYER", uuid, "", false,
+                java.util.List.of(new ManagedAccountMember(AccountId.player(player.getUniqueId()), "primary", 0)),
+                "system:AurumCore", "synchronize player wallet"))
+                .thenAccept(result -> {
+                    if (result.status() != ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.SUCCESS
+                            && result.status() != ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.DUPLICATE) {
+                        getLogger().warning("Could not synchronize managed wallet for " + name + ": "
+                                + result.message());
+                    }
+                });
     }
 
     @EventHandler
@@ -448,6 +511,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
     CoreSettings settings() { return settings; }
     MultiCurrencyEconomyService activeEconomy() { return activeEconomy; }
     PolicyCoordinator policies() { return policies; }
+    AccountCommandCoordinator accountCommands() { return accountCommands; }
     /** Денежные операции игрока и администратора; общий слой для команд и игрового окна. */
     EconomyOperations economyOperations() { return economyOperations; }
 

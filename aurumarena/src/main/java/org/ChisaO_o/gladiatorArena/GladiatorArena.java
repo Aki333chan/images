@@ -307,6 +307,8 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             arena.winnerExperience = clamp(getConfig().getInt(base + ".winnerExperience", defaultWinnerExperience), 0, 1_000_000);
             arena.finalWinnerExperience = clamp(getConfig().getInt(base + ".finalWinnerExperience", defaultFinalWinnerExperience), 0, 1_000_000);
             arena.experienceMode = ExperienceMode.parse(getConfig().getString(base + ".experienceMode", defaultExperienceMode.configValue));
+            arena.founderUuid = getConfig().getString(base + ".founderUuid", "");
+            arena.closing = getConfig().getBoolean(base + ".closing", false);
             arena.finalPool = finite(getConfig().getDouble(base + ".finalPool", 0.0), 0.0, 0.0, 1_000_000_000_000.0);
             arena.lastChampions.addAll(getConfig().getStringList(base + ".lastChampions"));
             List<String> storedFinalStats = getConfig().getStringList(base + ".finalStats");
@@ -320,6 +322,8 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             int duplicateFinalStats = keepNewestByKey(arena.finalStats, GladiatorArena::hologramBlockKey);
             arenas.put(arena.name, arena);
             arena.updateHolograms();
+            if (arena.closing) resumeArenaClosure(arena);
+            else synchronizeArenaAccount(arena);
             if (duplicateFinalStats > 0 || storedFinalStats.size() != arena.finalStats.size()) {
                 saveArena(arena);
                 getLogger().warning("Арена " + arena.name + ": удалено повреждённых или совпадающих в одном блоке финальных голограмм: " + (storedFinalStats.size() - arena.finalStats.size()) + ".");
@@ -354,6 +358,8 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         getConfig().set(base + ".winnerExperience", arena.winnerExperience);
         getConfig().set(base + ".finalWinnerExperience", arena.finalWinnerExperience);
         getConfig().set(base + ".experienceMode", arena.experienceMode.configValue);
+        getConfig().set(base + ".founderUuid", arena.founderUuid);
+        getConfig().set(base + ".closing", arena.closing);
         getConfig().set(base + ".finalPool", arena.finalPool);
         getConfig().set(base + ".lastChampions", arena.lastChampions);
         getConfig().set(base + ".finalStats", arena.finalStats.stream().map(FinalStatHolo::encode).toList());
@@ -750,7 +756,11 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         for (Arena other : arenas.values()) if (other.center.getWorld().equals(player.getWorld()) && other.center.distance(player.getLocation()) < other.radius + 100.0) {
             send(player, "§cНовая арена пересечётся с " + other.name + "."); return true;
         }
-        Arena arena = new Arena(name, player.getLocation()); arenas.put(name, arena); saveArena(arena);
+        Arena arena = new Arena(name, player.getLocation());
+        arena.founderUuid = player.getUniqueId().toString();
+        arenas.put(name, arena);
+        saveArena(arena);
+        synchronizeArenaAccount(arena);
         send(player, "§aАрена " + name + " создана."); return true;
     }
 
@@ -758,8 +768,83 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         if (args.length < 2) { send(player, "§cИспользование: /arena delete <арена>"); return true; }
         Arena arena = arenaByName(args[1]);
         if (arena == null) { send(player, "§cАрена не найдена."); return true; }
-        arena.shutdown(); arenas.remove(arena.name); getConfig().set("arenas." + arena.name, null); saveConfig();
-        send(player, "§aАрена удалена вместе с её голограммами."); return true;
+        if (hasEconomicObligations(arena)) {
+            send(player, "§cАрена не удалена: сначала завершите бой, верните ставки и дождитесь выплат.");
+            return true;
+        }
+        if (!money.managedAccountsAvailable()) {
+            if (useVault) {
+                send(player, "§cАрена не удалена: реестр счетов AurumCore недоступен.");
+                return true;
+            }
+            removeArenaNow(arena);
+            send(player, "§aАрена удалена вместе с её голограммами.");
+            return true;
+        }
+        arena.closing = true;
+        saveArena(arena);
+        money.closeArena(arena.name, arena.founderUuid, accountCloseDestination(),
+                "player:" + player.getUniqueId(), (success, reason) -> onMain(() -> {
+                    if (!success) {
+                        send(player, "§cАрена не удалена: " + reason
+                                + ". План закрытия сохранён; повторите /arena delete позже.");
+                        return;
+                    }
+                    removeArenaNow(arena);
+                    send(player, "§aАрена удалена; остатки её счетов переведены в "
+                            + accountCloseDestination() + ".");
+                }));
+        return true;
+    }
+
+    private void resumeArenaClosure(Arena arena) {
+        if (hasEconomicObligations(arena) || money == null || !money.managedAccountsAvailable()) return;
+        money.closeArena(arena.name, arena.founderUuid, accountCloseDestination(),
+                "system:AurumArena-recovery", (success, reason) -> onMain(() -> {
+                    if (success) {
+                        removeArenaNow(arena);
+                        getLogger().info("Завершено отложенное удаление арены " + arena.name + ".");
+                    } else {
+                        getLogger().warning("Отложенное удаление арены " + arena.name + " пока не завершено: "
+                                + reason);
+                    }
+                }));
+    }
+
+    private boolean hasEconomicObligations(Arena arena) {
+        return arena.state != GameState.WAITING || !arena.red.isEmpty() || !arena.blue.isEmpty()
+                || !arena.redBets.isEmpty() || !arena.blueBets.isEmpty() || !pendingWagers.isEmpty()
+                || betJournal.all().stream().anyMatch(ticket -> ticket.arena().equals(arena.name))
+                || recovery.allBets().stream().anyMatch(bet -> bet.arena().equals(arena.name))
+                || recovery.allMoneyPayouts().stream().anyMatch(payout -> payout.arena().equals(arena.name));
+    }
+
+    private void removeArenaNow(Arena arena) {
+        arena.shutdown();
+        arenas.remove(arena.name);
+        getConfig().set("arenas." + arena.name, null);
+        saveConfig();
+    }
+
+    private String accountCloseDestination() {
+        String type = getConfig().getString("economy.account-close-destination.type", "TREASURY");
+        String id = getConfig().getString("economy.account-close-destination.id", "global");
+        if (!"TREASURY".equalsIgnoreCase(type) || id == null || !id.matches("[A-Za-z0-9._:-]{1,64}")) {
+            getLogger().warning("Некорректный economy.account-close-destination; используется TREASURY:global.");
+            return "treasury:global";
+        }
+        return "treasury:" + id.toLowerCase(Locale.ROOT);
+    }
+
+    void synchronizeArenaAccounts() {
+        arenas.values().forEach(arena -> {
+            if (arena.closing) resumeArenaClosure(arena);
+            else synchronizeArenaAccount(arena);
+        });
+    }
+
+    private void synchronizeArenaAccount(Arena arena) {
+        if (money != null) money.synchronizeArena(arena.name, arena.founderUuid, accountCloseDestination());
     }
 
     private void setNumber(Player player, Arena arena, String[] args, boolean players) {
@@ -1075,7 +1160,8 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         final String name; final Location center;
         int radius = 100, maxPlayers = 2; Location redBtn, blueBtn, hostBtn, resetBtn, redHopper, blueHopper, finalHopper, bankomat;
         Location specSpawn, spawnRed1, spawnRed2, spawnBlue1, spawnBlue2;
-        boolean automatic, bettingEnabled = true, kitEnabled, friendlyFire, finalMode; String showBar = "spectators"; double finalPool;
+        boolean automatic, bettingEnabled = true, kitEnabled, friendlyFire, finalMode, closing;
+        String showBar = "spectators", founderUuid = ""; double finalPool;
         int winnerExperience, finalWinnerExperience; ExperienceMode experienceMode;
         final List<String> lastChampions = new ArrayList<>(); final List<FinalStatHolo> finalStats = new ArrayList<>();
         final List<Location> legacyHologramLocations = new ArrayList<>();
@@ -1112,6 +1198,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             // a protected arena. Registered arena controls are virtual controls,
             // so handle only those here and let every unrelated block stay denied.
             event.setCancelled(true);
+            if (closing) { send(player, "§eЭта арена закрывается и временно недоступна."); return true; }
             if (!player.hasPermission("arena.use")) {
                 noPermission(player);
                 return true;
