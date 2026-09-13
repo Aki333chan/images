@@ -64,7 +64,7 @@ Exchange engine использует версионированную котир
 На 2026-09-13 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
 `companion-v0.13.0`, `core-v0.17.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
 `npc-v2.1.0`, `arena-v1.6.0`, `slots-v1.5.0`. Старые releases и tags удалены;
-актуальный Addons commit — `baad0ea`.
+актуальный Addons commit — `9f0a8d3`.
 
 ## Исторические выпуски и этапы
 
@@ -232,6 +232,7 @@ destination, повтор команды и Spark.
 
 ### 2026-09-13 — Codex, durable managed guild retirement
 
+- Source commit `e2857e2`; Addons commit `9f0a8d3`; release `guilds-v0.5.1`.
 - Guilds 0.5.1 закрывает `guild:<id>` после завершения persisted disband payouts, но до
   удаления guild row. Любой отказ/таймаут Core сохраняет гильдию и план для безопасного
   повтора; stable lifecycle key переживает сбой между закрытием profile и удалением строки.
@@ -242,6 +243,7 @@ destination, повтор команды и Spark.
 - Проверки: 119 core tests и 13 paper tests (132 всего), включая отказ lifecycle после
   уже проведённых выплат, сохранение нулевого барьера, прямое изменение ledger balance,
   создание отсутствующего profile, close rejection и `keep` freeze.
+- SHA-256: `90553AB00E4357A5965CC1F1349719AD1F1CDB0BDA2AA6ACCBF0D22719E66391`.
 - Следующий этап: живой fault-injection Paper 26.2 + MariaDB + VaultUnlocked.
 
 ### 2026-09-13 — Codex, managed accounts generation
