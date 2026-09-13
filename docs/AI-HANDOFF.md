@@ -29,9 +29,12 @@
 - Maven: `E:\Codex\2026-08-26\new-chat\work\tooling\apache-maven-3.9.16\bin\mvn.cmd`
 - JDK 25: `E:\Codex\2026-08-26\new-chat\work\tooling\jdk25\jdk-25.0.4.1+1`
 - Gradle-проекты используют собственный wrapper.
-- Companion использует Gradle 8.14.3, который не разбирает строку версии JDK
-  `25.0.4.1`. Wrapper запускать системной Java 21, а JDK 25 передавать toolchain:
-  `.\gradlew.bat "-Dorg.gradle.java.installations.paths=E:\Codex\2026-08-26\new-chat\work\tooling\jdk25\jdk-25.0.4.1+1" clean test :paper:jar`.
+- Companion использует Gradle 8.14.3, который не разбирает строку версии локального JDK
+  `25.0.4.1`. Wrapper запускать системной Java 21 обычной командой
+  `.\gradlew.bat --no-daemon clean test :paper:jar`: Gradle сам использует подготовленный
+  Temurin 25 из своего toolchain-кэша. Не задавать этот локальный JDK через `JAVA_HOME` или
+  `org.gradle.java.installations.paths`; перед сборкой на новой машине проверить
+  `.\gradlew.bat -q javaToolchains`.
 
 ## Архитектура экономики
 
