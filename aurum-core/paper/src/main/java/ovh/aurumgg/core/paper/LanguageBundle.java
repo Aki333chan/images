@@ -49,7 +49,11 @@ final class LanguageBundle {
             selectedResource = "lang/messages_en.yml";
             selected = new File(plugin.getDataFolder(), selectedResource);
         }
-        messages = load(selected, plugin.getResource(selectedResource));
+        InputStream defaults = plugin.getResource(selectedResource);
+        if (defaults == null) {
+            defaults = LanguageBundle.class.getClassLoader().getResourceAsStream(selectedResource);
+        }
+        messages = load(selected, defaults);
     }
 
     /**
@@ -60,10 +64,19 @@ final class LanguageBundle {
      */
     static YamlConfiguration load(File selected, InputStream bundledDefaults) {
         YamlConfiguration configured = YamlConfiguration.loadConfiguration(selected);
-        if (bundledDefaults == null) return configured;
+        if (bundledDefaults == null) {
+            throw new IllegalStateException("Bundled language defaults are missing");
+        }
         try (InputStream input = bundledDefaults;
              InputStreamReader reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
-            configured.setDefaults(YamlConfiguration.loadConfiguration(reader));
+            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(reader);
+            // Materialize only missing paths in memory. This is deliberately
+            // explicit instead of relying on Configuration defaults lookup:
+            // server implementations may ask getString(path, fallback), and
+            // an old on-disk locale must still return the bundled translation.
+            defaults.getKeys(true).forEach(key -> {
+                if (!configured.isSet(key)) configured.set(key, defaults.get(key));
+            });
             return configured;
         } catch (IOException failure) {
             throw new IllegalStateException("Could not load bundled language defaults", failure);

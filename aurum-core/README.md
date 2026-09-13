@@ -1,6 +1,6 @@
-# AurumCore 0.17.2
+# AurumCore 0.17.3
 
-Version 0.17.2 keeps existing customized locale files intact while using the
+Version 0.17.3 keeps existing customized locale files intact while using the
 locale bundled with the new JAR as defaults for newly introduced message keys.
 An upgraded server therefore receives new command messages immediately instead
 of printing `Missing language key`, without overwriting administrator wording.
@@ -59,7 +59,7 @@ instead of silently widening the audit to every account.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.17.2.jar` to `plugins/`.
+2. Copy `AurumCore-0.17.3.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
