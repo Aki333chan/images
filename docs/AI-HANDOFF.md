@@ -234,6 +234,10 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
 2. Решить источник bankroll для Slots и бюджет NPC buyers; затем procurement и guild
    support. City/region accounts оставить dormant до дизайна городов/регионов.
 3. После fault injection отдельно включать guaranteed trade.
+4. Отдельно провести контролируемое обновление production-зависимостей панели: на
+   2026-09-13 `npm audit --omit=dev` показывает 14 transitive/direct findings
+   (3 high, 10 moderate, 1 low, 0 critical). Не применять `npm audit fix --force`:
+   часть автоматических исправлений предлагает major NestJS 12 и требует регрессии.
 
 ## Журнал передачи
 
@@ -263,6 +267,9 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   успешны.
 - Для оставшейся live-проверки нужны созданные игровые Arena/Slots/NPC/Guild и два
   одновременно доступных тестовых игрока; на текущем сервере эти списки пусты.
+- Production dependency audit панели: 14 findings (3 high, 10 moderate, 1 low,
+  critical 0). Среди direct high — `@nestjs/platform-express` и `nodemailer`; обновлять
+  отдельным проверяемым этапом, поскольку полный auto-fix перескакивает на NestJS 12.
 
 ### 2026-09-13 — Codex, forced transfer между managed accounts
 
