@@ -899,5 +899,13 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
 - AurumUI 0.8.0 показывает эффективный счёт выплаты машины/скупщика и позволяет менять
   mode + treasury через типизированные серверные действия. Нового polling нет: поля
   приходят в уже существующем admin snapshot при открытии или refresh.
+- Проверено: Gradle `clean build` Core (все engine/Paper tests), Maven/JDK 25
+  `clean package` AddonsNPC и AurumSlots, Gradle/JDK 25 `clean build` AurumUI; 263 ключа
+  каждой клиентской локали совпадают. Source commit `832438e`, Addons commit `013eba2`.
+  Releases `core-v0.18.0`, `npc-v2.2.0`, `slots-v1.6.0` успешно созданы workflow;
+  заменённые releases/tags 0.17.3/2.1.0/1.5.0 удалены. SHA-256 соответственно:
+  `441B559184CAD0D3A1DC23D8E889C6C80B7DDC9CEE16329524440125E647431F`,
+  `902DB8F506295B43B4D023C050139E0324A224F57D39EBD45F7272DE78B36477`,
+  `35B67A1CE87A1B821AA6D6F6BDB6B0D7B1550BA306AD8536B1BAC04D212E64DA`.
 - Следующий пункт: администрирование госзакупок и поддержки гильдий. Городские/региональные
   казны остаются только возможностью реестра до отдельного игрового дизайна.
