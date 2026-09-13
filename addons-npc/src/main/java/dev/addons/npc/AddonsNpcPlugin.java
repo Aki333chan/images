@@ -32,6 +32,7 @@ import dev.addons.npc.service.PurchaseClaim;
 import dev.addons.npc.service.SaleClaim;
 import dev.addons.npc.service.ShopPlan;
 import dev.addons.npc.model.BuyerDefinition;
+import dev.addons.npc.model.BuyerBudgetMode;
 import dev.addons.npc.model.BuyerOffer;
 import dev.addons.npc.model.ClickMode;
 import dev.addons.npc.model.DialogueMode;
@@ -93,6 +94,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         sagas = new NpcSagaRepository(this);
         economy = new EconomyService(this);
         boolean nativeEconomy = economy.hook();
+        synchronizeBuyerAccounts();
         dialogues = new DialogueService(messages);
         MannequinAdapter adapter = new MannequinAdapter(this);
         npcManager = new NpcManager(this, npcRepository, new dev.addons.npc.service.SkinService(this, adapter), adapter);
@@ -188,6 +190,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         exchangerRepository.load();
         dialogues.clear();
         economy.hook();
+        synchronizeBuyerAccounts();
         economy.recover(sagas, guildsHook);
         exchangerService.hook();
         npcManager.syncAll();
@@ -195,6 +198,22 @@ public final class AddonsNpcPlugin extends JavaPlugin {
 
     public EconomyService economy() {
         return economy;
+    }
+
+    public void synchronizeBuyerAccount(BuyerDefinition buyer) {
+        if (economy == null || buyer == null) return;
+        economy.synchronizeBuyer(buyer).thenAccept(result -> {
+            if (result.status() != ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.SUCCESS
+                    && result.status() != ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.DUPLICATE) {
+                getLogger().warning("Could not synchronize managed account for NPC buyer "
+                        + buyer.id() + ": " + result.message());
+            }
+        });
+    }
+
+    private void synchronizeBuyerAccounts() {
+        if (buyerRepository == null || economy == null) return;
+        buyerRepository.all().forEach(this::synchronizeBuyerAccount);
     }
 
     public boolean guildsAvailable() {
@@ -271,6 +290,8 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         Map<String, String> value = card("buyer", buyer.id(), buyer.title());
         value.put("size", String.valueOf(buyer.size()));
         value.put("offers", String.valueOf(buyer.offers().size()));
+        value.put("budgetMode", buyer.budgetMode().name());
+        value.put("budgetAccount", economy.buyerBudgetSource(buyer).stableKey());
         percentage(value, "bonus", buyer.bonus());
         return Map.copyOf(value);
     }
@@ -365,9 +386,16 @@ public final class AddonsNpcPlugin extends JavaPlugin {
             case "buyer_open" -> { buyerService.open(actor, id); return "ok.opened"; }
             case "buyer_set_title" -> buyer.title(text(args, "value", 128));
             case "buyer_set_bonus" -> buyer.bonus(timed(args, 1000));
+            case "buyer_set_budget" -> {
+                BuyerBudgetMode mode = BuyerBudgetMode.parse(text(args, "mode", 24));
+                buyer.budgetMode(mode);
+                buyer.budgetTreasuryId(mode == BuyerBudgetMode.TREASURY
+                        ? text(args, "treasury", 64) : "");
+            }
             default -> { return "error.unknown_action"; }
         }
         buyerRepository.save();
+        synchronizeBuyerAccount(buyer);
         return "ok.saved";
     }
 

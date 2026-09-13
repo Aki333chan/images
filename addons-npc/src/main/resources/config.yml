@@ -22,6 +22,19 @@ economy:
   hold-ttl-seconds: 300
   recovery-retry-seconds: 20
 
+  # Where NPC buyers get the money they pay to players.
+  # BUYER gives every buyer an independent NPC_BUYER:<id> account.
+  # TREASURY makes buyers share the named treasury. LEGACY restores the old
+  # unlimited SYSTEM_SOURCE and should only be used during a deliberate rollback.
+  buyer-budget:
+    mode: BUYER
+    treasury-id: global
+
+  # When a buyer is deleted, Core closes its managed account and moves every
+  # remaining currency to this treasury. This prevents abandoned balances.
+  buyer-account-close-destination:
+    id: global
+
   # How long a promised sale stays valid before it is cancelled untouched.
   #
   # This protects the PLAYER, not the money. A sale clicked just before a crash

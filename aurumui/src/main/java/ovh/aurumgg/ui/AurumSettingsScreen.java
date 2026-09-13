@@ -367,6 +367,12 @@ final class AurumSettingsScreen extends Screen {
     private void slotsActions(List<UiAction> list, WireProtocol.AdminObject o) {
         action(list, "screen.aurumui.action.teleport", () -> send(o, "teleport"));
         action(list, setting("screen.aurumui.field.bet", o.get("bet")), () -> input(o, "set_bet", "bet"));
+        action(list, setting("screen.aurumui.field.bankroll", o.get("bankrollSource")), () ->
+                form(o, "set_bankroll", List.of(
+                        new AurumFormScreen.Field("mode", "screen.aurumui.field.bankrollmode",
+                                o.get("bankrollMode"), 16),
+                        new AurumFormScreen.Field("treasury", "screen.aurumui.field.bankrolltreasury",
+                                bankrollTreasury(o.get("bankrollSource")), 64))));
     }
 
     private void npcActions(List<UiAction> list, WireProtocol.AdminObject o) {
@@ -410,6 +416,16 @@ final class AurumSettingsScreen extends Screen {
         action(list, "screen.aurumui.action.offers", () -> openOffers("buyer-offer:" + o.id()));
         action(list, setting("screen.aurumui.field.title", clean(o.title())), () -> input(o, "buyer_set_title", "title"));
         action(list, setting("screen.aurumui.field.bonus", o.get("bonus")), () -> promotion(o, "buyer_set_bonus", "bonus"));
+        action(list, setting("screen.aurumui.field.budget", o.get("budgetAccount")), () ->
+                form(o, "buyer_set_budget", List.of(
+                        new AurumFormScreen.Field("mode", "screen.aurumui.field.budgetmode",
+                                o.get("budgetMode"), 16),
+                        new AurumFormScreen.Field("treasury", "screen.aurumui.field.budgettreasury",
+                                bankrollTreasury(o.get("budgetAccount")), 64))));
+    }
+
+    private static String bankrollTreasury(String source) {
+        return source.startsWith("treasury:") ? source.substring("treasury:".length()) : "global";
     }
 
     private void shopOfferActions(List<UiAction> list, WireProtocol.AdminObject o) {

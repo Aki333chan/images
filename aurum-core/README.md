@@ -1,4 +1,10 @@
-# AurumCore 0.17.3
+# AurumCore 0.18.0
+
+Version 0.18.0 adds an audited console transfer between arbitrary non-technical
+managed-account members: `/aaccount transfer <from-profile> <from-role>
+<to-profile> <to-role> <amount> [currency:<id>] [reason]`. It is the command
+counterpart of the panel dialog and uses the same registry lifecycle and
+available-balance checks; it cannot turn a source/sink into disguised issuance.
 
 Version 0.17.3 keeps existing customized locale files intact while using the
 locale bundled with the new JAR as defaults for newly introduced message keys.
@@ -59,7 +65,7 @@ instead of silently widening the audit to every account.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.17.3.jar` to `plugins/`.
+2. Copy `AurumCore-0.18.0.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.
@@ -87,7 +93,9 @@ deliberately fresh, empty ledger; a non-empty unverified ledger is rejected.
 - `/aurum policy ...`, short form `/apolicy ...` — `aurum.admin.policy`.
 - `/aurum exchange ...`, short form `/aexchange ...` — `aurum.admin.exchange`.
 - `/aurum claims [list [plugin]|inspect <id>|retry <id>|drop <id>]` — `aurum.admin.claims`.
-- `/aaccount list [page]` and `/aaccount inspect <profile-key>` — bounded registry view,
+- `/aaccount list [page]`, `/aaccount inspect <profile-key>` and `/aaccount transfer
+  <from-profile> <from-role> <to-profile> <to-role> <amount> [currency:<id>] [reason]`
+  — bounded registry view and an audited transfer between managed members,
   permission `aurum.admin.accounts`.
 - `/afund list|inspect|create|transfer|pay|collect|freeze|unfreeze|close ...` — named-fund
   administration, permission `aurum.admin.funds`. Closing requires literal `CONFIRM`.

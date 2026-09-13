@@ -36,7 +36,6 @@ import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -48,6 +47,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.math.BigDecimal;
 
 public final class SimpleSlots extends JavaPlugin implements CommandExecutor, TabCompleter, Listener {
     private final Map<String, SlotMachine> machines = new HashMap<>();
@@ -66,6 +66,9 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
     private boolean configurationLoaded;
     private BukkitTask pendingPoolSave;
     private LocaleService locales;
+    private SlotMachine.PayoutMode defaultPayoutMode = SlotMachine.PayoutMode.MACHINE;
+    private String defaultPayoutTreasuryId = "global";
+    private double bankrollCheckMultiplier = 100.0;
 
     @Override
     public void onEnable() {
@@ -151,6 +154,8 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             value.put("bet", formatNumber(machine.bet));
             value.put("spinning", String.valueOf(machine.isSpinning));
             value.put("payment", getPaymentModeDescription());
+            value.put("bankrollMode", machine.payoutMode.name());
+            value.put("bankrollSource", slotEconomy.payoutSourceKey(machine));
             Location location = machine.hopperLoc != null ? machine.hopperLoc
                     : machine.shelfLoc != null ? machine.shelfLoc : machine.buttonLoc;
             value.put("location", location == null ? "—" : location.getWorld().getName() + " "
@@ -179,11 +184,24 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
                     }
                     machine.bet = value;
                 }
+                case "set_bankroll" -> {
+                    String rawMode = arguments.getOrDefault("mode", "").trim();
+                    if (rawMode.equalsIgnoreCase("own")) rawMode = "MACHINE";
+                    SlotMachine.PayoutMode mode = SlotMachine.PayoutMode.valueOf(
+                            rawMode.toUpperCase(Locale.ROOT));
+                    String treasury = "";
+                    if (mode == SlotMachine.PayoutMode.TREASURY) {
+                        treasury = validTreasuryId(arguments.get("treasury"), "");
+                        if (treasury.isBlank()) return "error.invalid_value";
+                    }
+                    machine.payoutMode = mode;
+                    machine.payoutTreasuryId = treasury;
+                }
                 default -> { return "error.unknown_action"; }
             }
             saveCasinoConfig();
             return "ok.saved";
-        } catch (NumberFormatException exception) {
+        } catch (IllegalArgumentException exception) {
             return "error.invalid_value";
         }
     }
@@ -207,6 +225,7 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         bannedPlayers.addAll(getConfig().getStringList("banned_players"));
         loadCurrencies();
         configurePaymentMode();
+        loadBankrollConfig();
         loadMachines();
         updateCache();
     }
@@ -265,6 +284,24 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         }
     }
 
+    private void loadBankrollConfig() {
+        String rawMode = getConfig().getString("economy.payout-source.mode", "MACHINE");
+        try {
+            defaultPayoutMode = SlotMachine.PayoutMode.valueOf(
+                    rawMode == null ? "MACHINE" : rawMode.trim().toUpperCase(Locale.ROOT));
+            if (defaultPayoutMode == SlotMachine.PayoutMode.DEFAULT) {
+                defaultPayoutMode = SlotMachine.PayoutMode.MACHINE;
+            }
+        } catch (IllegalArgumentException invalid) {
+            defaultPayoutMode = SlotMachine.PayoutMode.MACHINE;
+            getLogger().warning("Invalid economy.payout-source.mode; MACHINE is used.");
+        }
+        defaultPayoutTreasuryId = validTreasuryId(getConfig().getString(
+                "economy.payout-source.treasury-id", "global"), "global");
+        bankrollCheckMultiplier = Math.clamp(getConfig().getDouble(
+                "economy.bankroll-check-multiplier", 100.0), 1.0, 100_000.0);
+    }
+
     private void refreshEconomyAfterStartup() {
         if (!isEnabled()) {
             return;
@@ -293,6 +330,15 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             machine.pool = Math.max(0, section.getInt(id + ".pool", 0));
             machine.founderUuid = section.getString(id + ".founder", "");
             machine.closing = section.getBoolean(id + ".closing", false);
+            try {
+                machine.payoutMode = SlotMachine.PayoutMode.valueOf(section.getString(
+                        id + ".payout-source.mode", "DEFAULT").toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException invalid) {
+                machine.payoutMode = SlotMachine.PayoutMode.DEFAULT;
+                getLogger().warning("Invalid payout source mode for machine '" + id + "'; DEFAULT is used.");
+            }
+            machine.payoutTreasuryId = validTreasuryId(section.getString(
+                    id + ".payout-source.treasury-id", ""), "");
             machine.shelfLoc = strToLoc(section.getString(id + ".shelf"), id, "shelf");
             machine.buttonLoc = strToLoc(section.getString(id + ".button"), id, "button");
             machine.hopperLoc = strToLoc(section.getString(id + ".hopper"), id, "hopper");
@@ -319,6 +365,9 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             getConfig().set(path + ".pool", machine.pool);
             getConfig().set(path + ".founder", machine.founderUuid);
             getConfig().set(path + ".closing", machine.closing);
+            getConfig().set(path + ".payout-source.mode", machine.payoutMode.name());
+            getConfig().set(path + ".payout-source.treasury-id",
+                    machine.payoutTreasuryId.isBlank() ? null : machine.payoutTreasuryId);
             if (machine.shelfLoc != null) {
                 getConfig().set(path + ".shelf", locToStr(machine.shelfLoc));
             }
@@ -497,6 +546,10 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             setBet(sender, id, args);
             return true;
         }
+        if (subcommand.equals("bankroll")) {
+            configureBankroll(sender, id, args);
+            return true;
+        }
         if (!Set.of("shelf", "button", "hop").contains(subcommand)) {
             sender.sendMessage(getMsg("help"));
             return true;
@@ -636,13 +689,13 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> suggestions = new ArrayList<>();
         if (args.length == 1) {
-            suggestions.addAll(Arrays.asList("bet", "shelf", "button", "hop", "remove", "ban", "status", "debug", "reload", "help"));
+            suggestions.addAll(Arrays.asList("bet", "bankroll", "shelf", "button", "hop", "remove", "ban", "status", "debug", "reload", "help"));
         } else if (args.length == 2) {
             if (args[0].equalsIgnoreCase("ban")) {
                 suggestions.addAll(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList());
             } else if (args[0].equalsIgnoreCase("debug")) {
                 suggestions.add("removehologram");
-            } else if (Set.of("bet", "shelf", "button", "hop", "remove").contains(args[0].toLowerCase(Locale.ROOT))) {
+            } else if (Set.of("bet", "bankroll", "shelf", "button", "hop", "remove").contains(args[0].toLowerCase(Locale.ROOT))) {
                 suggestions.addAll(machines.keySet());
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("bet")) {
@@ -653,6 +706,11 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         } else if (args.length == 3 && args[0].equalsIgnoreCase("debug")
                 && args[1].equalsIgnoreCase("removehologram")) {
             suggestions.addAll(Arrays.asList("4", "8", "16"));
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("bankroll")) {
+            suggestions.addAll(Arrays.asList("default", "machine", "treasury", "legacy"));
+        } else if (args.length == 4 && args[0].equalsIgnoreCase("bankroll")
+                && args[2].equalsIgnoreCase("treasury")) {
+            suggestions.addAll(Arrays.asList("global", "procurement", "casino"));
         }
 
         String prefix = args.length == 0 ? "" : args[args.length - 1].toLowerCase(Locale.ROOT);
@@ -741,6 +799,63 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         machine.pool -= bet;
         saveConfigAfterPoolChange();
         startSpin(machine, player, null);
+    }
+
+    private void configureBankroll(CommandSender sender, String id, String[] args) {
+        SlotMachine machine = machines.get(id);
+        if (machine == null) {
+            sender.sendMessage(getMsg("machine_not_found").replace("%id%", id));
+            return;
+        }
+        if (args.length == 2) {
+            sender.sendMessage(getMsg("bankroll_status")
+                    .replace("%id%", id).replace("%source%", slotEconomy.payoutSourceKey(machine)));
+            return;
+        }
+        SlotMachine.PayoutMode mode;
+        try {
+            String raw = args[2].equalsIgnoreCase("own") ? "MACHINE" : args[2].toUpperCase(Locale.ROOT);
+            mode = SlotMachine.PayoutMode.valueOf(raw);
+        } catch (IllegalArgumentException invalid) {
+            sender.sendMessage(getMsg("bankroll_usage"));
+            return;
+        }
+        String treasury = "";
+        if (mode == SlotMachine.PayoutMode.TREASURY) {
+            if (args.length < 4) {
+                sender.sendMessage(getMsg("bankroll_usage"));
+                return;
+            }
+            treasury = validTreasuryId(args[3], "");
+            if (treasury.isBlank()) {
+                sender.sendMessage(getMsg("bankroll_usage"));
+                return;
+            }
+        }
+        machine.payoutMode = mode;
+        machine.payoutTreasuryId = treasury;
+        saveCasinoConfig();
+        sender.sendMessage(getMsg("bankroll_set")
+                .replace("%id%", id).replace("%source%", slotEconomy.payoutSourceKey(machine)));
+    }
+
+    SlotMachine.PayoutMode payoutMode(SlotMachine machine) {
+        SlotMachine.PayoutMode mode = machine.payoutMode == SlotMachine.PayoutMode.DEFAULT
+                ? defaultPayoutMode : machine.payoutMode;
+        return mode;
+    }
+
+    String payoutTreasury(SlotMachine machine) {
+        return machine.payoutTreasuryId.isBlank() ? defaultPayoutTreasuryId : machine.payoutTreasuryId;
+    }
+
+    double bankrollCheckMultiplier() {
+        return bankrollCheckMultiplier;
+    }
+
+    private static String validTreasuryId(String raw, String fallback) {
+        String value = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+        return value.matches("[a-z0-9][a-z0-9._:-]{0,63}") ? value : fallback;
     }
 
     private void recoverTransactions() {

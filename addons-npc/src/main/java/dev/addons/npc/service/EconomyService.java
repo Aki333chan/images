@@ -1,5 +1,7 @@
 package dev.addons.npc.service;
 
+import dev.addons.npc.model.BuyerBudgetMode;
+import dev.addons.npc.model.BuyerDefinition;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -14,16 +16,23 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AurumEconomyApi;
+import ovh.aurumgg.core.api.AurumAccountRegistryApi;
+import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.HoldRequest;
 import ovh.aurumgg.core.api.HoldResult;
 import ovh.aurumgg.core.api.TransactionCategory;
+import ovh.aurumgg.core.api.ManagedAccountCloseRequest;
+import ovh.aurumgg.core.api.ManagedAccountMember;
+import ovh.aurumgg.core.api.ManagedAccountMutationResult;
+import ovh.aurumgg.core.api.ManagedAccountRegistration;
 
 /** Native AurumCore writer with Vault retained only for primary-currency display compatibility. */
 public final class EconomyService {
     private final JavaPlugin plugin;
     private Economy vault;
     private volatile AurumEconomyApi aurum;
+    private volatile AurumAccountRegistryApi accounts;
     private final java.util.Set<java.util.UUID> warnedRecovery = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public EconomyService(JavaPlugin plugin) { this.plugin = plugin; }
@@ -37,8 +46,12 @@ public final class EconomyService {
                     .getRegistration(AurumEconomyApi.class);
             AurumEconomyApi selected = registration == null ? null : registration.getProvider();
             aurum = selected != null && selected.mode() == EconomyMode.ACTIVE ? selected : null;
+            RegisteredServiceProvider<AurumAccountRegistryApi> accountRegistration = plugin.getServer()
+                    .getServicesManager().getRegistration(AurumAccountRegistryApi.class);
+            accounts = accountRegistration == null ? null : accountRegistration.getProvider();
         } catch (LinkageError error) {
             aurum = null;
+            accounts = null;
             plugin.getLogger().warning("AurumCore API could not be linked: " + error.getClass().getSimpleName());
         }
         return aurum != null;
@@ -57,7 +70,93 @@ public final class EconomyService {
         return BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP);
     }
 
+    /** The real finite source used for a buyer payout. Legacy minting is explicit only. */
+    public AccountId buyerBudgetSource(BuyerDefinition buyer) {
+        BuyerBudgetMode mode = buyer.budgetMode();
+        if (mode == BuyerBudgetMode.DEFAULT) {
+            try {
+                mode = BuyerBudgetMode.parse(plugin.getConfig().getString(
+                        "economy.buyer-budget.mode", "BUYER"));
+            } catch (IllegalArgumentException invalid) {
+                mode = BuyerBudgetMode.BUYER;
+            }
+        }
+        return switch (mode) {
+            case DEFAULT, BUYER -> new AccountId(AccountType.NPC_BUYER, buyer.id());
+            case TREASURY -> new AccountId(AccountType.TREASURY,
+                    buyer.budgetTreasuryId().isBlank() ? defaultBuyerTreasury() : buyer.budgetTreasuryId());
+            case LEGACY -> new AccountId(AccountType.SYSTEM_SOURCE, "npc-buyers");
+        };
+    }
+
+    public CompletionStage<ManagedAccountMutationResult> synchronizeBuyer(BuyerDefinition buyer) {
+        AurumAccountRegistryApi registry = accounts;
+        if (registry == null) return unavailableAccount("AurumCore account registry is unavailable");
+        String destination = buyerCloseDestination();
+        String source = buyerBudgetSource(buyer).stableKey();
+        String revision = java.util.UUID.nameUUIDFromBytes((buyer.id() + "\u0000" + source + "\u0000"
+                + destination).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+        return registry.synchronize(new ManagedAccountRegistration(
+                "npc-buyer-sync:" + buyer.id() + ":" + revision, "npc-buyer:" + buyer.id(),
+                "NPC_BUYER", buyer.id(), "NPC buyer operating budget", "SERVER", "global", "",
+                "AddonsNPC", "NPC_BUYER", buyer.id(), destination, false,
+                java.util.List.of(new ManagedAccountMember(
+                        new AccountId(AccountType.NPC_BUYER, buyer.id()), "primary", 0)),
+                "system:AddonsNPC", "synchronize NPC buyer account"));
+    }
+
+    public CompletionStage<ManagedAccountMutationResult> closeBuyer(BuyerDefinition buyer, String actor) {
+        AurumAccountRegistryApi registry = accounts;
+        if (registry == null) return unavailableAccount("AurumCore account registry is unavailable");
+        String profile = "npc-buyer:" + buyer.id();
+        return registry.find(profile).thenCompose(existing -> {
+            if (existing.isPresent()
+                    && existing.orElseThrow().status() == ovh.aurumgg.core.api.ManagedAccountStatus.CLOSED) {
+                return CompletableFuture.completedFuture(new ManagedAccountMutationResult(
+                        ManagedAccountMutationResult.Status.DUPLICATE, existing.orElseThrow(), "already-closed"));
+            }
+            CompletionStage<ManagedAccountMutationResult> ready = existing.isPresent()
+                    ? CompletableFuture.completedFuture(new ManagedAccountMutationResult(
+                            ManagedAccountMutationResult.Status.SUCCESS, existing.orElseThrow(), "found"))
+                    : synchronizeBuyer(buyer);
+            return ready.thenCompose(synchronizedAccount -> {
+                if (synchronizedAccount.status() != ManagedAccountMutationResult.Status.SUCCESS
+                        && synchronizedAccount.status() != ManagedAccountMutationResult.Status.DUPLICATE) {
+                    return CompletableFuture.completedFuture(synchronizedAccount);
+                }
+                return registry.close(new ManagedAccountCloseRequest(java.util.UUID.randomUUID().toString(),
+                        profile, buyerCloseDestination(), actor, "delete NPC buyer"));
+            });
+        });
+    }
+
+    private String defaultBuyerTreasury() {
+        return validTreasury(plugin.getConfig().getString(
+                "economy.buyer-budget.treasury-id", "global"), "global");
+    }
+
+    private String buyerCloseDestination() {
+        return "treasury:" + validTreasury(plugin.getConfig().getString(
+                "economy.buyer-account-close-destination.id", "global"), "global");
+    }
+
+    private static String validTreasury(String raw, String fallback) {
+        String value = raw == null ? "" : raw.trim().toLowerCase(java.util.Locale.ROOT);
+        return value.matches("[a-z0-9][a-z0-9._:-]{0,63}") ? value : fallback;
+    }
+
+    private static CompletionStage<ManagedAccountMutationResult> unavailableAccount(String message) {
+        return CompletableFuture.completedFuture(new ManagedAccountMutationResult(
+                ManagedAccountMutationResult.Status.UNAVAILABLE, null, message));
+    }
+
     public CompletionStage<HoldResult> reserve(String key, AccountId from, AccountId to, double amount,
+                                                TransactionCategory category, String purpose,
+                                                String reference, Map<String, String> metadata) {
+        return reserve(key, from, to, amount(amount), category, purpose, reference, metadata);
+    }
+
+    public CompletionStage<HoldResult> reserve(String key, AccountId from, AccountId to, BigDecimal amount,
                                                 TransactionCategory category, String purpose,
                                                 String reference, Map<String, String> metadata) {
         AurumEconomyApi current = aurum;
@@ -65,7 +164,7 @@ public final class EconomyService {
         long configured = plugin.getConfig().getLong("economy.hold-ttl-seconds", 300L);
         long ttl = Math.max(10L, Math.min(3600L, configured));
         try {
-            HoldRequest request = new HoldRequest(key, from, to, currencyId(), amount(amount), category,
+            HoldRequest request = new HoldRequest(key, from, to, currencyId(), amount, category,
                     purpose, reference, Instant.now().plusSeconds(ttl), metadata);
             return current.createHold(request);
         } catch (IllegalArgumentException invalid) {

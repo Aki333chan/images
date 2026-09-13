@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import ovh.aurumgg.core.api.AccountType;
 
 /**
  * Что должно пережить перезапуск между «забрали предметы» и «заплатили».
@@ -85,6 +86,29 @@ class SaleClaimTest {
         assertEquals(64, restored.amount());
         assertEquals(1_700_000_000_000L, restored.deadline());
         assertEquals(commands("say sold"), restored.commands());
+    }
+
+    @Test
+    void конечныйБюджетИРезервПереживаютПерезапуск() {
+        SaleClaim restored = SaleClaim.decode(new SaleClaim("budgeted", "ores", 2, 8,
+                new BigDecimal("40.00"), 1_700_000_000_000L,
+                "npc_buyer:ores", "npc-buyer-reserve:budgeted", List.of()).encode()).orElseThrow();
+
+        assertTrue(restored.reservedBudget());
+        assertEquals(AccountType.NPC_BUYER, restored.budgetAccount().type());
+        assertEquals("ores", restored.budgetAccount().reference());
+        assertEquals("npc-buyer-reserve:budgeted", restored.holdKey());
+    }
+
+    @Test
+    void стараяЗаявкаВыплачиваетсяИзИсторическогоИсточника() {
+        String legacy = "schema: 2\noperation: old-budget\nbuyer: ores\nslot: 1\namount: 2\n"
+                + "payout: '4.00'\ndeadline: 0\ncommands: []\n";
+        SaleClaim restored = SaleClaim.decode(legacy).orElseThrow();
+
+        assertFalse(restored.reservedBudget());
+        assertEquals(AccountType.SYSTEM_SOURCE, restored.budgetAccount().type());
+        assertEquals("npc-buyers", restored.budgetAccount().reference());
     }
 
     @Test

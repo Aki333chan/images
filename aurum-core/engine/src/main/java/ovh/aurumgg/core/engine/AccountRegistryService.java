@@ -104,6 +104,10 @@ public final class AccountRegistryService implements AurumAccountRegistryApi {
         ManagedAccount to = repository.find(request.toProfile(), currencies).orElse(null);
         if (from == null || to == null) return outcome(ManagedAccountMutationResult.Status.NOT_FOUND,
                 null, from == null ? "source-profile-not-found" : "target-profile-not-found");
+        if (from.technical() || to.technical()) {
+            return outcome(ManagedAccountMutationResult.Status.REJECTED, from,
+                    "technical-profile-not-transferable");
+        }
         if (from.status() != ManagedAccountStatus.ACTIVE || to.status() != ManagedAccountStatus.ACTIVE) {
             return outcome(ManagedAccountMutationResult.Status.REJECTED, from, "profile-not-active");
         }

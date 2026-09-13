@@ -13,6 +13,7 @@ messages:
     &e=== AurumSlots ===
     &b/slots [shelf|hop|button] <ID>
     &b/slots bet <ID> <stawka>
+    &b/slots bankroll <ID> [default|machine|treasury <fundusz>|legacy]
     &b/slots remove <ID>
     &b/slots ban <gracz>
     &b/slots status
@@ -40,6 +41,12 @@ messages:
   money_hopper: "&eW trybie pieniężnym naciśnij przycisk maszyny; stawka zostanie zarezerwowana z salda."
   payment_pending: "&ePoprzednie żądanie płatności jest nadal przetwarzane."
   payment_failed: "&cNie udało się przyjąć stawki. Żadna zakończona płatność nie zostanie utracona."
+  bankroll_check_failed: "&cNie udało się sprawdzić rezerwy wypłat tej maszyny. Spróbuj ponownie później."
+  bankroll_insufficient: "&eMaszyna jest chwilowo niedostępna: %source% musi mieć co najmniej %required% przed obrotem."
+  bankroll_status: "&eMaszyna %id% wypłaca wygrane z konta &f%source%&e."
+  bankroll_set: "&aMaszyna %id% będzie wypłacać wygrane z konta &f%source%&a."
+  bankroll_usage: "&eUżycie: /slots bankroll <ID> <default|machine|treasury <id-funduszu>|legacy>."
+  machine_not_found: "&cNie znaleziono maszyny %id%."
   payout_pending: "&eWygrana została zapisana i będzie wypłacona automatycznie po odzyskaniu ekonomii."
   exchange: "&cStawka wymaga rozmienienia albo nie jest podzielna przez 10."
   wrong_currency: "&cNieprawidłowa waluta."

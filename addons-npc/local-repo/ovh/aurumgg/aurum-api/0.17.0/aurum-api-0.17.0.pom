@@ -3,7 +3,5 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>ovh.aurumgg</groupId>
   <artifactId>aurum-api</artifactId>
-  <version>0.8.0</version>
-  <packaging>jar</packaging>
-  <name>Aurum Economy API</name>
+  <version>0.17.0</version>
 </project>

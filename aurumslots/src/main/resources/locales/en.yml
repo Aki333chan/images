@@ -13,6 +13,7 @@ messages:
     &e=== AurumSlots ===
     &b/slots [shelf|hop|button] <ID>
     &b/slots bet <ID> <bet>
+    &b/slots bankroll <ID> [default|machine|treasury <fund>|legacy]
     &b/slots remove <ID>
     &b/slots ban <player>
     &b/slots status
@@ -40,6 +41,12 @@ messages:
   money_hopper: "&eIn money mode, press the machine button; the bet is reserved from your balance."
   payment_pending: "&eYour previous payment request is still being processed."
   payment_failed: "&cThe bet could not be accepted. No completed payment will be lost."
+  bankroll_check_failed: "&cThis machine's payout reserve could not be checked. Try again later."
+  bankroll_insufficient: "&eThis machine is temporarily unavailable: %source% needs at least %required% before accepting a spin."
+  bankroll_status: "&eMachine %id% pays winnings from &f%source%&e."
+  bankroll_set: "&aMachine %id% will pay winnings from &f%source%&a."
+  bankroll_usage: "&eUse /slots bankroll <ID> <default|machine|treasury <fund-id>|legacy>."
+  machine_not_found: "&cSlot machine %id% was not found."
   payout_pending: "&eYour winnings are saved and will be credited automatically when the economy is available."
   exchange: "&cThe bet requires change or is not divisible by 10."
   wrong_currency: "&cWrong currency."

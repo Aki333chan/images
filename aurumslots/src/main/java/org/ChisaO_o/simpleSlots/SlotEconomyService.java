@@ -158,12 +158,59 @@ final class SlotEconomyService implements Listener {
         }
         machine.paymentPending = true;
         UUID operation = UUID.randomUUID();
+        AccountId payoutSource = payoutSource(machine);
+        AurumEconomyApi current = api;
+        if (current == null) {
+            machine.paymentPending = false;
+            player.sendMessage(plugin.getMsg("payment_failed"));
+            return;
+        }
+        if (payoutSource.type() == AccountType.SYSTEM_SOURCE) {
+            reserveBet(player, machine, operation, payoutSource);
+            return;
+        }
+        BigDecimal required = requiredBankroll(machine);
+        current.balance(payoutSource, current.primaryCurrency().id()).whenComplete((balance, error) ->
+                onMain(() -> {
+                    if (error != null || balance == null || balance.isEmpty()) {
+                        machine.paymentPending = false;
+                        player.sendMessage(plugin.getMsg("bankroll_check_failed"));
+                        return;
+                    }
+                    if (balance.get().balance().compareTo(required) < 0) {
+                        machine.paymentPending = false;
+                        player.sendMessage(plugin.getMsg("bankroll_insufficient")
+                                .replace("%required%", required.stripTrailingZeros().toPlainString())
+                                .replace("%source%", payoutSource.stableKey()));
+                        return;
+                    }
+                    reserveBet(player, machine, operation, payoutSource);
+                }));
+    }
+
+    private void reserveBet(Player player, SlotMachine machine, UUID operation, AccountId payoutSource) {
         reserve(operation, player.getUniqueId(), machine.id, machine.bet).whenComplete((result, error) ->
-                onMain(() -> handleReserved(player, machine, operation, result, error)));
+                onMain(() -> handleReserved(player, machine, operation, payoutSource, result, error)));
+    }
+
+    String payoutSourceKey(SlotMachine machine) {
+        return payoutSource(machine).stableKey();
+    }
+
+    private AccountId payoutSource(SlotMachine machine) {
+        return switch (plugin.payoutMode(machine)) {
+            case MACHINE, DEFAULT -> new AccountId(AccountType.SLOTS, machine.id);
+            case TREASURY -> new AccountId(AccountType.TREASURY, plugin.payoutTreasury(machine));
+            case LEGACY -> new AccountId(AccountType.SYSTEM_SOURCE, "slot-payouts");
+        };
+    }
+
+    private BigDecimal requiredBankroll(SlotMachine machine) {
+        return amount(machine.bet * plugin.bankrollCheckMultiplier());
     }
 
     private void handleReserved(Player player, SlotMachine machine, UUID operation,
-                                HoldResult result, Throwable error) {
+                                AccountId payoutSource, HoldResult result, Throwable error) {
         if (error != null || result == null || (result.status() != HoldResult.Status.SUCCESS
                 && result.status() != HoldResult.Status.DUPLICATE) || result.hold().isEmpty()
                 || result.hold().get().status() != HoldSnapshot.Status.HELD) {
@@ -176,14 +223,16 @@ final class SlotEconomyService implements Listener {
             }
             return;
         }
-        SpinRecord record = SpinRecord.accepted(operation, player.getUniqueId(), machine.id, result.hold().get());
+        SpinRecord record = SpinRecord.accepted(operation, player.getUniqueId(), machine.id,
+                result.hold().get(), payoutSource);
         if (!player.isOnline() || !plugin.isCurrentMachine(machine)) {
             machine.paymentPending = false;
             release(record);
             return;
         }
         try {
-            record = journal.begin(operation, player.getUniqueId(), machine.id, result.hold().get());
+            record = journal.begin(operation, player.getUniqueId(), machine.id,
+                    result.hold().get(), payoutSource);
         } catch (RuntimeException journalError) {
             machine.paymentPending = false;
             release(record);
@@ -287,24 +336,27 @@ final class SlotEconomyService implements Listener {
     }
 
     CompletionStage<TransactionResult> payout(SpinRecord record) {
-        return credit(record, record.payout(), TransactionCategory.SLOT_PAYOUT,
+        return credit(record, record.payoutSource(), record.payout(), TransactionCategory.SLOT_PAYOUT,
                 "slots-payout:" + record.operationId());
     }
 
     CompletionStage<TransactionResult> refund(SpinRecord record) {
-        return credit(record, record.reservedDebit(), TransactionCategory.REFUND,
+        // A refund returns the captured bet from the machine that received it;
+        // it must never mint from the configured payout source.
+        return credit(record, new AccountId(AccountType.SLOTS, record.machineId()),
+                record.reservedDebit(), TransactionCategory.REFUND,
                 "slots-refund:" + record.operationId());
     }
 
     void markActive(SpinRecord record) { activeSpins.add(record.operationId()); }
     void markInactive(SpinRecord record) { activeSpins.remove(record.operationId()); }
 
-    private CompletionStage<TransactionResult> credit(SpinRecord record, BigDecimal amount,
+    private CompletionStage<TransactionResult> credit(SpinRecord record, AccountId source, BigDecimal amount,
                                                        TransactionCategory category, String key) {
         AurumEconomyApi current = api;
         if (current == null) return unavailableTransaction(key, amount);
         TransactionRequest request = new TransactionRequest(key,
-                new AccountId(AccountType.SYSTEM_SOURCE, "slot-payouts"), AccountId.player(record.playerId()),
+                source, AccountId.player(record.playerId()),
                 record.currencyId(), amount, category, record.metadata());
         return current.transfer(request);
     }

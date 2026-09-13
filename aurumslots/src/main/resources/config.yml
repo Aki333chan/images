@@ -22,6 +22,17 @@ machines: {}
 economy:
   hold-ttl-seconds: 300
   recovery-retry-seconds: 20
+  # Where winnings come from. MACHINE is the safe default: every machine uses
+  # its own SLOTS:<id> bankroll and never creates money silently.
+  # TREASURY uses the named treasury below; LEGACY keeps the old minting source
+  # and must only be selected deliberately. A machine may override this with
+  # /slots bankroll <id> <default|machine|treasury|legacy> [fund-id].
+  payout-source:
+    mode: MACHINE
+    treasury-id: global
+  # The current reels can pay at most x100. A spin is refused before charging
+  # the player if the selected finite source holds less than bet x this value.
+  bankroll-check-multiplier: 100.0
   # Remaining machine-account balance on removal. Named AurumCore treasury
   # IDs are supported; the global server treasury is the safe default.
   account-close-destination:

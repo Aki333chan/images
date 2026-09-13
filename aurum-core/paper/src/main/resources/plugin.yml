@@ -27,7 +27,7 @@ commands:
     usage: /aexchange <list|inspect|history|create|enable|disable|rate|range|schedule|settlement|condition|reserve|reload>
   aaccount:
     description: Browse managed economy accounts
-    usage: /aaccount <list|inspect>
+    usage: /aaccount <list|inspect|transfer>
   afund:
     description: Manage named treasury funds
     usage: /afund <list|inspect|create|transfer|pay|collect|freeze|unfreeze|close>

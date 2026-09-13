@@ -24,7 +24,8 @@ class SpinRecordTest {
                 new BigDecimal("10.00"), TransactionCategory.SLOT_BET, "slot-spin", "spawn",
                 HoldSnapshot.Status.HELD, Instant.now(), Instant.now().plusSeconds(60), Map.of());
 
-        SpinRecord record = SpinRecord.accepted(operation, player, "spawn", hold);
+        AccountId payoutSource = new AccountId(AccountType.SLOTS, "spawn");
+        SpinRecord record = SpinRecord.accepted(operation, player, "spawn", hold, payoutSource);
         var capture = record.captureRequest();
 
         assertEquals("slots-capture:" + operation, capture.idempotencyKey());
@@ -44,12 +45,14 @@ class SpinRecordTest {
                 new CurrencySpec("coins", "Coins", "$", 2), new BigDecimal("5.00"),
                 new BigDecimal("5.00"), TransactionCategory.SLOT_BET, "slot-spin", "spawn",
                 HoldSnapshot.Status.CAPTURED, Instant.now(), Instant.now().plusSeconds(60), Map.of());
-        SpinRecord accepted = SpinRecord.accepted(operation, player, "spawn", hold);
+        AccountId payoutSource = new AccountId(AccountType.TREASURY, "casino");
+        SpinRecord accepted = SpinRecord.accepted(operation, player, "spawn", hold, payoutSource);
 
         SpinRecord pending = accepted.payout(new BigDecimal("15.00"));
 
         assertEquals(SpinRecord.State.ACCEPTED, accepted.state());
         assertEquals(SpinRecord.State.PAYOUT_PENDING, pending.state());
         assertEquals(new BigDecimal("15.00"), pending.payout());
+        assertEquals(payoutSource, pending.payoutSource());
     }
 }

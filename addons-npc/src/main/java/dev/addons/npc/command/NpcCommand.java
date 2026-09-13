@@ -9,6 +9,7 @@ import dev.addons.npc.config.ExchangerRepository;
 import dev.addons.npc.model.ActionDefinition;
 import dev.addons.npc.model.ClickMode;
 import dev.addons.npc.model.BuyerDefinition;
+import dev.addons.npc.model.BuyerBudgetMode;
 import dev.addons.npc.model.BuyerOffer;
 import dev.addons.npc.model.DialogueMode;
 import dev.addons.npc.model.NpcDefinition;
@@ -538,7 +539,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean buyer(CommandSender sender, String[] args) {
-        require(args, 2, "/npc buyer <create|delete|list|open|title|size|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ...");
+        require(args, 2, "/npc buyer <create|delete|list|open|title|size|budget|offer|price|bulk|bonus|match|name|lore|command|permission|remove> ...");
         return switch (args[1].toLowerCase(Locale.ROOT)) {
             case "list" -> {
                 messages.localizedRaw(sender, messages.prefix() + "&6Buyers: &e" + String.join("&7, &e", buyers.ids()), Map.of());
@@ -548,13 +549,34 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 require(args, 3, "/npc buyer create <id> [title]");
                 String id = NpcDefinition.normalizeId(args[2]);
                 if (buyers.get(id) != null) throw new IllegalArgumentException("Buyer already exists.");
-                buyers.put(new BuyerDefinition(id, args.length > 3 ? join(args, 3) : "&8" + id, 27));
-                buyers.save(); ok(sender, "Created buyer &e" + id + "&a."); yield true;
+                BuyerDefinition buyer = new BuyerDefinition(id, args.length > 3 ? join(args, 3) : "&8" + id, 27);
+                buyers.put(buyer);
+                buyers.save();
+                plugin.synchronizeBuyerAccount(buyer);
+                ok(sender, "Created buyer &e" + id + "&a."); yield true;
             }
             case "delete" -> {
                 require(args, 3, "/npc buyer delete <id>");
-                if (buyers.remove(args[2]) == null) throw new IllegalArgumentException("Buyer was not found.");
-                buyers.save(); ok(sender, "Deleted buyer &e" + args[2] + "&a."); yield true;
+                BuyerDefinition buyer = requireBuyer(args[2]);
+                String actor = sender instanceof Player player ? "player:" + player.getUniqueId()
+                        : "command:" + sender.getName();
+                plugin.economy().closeBuyer(buyer, actor).whenComplete((result, failure) ->
+                        org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                            boolean success = failure == null && result != null
+                                    && (result.status() == ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.SUCCESS
+                                    || result.status() == ovh.aurumgg.core.api.ManagedAccountMutationResult.Status.DUPLICATE);
+                            if (!success) {
+                                String reason = failure != null ? failure.getMessage()
+                                        : result == null ? "AurumCore unavailable" : result.message();
+                                messages.localizedRaw(sender, messages.prefix()
+                                        + "&cBuyer was not deleted: " + reason, Map.of());
+                                return;
+                            }
+                            buyers.remove(buyer.id());
+                            buyers.save();
+                            ok(sender, "Deleted buyer &e" + buyer.id() + "&a; remaining budget moved to its close destination.");
+                        }));
+                yield true;
             }
             case "open" -> {
                 Player player = requirePlayer(sender);
@@ -563,6 +585,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             }
             case "title" -> buyerTitle(sender, args);
             case "size" -> buyerSize(sender, args);
+            case "budget" -> buyerBudget(sender, args);
             case "offer" -> buyerOffer(sender, args);
             case "price" -> buyerPrice(sender, args);
             case "bulk" -> buyerBulk(sender, args);
@@ -871,6 +894,35 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         GuildTraderDefinition trader = requireGuildTrader(args[2]);
         if (trader.offers().remove(integer(args[3], "slot")) == null) throw new IllegalArgumentException("Guild bonus offer was not found.");
         guildTraders.save(); ok(sender, "Removed guild bonus offer."); return true;
+    }
+
+    private boolean buyerBudget(CommandSender sender, String[] args) {
+        require(args, 3, "/npc buyer budget <buyer> [default|buyer|treasury <fund-id>|legacy]");
+        BuyerDefinition buyer = requireBuyer(args[2]);
+        if (args.length == 3) {
+            messages.localizedRaw(sender, messages.prefix() + "&6Buyer &e" + buyer.id()
+                    + "&6 budget: &f" + plugin.economy().buyerBudgetSource(buyer).stableKey()
+                    + " &7(" + buyer.budgetMode().name() + ")", Map.of());
+            return true;
+        }
+        BuyerBudgetMode mode;
+        try {
+            mode = BuyerBudgetMode.parse(args[3]);
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException("Budget mode must be default, buyer, treasury or legacy.");
+        }
+        String treasury = "";
+        if (mode == BuyerBudgetMode.TREASURY) {
+            require(args, 5, "/npc buyer budget <buyer> treasury <fund-id>");
+            treasury = args[4];
+        }
+        buyer.budgetMode(mode);
+        buyer.budgetTreasuryId(treasury);
+        buyers.save();
+        plugin.synchronizeBuyerAccount(buyer);
+        ok(sender, "Buyer &e" + buyer.id() + "&a budget source: &e"
+                + plugin.economy().buyerBudgetSource(buyer).stableKey() + "&a.");
+        return true;
     }
 
     private boolean exchanger(CommandSender sender, String[] args) {
@@ -1295,9 +1347,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (root.equals("buyer")) {
             if (args.length == 2)
-                return filter(List.of("create", "delete", "list", "open", "title", "size", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove"), args[1]);
+                return filter(List.of("create", "delete", "list", "open", "title", "size", "budget", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove"), args[1]);
             String operation = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
-            if (args.length == 3 && List.of("delete", "open", "title", "size", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove").contains(operation))
+            if (args.length == 3 && List.of("delete", "open", "title", "size", "budget", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove").contains(operation))
                 return filter(buyers.ids(), args[2]);
             BuyerDefinition buyer = args.length > 2 ? buyers.get(args[2]) : null;
             if (args.length == 4 && buyer != null) {
@@ -1328,6 +1380,10 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             }
             if (operation.equals("price") && args.length == 5)
                 return filter(List.of("0.1", "1", "5", "10", "25", "100"), args[4]);
+            if (operation.equals("budget") && args.length == 4)
+                return filter(List.of("default", "buyer", "treasury", "legacy"), args[3]);
+            if (operation.equals("budget") && args.length == 5 && args[3].equalsIgnoreCase("treasury"))
+                return filter(List.of("global", "procurement", "npc-buyers"), args[4]);
             if (operation.equals("match") && args.length == 5)
                 return filter(List.of("material", "exact"), args[4]);
             if (operation.equals("permission") && args.length == 5)

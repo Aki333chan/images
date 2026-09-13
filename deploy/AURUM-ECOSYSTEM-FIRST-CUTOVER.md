@@ -196,19 +196,15 @@ curl -s http://10.0.0.1:3001/api/health/ready
 
 ## 8. Подготовить плагины Minecraft
 
-Используйте комплект:
+Используйте актуальные JAR из `outputs`. На 2026-09-13 серверный комплект такой:
 
-`outputs/aurum-ecosystem-staging-2026-09-12`
-
-В нём должны быть ровно следующие серверные JAR:
-
-- `AurumCore-0.16.0.jar`;
-- `AurumCompanion-0.12.0.jar`;
+- `AurumCore-0.18.0.jar`;
+- `AurumCompanion-0.13.1.jar`;
 - `AurumAuth-0.1.0.jar`;
-- `AurumGuilds-0.4.0.jar`;
-- `AddonsNPC-2.1.0.jar`;
-- `AurumArena-1.5.0.jar`;
-- `AurumSlots-1.4.0.jar`.
+- `AurumGuilds-0.5.1.jar`;
+- `AddonsNPC-2.2.0.jar`;
+- `AurumArena-1.6.0.jar`;
+- `AurumSlots-1.6.0.jar`.
 
 Проверьте файлы по `SHA256SUMS.txt`, затем загрузите их в `plugins`.
 
@@ -216,13 +212,13 @@ curl -s http://10.0.0.1:3001/api/health/ready
 
 | JAR | SHA-256 |
 | --- | --- |
-| `AddonsNPC-2.1.0.jar` | `518A4BF3B3A3D67AD93F236A7162CC1A0756C7A124826BBDF5421C6960021122` |
-| `AurumArena-1.5.0.jar` | `AD4AEA6CA4F3103F245D742B3E85AD76CBE4456787101DD506C09BEEE341720A` |
+| `AddonsNPC-2.2.0.jar` | `902DB8F506295B43B4D023C050139E0324A224F57D39EBD45F7272DE78B36477` |
+| `AurumArena-1.6.0.jar` | `5E8D9D23C00671FA363D54FC23B9DF2F9DE5B73BADE16C0337AA29143E2B0D82` |
 | `AurumAuth-0.1.0.jar` | `B1BEDC3EAFF9C31BACB01BFF345CC59FFD46C728ABDE6C294F84B574604FDE0D` |
-| `AurumCompanion-0.12.0.jar` | `B0E1B8207AF6646D28A30706C19CAB6D998A3006327066B7E3A18AA3A8D7BB58` |
-| `AurumCore-0.16.0.jar` | `334D99D6E5E01906EEE694D85CE03E00A7BB90E9D2225439429AC949AAB45D6D` |
-| `AurumGuilds-0.4.0.jar` | `445BBE8D0F7D1D3C0080723AE5BC732AF6ED484C5F63E04EB5062A23B6B1FAB1` |
-| `AurumSlots-1.4.0.jar` | `CFCD4B89FDE976B1A8EE6D2B9DEB8DC7618ADEB896A27B2F3476EBC4F8153A73` |
+| `AurumCompanion-0.13.1.jar` | `59C339BFBD356CC9064BC2E6DA066B8728786AD52AF92F7F5397552F9D164893` |
+| `AurumCore-0.18.0.jar` | `441B559184CAD0D3A1DC23D8E889C6C80B7DDC9CEE16329524440125E647431F` |
+| `AurumGuilds-0.5.1.jar` | `90553AB00E4357A5965CC1F1349719AD1F1CDB0BDA2AA6ACCBF0D22719E66391` |
+| `AurumSlots-1.6.0.jar` | `35B67A1CE87A1B821AA6D6F6BDB6B0D7B1550BA306AD8536B1BAC04D212E64DA` |
 
 Перед загрузкой скачайте старые JAR в локальную rollback-папку. После этого
 удалите из `plugins` только старые/дублирующиеся JAR, но не папки данных.
@@ -235,7 +231,7 @@ curl -s http://10.0.0.1:3001/api/health/ready
 VaultUnlocked, EssentialsX, WorldGuard, FAWE, LuckPerms, PlaceholderAPI и прочие
 сторонние плагины оставьте на месте.
 
-`AurumUI-0.7.0.jar` — клиентский Fabric-мод. Его устанавливают игроки в папку
+`AurumUI-0.8.0.jar` — клиентский Fabric-мод. Его устанавливают игроки в папку
 `mods`; в серверную папку `plugins` его класть нельзя.
 
 ## 9. Первый запуск: безопасный passive

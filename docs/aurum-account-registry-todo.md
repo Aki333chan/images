@@ -64,10 +64,16 @@ balances: ordinary bet refunds must never spend the champion pool. Register them
 as two subaccounts under one Arena account profile, and display their individual
 and combined balances in the panel.
 
-Each Slots machine keeps its own `SLOTS:<machine-id>` account. A later economy
-decision must also replace the current `SYSTEM_SOURCE:slot-payouts` model with a
-configurable machine/treasury bankroll; this is required before account closure
-can honestly describe all money belonging to the machine.
+Each Slots machine keeps its own `SLOTS:<machine-id>` account. AurumSlots 1.6.0
+pays from that account by default and checks the configured maximum-win reserve
+before accepting a spin. A machine may explicitly use a named treasury; the old
+`SYSTEM_SOURCE:slot-payouts` path survives only as a clearly named legacy mode.
+
+AddonsNPC 2.2.0 applies the same rule to buyers. Every buyer defaults to its
+own `NPC_BUYER:<id>` member and reserves the full policy-adjusted debit before
+items can be removed. Sharing a named treasury is an explicit override. Deleting
+a buyer closes and sweeps its own managed account even if its current payout
+mode uses a shared treasury.
 
 On Arena or machine deletion, the plugin must settle/refund active obligations,
 then atomically sweep every remaining balance to a configured destination before
@@ -127,7 +133,8 @@ money-routing decisions.
 
 ## Delivery order
 
-1. [~] Finish current live smoke/fault-injection testing.
+1. [~] Finish current live smoke/fault-injection testing. Postponed by the owner;
+   resume when the updated staging server is available.
 2. [x] Add registry schema, read API and account list/details in Companion + panel.
    Account details include on-demand ledger history with explicit member-role
    and currency selectors, so Arena `bet` and `final` are never mixed.
@@ -138,7 +145,11 @@ money-routing decisions.
 5. [x] Implement Arena/Slots close plans and configurable sweep destination.
 6. [x] Add an administrator forced-transfer dialog for any active managed
    account members, including Arena `bet`/`final` roles.
-7. Decide and implement Slots bankroll and NPC-buyer budget sources.
+7. [x] Implement finite Slots bankroll and NPC-buyer budget sources. Defaults are
+   per-object accounts; named treasuries are opt-in and legacy minting is explicit.
+   Commands, tab completion and AurumUI editing are included. Buyer reservations
+   prevent concurrent overspend before item removal; Slots keep a durable pending
+   payout if an external transfer drains a checked bankroll before the result.
 8. Add procurement and guild-support administration.
 9. Leave city/region gameplay integration dormant until that system is designed.
 

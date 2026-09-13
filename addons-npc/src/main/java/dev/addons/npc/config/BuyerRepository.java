@@ -2,6 +2,7 @@ package dev.addons.npc.config;
 
 import dev.addons.npc.model.BuyerDefinition;
 import dev.addons.npc.model.BuyerOffer;
+import dev.addons.npc.model.BuyerBudgetMode;
 import dev.addons.npc.model.TimedPercentage;
 import java.io.File;
 import java.io.IOException;
@@ -47,6 +48,13 @@ public final class BuyerRepository {
     private BuyerDefinition read(String id, ConfigurationSection section) {
         BuyerDefinition buyer = new BuyerDefinition(id, section.getString("title", "&8Buyer"), section.getInt("size", 27));
         buyer.bonus(readPercentage(section, "bonus"));
+        try {
+            buyer.budgetMode(BuyerBudgetMode.parse(section.getString("budget.mode", "DEFAULT")));
+        } catch (IllegalArgumentException invalidMode) {
+            plugin.getLogger().warning("Invalid budget mode for buyer '" + id + "'; DEFAULT is used.");
+            buyer.budgetMode(BuyerBudgetMode.DEFAULT);
+        }
+        buyer.budgetTreasuryId(section.getString("budget.treasury-id", ""));
         ConfigurationSection offers = section.getConfigurationSection("offers");
         if (offers == null) return buyer;
         for (String rawSlot : offers.getKeys(false)) {
@@ -94,6 +102,9 @@ public final class BuyerRepository {
             String path = "buyers." + buyer.id();
             yaml.set(path + ".title", buyer.title());
             yaml.set(path + ".size", buyer.size());
+            yaml.set(path + ".budget.mode", buyer.budgetMode().name());
+            yaml.set(path + ".budget.treasury-id",
+                    buyer.budgetTreasuryId().isBlank() ? null : buyer.budgetTreasuryId());
             writePercentage(yaml, path + ".bonus", buyer.bonus());
             for (BuyerOffer offer : buyer.offers().values()) {
                 String offerPath = path + ".offers." + offer.slot();

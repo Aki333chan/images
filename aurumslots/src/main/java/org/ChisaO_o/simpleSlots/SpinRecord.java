@@ -11,18 +11,19 @@ import ovh.aurumgg.core.api.TransactionRequest;
 
 record SpinRecord(UUID operationId, UUID holdId, String holdKey, UUID playerId, String machineId,
                   String currencyId, BigDecimal bet, BigDecimal reservedDebit, State state,
-                  BigDecimal payout, long createdAt) {
+                  BigDecimal payout, AccountId payoutSource, long createdAt) {
     enum State { ACCEPTED, PAYOUT_PENDING }
 
-    static SpinRecord accepted(UUID operationId, UUID playerId, String machineId, HoldSnapshot hold) {
+    static SpinRecord accepted(UUID operationId, UUID playerId, String machineId, HoldSnapshot hold,
+                               AccountId payoutSource) {
         return new SpinRecord(operationId, hold.id(), hold.idempotencyKey(), playerId, machineId,
                 hold.currency().id(), hold.amount(), hold.reservedAmount(), State.ACCEPTED,
-                BigDecimal.ZERO, System.currentTimeMillis());
+                BigDecimal.ZERO, payoutSource, System.currentTimeMillis());
     }
 
     SpinRecord payout(BigDecimal amount) {
         return new SpinRecord(operationId, holdId, holdKey, playerId, machineId, currencyId,
-                bet, reservedDebit, State.PAYOUT_PENDING, amount, createdAt);
+                bet, reservedDebit, State.PAYOUT_PENDING, amount, payoutSource, createdAt);
     }
 
     Map<String, String> metadata() {

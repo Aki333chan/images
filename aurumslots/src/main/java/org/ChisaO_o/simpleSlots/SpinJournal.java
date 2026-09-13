@@ -24,8 +24,9 @@ final class SpinJournal {
     }
 
     synchronized SpinRecord begin(UUID operationId, UUID playerId, String machineId,
-                                  ovh.aurumgg.core.api.HoldSnapshot hold) {
-        SpinRecord record = SpinRecord.accepted(operationId, playerId, machineId, hold);
+                                  ovh.aurumgg.core.api.HoldSnapshot hold,
+                                  ovh.aurumgg.core.api.AccountId payoutSource) {
+        SpinRecord record = SpinRecord.accepted(operationId, playerId, machineId, hold, payoutSource);
         entries.put(operationId, record); save(); return record;
     }
 
@@ -44,6 +45,14 @@ final class SpinJournal {
         if (root == null) return;
         for (String id : root.getKeys(false)) try {
             String path = "transactions." + id;
+            int schema = yaml.getInt("schema-version", 1);
+            ovh.aurumgg.core.api.AccountId payoutSource = schema >= 2
+                    ? new ovh.aurumgg.core.api.AccountId(
+                            ovh.aurumgg.core.api.AccountType.valueOf(yaml.getString(
+                                    path + ".payout-source-type", "SLOTS")),
+                            yaml.getString(path + ".payout-source-reference", yaml.getString(path + ".machine", "")))
+                    : new ovh.aurumgg.core.api.AccountId(
+                            ovh.aurumgg.core.api.AccountType.SYSTEM_SOURCE, "slot-payouts");
             SpinRecord record = new SpinRecord(UUID.fromString(id),
                     UUID.fromString(yaml.getString(path + ".hold-id", "")),
                     yaml.getString(path + ".hold-key", ""),
@@ -53,7 +62,8 @@ final class SpinJournal {
                     new BigDecimal(yaml.getString(path + ".reserved-debit",
                             yaml.getString(path + ".bet", "0"))),
                     SpinRecord.State.valueOf(yaml.getString(path + ".state", "ACCEPTED")),
-                    new BigDecimal(yaml.getString(path + ".payout", "0")), yaml.getLong(path + ".created-at"));
+                    new BigDecimal(yaml.getString(path + ".payout", "0")), payoutSource,
+                    yaml.getLong(path + ".created-at"));
             entries.put(record.operationId(), record);
         } catch (RuntimeException error) {
             plugin.getLogger().log(Level.SEVERE, "Ignoring corrupt slot transaction " + id, error);
@@ -61,7 +71,7 @@ final class SpinJournal {
     }
 
     private void save() {
-        YamlConfiguration yaml = new YamlConfiguration(); yaml.set("schema-version", 1);
+        YamlConfiguration yaml = new YamlConfiguration(); yaml.set("schema-version", 2);
         for (SpinRecord record : entries.values()) {
             String path = "transactions." + record.operationId();
             yaml.set(path + ".hold-id", record.holdId().toString()); yaml.set(path + ".hold-key", record.holdKey());
@@ -69,6 +79,8 @@ final class SpinJournal {
             yaml.set(path + ".currency", record.currencyId()); yaml.set(path + ".bet", record.bet().toPlainString());
             yaml.set(path + ".reserved-debit", record.reservedDebit().toPlainString());
             yaml.set(path + ".state", record.state().name()); yaml.set(path + ".payout", record.payout().toPlainString());
+            yaml.set(path + ".payout-source-type", record.payoutSource().type().name());
+            yaml.set(path + ".payout-source-reference", record.payoutSource().reference());
             yaml.set(path + ".created-at", record.createdAt());
         }
         try { yaml.save(file); }

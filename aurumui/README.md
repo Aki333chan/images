@@ -1,5 +1,12 @@
 # AurumUI
 
+## Finite Slots and buyer budgets (0.8.0)
+
+The Slots and NPC buyer detail views expose their effective payout account and
+open a compact editor for `DEFAULT`, own-account, named-`TREASURY` and explicit
+`LEGACY` modes. The server validates every value; the client only submits the
+typed action and never chooses an account implicitly.
+
 ## Trade and delivery quarantine (0.7.0)
 
 Requires AurumCompanion 0.8.0 and AurumCore 0.13.0. The Economy tab now also
@@ -102,7 +109,7 @@ Client (`mods/`):
 1. Minecraft Java 26.2.
 2. Fabric Loader 0.19.5 or newer.
 3. Fabric API for 26.2.
-4. `AurumUI-0.7.0.jar`.
+4. `AurumUI-0.8.0.jar`.
 
 ## Client controls
 

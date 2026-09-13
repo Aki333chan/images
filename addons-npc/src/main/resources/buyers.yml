@@ -4,6 +4,9 @@ schema-version: 2
 #   farmer:
 #     title: "&8Скупщик урожая"
 #     size: 27
+#     budget:
+#       mode: DEFAULT # follows config.yml; BUYER, TREASURY or LEGACY override it
+#       treasury-id: global # used only by TREASURY
 #     bonus: # whole assortment; expires-at: 0 means permanent until disabled
 #       percent: 10.0
 #       expires-at: 0

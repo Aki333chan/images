@@ -39,14 +39,15 @@ final class AccountCommandCoordinator {
         if (args.length < 2) return usage(sender, args[0]);
         boolean accounts = args[0].equalsIgnoreCase("accounts");
         String action = args[1].toLowerCase(Locale.ROOT);
-        if (accounts) {
-            return switch (action) {
-                case "list" -> list(sender, "", args);
-                case "inspect" -> inspect(sender, args, false);
-                default -> usage(sender, "accounts");
-            };
-        }
         try {
+            if (accounts) {
+                return switch (action) {
+                    case "list" -> list(sender, "", args);
+                    case "inspect" -> inspect(sender, args, false);
+                    case "transfer" -> accountTransfer(sender, args);
+                    default -> usage(sender, "accounts");
+                };
+            }
             return switch (action) {
                 case "list" -> list(sender, "TREASURY", args);
                 case "inspect" -> inspect(sender, args, true);
@@ -134,6 +135,22 @@ final class AccountCommandCoordinator {
         report(sender, registry.transfer(new ManagedAccountTransferRequest(
                 UUID.randomUUID().toString(), fund(args[2]), "primary", fund(args[3]), "primary",
                 parsed.currency(), parsed.amount(), actor(sender), parsed.reason())));
+        return true;
+    }
+
+    /**
+     * Administrative transfer between explicit members of any two managed profiles.
+     * This is the console counterpart of the panel's forced-transfer dialog. It still
+     * obeys lifecycle gates, available balance and idempotent ledger semantics.
+     */
+    private boolean accountTransfer(CommandSender sender, String[] args) {
+        if (args.length < 7) return usage(sender, "accounts");
+        ParsedAmount parsed = amount(sender, args, 6, 7);
+        if (parsed == null) return true;
+        report(sender, registry.transfer(new ManagedAccountTransferRequest(
+                UUID.randomUUID().toString(), profile(args[2]), role(args[3]),
+                profile(args[4]), role(args[5]), parsed.currency(), parsed.amount(),
+                actor(sender), parsed.reason())));
         return true;
     }
 
@@ -269,6 +286,20 @@ final class AccountCommandCoordinator {
         String id = id(value.toLowerCase(Locale.ROOT).startsWith("treasury:")
                 ? value.substring("treasury:".length()) : value);
         return "treasury:" + id;
+    }
+    private static String profile(String value) {
+        value = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (!value.matches("[a-z0-9][a-z0-9._:-]{1,159}")) {
+            throw new IllegalArgumentException("profile key: 2..160 lowercase letters, digits, dot, underscore, colon or dash");
+        }
+        return value;
+    }
+    private static String role(String value) {
+        value = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (!value.matches("[a-z0-9][a-z0-9._-]{0,31}")) {
+            throw new IllegalArgumentException("member role: 1..32 lowercase letters, digits, dot, underscore or dash");
+        }
+        return value;
     }
     private static String id(String value) {
         value = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);

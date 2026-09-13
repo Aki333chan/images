@@ -340,7 +340,7 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         if (values.length == 1) return List.of("balance", "status", "treasury", "migrate", "economy", "policy", "exchange", "claims", "accounts", "fund").stream()
                 .filter(it -> it.startsWith(values[0].toLowerCase())).toList();
         if (values.length == 2 && values[0].equalsIgnoreCase("accounts")) {
-            return List.of("list", "inspect").stream()
+            return List.of("list", "inspect", "transfer").stream()
                     .filter(it -> it.startsWith(values[1].toLowerCase())).toList();
         }
         if (values.length == 2 && values[0].equalsIgnoreCase("fund")) {
@@ -350,6 +350,19 @@ final class AurumCommand implements CommandExecutor, TabCompleter {
         if (values.length == 3 && (values[0].equalsIgnoreCase("accounts")
                 && values[1].equalsIgnoreCase("inspect"))) {
             return plugin.accountCommands() == null ? List.of() : plugin.accountCommands().profileKeys(values[2]);
+        }
+        if (values[0].equalsIgnoreCase("accounts") && values[1].equalsIgnoreCase("transfer")) {
+            if ((values.length == 3 || values.length == 5) && plugin.accountCommands() != null) {
+                return plugin.accountCommands().profileKeys(values[values.length - 1]);
+            }
+            if (values.length == 4 || values.length == 6) {
+                return List.of("primary", "bet", "final").stream()
+                        .filter(it -> it.startsWith(values[values.length - 1].toLowerCase())).toList();
+            }
+            if (values.length == 8) {
+                return plugin.settings().currencies().keySet().stream().map(id -> "currency:" + id)
+                        .filter(it -> it.startsWith(values[7].toLowerCase())).toList();
+            }
         }
         if (values.length == 3 && values[0].equalsIgnoreCase("fund")
                 && List.of("inspect", "freeze", "unfreeze", "close").contains(values[1].toLowerCase())) {

@@ -24,6 +24,10 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.core.api.ClaimRequest;
+import ovh.aurumgg.core.api.AccountId;
+import ovh.aurumgg.core.api.HoldResult;
+import ovh.aurumgg.core.api.HoldSnapshot;
+import ovh.aurumgg.core.api.TransactionCategory;
 
 public final class BuyerService implements Listener {
     private final JavaPlugin plugin;
@@ -149,16 +153,12 @@ public final class BuyerService implements Listener {
      * а предметы игрока уже были забраны. Терялось имущество ИГРОКА, и
      * восстановить его было не из чего.
      *
-     * <h2>Почему резерв вообще исчез</h2>
+     * <h2>Резерв конечного бюджета</h2>
      *
-     * Резерв доказывал, что деньги есть. Доказывать нечего: скупщик платит из
-     * {@code SYSTEM_SOURCE:npc-buyers}, а системный источник в ledger считается
-     * обеспеченным всегда. На деле резерв работал обещанием — и плохим, потому
-     * что обещание с TTL истекает ровно тогда, когда сервер лежит.
-     *
-     * Заявка — это то обещание, которым резерв притворялся, и она не истекает.
-     * Поэтому holds здесь больше нет, выплата стала обычной идемпотентной
-     * проводкой, а порядок «сначала запись, потом предметы» держит заявка.
+     * До записи заявки Core резервирует выплату с настроенного счёта скупщика
+     * или казны. При нехватке денег предметы остаются у игрока. После записи
+     * заявки предметы забираются и резерв захватывается отдельным шагом; поэтому
+     * обычная конкуренция продаж не может превратить конечный бюджет в минус.
      */
     private void sell(Player player, BuyerDefinition buyer, BuyerOffer offer,
                       SaleMode mode, TimedPercentage bonus, long now) {
@@ -206,21 +206,62 @@ public final class BuyerService implements Listener {
             messages.send(player, "buyer-sale-failed");
             return;
         }
-        SaleClaim sale = new SaleClaim(operation, buyer.id(), offer.slot(), finalQuote.amount(),
-                payout, now + saleDeadlineMillis(), commands);
+        AccountId budget = economy.buyerBudgetSource(buyer);
+        String holdKey = "npc-buyer-reserve:" + operation;
+        Map<String, String> metadata = Map.of("plugin", ClaimGateway.PLUGIN,
+                "operation", operation, "buyer", buyer.id(),
+                "offer-slot", Integer.toString(offer.slot()));
+        economy.reserve(holdKey, budget, AccountId.player(player.getUniqueId()), payout,
+                TransactionCategory.NPC_SALE, "npc-buyer-sale", buyer.id(), metadata)
+                .whenComplete((reserved, reserveFailure) -> runMain(() -> handleReserved(
+                        player, buyer, offer, finalQuote, payout, now, commands, values,
+                        operation, budget, holdKey, reserved, reserveFailure)));
+    }
+
+    private void handleReserved(Player player, BuyerDefinition buyer, BuyerOffer offer,
+                                SaleQuote quote, java.math.BigDecimal payout, long now,
+                                List<ClaimCommand> commands, Map<String, Object> values,
+                                String operation, AccountId budget, String holdKey,
+                                HoldResult reserved, Throwable reserveFailure) {
+        if (reserveFailure != null || reserved == null || reserved.hold().isEmpty()
+                || (reserved.status() != HoldResult.Status.SUCCESS
+                && reserved.status() != HoldResult.Status.DUPLICATE)
+                || reserved.hold().orElseThrow().status() != HoldSnapshot.Status.HELD) {
+            transactions.remove(player.getUniqueId());
+            if (reserved != null && reserved.status() == HoldResult.Status.INSUFFICIENT_FUNDS) {
+                messages.send(player, "buyer-budget-insufficient", Map.of(
+                        "buyer", buyer.id(), "source", budget.stableKey(),
+                        "amount", economy.format(payout.doubleValue())));
+            } else {
+                messages.send(player, "buyer-budget-unavailable");
+            }
+            return;
+        }
+        HoldSnapshot hold = reserved.hold().orElseThrow();
+        if (!player.isOnline()) {
+            transactions.remove(player.getUniqueId());
+            economy.release(hold);
+            return;
+        }
+        SaleClaim sale = new SaleClaim(operation, buyer.id(), offer.slot(), quote.amount(),
+                payout, now + saleDeadlineMillis(), budget.stableKey(), holdKey, commands);
         ClaimRequest request;
         try {
             request = new ClaimRequest("npc-buyer-claim:" + operation, ClaimGateway.PLUGIN,
                     player.getUniqueId(), BuyerPlan.KIND, sale.stepCount(), sale.summary(), sale.encode());
         } catch (IllegalArgumentException invalid) {
             plugin.getLogger().warning("Could not describe NPC sale as a claim: " + invalid.getMessage());
-            transactions.remove(player.getUniqueId()); messages.send(player, "buyer-sale-failed"); return;
+            transactions.remove(player.getUniqueId());
+            economy.release(hold);
+            messages.send(player, "buyer-sale-failed");
+            return;
         }
 
         delivery.promise(request).whenComplete((promised, failure) -> runMain(() -> {
             transactions.remove(player.getUniqueId());
             if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
                 // Ничего не записано и ничего не забрано: продажи не было.
+                economy.release(hold);
                 messages.send(player, "buyer-sale-failed");
                 return;
             }

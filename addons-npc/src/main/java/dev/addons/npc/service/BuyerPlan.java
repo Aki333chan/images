@@ -9,7 +9,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.core.api.AccountId;
-import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.TransactionCategory;
 import ovh.aurumgg.core.api.TransactionResult;
 
@@ -26,9 +25,6 @@ import ovh.aurumgg.core.api.TransactionResult;
 public final class BuyerPlan implements DeliveryPlan {
 
     public static final String KIND = "BUYER_SALE";
-
-    /** Every buyer pays from here; the ledger treats a system source as always funded. */
-    private static final AccountId SOURCE = new AccountId(AccountType.SYSTEM_SOURCE, "npc-buyers");
 
     private final JavaPlugin plugin;
     private final EconomyService economy;
@@ -88,19 +84,19 @@ public final class BuyerPlan implements DeliveryPlan {
             // and resumed a week later would take items they have long since
             // decided to keep.
             messages.send(player, "buyer-sale-expired");
-            outcome.abandon("sale expired before the items could be taken");
+            cancelUntouchedSale(outcome, "sale expired before the items could be taken");
             return;
         }
         BuyerDefinition buyer = buyers.get(sale.buyerId());
         BuyerOffer offer = buyer == null ? null : buyer.offers().get(sale.slot());
         if (offer == null) {
-            outcome.abandon("the buyer offer no longer exists");
+            cancelUntouchedSale(outcome, "the buyer offer no longer exists");
             return;
         }
         ItemStack[] contents = player.getInventory().getStorageContents();
         if (BuyerService.countMatching(contents, offer) < sale.amount()) {
             messages.send(player, "buyer-sale-items-gone");
-            outcome.abandon("the items are no longer in the player's inventory");
+            cancelUntouchedSale(outcome, "the items are no longer in the player's inventory");
             return;
         }
         if (BuyerService.removeMatching(contents, offer, sale.amount()) != sale.amount()) {
@@ -122,27 +118,121 @@ public final class BuyerPlan implements DeliveryPlan {
      * real, and Core being briefly unavailable is not a reason to forget it.
      */
     private void pay(Player player, Outcome outcome) {
+        if (sale.reservedBudget()) {
+            settleReservation(player, outcome);
+            return;
+        }
+        directPayment(player, outcome);
+    }
+
+    private void settleReservation(Player player, Outcome outcome) {
+        economy.hold(sale.holdKey()).whenComplete((found, failure) -> delivery.onMain(() -> {
+            if (failure != null || found == null) {
+                outcome.defer("AurumCore hold lookup is unavailable");
+                return;
+            }
+            if (found.isEmpty()) {
+                // A very old/cleaned reservation is no reason to erase a durable debt.
+                directPayment(player, outcome);
+                return;
+            }
+            var hold = found.orElseThrow();
+            if (hold.status() == ovh.aurumgg.core.api.HoldSnapshot.Status.CAPTURED) {
+                paid(player, outcome);
+                return;
+            }
+            if (hold.status() == ovh.aurumgg.core.api.HoldSnapshot.Status.HELD) {
+                economy.capture(hold, sale.paymentKey()).whenComplete((result, error) ->
+                        delivery.onMain(() -> finishCapture(player, result, error, outcome)));
+                return;
+            }
+            // Expiry/release can only happen after an outage or manual intervention.
+            // The claim remains authoritative and falls back to the same finite source.
+            directPayment(player, outcome);
+        }));
+    }
+
+    private void finishCapture(Player player, ovh.aurumgg.core.api.HoldResult result,
+                               Throwable error, Outcome outcome) {
+        if (error == null && result != null && (result.status() == ovh.aurumgg.core.api.HoldResult.Status.SUCCESS
+                || result.status() == ovh.aurumgg.core.api.HoldResult.Status.DUPLICATE)
+                && result.hold().isPresent()
+                && result.hold().orElseThrow().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.CAPTURED) {
+            paid(player, outcome);
+            return;
+        }
+        if (result != null && result.hold().isPresent()
+                && (result.hold().orElseThrow().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.EXPIRED
+                || result.hold().orElseThrow().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.RELEASED)) {
+            directPayment(player, outcome);
+            return;
+        }
+        outcome.defer(result == null ? "AurumCore is unavailable" : result.message());
+    }
+
+    private void directPayment(Player player, Outcome outcome) {
         Map<String, String> metadata = Map.of("plugin", ClaimGateway.PLUGIN,
                 "operation", sale.operation(), "buyer", sale.buyerId(),
                 "offer-slot", Integer.toString(sale.slot()));
-        economy.pay(sale.paymentKey(), SOURCE, AccountId.player(player.getUniqueId()), sale.payout(),
+        economy.pay(sale.paymentKey(), sale.budgetAccount(), AccountId.player(player.getUniqueId()), sale.payout(),
                 TransactionCategory.NPC_SALE, metadata).whenComplete((result, error) ->
                 delivery.onMain(() -> {
             if (error == null && result != null && (result.status() == TransactionResult.Status.SUCCESS
                     || result.status() == TransactionResult.Status.DUPLICATE)) {
-                messages.send(player, "buyer-sale-paid", Map.of(
-                        "amount", economy.format(sale.payout().doubleValue())));
-                outcome.done();
+                paid(player, outcome);
                 return;
             }
             if (result != null && result.status() == TransactionResult.Status.REJECTED) {
-                // A policy rule refused a payment from a system source. Nobody
-                // here can fix that, and the player's items are already gone,
-                // so it goes to a person rather than round the retry loop.
+                // The player's items are already gone. A permanent policy/status
+                // rejection needs an administrator rather than an endless retry loop.
                 outcome.quarantine("payout rejected: " + result.message());
                 return;
             }
             outcome.defer("AurumCore is unavailable");
+        }));
+    }
+
+    private void paid(Player player, Outcome outcome) {
+        messages.send(player, "buyer-sale-paid", Map.of(
+                "amount", economy.format(sale.payout().doubleValue())));
+        outcome.done();
+    }
+
+    private void cancelUntouchedSale(Outcome outcome, String reason) {
+        if (!sale.reservedBudget()) {
+            outcome.abandon(reason);
+            return;
+        }
+        economy.hold(sale.holdKey()).whenComplete((found, failure) -> delivery.onMain(() -> {
+            if (failure != null || found == null) {
+                outcome.defer("could not inspect buyer budget reservation");
+                return;
+            }
+            if (found.isEmpty() || found.orElseThrow().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.RELEASED
+                    || found.orElseThrow().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.EXPIRED) {
+                outcome.abandon(reason);
+                return;
+            }
+            if (found.orElseThrow().status() == ovh.aurumgg.core.api.HoldSnapshot.Status.CAPTURED) {
+                outcome.quarantine("buyer payout was captured before item removal");
+                return;
+            }
+            economy.release(found.orElseThrow()).whenComplete((released, releaseFailure) ->
+                    delivery.onMain(() -> {
+                        if (releaseFailure == null && released != null && released.hold().isPresent()
+                                && (released.hold().orElseThrow().status()
+                                == ovh.aurumgg.core.api.HoldSnapshot.Status.RELEASED
+                                || released.hold().orElseThrow().status()
+                                == ovh.aurumgg.core.api.HoldSnapshot.Status.EXPIRED)) {
+                            outcome.abandon(reason);
+                        } else if (released != null && released.hold().isPresent()
+                                && released.hold().orElseThrow().status()
+                                == ovh.aurumgg.core.api.HoldSnapshot.Status.CAPTURED) {
+                            outcome.quarantine("buyer payout was captured before item removal");
+                        } else {
+                            outcome.defer("could not release buyer budget reservation");
+                        }
+                    }));
         }));
     }
 }
