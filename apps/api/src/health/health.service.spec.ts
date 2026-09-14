@@ -3,7 +3,30 @@ process.env.NODE_ENV = 'test';
 import { HealthService } from './health.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
+const mockRedisConnect = jest.fn();
+const mockRedisPing = jest.fn();
+const mockRedisDisconnect = jest.fn();
+const mockRedisRemoveAllListeners = jest.fn();
+
+jest.mock('ioredis', () => ({
+  __esModule: true,
+  default: jest.fn().mockImplementation(() => ({
+    on: jest.fn(),
+    connect: mockRedisConnect,
+    ping: mockRedisPing,
+    disconnect: mockRedisDisconnect,
+    removeAllListeners: mockRedisRemoveAllListeners,
+  })),
+}));
+
 describe('HealthService', () => {
+  beforeEach(() => {
+    mockRedisConnect.mockReset().mockRejectedValue(new Error('connection refused'));
+    mockRedisPing.mockReset();
+    mockRedisDisconnect.mockReset();
+    mockRedisRemoveAllListeners.mockReset();
+  });
+
   function makeService(queryImpl: jest.Mock) {
     return new HealthService({ $queryRaw: queryImpl } as unknown as PrismaService);
   }
@@ -52,7 +75,7 @@ describe('HealthService', () => {
     const service = makeService(jest.fn().mockResolvedValue([{ '?column?': 1 }]));
     const result = await service.readiness();
 
-    // Redis в тестовом окружении не поднят — БД при этом должна быть ok.
+    // Отказ Redis моделируется явно: тест не зависит от служб на хосте.
     expect(result.checks.database).toBe('ok');
     expect(result.checks.redis).toBe('fail');
     expect(result.ready).toBe(false);
