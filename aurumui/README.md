@@ -129,7 +129,7 @@ Client (`mods/`):
 1. Minecraft Java 26.2.
 2. Fabric Loader 0.19.5 or newer.
 3. Fabric API for 26.2.
-4. `AurumUI-0.8.0.jar`.
+4. `AurumUI-0.9.0.jar`.
 
 ## Client controls
 

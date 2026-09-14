@@ -196,10 +196,10 @@ curl -s http://10.0.0.1:3001/api/health/ready
 
 ## 8. Подготовить плагины Minecraft
 
-Используйте актуальные JAR из `outputs`. На 2026-09-13 серверный комплект такой:
+Используйте актуальные JAR из `outputs`. На 2026-09-14 серверный комплект такой:
 
-- `AurumCore-0.18.0.jar`;
-- `AurumCompanion-0.13.1.jar`;
+- `AurumCore-0.18.1.jar`;
+- `AurumCompanion-0.13.2.jar`;
 - `AurumAuth-0.1.0.jar`;
 - `AurumGuilds-0.5.1.jar`;
 - `AddonsNPC-2.2.0.jar`;
@@ -215,8 +215,8 @@ curl -s http://10.0.0.1:3001/api/health/ready
 | `AddonsNPC-2.2.0.jar` | `902DB8F506295B43B4D023C050139E0324A224F57D39EBD45F7272DE78B36477` |
 | `AurumArena-1.6.0.jar` | `5E8D9D23C00671FA363D54FC23B9DF2F9DE5B73BADE16C0337AA29143E2B0D82` |
 | `AurumAuth-0.1.0.jar` | `B1BEDC3EAFF9C31BACB01BFF345CC59FFD46C728ABDE6C294F84B574604FDE0D` |
-| `AurumCompanion-0.13.1.jar` | `59C339BFBD356CC9064BC2E6DA066B8728786AD52AF92F7F5397552F9D164893` |
-| `AurumCore-0.18.0.jar` | `441B559184CAD0D3A1DC23D8E889C6C80B7DDC9CEE16329524440125E647431F` |
+| `AurumCompanion-0.13.2.jar` | `62DF89E59CD11D98420839E3A472392E0EFDDFE9ABE6A0C2F4A8C0545BA2187D` |
+| `AurumCore-0.18.1.jar` | `179E32FDA2478BEC0E4DB8A294DE03CC8E8764F58F02F08A1C491150D718C667` |
 | `AurumGuilds-0.5.1.jar` | `90553AB00E4357A5965CC1F1349719AD1F1CDB0BDA2AA6ACCBF0D22719E66391` |
 | `AurumSlots-1.6.0.jar` | `35B67A1CE87A1B821AA6D6F6BDB6B0D7B1550BA306AD8536B1BAC04D212E64DA` |
 
@@ -231,7 +231,7 @@ curl -s http://10.0.0.1:3001/api/health/ready
 VaultUnlocked, EssentialsX, WorldGuard, FAWE, LuckPerms, PlaceholderAPI и прочие
 сторонние плагины оставьте на месте.
 
-`AurumUI-0.8.0.jar` — клиентский Fabric-мод. Его устанавливают игроки в папку
+`AurumUI-0.9.0.jar` — клиентский Fabric-мод. Его устанавливают игроки в папку
 `mods`; в серверную папку `plugins` его класть нельзя.
 
 ## 9. Первый запуск: безопасный passive

@@ -817,6 +817,30 @@ class CompanionHttpServerTest {
     }
 
     @Test
+    @DisplayName("Начисление и списание со счёта принимаются как отдельные операции")
+    void managedAccountAdjustmentOperationsAreAccepted() throws Exception {
+        bridge.accountRegistryAvailable = true;
+
+        HttpResponse<String> credit = post("/economy/accounts/action", TOKEN,
+                "{\"operation\":\"credit\",\"idempotencyKey\":\"4a156e26-d797-47c3-91a0-531f0a4ba050\","
+                        + "\"profileKey\":\"player:alice\",\"sourceRole\":\"primary\","
+                        + "\"currency\":\"coin\",\"amount\":10,\"actor\":\"panel:gm\","
+                        + "\"reason\":\"compensation\"}");
+        assertEquals(200, credit.statusCode(), credit.body());
+        assertEquals(ovh.aurumgg.companion.core.model.ManagedAccountMutation.Operation.CREDIT,
+                bridge.lastAccountMutation.operation());
+
+        HttpResponse<String> debit = post("/economy/accounts/action", TOKEN,
+                "{\"operation\":\"debit\",\"idempotencyKey\":\"4a156e26-d797-47c3-91a0-531f0a4ba051\","
+                        + "\"profileKey\":\"npc-buyer:iron\",\"sourceRole\":\"primary\","
+                        + "\"currency\":\"coin\",\"amount\":3,\"actor\":\"panel:gm\","
+                        + "\"reason\":\"correction\"}");
+        assertEquals(200, debit.statusCode(), debit.body());
+        assertEquals(ovh.aurumgg.companion.core.model.ManagedAccountMutation.Operation.DEBIT,
+                bridge.lastAccountMutation.operation());
+    }
+
+    @Test
     @DisplayName("Редактор правил закрыт токеном и возвращает текущие ревизии")
     void listsVersionedEconomyRules() throws Exception {
         bridge.rulesAvailable = true;

@@ -1,4 +1,11 @@
-# AurumCore 0.18.0
+# AurumCore 0.18.1
+
+Version 0.18.1 adds an audited administrative credit/debit operation for any
+active non-technical managed-account member. It uses `ADMIN_ADJUSTMENT`, a
+mandatory actor/reason and a stable idempotency key; credit comes from the
+system source and debit goes to the system sink, so every change to money
+supply remains an explicit balanced ledger entry. Frozen, closing, closed and
+technical profiles are rejected.
 
 Version 0.18.0 adds an audited console transfer between arbitrary non-technical
 managed-account members: `/aaccount transfer <from-profile> <from-role>
@@ -65,7 +72,7 @@ instead of silently widening the audit to every account.
 ## Safe installation and migration
 
 1. Keep EssentialsX and VaultUnlocked unchanged.
-2. Copy `AurumCore-0.18.0.jar` to `plugins/`.
+2. Copy `AurumCore-0.18.1.jar` to `plugins/`.
 3. Start with `economy.mode: passive` and `database.enabled: false`.
 4. Run `/aurum status`; it must show the current Vault provider and writes OFF.
 5. Configure MariaDB, set `database.enabled: true` and `economy.mode: shadow`.

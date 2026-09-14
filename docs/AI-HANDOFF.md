@@ -922,3 +922,21 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
 - Остаток не объявлен пройденным и не является найденным дефектом. Полная матрица и
   prerequisites сохранены в `docs/aurum-live-validation-todo.md`; пункт roadmap 9 остаётся
   частично выполненным. `trading.enabled` должен оставаться `false` до отдельного прогона.
+
+### 2026-09-14 — Claude/Codex, быстрые действия счетов и читаемый AurumUI
+
+- Claude добавил в карточку любого активного нетехнического managed account быстрые
+  `credit`, `debit`, перевод и freeze/unfreeze. Core проводит credit/debit отдельной
+  сбалансированной `ADMIN_ADJUSTMENT` через global system source/sink; actor, причина и
+  idempotency обязательны. Панель по умолчанию скрывает CLOSED-профили, не удаляя аудит.
+- AurumUI 0.9.0 исправляет перенос вкладок, пересечение status/buttons, ширину колонок,
+  перевод серверных ключей и бесполезную кнопку Back в корневых social-экранах. Новых
+  серверных capabilities или polling нет.
+- При ревью исправлены релизные дефекты: изменённый Core/Companion больше не используют
+  номера уже опубликованных JAR (`0.18.1` и `0.13.2`), dependency Companion поднята до
+  актуального API, случайно добавленный старый `aurum-api-0.10.0.jar` удалён. Добавлен
+  отдельный HTTP regression test на обе операции `credit`/`debit`.
+- Локально успешны Gradle clean build Core, Companion и AurumUI с JDK 25. Артефакты:
+  `AurumCore-0.18.1.jar` (`179E32FDA2478BEC0E4DB8A294DE03CC8E8764F58F02F08A1C491150D718C667`),
+  `AurumCompanion-0.13.2.jar` (`62DF89E59CD11D98420839E3A472392E0EFDDFE9ABE6A0C2F4A8C0545BA2187D`),
+  `AurumUI-0.9.0.jar` (`36E999BC15B38D36AEDEC50B917F5D38403EA7D38BFCE7723042BCBE3160CA9D`).

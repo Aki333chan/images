@@ -1,5 +1,12 @@
 # Aurum Companion
 
+## Release 0.13.2
+
+The managed-account bridge now carries audited `credit` and `debit` actions
+from the panel to AurumCore. These actions deliberately change money supply
+through Core's system source/sink, require an actor and reason, and retain the
+same idempotency and lifecycle checks as the rest of the account registry.
+
 ## Release 0.13.1
 
 The managed-account mutation bridge now transports source and destination
