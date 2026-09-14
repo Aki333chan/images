@@ -62,9 +62,9 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-14 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.2`, `core-v0.18.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
-`npc-v2.3.0`, `arena-v1.6.1`, `slots-v1.6.0`. Заменённые releases и tags удалены;
-актуальный Addons commit — `3f82e63`.
+`companion-v0.13.3`, `core-v0.18.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
+`npc-v2.4.0`, `arena-v1.6.1`, `slots-v1.6.0`. Заменённые releases и tags удалены;
+актуальный Addons commit — `94bb446`.
 
 ## Исторические выпуски и этапы
 
@@ -1033,3 +1033,9 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   849EB70E4C95F69DE3BD61ABC5B7ADB955E4509B4823DABE52E6DFC87C3E1BA6;
   AurumUI-0.11.0.jar
   4582B78ADCBD1EE2362CF6FE1CB0858C149E67DFEABC25466214E033A7BD0193.
+- Sources commit `f0a7012`, Addons commit `94bb446` отправлены в main.
+  Releases `npc-v2.4.0` и `companion-v0.13.3` опубликованы; digest каждого JAR
+  совпадает с локальным SHA-256, sidecar приложен. Заменённые releases/tags
+  `npc-v2.3.0` и `companion-v0.13.2` удалены. Старые локальные JAR/sidecar
+  NPC/Companion/UI сохранены в `archive/commerce-2026-09-14`, вне Git.
+  Новые три JAR находятся в outputs. На игровой сервер обновление не ставилось.
