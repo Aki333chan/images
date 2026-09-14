@@ -1,4 +1,10 @@
-# AurumArena 1.6.0
+# AurumArena 1.6.1
+
+Version 1.6.1 makes the AurumCore `final` account authoritative for the
+champion pool. Panel transfers are reflected in final-stat holograms and
+AurumUI asynchronously (every five seconds by default), and the game no longer
+offers a local-only pool edit while money mode is enabled. Configure the poll
+interval with `economy.final-pool-refresh-seconds` (1..300).
 
 Version 1.6.0 registers every arena as a managed AurumCore account card. The
 ordinary-bet and final-prize escrows remain separate members and are shown both

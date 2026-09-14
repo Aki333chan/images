@@ -76,6 +76,8 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
     private boolean commissionOnChampionPool;
     private double minBet;
     private double maxBet;
+    /** How often a panel-authored final-account transfer is reflected in game. */
+    private int finalPoolRefreshTicks;
     private int maxTeamLimit;
     private int defaultWinnerExperience;
     private int defaultFinalWinnerExperience;
@@ -197,6 +199,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         useVault = getConfig().getBoolean("economy.use_vault", false);
         vaultSymbol = getConfig().getString("economy.vault_symbol", "$");
         vaultBetStep = finite(getConfig().getDouble("economy.min_vault_bet", 3.0), 3.0, 0.01, 1_000_000_000.0);
+        finalPoolRefreshTicks = clamp(getConfig().getInt("economy.final-pool-refresh-seconds", 5), 1, 300) * 2;
         mainCurrency = material(getConfig().getString("economy.main_currency"), Material.GOLD_INGOT);
         subCurrency = material(getConfig().getString("economy.sub_currency"), Material.GOLD_NUGGET);
         bettingSeconds = clamp(getConfig().getInt("settings.betting_seconds", 45), 5, 3600);
@@ -487,6 +490,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             value.put("betting", String.valueOf(arena.bettingEnabled));
             value.put("kit", String.valueOf(arena.kitEnabled));
             value.put("finalMode", String.valueOf(arena.finalMode));
+            value.put("finalPoolManaged", String.valueOf(useVault));
             value.put("friendlyFire", String.valueOf(arena.friendlyFire));
             value.put("showBar", arena.showBar);
             value.put("winnerXp", String.valueOf(arena.winnerExperience));
@@ -525,7 +529,13 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
                 case "cycle_show_bar" -> arena.showBar = cycle(arena.showBar, List.of("spectators", "all", "false"));
                 case "cycle_xp_mode" -> arena.experienceMode = arena.experienceMode == ExperienceMode.POINTS
                         ? ExperienceMode.LEVELS : ExperienceMode.POINTS;
-                case "set_final_pool" -> arena.finalPool = decimal(arguments, "value", 0.0, 1_000_000_000_000.0);
+                case "set_final_pool" -> {
+                    // In Core mode this number is real money. A local config
+                    // edit would create a pool with no backing account, so it
+                    // must be funded/debited through the managed account UI.
+                    if (useVault) return "error.managed_final_pool";
+                    arena.setFinalPoolLocal(decimal(arguments, "value", 0.0, 1_000_000_000_000.0));
+                }
                 // Экономика настраивается из UI так же, как из консоли: одна
                 // и та же запись в config.yml, одно и то же перечитывание.
                 case "set_commission_percent" -> setCommission("economy.commission.percent",
@@ -844,7 +854,14 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
     }
 
     private void synchronizeArenaAccount(Arena arena) {
-        if (money != null) money.synchronizeArena(arena.name, arena.founderUuid, accountCloseDestination());
+        if (money == null) return;
+        money.synchronizeArena(arena.name, arena.founderUuid, accountCloseDestination());
+        // Registration and the first balance lookup are both asynchronous.
+        // Give Core a moment to finish the account card, then populate the
+        // in-game cache without waiting for the normal refresh interval.
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (arenas.get(arena.name) == arena && !arena.closing) arena.refreshFinalPoolFromLedger();
+        }, 20L);
     }
 
     private void setNumber(Player player, Arena arena, String[] args, boolean players) {
@@ -911,6 +928,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
     }
 
     private void addFinalHolo(Player player, Arena arena) {
+        arena.refreshFinalPoolFromLedger();
         Location location = player.getLocation().clone().add(0, 1.5, 0); location.setYaw(location.getYaw() + 180f); location.setPitch(0f);
         if (arena.finalStats.stream().anyMatch(holo -> sameBlock(holo.location, location))) {
             arena.updateFinalHolograms();
@@ -1162,6 +1180,8 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         Location specSpawn, spawnRed1, spawnRed2, spawnBlue1, spawnBlue2;
         boolean automatic, bettingEnabled = true, kitEnabled, friendlyFire, finalMode, closing;
         String showBar = "spectators", founderUuid = ""; double finalPool;
+        long finalPoolRevision;
+        boolean finalPoolRefreshPending;
         int winnerExperience, finalWinnerExperience; ExperienceMode experienceMode;
         final List<String> lastChampions = new ArrayList<>(); final List<FinalStatHolo> finalStats = new ArrayList<>();
         final List<Location> legacyHologramLocations = new ArrayList<>();
@@ -1351,7 +1371,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
                 // редко сходится, и хвост не должен оставаться на счёте.
                 takeCommission(round, roundTenth(finalPool - championShare * winners.size()),
                         BetTicket.Purpose.FINAL);
-                finalPool = 0.0; finalMode = false; saveArena(this);
+                setFinalPoolLocal(0.0); finalMode = false; saveArena(this);
             }
             if (winners == null) refundAllBets(); else {
                 for (UUID uuid : winners) database.recordMatch(uuid, playerName(uuid), true, championShare);
@@ -1523,7 +1543,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             if (rake <= 0.0) return;
             if (!useVault) {
                 if (commissionTarget == CommissionTarget.CHAMPION_POOL && source != BetTicket.Purpose.FINAL) {
-                    finalPool = roundTenth(finalPool + rake); saveArena(this); updateHolograms();
+                    setFinalPoolLocal(finalPool + rake); saveArena(this); updateHolograms();
                 }
                 return;
             }
@@ -1534,7 +1554,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
                                 + name + ": " + describe(result, error));
                         return;
                     }
-                    finalPool = roundTenth(finalPool + rake); saveArena(this); updateHolograms();
+                    setFinalPoolLocal(finalPool + rake); saveArena(this); updateHolograms();
                 }));
                 return;
             }
@@ -1602,7 +1622,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
         }
 
         private void acceptContribution(double value, Player player) {
-            finalPool = roundTenth(finalPool + value); saveArena(this); updateHolograms();
+            setFinalPoolLocal(finalPool + value); saveArena(this); updateHolograms();
             send(player, "§aВзнос принят. Пул: " + money(finalPool) + currency());
         }
 
@@ -1621,7 +1641,43 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
                 if (timerTicks == 0) { if (state == GameState.BETTING) beginCountdown(null); else startFight(); }
             }
             for (UUID uuid : new ArrayList<>(red)) checkBoundary(uuid); for (UUID uuid : new ArrayList<>(blue)) checkBoundary(uuid);
+            if (state == GameState.WAITING && tickCounter % finalPoolRefreshTicks == 0) {
+                refreshFinalPoolFromLedger();
+            }
             updateBossBars(); if (tickCounter % 2 == 0) updateScoreboards();
+        }
+
+        /**
+         * Refresh the local display/cache from the real Core account.
+         *
+         * <p>The query is asynchronous and at most one is in flight per arena.
+         * A revision guard prevents an older DB answer from overwriting a
+         * contribution or commission that completed while the query ran.</p>
+         */
+        void refreshFinalPoolFromLedger() {
+            if (!useVault || !money.available() || finalPoolRefreshPending || state != GameState.WAITING) return;
+            finalPoolRefreshPending = true;
+            long expectedRevision = finalPoolRevision;
+            money.finalPoolBalance(name).whenComplete((balance, failure) -> onMain(() -> {
+                finalPoolRefreshPending = false;
+                // /arena reload and account closure replace/remove this Arena
+                // instance. A late answer must not recreate stale config.
+                if (arenas.get(name) != this || closing
+                        || failure != null || balance == null || balance.isEmpty()
+                        || expectedRevision != finalPoolRevision) return;
+                double authoritative = finite(balance.get().doubleValue(), finalPool,
+                        0.0, 1_000_000_000_000.0);
+                if (Double.compare(authoritative, finalPool) == 0) return;
+                finalPool = authoritative;
+                finalPoolRevision++;
+                saveArena(this);
+                updateFinalHolograms();
+            }));
+        }
+
+        void setFinalPoolLocal(double value) {
+            finalPool = roundTenth(value);
+            finalPoolRevision++;
         }
 
         void checkBoundary(UUID uuid) {

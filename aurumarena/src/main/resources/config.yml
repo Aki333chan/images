@@ -8,6 +8,9 @@ economy:
   use_vault: false
   vault_symbol: "$"
   min_vault_bet: 3.0
+  # Как быстро внешние переводы из панели на роль final появятся в голограмме
+  # и игровом UI. Запрос к Core асинхронный; допустимо 1..300 секунд.
+  final-pool-refresh-seconds: 5
   main_currency: GOLD_INGOT
   sub_currency: GOLD_NUGGET
   # Сколько секунд держится резерв денег, пока идёт приём ставки.

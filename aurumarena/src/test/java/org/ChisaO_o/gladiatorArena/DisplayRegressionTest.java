@@ -26,6 +26,7 @@ class DisplayRegressionTest {
             assertEquals(0, config.getInt("settings.rewards.winner_experience"));
             assertEquals(0, config.getInt("settings.rewards.final_winner_experience"));
             assertEquals("points", config.getString("settings.rewards.experience_mode"));
+            assertEquals(5, config.getInt("economy.final-pool-refresh-seconds"));
         } catch (Exception exception) {
             fail(exception);
         }

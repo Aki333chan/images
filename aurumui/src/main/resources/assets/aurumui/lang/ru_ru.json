@@ -187,6 +187,7 @@
   "message.aurumui.error.not_found": "Объект уже не существует",
   "message.aurumui.error.invalid_value": "Некорректное значение",
   "message.aurumui.error.arena_not_empty": "Арена должна быть пустой и ожидать бой",
+  "message.aurumui.error.managed_final_pool": "В денежном режиме фонд меняется переводом на счёт final в веб-панели",
   "message.aurumui.error.no_location": "Позиция не настроена",
   "message.aurumui.error.replace_confirmation": "Подтвердите замену занятого слота",
   "message.aurumui.error.unknown_action": "Это действие не поддерживается",

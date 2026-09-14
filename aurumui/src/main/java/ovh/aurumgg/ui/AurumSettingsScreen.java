@@ -375,7 +375,10 @@ final class AurumSettingsScreen extends Screen {
 
     private void arenaActions(List<UiAction> list, WireProtocol.AdminObject o) {
         action(list, "screen.aurumui.action.teleport", () -> send(o, "teleport"));
-        action(list, setting("screen.aurumui.field.pool", o.get("finalPool")), () -> input(o, "set_final_pool", "finalPool"));
+        if (!o.bool("finalPoolManaged")) {
+            action(list, setting("screen.aurumui.field.pool", o.get("finalPool")),
+                    () -> input(o, "set_final_pool", "finalPool"));
+        }
         action(list, setting("screen.aurumui.field.radius", o.get("radius")), () -> input(o, "set_radius", "radius"));
         action(list, setting("screen.aurumui.field.maxplayers", o.get("maxPlayers")), () -> input(o, "set_max_players", "maxPlayers"));
         toggle(list, "screen.aurumui.field.auto", o, "automatic", "toggle_auto");
@@ -693,7 +696,9 @@ final class AurumSettingsScreen extends Screen {
         return switch (object.kind()) {
             case "social" -> object.get("summary");
             case "arena" -> object.get("state") + " · " + object.get("redPlayers") + ":" + object.get("bluePlayers")
-                    + " · " + object.get("redBets") + "/" + object.get("blueBets");
+                    + " · " + object.get("redBets") + "/" + object.get("blueBets")
+                    + " · " + Component.translatable("screen.aurumui.field.pool").getString()
+                    + " " + object.get("finalPool");
             case "slots" -> object.get("payment") + (object.bool("spinning") ? " · spinning" : "");
             case "npc" -> object.get("entityType") + " · " + object.get("location");
             case "shop", "buyer" -> object.get("offers") + " offers";

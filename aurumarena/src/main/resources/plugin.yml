@@ -1,5 +1,5 @@
 name: AurumArena
-version: '1.6.0'
+version: '1.6.1'
 main: org.ChisaO_o.gladiatorArena.GladiatorArena
 api-version: '26.2'
 description: Настраиваемые гладиаторские арены со ставками и комплектами

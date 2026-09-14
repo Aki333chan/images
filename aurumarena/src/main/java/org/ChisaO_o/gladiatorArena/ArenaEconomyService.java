@@ -24,6 +24,7 @@ import ovh.aurumgg.core.api.AccountId;
 import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.AurumEconomyApi;
 import ovh.aurumgg.core.api.AurumAccountRegistryApi;
+import ovh.aurumgg.core.api.BalanceSnapshot;
 import ovh.aurumgg.core.api.EconomyMode;
 import ovh.aurumgg.core.api.ManagedAccountCloseRequest;
 import ovh.aurumgg.core.api.ManagedAccountMember;
@@ -204,6 +205,15 @@ final class ArenaEconomyService implements Listener {
     String currencySymbol() {
         AurumEconomyApi current = api;
         return current == null ? "" : current.primaryCurrency().symbol();
+    }
+
+    /** Authoritative balance of this arena's champion-pool member. */
+    CompletionStage<Optional<BigDecimal>> finalPoolBalance(String arena) {
+        AurumEconomyApi current = api;
+        if (current == null) return CompletableFuture.completedFuture(Optional.empty());
+        return current.balance(escrow(arena, BetTicket.Purpose.FINAL)).thenApply(snapshot -> snapshot
+                .filter(BalanceSnapshot::authoritative)
+                .map(BalanceSnapshot::balance));
     }
 
     /** Сумма в точности валюты Core: денежные величины нельзя округлять на глаз. */

@@ -187,6 +187,7 @@
   "message.aurumui.error.not_found": "Object no longer exists",
   "message.aurumui.error.invalid_value": "Invalid value",
   "message.aurumui.error.arena_not_empty": "The arena must be empty and waiting",
+  "message.aurumui.error.managed_final_pool": "In money mode, fund the final account through the web panel",
   "message.aurumui.error.no_location": "No location is configured",
   "message.aurumui.error.replace_confirmation": "Confirm replacing the occupied slot",
   "message.aurumui.error.unknown_action": "This action is not supported",

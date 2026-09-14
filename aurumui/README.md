@@ -1,5 +1,12 @@
 # AurumUI
 
+## Authoritative arena pools (0.10.1)
+
+- In AurumCore money mode the arena's final pool is shown read-only. Funding
+  and debiting it goes through the managed `final` account, so the editor can
+  no longer create a displayed prize with no real money behind it.
+- The current synchronized pool remains visible in the arena list summary.
+
 ## Hotbar and offer slots (0.10.0)
 
 - While any AurumUI screen or confirmation form is open, the mouse wheel changes
@@ -139,7 +146,7 @@ Client (`mods/`):
 1. Minecraft Java 26.2.
 2. Fabric Loader 0.19.5 or newer.
 3. Fabric API for 26.2.
-4. `AurumUI-0.10.0.jar`.
+4. `AurumUI-0.10.1.jar`.
 
 ## Client controls
 
