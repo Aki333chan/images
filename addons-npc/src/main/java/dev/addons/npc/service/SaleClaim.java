@@ -45,7 +45,11 @@ import ovh.aurumgg.core.api.AccountType;
  */
 public record SaleClaim(String operation, String buyerId, int slot, int amount, BigDecimal payout,
                         long deadline, String budgetSource, String holdKey,
-                        List<ClaimCommand> commands) {
+                        List<ClaimCommand> commands, String stockCycle) {
+    public SaleClaim(String operation, String buyerId, int slot, int amount, BigDecimal payout,
+                     long deadline, String budgetSource, String holdKey, List<ClaimCommand> commands) {
+        this(operation, buyerId, slot, amount, payout, deadline, budgetSource, holdKey, commands, "");
+    }
 
     public SaleClaim {
         budgetSource = budgetSource == null ? "" : budgetSource.trim().toLowerCase(java.util.Locale.ROOT);
@@ -111,7 +115,8 @@ public record SaleClaim(String operation, String buyerId, int slot, int amount, 
 
     public String encode() {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 3);
+        yaml.set("schema", 4);
+        yaml.set("stock-cycle", stockCycle);
         yaml.set("operation", operation);
         yaml.set("buyer", buyerId);
         yaml.set("slot", slot);
@@ -146,7 +151,7 @@ public record SaleClaim(String operation, String buyerId, int slot, int amount, 
                     yaml.getStringList("commands").stream()
                             .map(command -> schema >= 2 ? ClaimCommand.stored(command)
                                     : new ClaimCommand(ClaimCommand.Mode.AT_MOST_ONCE, command))
-                            .toList()));
+                            .toList(), yaml.getString("stock-cycle", "")));
         } catch (Exception unreadable) {
             return Optional.empty();
         }

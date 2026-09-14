@@ -73,6 +73,10 @@ public final class BuyerRepository {
                 offer.permission(offerSection.getString("permission", ""));
                 offer.commands().addAll(offerSection.getStringList("commands"));
                 offer.bonus(readPercentage(offerSection, "bonus"));
+                int amount = offerSection.getInt("amount", -1);
+                boolean infinite = offerSection.getBoolean("infinite", amount <= 0);
+                offer.inventory().reset(infinite ? -1 : Math.max(0, amount));
+                offer.inventory().load(offerSection.getConfigurationSection("restock"));
                 buyer.offers().put(slot, offer);
             } catch (RuntimeException exception) {
                 plugin.getLogger().log(Level.WARNING, "Ignoring invalid buyer offer '" + id + ":" + rawSlot + "'", exception);
@@ -97,7 +101,7 @@ public final class BuyerRepository {
 
     public void save() {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema-version", 2);
+        yaml.set("schema-version", 3);
         for (BuyerDefinition buyer : buyers.values()) {
             String path = "buyers." + buyer.id();
             yaml.set(path + ".title", buyer.title());
@@ -114,6 +118,9 @@ public final class BuyerRepository {
                 yaml.set(offerPath + ".display-name", offer.displayName());
                 yaml.set(offerPath + ".lore", offer.lore());
                 yaml.set(offerPath + ".unit-price", offer.unitPrice());
+                yaml.set(offerPath + ".amount", offer.inventory().remaining());
+                yaml.set(offerPath + ".infinite", offer.inventory().unlimited());
+                offer.inventory().save(yaml.createSection(offerPath + ".restock"));
                 yaml.set(offerPath + ".bulk-amount", offer.bulkEnabled() ? offer.bulkAmount() : 0);
                 yaml.set(offerPath + ".bulk-price", offer.bulkEnabled() ? offer.bulkPrice() : 0);
                 yaml.set(offerPath + ".permission", offer.permission());

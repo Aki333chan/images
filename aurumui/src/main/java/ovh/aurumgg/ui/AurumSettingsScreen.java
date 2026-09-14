@@ -125,7 +125,12 @@ final class AurumSettingsScreen extends Screen {
 
     private void addAdminView() {
         int top = contentTop();
-        if (tab == Tab.NPC && !npcScope.contains("-offer:")) {
+        if (tab == Tab.NPC && npcScope.startsWith("shop-accounts:")) {
+            addRenderableWidget(Button.builder(Component.translatable("screen.aurumui.action.back"), ignored -> {
+                npcScope = "shop"; changeScope();
+            }).bounds(left(), top, contentWidth(), 20).build());
+            top += 26;
+        } else if (tab == Tab.NPC && !npcScope.contains("-offer:")) {
             addScopeButton("npc", "screen.aurumui.scope.npcs", top);
             addScopeButton("shop", "screen.aurumui.scope.shops", top);
             addScopeButton("buyer", "screen.aurumui.scope.buyers", top);
@@ -266,6 +271,12 @@ final class AurumSettingsScreen extends Screen {
             case "npc" -> npcActions(result, object);
             case "shop" -> shopActions(result, object);
             case "buyer" -> buyerActions(result, object);
+            case "revenueAccount" -> action(result, "screen.aurumui.action.selectaccount", () ->
+                    confirm("screen.aurumui.confirm.revenue", () ->
+                        AurumUiClient.adminAction(scope(), object.get("shop"), "shop_set_revenue",
+                                Map.of("profile", object.get("profile"), "role", object.get("role")))));
+            case "accountPage" -> action(result, "screen.aurumui.action.open",
+                    () -> openOffers(object.get("scope")));
             case "shopOffer" -> shopOfferActions(result, object);
             case "buyerOffer" -> buyerOfferActions(result, object);
             case "social" -> socialActions(result, object);
@@ -439,6 +450,7 @@ final class AurumSettingsScreen extends Screen {
     private void shopActions(List<UiAction> list, WireProtocol.AdminObject o) {
         action(list, "screen.aurumui.action.open", () -> send(o, "shop_open"));
         action(list, "screen.aurumui.action.offers", () -> openOffers("shop-offer:" + o.id()));
+        action(list, setting("screen.aurumui.field.revenue", o.get("revenue")), () -> openOffers("shop-accounts:" + o.id() + ":0"));
         action(list, setting("screen.aurumui.field.title", clean(o.title())), () -> input(o, "shop_set_title", "title"));
         action(list, setting("screen.aurumui.field.discount", o.get("discount")), () -> promotion(o, "shop_set_discount", "discount"));
     }
@@ -461,6 +473,7 @@ final class AurumSettingsScreen extends Screen {
     }
 
     private void shopOfferActions(List<UiAction> list, WireProtocol.AdminObject o) {
+        restockAction(list, o, "shop");
         action(list, setting("screen.aurumui.field.slot", o.get("slot")), () -> moveOffer(o, true));
         action(list, setting("screen.aurumui.field.price", o.get("price")), () -> input(o, "shop_offer_set_price", "price"));
         action(list, setting("screen.aurumui.field.quantity", o.get("quantity")), () -> input(o, "shop_offer_set_quantity", "quantity"));
@@ -472,6 +485,8 @@ final class AurumSettingsScreen extends Screen {
     }
 
     private void buyerOfferActions(List<UiAction> list, WireProtocol.AdminObject o) {
+        restockAction(list, o, "buyer");
+        action(list, setting("screen.aurumui.field.stock", o.get("stock")), () -> input(o, "buyer_offer_set_stock", "stock"));
         action(list, setting("screen.aurumui.field.slot", o.get("slot")), () -> moveOffer(o, false));
         action(list, setting("screen.aurumui.field.price", o.get("price")), () -> input(o, "buyer_offer_set_price", "price"));
         action(list, setting("screen.aurumui.field.bulk", o.get("bulkAmount") + " / " + o.get("bulkPrice")), () -> form(o, "buyer_offer_set_bulk", List.of(
@@ -482,6 +497,15 @@ final class AurumSettingsScreen extends Screen {
         action(list, "screen.aurumui.action.itemfromhand", () -> send(o, "buyer_offer_item_from_hand"));
         action(list, setting("screen.aurumui.field.name", clean(o.get("name"))), () -> input(o, "buyer_offer_set_name", "name"));
         action(list, "screen.aurumui.action.remove", () -> confirm("screen.aurumui.confirm.removeoffer", () -> send(o, "buyer_offer_remove")));
+    }
+
+    private void restockAction(List<UiAction> list, WireProtocol.AdminObject o, String kind) {
+        action(list, setting("screen.aurumui.field.restock", o.get("restockSeconds") + "s"), () ->
+                form(o, kind + "_offer_set_restock", List.of(
+                        new AurumFormScreen.Field("maximum", "screen.aurumui.field.stockmaximum",
+                                o.get("stockMaximum"), 10),
+                        new AurumFormScreen.Field("seconds", "screen.aurumui.field.restockseconds",
+                                o.get("restockSeconds"), 8))));
     }
 
     private void openOffers(String value) { npcScope = value; changeScope(); }
@@ -699,6 +723,7 @@ final class AurumSettingsScreen extends Screen {
                     + " · " + object.get("redBets") + "/" + object.get("blueBets")
                     + " · " + Component.translatable("screen.aurumui.field.pool").getString()
                     + " " + object.get("finalPool");
+            case "revenueAccount" -> object.get("account");
             case "slots" -> object.get("payment") + (object.bool("spinning") ? " · spinning" : "");
             case "npc" -> object.get("entityType") + " · " + object.get("location");
             case "shop", "buyer" -> object.get("offers") + " offers";

@@ -31,6 +31,8 @@ public final class BuyerOffer {
         }
     }
 
+    private final OfferStock stock = new OfferStock(-1);
+    public OfferStock inventory() { return stock; }
     private int slot;
     private ItemStack template;
     private MatchMode matchMode = MatchMode.MATERIAL;
@@ -61,6 +63,7 @@ public final class BuyerOffer {
     }
 
     public SaleQuote quote(SaleMode mode, int available) {
+        if (!stock.unlimited()) available = Math.min(available, stock.remaining());
         if (available < 1) return null;
         return switch (mode) {
             case UNIT_ONE -> quote(1, unitPrice);

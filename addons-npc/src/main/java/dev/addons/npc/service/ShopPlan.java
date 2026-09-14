@@ -149,9 +149,14 @@ public final class ShopPlan implements DeliveryPlan {
     public void onAbandoned() {
         try {
             ShopDefinition shop = shops.get(purchase.shopId());
-            ShopOffer offer = shop == null ? null : shop.offers().get(purchase.slot());
+            ShopOffer offer = shop == null ? null : purchase.stockCycle().isBlank()
+                    ? shop.offers().get(purchase.slot())
+                    : shop.offers().values().stream().filter(value -> value.inventory().cycle().equals(purchase.stockCycle()))
+                            .findFirst().orElse(null);
             if (offer == null || offer.unlimited()) return;
-            offer.stock(offer.stock() + purchase.item().getAmount());
+            offer.inventory().restore(purchase.item().getAmount(),
+                    purchase.stockCycle().isBlank() ? offer.inventory().cycle() : purchase.stockCycle(),
+                    System.currentTimeMillis());
             shops.save();
         } catch (RuntimeException failure) {
             // Stock is not money. Losing one purchase quantity is a drift

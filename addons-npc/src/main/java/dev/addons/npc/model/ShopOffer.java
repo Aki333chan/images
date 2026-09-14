@@ -14,7 +14,7 @@ public final class ShopOffer {
     private Material item;
     private ItemStack productTemplate;
     private int quantity = 1;
-    private int stock;
+    private final OfferStock stock;
     private String permission = "";
     private TimedPercentage discount = TimedPercentage.none();
     private final List<String> commands = new ArrayList<>();
@@ -23,7 +23,7 @@ public final class ShopOffer {
         slot(slot);
         this.item = item;
         this.icon = item;
-        this.stock = stock;
+        this.stock = new OfferStock(stock);
         this.price = Math.max(0, price);
         this.displayName = "&e" + humanize(item);
     }
@@ -68,13 +68,12 @@ public final class ShopOffer {
     public void quantity(int quantity) {
         this.quantity = Math.max(1, quantity);
     }
-    public int stock() { return stock; }
-    public void stock(int stock) { this.stock = stock; }
-    public boolean unlimited() { return stock < 0; }
-    public boolean available() { return unlimited() || stock >= quantity; }
-    public void consume() {
-        if (!unlimited()) stock = Math.max(0, stock - quantity);
-    }
+    public OfferStock inventory() { return stock; }
+    public int stock() { return stock.remaining(); }
+    public void stock(int stock) { this.stock.reset(stock); }
+    public boolean unlimited() { return stock.unlimited(); }
+    public boolean available() { return unlimited() || stock() >= quantity; }
+    public void consume() { stock.consume(quantity, System.currentTimeMillis()); }
     public String permission() { return permission; }
     public void permission(String permission) { this.permission = permission == null ? "" : permission; }
     public List<String> commands() { return commands; }

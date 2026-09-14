@@ -1,5 +1,12 @@
 locale-name: English
+stock:
+  full: "&7Full stock — timer idle"
+  remaining: "&eRestocks in: &f{time}"
+  quota: "&7Still buying: &f{stock}/{maximum}"
 messages:
+  stock-updated: "&aStock/refill settings saved."
+  revenue-current: "&aSales revenue: &f{profile} &7/ &f{role}"
+  revenue-invalid: "&cSelect an existing active account and a valid role."
   prefix: "&8[&6NPC&8] &r"
   no-permission: "&cYou do not have permission."
   player-only: "&cThis command can only be used by a player."
@@ -127,6 +134,10 @@ guild-bonus-types:
   mob_drops: {title: "Mob drops", short: "Mobs"}
   experience: {title: "Experience", short: "Experience"}
 command-help:
+  - "&e/npc shop revenue <shop> [profile-key] [role]"
+  - "&e/npc shop restock <shop> <slot> <off|30s|5m|1h|1d> [maximum]"
+  - "&e/npc buyer restock <buyer> <slot> <off|30s|5m|1h|1d> [maximum]"
+  - "&e/npc buyer stock <buyer> <slot> <amount>"
   - "&6--- AddonsNPC commands ---"
   - "&e/npc create <id> [name] &7- create at your position"
   - "&e/npc delete|move|tp|enable|disable <id>"

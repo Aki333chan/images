@@ -281,7 +281,8 @@ final class AurumUiChannel implements PluginMessageListener, CommandExecutor {
             pluginName = "AurumSlots";
             permission = "casino.admin";
         } else if (scope.equals("npc") || scope.equals("shop") || scope.equals("buyer")
-                || scope.startsWith("shop-offer:") || scope.startsWith("buyer-offer:")) {
+                || scope.startsWith("shop-offer:") || scope.startsWith("buyer-offer:")
+                || scope.startsWith("shop-accounts:")) {
             pluginName = "AddonsNPC";
             permission = "addonsnpc.admin";
         } else {

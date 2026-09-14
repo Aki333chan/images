@@ -1,5 +1,14 @@
 # AurumUI
 
+## Commerce settings (0.11.0)
+
+With AddonsNPC 2.4.0 and Companion 0.13.3, shop cards offer a paged selector
+of existing active managed accounts and roles for sales revenue. Selection
+is confirmed and validated by the server. Offer cards expose refill maximum
+and interval in seconds (0 disables); buyers also expose their remaining quota.
+The ordinary Minecraft commerce GUI shows the running countdown; no mod is
+required for buying, selling or viewing it.
+
 ## Authoritative arena pools (0.10.1)
 
 - In AurumCore money mode the arena's final pool is shown read-only. Funding
@@ -146,7 +155,7 @@ Client (`mods/`):
 1. Minecraft Java 26.2.
 2. Fabric Loader 0.19.5 or newer.
 3. Fabric API for 26.2.
-4. `AurumUI-0.10.1.jar`.
+4. `AurumUI-0.11.0.jar`.
 
 ## Client controls
 

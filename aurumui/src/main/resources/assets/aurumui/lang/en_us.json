@@ -1,4 +1,10 @@
 {
+  "screen.aurumui.action.selectaccount": "Select this account",
+  "screen.aurumui.confirm.revenue": "Send future sales revenue to this account?",
+  "screen.aurumui.field.revenue": "Sales revenue",
+  "screen.aurumui.field.restock": "Refill",
+  "screen.aurumui.field.stockmaximum": "Maximum stock / quota",
+  "screen.aurumui.field.restockseconds": "Interval in seconds (0 = off)",
   "screen.aurumui.social.confirmTarget": "Apply this action to %s?",
   "screen.aurumui.social.confirmPartyDisband": "Disband this party? All members will be removed. Confirm within 30 seconds.",
   "screen.aurumui.social.option.true": "Enabled",

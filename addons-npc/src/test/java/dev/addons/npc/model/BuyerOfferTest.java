@@ -11,6 +11,21 @@ import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.Test;
 
 class BuyerOfferTest {
+    @Test void quotaCapsUnitAndBulkSalesAndResetsAfterInterval() {
+        long now = System.currentTimeMillis();
+        BuyerOffer offer = new BuyerOffer(0, new ItemStack(Material.WHEAT), 2);
+        offer.bulk(16, 25);
+        offer.inventory().configure(40, 60, now);
+        assertEquals(40, offer.quote(BuyerOffer.SaleMode.UNIT_ALL, 100).amount());
+        assertEquals(32, offer.quote(BuyerOffer.SaleMode.BULK_ALL, 100).amount());
+        offer.inventory().consume(32, now);
+        assertNull(offer.quote(BuyerOffer.SaleMode.BULK_ONE, 100));
+        assertEquals(8, offer.quote(BuyerOffer.SaleMode.UNIT_ALL, 100).amount());
+        offer.inventory().consume(8, now);
+        assertNull(offer.quote(BuyerOffer.SaleMode.UNIT_ONE, 100));
+        offer.inventory().refresh(now + 60_000);
+        assertEquals(40, offer.quote(BuyerOffer.SaleMode.UNIT_ALL, 100).amount());
+    }
     @Test
     void calculatesSingleAndAllUnitSales() {
         BuyerOffer offer = new BuyerOffer(0, new ItemStack(Material.WHEAT), 1.25);

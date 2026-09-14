@@ -64,7 +64,7 @@ class GuildTraderMetadataTest {
             var config = YamlConfiguration.loadConfiguration(new InputStreamReader(configStream, StandardCharsets.UTF_8));
             var shops = YamlConfiguration.loadConfiguration(new InputStreamReader(shopsStream, StandardCharsets.UTF_8));
             assertEquals(20L, config.getLong("settings.startup-spawn-delay-ticks"));
-            assertEquals(4, shops.getInt("schema-version"));
+            assertEquals(5, shops.getInt("schema-version"));
         }
     }
 }

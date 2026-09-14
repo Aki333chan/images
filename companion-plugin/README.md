@@ -1,5 +1,11 @@
 # Aurum Companion
 
+## Release 0.13.3
+
+Routes the bounded `shop-accounts:<shop>:<offset>` UI scope to AddonsNPC's
+asynchronous managed-account selector. Existing admin permissions apply.
+No new HTTP route, global polling or protocol version is introduced.
+
 ## Release 0.13.2
 
 The managed-account bridge now carries audited `credit` and `debit` actions

@@ -24,7 +24,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import ovh.aurumgg.core.api.AccountId;
-import ovh.aurumgg.core.api.AccountType;
 import ovh.aurumgg.core.api.ClaimRequest;
 import ovh.aurumgg.core.api.HoldResult;
 import ovh.aurumgg.core.api.HoldSnapshot;
@@ -93,6 +92,12 @@ public final class ShopService implements Listener {
             lore.add(messages.text("gui.shop.sale-price"));
             lore.add(messages.text("gui.shop.remaining"));
         }
+        var stock = offer.inventory();
+        if (!stock.unlimited() && stock.intervalSeconds() > 0) {
+            lore.add(stock.dueAt() == 0 ? messages.text("stock.full")
+                    : messages.formatKey("stock.remaining", Map.of("time", messages.duration(
+                            java.time.Duration.ofSeconds(Math.max(1, (stock.dueAt() - now + 999) / 1000))))));
+        }
         meta.setLore(lore.stream().map(line -> messages.format(line, values)).toList());
         icon.setItemMeta(meta);
         return icon;
@@ -123,6 +128,24 @@ public final class ShopService implements Listener {
                 return;
             }
             purchase(player, shop, offer, price, holder);
+        }
+    }
+
+    /** Called by the single GUI clock; only inventories actually being viewed are touched. */
+    public void refreshOpen(org.bukkit.inventory.Inventory inventory) {
+        if (!(inventory.getHolder() instanceof ShopHolder holder)) return;
+        ShopDefinition definition = repository.get(holder.shopId);
+        if (definition == null) return;
+        long now = System.currentTimeMillis();
+        for (var offer : definition.offers().values()) {
+            if (offer.inventory().intervalSeconds() == 0 || offer.unlimited()) continue;
+            var stock = offer.inventory();
+            String key = stock.remaining() + ":" + stock.maximum() + ":" + stock.intervalSeconds()
+                    + ":" + (stock.dueAt() == 0 ? 0 : Math.max(1, (stock.dueAt() - now + 999) / 1000));
+            if (key.equals(holder.stockKeys.put(offer.slot(), key))) continue;
+            // Price confirmation snapshots intentionally remain unchanged until a click.
+            ItemStack updated = icon(offer, activePrice(definition, offer, now), now);
+            if (!updated.equals(inventory.getItem(offer.slot()))) inventory.setItem(offer.slot(), updated);
         }
     }
 
@@ -164,10 +187,10 @@ public final class ShopService implements Listener {
         Map<String, String> metadata = Map.of("plugin", "AddonsNPC", "operation", operation,
                 "shop", shop.id(), "offer-slot", Integer.toString(offer.slot()));
         economy.reserve("npc-shop:" + operation, AccountId.player(player.getUniqueId()),
-                new AccountId(AccountType.NPC_SHOP, shop.id()), price, TransactionCategory.NPC_PURCHASE,
+                economy.shopRevenue(shop), price, TransactionCategory.NPC_PURCHASE,
                 "npc-shop", shop.id() + ":" + offer.slot(), metadata)
                 .whenComplete((result, error) -> runMain(() -> reservedPurchase(player, shop.id(), offer.slot(),
-                        price, holder, result, error)));
+                        price, offer, holder, result, error)));
     }
 
     /**
@@ -188,7 +211,7 @@ public final class ShopService implements Listener {
      * is a step Core remembers. Nothing is handed over without a durable record
      * of it, and a restart resumes at the step that never ran.
      */
-    private void reservedPurchase(Player player, String shopId, int slot, double reservedPrice, ShopHolder holder,
+    private void reservedPurchase(Player player, String shopId, int slot, double reservedPrice, ShopOffer expectedOffer, ShopHolder holder,
                                   HoldResult result, Throwable error) {
         if (error != null || result == null || (result.status() != HoldResult.Status.SUCCESS
                 && result.status() != HoldResult.Status.DUPLICATE) || result.hold().isEmpty()) {
@@ -202,7 +225,7 @@ public final class ShopService implements Listener {
         ShopOffer offer = shop == null ? null : shop.offers().get(slot);
         long now = System.currentTimeMillis();
         ActivePrice price = offer == null ? null : activePrice(shop, offer, now);
-        if (offer == null || !offer.available() || Math.abs(price.finalPrice() - reservedPrice) > 0.0000001
+        if (offer == null || offer != expectedOffer || !offer.available() || Math.abs(price.finalPrice() - reservedPrice) > 0.0000001
                 || !canFit(player.getInventory().getStorageContents(), offer.product())) {
             releaseHold(hold, player, "shop-price-changed");
             return;
@@ -228,14 +251,12 @@ public final class ShopService implements Listener {
             releaseHold(hold, player, "purchase-failed");
             return;
         }
-        PurchaseClaim purchase = new PurchaseClaim(Optional.of(hold.idempotencyKey()), shop.id(),
-                offer.slot(), offer.product(), commands);
-
         // Stock goes down here, with the debt: from this point the player is
         // going to be charged. Only the path that discovers nobody was charged
         // puts it back (see ShopDelivery.abandon).
-        int stockBefore = offer.stock();
-        offer.consume();
+        String stockCycle = offer.inventory().consume(offer.quantity(), System.currentTimeMillis());
+        PurchaseClaim purchase = new PurchaseClaim(Optional.of(hold.idempotencyKey()), shop.id(),
+                offer.slot(), offer.product(), commands, stockCycle);
         repository.save();
 
         ClaimRequest request;
@@ -245,7 +266,7 @@ public final class ShopService implements Listener {
                     purchase.encode());
         } catch (IllegalArgumentException invalid) {
             plugin.getLogger().warning("Could not describe NPC purchase as a claim: " + invalid.getMessage());
-            offer.stock(stockBefore);
+            offer.inventory().restore(purchase.item().getAmount(), stockCycle, System.currentTimeMillis());
             repository.save();
             releaseHold(hold, player, "purchase-failed");
             return;
@@ -258,7 +279,7 @@ public final class ShopService implements Listener {
             if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
                 // Nothing was charged and nothing was promised: undo the shelf
                 // and let the reservation go.
-                bought.stock(stockBefore);
+                bought.inventory().restore(purchase.item().getAmount(), stockCycle, System.currentTimeMillis());
                 repository.save();
                 releaseHold(hold, player, "purchase-failed");
                 return;
@@ -284,14 +305,12 @@ public final class ShopService implements Listener {
     private void promiseFreePurchase(Player player, ShopDefinition shop, ShopOffer offer,
                                      ActivePrice price, ShopHolder holder) {
         String operation = UUID.randomUUID().toString();
-        int stockBefore = offer.stock();
         Map<String, Object> values = placeholders(player, offer, price, economy.balance(player), System.currentTimeMillis());
-        PurchaseClaim purchase;
+        List<ClaimCommand> commands;
         try {
-            List<ClaimCommand> commands = ClaimCommand.prepareAll(offer.commands().stream()
+            commands = ClaimCommand.prepareAll(offer.commands().stream()
                     .map(command -> MessageService.replace(command, values)).toList(),
                     "npc-shop-free-command:" + operation);
-            purchase = new PurchaseClaim(Optional.empty(), shop.id(), offer.slot(), offer.product(), commands);
         } catch (IllegalArgumentException invalidCommand) {
             pending.remove(player.getUniqueId());
             plugin.getLogger().warning("Invalid free shop claim command: " + invalidCommand.getMessage());
@@ -299,7 +318,8 @@ public final class ShopService implements Listener {
             return;
         }
 
-        offer.consume();
+        String stockCycle = offer.inventory().consume(offer.quantity(), System.currentTimeMillis());
+        PurchaseClaim purchase = new PurchaseClaim(Optional.empty(), shop.id(), offer.slot(), offer.product(), commands, stockCycle);
         repository.save();
         ClaimRequest request;
         try {
@@ -308,7 +328,7 @@ public final class ShopService implements Listener {
                     purchase.encode());
         } catch (IllegalArgumentException invalid) {
             pending.remove(player.getUniqueId());
-            offer.stock(stockBefore);
+            offer.inventory().restore(purchase.item().getAmount(), stockCycle, System.currentTimeMillis());
             repository.save();
             plugin.getLogger().warning("Could not describe free NPC purchase as a claim: "
                     + invalid.getMessage());
@@ -319,7 +339,7 @@ public final class ShopService implements Listener {
         delivery.promise(request).whenComplete((promised, failure) -> runMain(() -> {
             pending.remove(player.getUniqueId());
             if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
-                offer.stock(stockBefore);
+                offer.inventory().restore(purchase.item().getAmount(), stockCycle, System.currentTimeMillis());
                 repository.save();
                 messages.send(player, "purchase-failed");
                 return;
@@ -400,6 +420,7 @@ public final class ShopService implements Listener {
         private final String shopId;
         private final Map<Integer, Double> shownPrices = new HashMap<>();
         private final Map<Integer, String> promotionKeys = new HashMap<>();
+        private final Map<Integer, String> stockKeys = new HashMap<>();
         private Inventory inventory;
 
         private ShopHolder(String shopId) {

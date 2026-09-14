@@ -100,6 +100,15 @@ public final class BuyerService implements Listener {
             if (offer.bulkEnabled()) lore.add(messages.text("gui.buyer.bonus-bulk-price"));
             lore.add(messages.text("gui.buyer.remaining"));
         }
+        var stock = offer.inventory();
+        if (!stock.unlimited()) {
+            lore.add(messages.formatKey("stock.quota", Map.of("stock", stock.remaining(), "maximum", stock.maximum())));
+            if (stock.intervalSeconds() > 0) {
+                lore.add(stock.dueAt() == 0 ? messages.text("stock.full")
+                        : messages.formatKey("stock.remaining", Map.of("time", messages.duration(
+                                java.time.Duration.ofSeconds(Math.max(1, (stock.dueAt() - now + 999) / 1000))))));
+            }
+        }
         meta.setLore(lore.stream().map(line -> messages.format(line, values)).toList());
         icon.setItemMeta(meta);
         return icon;
@@ -134,6 +143,24 @@ public final class BuyerService implements Listener {
                 return;
             }
             sell(player, buyer, offer, mode, bonus, now);
+        }
+    }
+
+    /** Called by the single GUI clock; only inventories actually being viewed are touched. */
+    public void refreshOpen(org.bukkit.inventory.Inventory inventory) {
+        if (!(inventory.getHolder() instanceof BuyerHolder holder)) return;
+        BuyerDefinition definition = repository.get(holder.buyerId);
+        if (definition == null) return;
+        long now = System.currentTimeMillis();
+        for (var offer : definition.offers().values()) {
+            if (offer.inventory().unlimited()) continue;
+            var stock = offer.inventory();
+            String key = stock.remaining() + ":" + stock.maximum() + ":" + stock.intervalSeconds()
+                    + ":" + (stock.dueAt() == 0 ? 0 : Math.max(1, (stock.dueAt() - now + 999) / 1000));
+            if (key.equals(holder.stockKeys.put(offer.slot(), key))) continue;
+            // Price confirmation snapshots intentionally remain unchanged until a click.
+            ItemStack updated = icon(offer, activeBonus(definition, offer, now), now);
+            if (!updated.equals(inventory.getItem(offer.slot()))) inventory.setItem(offer.slot(), updated);
         }
     }
 
@@ -178,7 +205,8 @@ public final class BuyerService implements Listener {
         SaleQuote quoted = offer.quote(mode, available);
         if (quoted == null) {
             transactions.remove(player.getUniqueId());
-            String key = (mode == SaleMode.BULK_ONE || mode == SaleMode.BULK_ALL) && !offer.bulkEnabled()
+            String key = !offer.inventory().unlimited() && offer.inventory().remaining() == 0
+                    ? "out-of-stock" : (mode == SaleMode.BULK_ONE || mode == SaleMode.BULK_ALL) && !offer.bulkEnabled()
                     ? "buyer-bulk-disabled" : "buyer-not-enough-items";
             messages.send(player, key, placeholders(offer, available, 0, bonus, now)); return;
         }
@@ -238,18 +266,25 @@ public final class BuyerService implements Listener {
             return;
         }
         HoldSnapshot hold = reserved.hold().orElseThrow();
-        if (!player.isOnline()) {
+        if (!player.isOnline() || repository.get(buyer.id()) != buyer
+                || buyer.offers().get(offer.slot()) != offer
+                || (!offer.inventory().unlimited() && offer.inventory().remaining() < quote.amount())) {
             transactions.remove(player.getUniqueId());
             economy.release(hold);
+            messages.send(player, "out-of-stock");
             return;
         }
+        String stockCycle = offer.inventory().unlimited() ? ""
+                : offer.inventory().consume(quote.amount(), System.currentTimeMillis());
         SaleClaim sale = new SaleClaim(operation, buyer.id(), offer.slot(), quote.amount(),
-                payout, now + saleDeadlineMillis(), budget.stableKey(), holdKey, commands);
+                payout, now + saleDeadlineMillis(), budget.stableKey(), holdKey, commands, stockCycle);
         ClaimRequest request;
         try {
             request = new ClaimRequest("npc-buyer-claim:" + operation, ClaimGateway.PLUGIN,
                     player.getUniqueId(), BuyerPlan.KIND, sale.stepCount(), sale.summary(), sale.encode());
         } catch (IllegalArgumentException invalid) {
+            offer.inventory().restore(quote.amount(), stockCycle, System.currentTimeMillis());
+            if (!stockCycle.isBlank()) repository.save();
             plugin.getLogger().warning("Could not describe NPC sale as a claim: " + invalid.getMessage());
             transactions.remove(player.getUniqueId());
             economy.release(hold);
@@ -257,10 +292,13 @@ public final class BuyerService implements Listener {
             return;
         }
 
+        if (!stockCycle.isBlank()) repository.save();
         delivery.promise(request).whenComplete((promised, failure) -> runMain(() -> {
             transactions.remove(player.getUniqueId());
             if (failure != null || promised == null || !promised.ok() || promised.claim().isEmpty()) {
                 // Ничего не записано и ничего не забрано: продажи не было.
+                offer.inventory().restore(quote.amount(), stockCycle, System.currentTimeMillis());
+                if (!stockCycle.isBlank()) repository.save();
                 economy.release(hold);
                 messages.send(player, "buyer-sale-failed");
                 return;
@@ -339,6 +377,7 @@ public final class BuyerService implements Listener {
     private static final class BuyerHolder implements InventoryHolder {
         private final String buyerId;
         private final Map<Integer, String> promotionKeys = new HashMap<>();
+        private final Map<Integer, String> stockKeys = new HashMap<>();
         private Inventory inventory;
         private BuyerHolder(String buyerId) { this.buyerId = buyerId; }
         @Override public Inventory getInventory() { return inventory; }

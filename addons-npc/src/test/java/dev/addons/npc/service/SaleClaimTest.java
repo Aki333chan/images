@@ -19,6 +19,11 @@ import ovh.aurumgg.core.api.AccountType;
  * заплатит дважды, либо заберёт предметы и не заплатит.
  */
 class SaleClaimTest {
+    @Test void stockCycleSurvivesDurableClaim() {
+        SaleClaim claim = new SaleClaim("stock-sale", "ores", 7, 64, new BigDecimal("100.00"),
+                0, "npc_buyer:ores", "buyer-hold", List.of(), "cycle-1");
+        assertEquals("cycle-1", SaleClaim.decode(claim.encode()).orElseThrow().stockCycle());
+    }
 
     private static List<ClaimCommand> commands(String... values) {
         return java.util.Arrays.stream(values).map(ClaimCommand::stored).toList();

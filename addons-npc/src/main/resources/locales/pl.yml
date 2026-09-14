@@ -1,5 +1,12 @@
 locale-name: Polski
+stock:
+  full: "&7Pełny zapas — licznik nieaktywny"
+  remaining: "&eOdnowienie za: &f{time}"
+  quota: "&7Jeszcze skupuje: &f{stock}/{maximum}"
 messages:
+  stock-updated: "&aZapisano ustawienia zapasu i odnowienia."
+  revenue-current: "&aPrzychód ze sprzedaży: &f{profile} &7/ &f{role}"
+  revenue-invalid: "&cWybierz istniejące aktywne konto i prawidłową rolę."
   prefix: "&8[&6NPC&8] &r"
   command-idempotency-key-required: "Komenda idempotentna musi zawierać {idempotency_key}."
   no-permission: "&cNie masz uprawnień."
@@ -123,6 +130,10 @@ guild-bonus-types:
   mob_drops: {title: "Łup z mobów", short: "Moby"}
   experience: {title: "Doświadczenie", short: "Doświadczenie"}
 command-help:
+  - "&e/npc shop revenue <shop> [profile-key] [role]"
+  - "&e/npc shop restock <shop> <slot> <off|30s|5m|1h|1d> [maximum]"
+  - "&e/npc buyer restock <buyer> <slot> <off|30s|5m|1h|1d> [maximum]"
+  - "&e/npc buyer stock <buyer> <slot> <amount>"
   - "&6--- Komendy AddonsNPC ---"
   - "&e/npc create <id> [nazwa] &7- utwórz w swojej pozycji"
   - "&e/npc delete|move|tp|enable|disable <id>"

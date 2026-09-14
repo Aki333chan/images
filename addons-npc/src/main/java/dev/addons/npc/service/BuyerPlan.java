@@ -88,7 +88,11 @@ public final class BuyerPlan implements DeliveryPlan {
             return;
         }
         BuyerDefinition buyer = buyers.get(sale.buyerId());
-        BuyerOffer offer = buyer == null ? null : buyer.offers().get(sale.slot());
+        BuyerOffer offer = buyer == null ? null : sale.stockCycle().isBlank()
+                ? buyer.offers().get(sale.slot())
+                : buyer.offers().values().stream()
+                        .filter(value -> value.inventory().cycle().equals(sale.stockCycle()))
+                        .findFirst().orElse(null);
         if (offer == null) {
             cancelUntouchedSale(outcome, "the buyer offer no longer exists");
             return;
@@ -196,6 +200,17 @@ public final class BuyerPlan implements DeliveryPlan {
         messages.send(player, "buyer-sale-paid", Map.of(
                 "amount", economy.format(sale.payout().doubleValue())));
         outcome.done();
+    }
+
+    @Override public void onAbandoned() {
+        BuyerDefinition buyer = buyers.get(sale.buyerId());
+        if (buyer == null || sale.stockCycle().isBlank()) return;
+        buyer.offers().values().stream()
+                .filter(offer -> offer.inventory().cycle().equals(sale.stockCycle()))
+                .findFirst().ifPresent(offer -> {
+                    offer.inventory().restore(sale.amount(), sale.stockCycle(), System.currentTimeMillis());
+                    buyers.save();
+                });
     }
 
     private void cancelUntouchedSale(Outcome outcome, String reason) {

@@ -1,4 +1,10 @@
 {
+  "screen.aurumui.action.selectaccount": "Wybierz to konto",
+  "screen.aurumui.confirm.revenue": "Kierować przyszły przychód na to konto?",
+  "screen.aurumui.field.revenue": "Konto przychodu",
+  "screen.aurumui.field.restock": "Odnowienie zapasu",
+  "screen.aurumui.field.stockmaximum": "Maksymalny zapas / limit",
+  "screen.aurumui.field.restockseconds": "Odstęp w sekundach (0 = wył.)",
   "screen.aurumui.social.confirmTarget": "Wykonać tę czynność dla %s?",
   "screen.aurumui.social.confirmPartyDisband": "Rozwiązać tę grupę? Wszyscy członkowie zostaną usunięci. Potwierdź w ciągu 30 sekund.",
   "screen.aurumui.social.option.true": "Włączone",

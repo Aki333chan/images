@@ -1,9 +1,12 @@
 # Example format (remove the leading # characters to use it):
-schema-version: 4
+schema-version: 5
 # shops:
 #   supplies:
 #     title: "&8Supplies"
 #     size: 27
+#     revenue:
+#       profile: treasury:global # managed profile, e.g. arena:colosseum
+#       role: primary # use final for the arena champion pool
 #     discount: # whole assortment; expires-at: 0 means permanent until disabled
 #       percent: 15.0
 #       expires-at: 0
@@ -16,7 +19,12 @@ schema-version: 4
 #         item: BREAD
 #         # For potions, use product (an ItemStack section) or the command form
 #         # POTION:HEALING / SPLASH_POTION:STRONG_HEALING / LINGERING_POTION:LONG_SWIFTNESS.
-#         amount: -1 # stock; 0 or a negative value means unlimited
+#         amount: 64 # remaining stock; use -1 for unlimited
+#         infinite: false # explicit false preserves zero when sold out
+#         restock:
+#           maximum: 64
+#           interval-seconds: 3600 # 0 disables automatic refill
+#           due-at: 0 # managed automatically; full stock has no running timer
 #         quantity: 8 # items received per purchase
 #         permission: ""
 #         # Plain / once: commands are at-most-once. idempotent: commands must

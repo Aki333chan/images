@@ -447,11 +447,54 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                 yield true;
             }
             case "offer" -> shopOffer(sender, args);
+            case "revenue" -> shopRevenue(sender, args);
+            case "restock" -> restock(sender, args, true);
             case "quantity" -> shopQuantity(sender, args);
             case "discount" -> shopDiscount(sender, args);
             case "remove" -> shopRemove(sender, args);
             default -> throw new IllegalArgumentException("Unknown shop operation. Use /npc help.");
         };
+    }
+
+    private boolean shopRevenue(CommandSender sender, String[] args) {
+        require(args, 3, "/npc shop revenue <shop> [profile-key] [role]");
+        ShopDefinition shop = requireShop(args[2]);
+        if (args.length == 3) {
+            messages.send(sender, "revenue-current", Map.of("profile", shop.revenueProfile(), "role", shop.revenueRole()));
+            return true;
+        }
+        String profile = args[3].toLowerCase(Locale.ROOT);
+        String role = args.length > 4 ? args[4].toLowerCase(Locale.ROOT) : "primary";
+        plugin.economy().revenueAccount(profile, role).whenComplete((account, error) ->
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (error != null || shops.get(shop.id()) != shop || !sender.hasPermission("addonsnpc.admin")) {
+                        messages.send(sender, "revenue-invalid"); return;
+                    }
+                    shop.revenue(profile, role); shops.save();
+                    messages.send(sender, "revenue-current", Map.of("profile", profile, "role", role));
+                }));
+        return true;
+    }
+
+    private boolean restock(CommandSender sender, String[] args, boolean shop) {
+        require(args, 5, "/npc " + (shop ? "shop" : "buyer") + " restock <id> <slot> <off|duration> [maximum]");
+        dev.addons.npc.model.OfferStock stock;
+        if (shop) {
+            var definition = requireShop(args[2]);
+            var offer = definition.offers().get(integer(args[3], "slot"));
+            if (offer == null) throw new IllegalArgumentException("Shop offer was not found.");
+            stock = offer.inventory();
+        } else stock = requireBuyerOffer(args[2], args[3]).inventory();
+        if (args[4].equalsIgnoreCase("off") || args[4].equals("0")) stock.disableRefill();
+        else {
+            long seconds = durationMillis(args[4]) / 1000;
+            int maximum = args.length > 5 ? integer(args[5], "maximum") : stock.maximum();
+            if (seconds == 0) throw new IllegalArgumentException("Use off to disable refill.");
+            stock.configure(maximum, seconds, System.currentTimeMillis());
+        }
+        if (shop) shops.save(); else buyers.save();
+        messages.send(sender, "stock-updated");
+        return true;
     }
 
     private boolean shopOffer(CommandSender sender, String[] args) {
@@ -585,6 +628,12 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             }
             case "title" -> buyerTitle(sender, args);
             case "size" -> buyerSize(sender, args);
+            case "restock" -> restock(sender, args, false);
+            case "stock" -> {
+                require(args, 5, "/npc buyer stock <buyer> <slot> <amount>");
+                requireBuyerOffer(args[2], args[3]).inventory().reset(integer(args[4], "amount") <= 0 ? -1 : integer(args[4], "amount"));
+                buyers.save(); messages.send(sender, "stock-updated"); yield true;
+            }
             case "budget" -> buyerBudget(sender, args);
             case "offer" -> buyerOffer(sender, args);
             case "price" -> buyerPrice(sender, args);
@@ -1318,16 +1367,26 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
             }
         }
 
+        if ((root.equals("shop") || root.equals("buyer")) && args.length >= 2 && args[1].equalsIgnoreCase("restock")) {
+            if (args.length == 5) return filter(List.of("off", "30s", "5m", "1h", "1d"), args[4]);
+            if (args.length == 6) return filter(List.of("16", "64", "128", "1000"), args[5]);
+        }
+        if (root.equals("shop") && args.length >= 2 && args[1].equalsIgnoreCase("revenue")) {
+            if (args.length == 4) return filter(List.of("treasury:global"), args[3]);
+            if (args.length == 5) return filter(List.of("primary", "final", "bet"), args[4]);
+        }
+        if (root.equals("buyer") && args.length == 5 && args[1].equalsIgnoreCase("stock"))
+            return filter(List.of("-1", "16", "64", "128", "1000"), args[4]);
         if (root.equals("shop")) {
             if (args.length == 2)
-                return filter(List.of("create", "delete", "list", "open", "offer", "quantity", "discount", "remove"), args[1]);
+                return filter(List.of("create", "delete", "list", "open", "offer", "quantity", "discount", "revenue", "restock", "remove"), args[1]);
             String operation = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
-            if (args.length == 3 && List.of("delete", "open", "offer", "quantity", "discount", "remove").contains(operation))
+            if (args.length == 3 && List.of("delete", "open", "offer", "quantity", "discount", "revenue", "restock", "remove").contains(operation))
                 return filter(shops.ids(), args[2]);
             ShopDefinition shop = args.length > 2 ? shops.get(args[2]) : null;
             if (args.length == 4 && shop != null) {
                 if (operation.equals("offer")) return filter(allSlots(shop.size()), args[3]);
-                if (operation.equals("remove") || operation.equals("quantity")) return filter(slots(shop, true), args[3]);
+                if (operation.equals("restock") || operation.equals("remove") || operation.equals("quantity")) return filter(slots(shop, true), args[3]);
                 if (operation.equals("discount")) {
                     List<String> targets = new ArrayList<>(); targets.add("all"); targets.addAll(slots(shop, true));
                     return filter(targets, args[3]);
@@ -1347,9 +1406,9 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
         }
         if (root.equals("buyer")) {
             if (args.length == 2)
-                return filter(List.of("create", "delete", "list", "open", "title", "size", "budget", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove"), args[1]);
+                return filter(List.of("create", "delete", "list", "open", "title", "size", "budget", "stock", "restock", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove"), args[1]);
             String operation = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
-            if (args.length == 3 && List.of("delete", "open", "title", "size", "budget", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove").contains(operation))
+            if (args.length == 3 && List.of("delete", "open", "title", "size", "budget", "stock", "restock", "offer", "price", "bulk", "bonus", "match", "name", "lore", "command", "permission", "remove").contains(operation))
                 return filter(buyers.ids(), args[2]);
             BuyerDefinition buyer = args.length > 2 ? buyers.get(args[2]) : null;
             if (args.length == 4 && buyer != null) {
@@ -1359,7 +1418,7 @@ public final class NpcCommand implements CommandExecutor, TabCompleter {
                     List<String> targets = new ArrayList<>(); targets.add("all"); targets.addAll(buyerSlots(buyer, true));
                     return filter(targets, args[3]);
                 }
-                if (List.of("price", "bulk", "match", "name", "lore", "command", "permission", "remove").contains(operation))
+                if (List.of("stock", "restock", "price", "bulk", "match", "name", "lore", "command", "permission", "remove").contains(operation))
                     return filter(buyerSlots(buyer, true), args[3]);
             }
             if (operation.equals("offer")) {

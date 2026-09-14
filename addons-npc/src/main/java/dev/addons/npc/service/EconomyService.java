@@ -57,6 +57,45 @@ public final class EconomyService {
         return aurum != null;
     }
 
+    /** Paged, on-demand choices; never walks all players or polls the registry. */
+    public CompletionStage<ovh.aurumgg.core.api.ManagedAccountPage> revenueAccounts(int offset) {
+        var registry = accounts;
+        if (registry == null) return CompletableFuture.failedFuture(new IllegalStateException("Account registry unavailable"));
+        return registry.list(new ovh.aurumgg.core.api.ManagedAccountQuery("", "",
+                ovh.aurumgg.core.api.ManagedAccountStatus.ACTIVE, false, offset, 20));
+    }
+
+    public CompletionStage<AccountId> revenueAccount(String profile, String role) {
+        var registry = accounts;
+        if (registry == null) return CompletableFuture.failedFuture(new IllegalStateException("Account registry unavailable"));
+        return registry.find(profile).thenApply(found -> {
+            var account = found.orElseThrow(() -> new IllegalArgumentException("Account not found"));
+            if (account.technical() || account.status() != ovh.aurumgg.core.api.ManagedAccountStatus.ACTIVE)
+                throw new IllegalArgumentException("Account is not active");
+            return account.members().stream().filter(member -> member.role().equals(role))
+                    .map(ManagedAccountMember::account).filter(EconomyService::revenueEligible)
+                    .findFirst().orElseThrow(() -> new IllegalArgumentException("Invalid account role"));
+        });
+    }
+
+    public static boolean revenueEligible(AccountId account) {
+        return switch (account.type()) {
+            case SYSTEM_SOURCE, SYSTEM_SINK, TRADE_ESCROW, EXCHANGE_RESERVE -> false;
+            default -> true;
+        };
+    }
+
+    public CompletionStage<AccountId> shopRevenue(dev.addons.npc.model.ShopDefinition shop) {
+        return revenueAccount(shop.revenueProfile(), shop.revenueRole());
+    }
+
+    public CompletionStage<HoldResult> reserve(String key, AccountId from, CompletionStage<AccountId> destination,
+            double value, TransactionCategory category, String purpose, String reference, Map<String, String> metadata) {
+        return destination.thenCompose(to -> reserve(key, from, to, value, category, purpose, reference, metadata))
+                .exceptionally(error -> new HoldResult(HoldResult.Status.REJECTED, Optional.empty(),
+                        "Revenue account unavailable"));
+    }
+
     public boolean available() { return aurum != null; }
     public double balance(OfflinePlayer player) { return vault == null ? 0 : vault.getBalance(player); }
     public String format(double amount) { return vault == null ? String.format("%.2f", amount) : vault.format(amount); }

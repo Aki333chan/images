@@ -199,10 +199,10 @@ curl -s http://10.0.0.1:3001/api/health/ready
 Используйте актуальные JAR из `outputs`. На 2026-09-14 серверный комплект такой:
 
 - `AurumCore-0.18.1.jar`;
-- `AurumCompanion-0.13.2.jar`;
+- `AurumCompanion-0.13.3.jar`;
 - `AurumAuth-0.1.0.jar`;
 - `AurumGuilds-0.5.1.jar`;
-- `AddonsNPC-2.3.0.jar`;
+- `AddonsNPC-2.4.0.jar`;
 - `AurumArena-1.6.1.jar`;
 - `AurumSlots-1.6.0.jar`.
 
@@ -212,10 +212,10 @@ curl -s http://10.0.0.1:3001/api/health/ready
 
 | JAR | SHA-256 |
 | --- | --- |
-| `AddonsNPC-2.3.0.jar` | `B91BE444A12BF1E27B0240174B442F2E8118DAEEC9FD66C797BBBECBADAAD190` |
+| `AddonsNPC-2.4.0.jar` | `84D28A269CA17980697F20D6D326B7B3D21E2B8B8C15E0F564370FA6A0E5CD8D` |
 | `AurumArena-1.6.1.jar` | `F6E5927D92BC4DC7931C0DD165A8A5B3C0A611AC2A3B8EFF40103A7E0E6E4B8B` |
 | `AurumAuth-0.1.0.jar` | `B1BEDC3EAFF9C31BACB01BFF345CC59FFD46C728ABDE6C294F84B574604FDE0D` |
-| `AurumCompanion-0.13.2.jar` | `62DF89E59CD11D98420839E3A472392E0EFDDFE9ABE6A0C2F4A8C0545BA2187D` |
+| `AurumCompanion-0.13.3.jar` | `849EB70E4C95F69DE3BD61ABC5B7ADB955E4509B4823DABE52E6DFC87C3E1BA6` |
 | `AurumCore-0.18.1.jar` | `179E32FDA2478BEC0E4DB8A294DE03CC8E8764F58F02F08A1C491150D718C667` |
 | `AurumGuilds-0.5.1.jar` | `90553AB00E4357A5965CC1F1349719AD1F1CDB0BDA2AA6ACCBF0D22719E66391` |
 | `AurumSlots-1.6.0.jar` | `35B67A1CE87A1B821AA6D6F6BDB6B0D7B1550BA306AD8536B1BAC04D212E64DA` |
@@ -231,7 +231,7 @@ curl -s http://10.0.0.1:3001/api/health/ready
 VaultUnlocked, EssentialsX, WorldGuard, FAWE, LuckPerms, PlaceholderAPI и прочие
 сторонние плагины оставьте на месте.
 
-`AurumUI-0.10.1.jar` — клиентский Fabric-мод. Его устанавливают игроки в папку
+`AurumUI-0.11.0.jar` — клиентский Fabric-мод. Его устанавливают игроки в папку
 `mods`; в серверную папку `plugins` его класть нельзя.
 
 ## 9. Первый запуск: безопасный passive

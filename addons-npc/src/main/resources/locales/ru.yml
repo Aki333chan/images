@@ -1,5 +1,12 @@
 locale-name: Русский
+stock:
+  full: "&7Запас полный — таймер не запущен"
+  remaining: "&eОбновление через: &f{time}"
+  quota: "&7Ещё принимает: &f{stock}/{maximum}"
 messages:
+  stock-updated: "&aНастройки запаса и обновления сохранены."
+  revenue-current: "&aВыручка от продаж: &f{profile} &7/ &f{role}"
+  revenue-invalid: "&cВыберите существующий активный счёт и его роль."
   prefix: "&8[&6NPC&8] &r"
   command-idempotency-key-required: "Идемпотентная команда должна содержать {idempotency_key}."
   no-permission: "&cНедостаточно прав."
@@ -123,6 +130,10 @@ guild-bonus-types:
   mob_drops: {title: "Добыча с мобов", short: "Мобы"}
   experience: {title: "Опыт", short: "Опыт"}
 command-help:
+  - "&e/npc shop revenue <shop> [profile-key] [role]"
+  - "&e/npc shop restock <shop> <slot> <off|30s|5m|1h|1d> [maximum]"
+  - "&e/npc buyer restock <buyer> <slot> <off|30s|5m|1h|1d> [maximum]"
+  - "&e/npc buyer stock <buyer> <slot> <amount>"
   - "&6--- Команды AddonsNPC ---"
   - "&e/npc create <id> [имя] &7- создать в вашей позиции"
   - "&e/npc delete|move|tp|enable|disable <id>"

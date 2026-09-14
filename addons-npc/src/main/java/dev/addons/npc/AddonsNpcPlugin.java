@@ -143,6 +143,14 @@ public final class AddonsNpcPlugin extends JavaPlugin {
 
         long startupDelay = Math.max(1L, getConfig().getLong("settings.startup-spawn-delay-ticks", 20L));
         getServer().getScheduler().runTaskLater(this, npcManager::start, startupDelay);
+        // One clock for visible commerce menus. Hidden offers refill lazily on access.
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            for (Player player : getServer().getOnlinePlayers()) {
+                var inventory = player.getOpenInventory().getTopInventory();
+                shopService.refreshOpen(inventory);
+                buyerService.refreshOpen(inventory);
+            }
+        }, 20L, 20L);
         long recoveryPeriod = Math.max(5L, getConfig().getLong("economy.recovery-retry-seconds", 20L)) * 20L;
         // Незавершённые заявки: та, которую не удалось выдать, пока Core лежал,
         // должна подхватиться без ожидания перезахода игрока.
@@ -221,8 +229,33 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     }
 
     /** Typed snapshots consumed reflectively by AurumCompanion, without a hard dependency. */
-    public List<Map<String, String>> aurumAdminSnapshot(Player viewer, String scope) {
+    public Object aurumAdminSnapshot(Player viewer, String scope) {
         if (!viewer.hasPermission("addonsnpc.admin")) return List.of();
+        if (scope.startsWith("shop-accounts:")) {
+            String[] parts = scope.substring("shop-accounts:".length()).split(":");
+            if (parts.length != 2 || shopRepository.get(parts[0]) == null) return List.of();
+            int offset = Integer.parseInt(parts[1]);
+            return economy.revenueAccounts(offset).thenApply(page -> {
+                List<Map<String, String>> result = new java.util.ArrayList<>();
+                page.accounts().stream().sorted(java.util.Comparator.comparing(
+                        ovh.aurumgg.core.api.ManagedAccount::profileType).thenComparing(
+                        ovh.aurumgg.core.api.ManagedAccount::displayName)).forEach(account -> {
+                    account.members().stream().filter(member -> EconomyService.revenueEligible(member.account()))
+                            .forEach(member -> {
+                        var value = card("revenueAccount", account.profileKey() + "/" + member.role(),
+                                account.profileType() + " · " + account.displayName() + " · " + member.role());
+                        value.put("shop", parts[0]); value.put("profile", account.profileKey());
+                        value.put("role", member.role()); value.put("account", member.account().stableKey());
+                        result.add(Map.copyOf(value));
+                    });
+                });
+                if (offset > 0) result.add(Map.of("kind", "accountPage", "id", "prev", "title", "‹",
+                        "scope", "shop-accounts:" + parts[0] + ":" + Math.max(0, offset - 20)));
+                if ((long) offset + page.limit() < page.total()) result.add(Map.of("kind", "accountPage", "id", "next", "title", "›",
+                        "scope", "shop-accounts:" + parts[0] + ":" + (offset + page.limit())));
+                return List.copyOf(result);
+            });
+        }
         if ("npc".equals(scope)) return npcRepository.all().stream().map(this::npcCard).toList();
         if ("shop".equals(scope)) return shopRepository.all().stream().map(this::shopCard).toList();
         if ("buyer".equals(scope)) return buyerRepository.all().stream().map(this::buyerCard).toList();
@@ -238,9 +271,22 @@ public final class AddonsNpcPlugin extends JavaPlugin {
     }
 
     /** Whitelisted mutation API for the mod UI. Arbitrary commands are deliberately unsupported. */
-    public String aurumAdminAction(Player actor, String id, String action, Map<String, String> arguments) {
+    public Object aurumAdminAction(Player actor, String id, String action, Map<String, String> arguments) {
         if (!actor.hasPermission("addonsnpc.admin")) return "error.permission";
         try {
+            if (action.equals("shop_set_revenue")) {
+                ShopDefinition shop = shopRepository.get(id);
+                if (shop == null) return "error.not_found";
+                String profile = text(arguments, "profile", 191), role = text(arguments, "role", 32);
+                var result = new java.util.concurrent.CompletableFuture<String>();
+                economy.revenueAccount(profile, role).whenComplete((account, error) ->
+                    getServer().getScheduler().runTask(this, () -> {
+                        if (error != null || !actor.hasPermission("addonsnpc.admin") || shopRepository.get(id) != shop)
+                            result.complete("error.invalid_value");
+                        else { shop.revenue(profile, role); shopRepository.save(); result.complete("ok.saved"); }
+                    }));
+                return result;
+            }
             if (action.startsWith("npc_")) return npcAction(actor, id, action, arguments);
             if (action.startsWith("shop_offer_")) return shopOfferAction(actor, id, action, arguments);
             if (action.startsWith("buyer_offer_")) return buyerOfferAction(actor, id, action, arguments);
@@ -282,6 +328,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         Map<String, String> value = card("shop", shop.id(), shop.title());
         value.put("size", String.valueOf(shop.size()));
         value.put("offers", String.valueOf(shop.offers().size()));
+        value.put("revenue", shop.revenueProfile() + " / " + shop.revenueRole());
         percentage(value, "discount", shop.discount());
         return Map.copyOf(value);
     }
@@ -307,6 +354,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         value.put("quantity", String.valueOf(offer.quantity()));
         value.put("stock", offer.unlimited() ? "-1" : String.valueOf(offer.stock()));
         value.put("match", offer.productTemplate() == null ? "MATERIAL" : "EXACT");
+        stockCard(value, offer.inventory());
         percentage(value, "discount", offer.discount());
         return Map.copyOf(value);
     }
@@ -322,6 +370,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         value.put("bulkAmount", String.valueOf(offer.bulkAmount()));
         value.put("bulkPrice", number(offer.bulkPrice()));
         value.put("match", offer.matchMode().name());
+        stockCard(value, offer.inventory());
         percentage(value, "bonus", offer.bonus());
         return Map.copyOf(value);
     }
@@ -418,6 +467,7 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         } else {
             if (offer == null) return "error.not_found";
             switch (action) {
+                case "shop_offer_set_restock" -> configureStock(offer.inventory(), args);
                 case "shop_offer_set_price" -> offer.price(decimal(args, "value", 0, 1_000_000_000_000.0));
                 case "shop_offer_set_quantity" -> offer.quantity(integer(args, "value", 1, offer.item().getMaxStackSize()));
                 case "shop_offer_set_stock" -> { int value = integer(args, "value", -1, Integer.MAX_VALUE); offer.stock(value <= 0 ? -1 : value); }
@@ -465,6 +515,11 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         } else {
             if (offer == null) return "error.not_found";
             switch (action) {
+                case "buyer_offer_set_restock" -> configureStock(offer.inventory(), args);
+                case "buyer_offer_set_stock" -> {
+                    int amount = integer(args, "value", -1, Integer.MAX_VALUE);
+                    offer.inventory().reset(amount <= 0 ? -1 : amount);
+                }
                 case "buyer_offer_set_price" -> offer.unitPrice(decimal(args, "value", 0.00000001, 1_000_000_000_000.0));
                 case "buyer_offer_set_bulk" -> {
                     int amount = integer(args, "amount", 0, 2304);
@@ -493,6 +548,18 @@ public final class AddonsNpcPlugin extends JavaPlugin {
         }
         buyerRepository.save();
         return "ok.saved";
+    }
+
+    private static void stockCard(Map<String, String> value, dev.addons.npc.model.OfferStock stock) {
+        value.put("stock", String.valueOf(stock.remaining()));
+        value.put("stockMaximum", String.valueOf(stock.maximum()));
+        value.put("restockSeconds", String.valueOf(stock.intervalSeconds()));
+    }
+
+    private static void configureStock(dev.addons.npc.model.OfferStock stock, Map<String, String> args) {
+        if (args.getOrDefault("seconds", "").equals("0")) { stock.disableRefill(); return; }
+        stock.configure(integer(args, "maximum", 1, Integer.MAX_VALUE),
+                integer(args, "seconds", 1, 31_536_000), System.currentTimeMillis());
     }
 
     private static Map<String, String> card(String kind, String id, String title) {

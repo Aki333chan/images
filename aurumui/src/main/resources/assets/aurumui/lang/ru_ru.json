@@ -1,4 +1,10 @@
 {
+  "screen.aurumui.action.selectaccount": "Выбрать этот счёт",
+  "screen.aurumui.confirm.revenue": "Направлять будущую выручку на этот счёт?",
+  "screen.aurumui.field.revenue": "Счёт выручки",
+  "screen.aurumui.field.restock": "Обновление запаса",
+  "screen.aurumui.field.stockmaximum": "Максимальный запас / лимит",
+  "screen.aurumui.field.restockseconds": "Интервал в секундах (0 = выкл.)",
   "screen.aurumui.social.confirmTarget": "Применить действие к %s?",
   "screen.aurumui.social.confirmPartyDisband": "Распустить эту пати? Все участники будут исключены. Подтвердите в течение 30 секунд.",
   "screen.aurumui.social.option.true": "Включено",

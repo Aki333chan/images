@@ -47,7 +47,10 @@ import org.bukkit.inventory.ItemStack;
  * delivery time would use tomorrow's balance and today's promise.
  */
 public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, ItemStack item,
-                            List<ClaimCommand> commands) {
+                            List<ClaimCommand> commands, String stockCycle) {
+    public PurchaseClaim(Optional<String> holdKey, String shopId, int slot, ItemStack item, List<ClaimCommand> commands) {
+        this(holdKey, shopId, slot, item, commands, "");
+    }
 
     public PurchaseClaim {
         commands = List.copyOf(commands);
@@ -94,7 +97,8 @@ public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, I
      */
     public String encode() {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 2);
+        yaml.set("schema", 3);
+        yaml.set("stock-cycle", stockCycle);
         holdKey.ifPresent(key -> yaml.set("hold", key));
         yaml.set("shop", shopId);
         yaml.set("slot", slot);
@@ -131,7 +135,7 @@ public record PurchaseClaim(Optional<String> holdKey, String shopId, int slot, I
                     yaml.getStringList("commands").stream()
                             .map(command -> schema >= 2 ? ClaimCommand.stored(command)
                                     : new ClaimCommand(ClaimCommand.Mode.AT_MOST_ONCE, command))
-                            .toList()));
+                            .toList(), yaml.getString("stock-cycle", "")));
         } catch (Exception unreadable) {
             return Optional.empty();
         }

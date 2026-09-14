@@ -58,6 +58,7 @@ public final class ShopRepository {
     private ShopDefinition read(String id, ConfigurationSection section, int schemaVersion) {
         ShopDefinition shop = new ShopDefinition(id, section.getString("title", "&8Shop"), section.getInt("size", 27));
         shop.discount(readPercentage(section, "discount", 100));
+        shop.revenue(section.getString("revenue.profile", "treasury:global"), section.getString("revenue.role", "primary"));
         ConfigurationSection offers = section.getConfigurationSection("offers");
         if (offers == null) {
             return shop;
@@ -95,6 +96,7 @@ public final class ShopRepository {
             offer.permission(offerSection.getString("permission", ""));
             offer.commands().addAll(offerSection.getStringList("commands"));
             offer.discount(readPercentage(offerSection, "discount", 100));
+            offer.inventory().load(offerSection.getConfigurationSection("restock"));
             shop.offers().put(slot, offer);
         }
         return shop;
@@ -116,11 +118,13 @@ public final class ShopRepository {
 
     public void save() {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema-version", 4);
+        yaml.set("schema-version", 5);
         for (ShopDefinition shop : shops.values()) {
             String path = "shops." + shop.id();
             yaml.set(path + ".title", shop.title());
             yaml.set(path + ".size", shop.size());
+            yaml.set(path + ".revenue.profile", shop.revenueProfile());
+            yaml.set(path + ".revenue.role", shop.revenueRole());
             writePercentage(yaml, path + ".discount", shop.discount());
             for (ShopOffer offer : shop.offers().values()) {
                 String offerPath = path + ".offers." + offer.slot();
@@ -136,6 +140,7 @@ public final class ShopRepository {
                 }
                 yaml.set(offerPath + ".amount", offer.unlimited() ? -1 : offer.stock());
                 yaml.set(offerPath + ".infinite", offer.unlimited());
+                offer.inventory().save(yaml.createSection(offerPath + ".restock"));
                 yaml.set(offerPath + ".quantity", offer.quantity());
                 yaml.set(offerPath + ".permission", offer.permission());
                 yaml.set(offerPath + ".commands", offer.commands());
