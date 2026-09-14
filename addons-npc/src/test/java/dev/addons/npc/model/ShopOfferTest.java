@@ -2,6 +2,7 @@ package dev.addons.npc.model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.bukkit.Material;
@@ -28,5 +29,20 @@ class ShopOfferTest {
         offer.consume();
         assertEquals(2, offer.stock());
         assertFalse(offer.available());
+    }
+
+    @Test
+    void movingSlotKeepsOfferSettings() {
+        ShopOffer offer = new ShopOffer(1, Material.BREAD, 12, 5.0);
+        offer.quantity(3);
+
+        offer.slot(17);
+
+        assertEquals(17, offer.slot());
+        assertEquals(Material.BREAD, offer.item());
+        assertEquals(12, offer.stock());
+        assertEquals(3, offer.quantity());
+        assertEquals(5.0, offer.price());
+        assertThrows(IllegalArgumentException.class, () -> offer.slot(-1));
     }
 }

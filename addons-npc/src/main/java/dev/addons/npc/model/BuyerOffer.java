@@ -31,7 +31,7 @@ public final class BuyerOffer {
         }
     }
 
-    private final int slot;
+    private int slot;
     private ItemStack template;
     private MatchMode matchMode = MatchMode.MATERIAL;
     private String displayName;
@@ -44,7 +44,7 @@ public final class BuyerOffer {
     private final List<String> commands = new ArrayList<>();
 
     public BuyerOffer(int slot, ItemStack template, double unitPrice) {
-        this.slot = slot;
+        slot(slot);
         template(template);
         unitPrice(unitPrice);
         this.displayName = "&e" + humanize(this.template.getType());
@@ -79,6 +79,10 @@ public final class BuyerOffer {
     }
 
     public int slot() { return slot; }
+    public void slot(int slot) {
+        if (slot < 0) throw new IllegalArgumentException("Offer slot cannot be negative.");
+        this.slot = slot;
+    }
     public ItemStack template() { return template.clone(); }
     public void template(ItemStack template) {
         if (template == null || template.getType() == Material.AIR) {

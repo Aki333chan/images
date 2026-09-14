@@ -423,6 +423,18 @@ public final class AddonsNpcPlugin extends JavaPlugin {
                 case "shop_offer_set_stock" -> { int value = integer(args, "value", -1, Integer.MAX_VALUE); offer.stock(value <= 0 ? -1 : value); }
                 case "shop_offer_set_name" -> offer.displayName(text(args, "value", 128));
                 case "shop_offer_set_discount" -> offer.discount(timed(args, 100));
+                case "shop_offer_move" -> {
+                    int destination = integer(args, "value", 0, shop.size() - 1);
+                    if (destination != slot) {
+                        if (shop.offers().containsKey(destination)
+                                && !Boolean.parseBoolean(args.getOrDefault("replace", "false"))) {
+                            return "error.replace_confirmation";
+                        }
+                        shop.offers().remove(slot);
+                        offer.slot(destination);
+                        shop.offers().put(destination, offer);
+                    }
+                }
                 case "shop_offer_item_from_hand" -> {
                     ItemStack held = hand(actor);
                     offer.product(held);
@@ -462,6 +474,18 @@ public final class AddonsNpcPlugin extends JavaPlugin {
                         ? BuyerOffer.MatchMode.EXACT : BuyerOffer.MatchMode.MATERIAL);
                 case "buyer_offer_set_name" -> offer.displayName(text(args, "value", 128));
                 case "buyer_offer_set_bonus" -> offer.bonus(timed(args, 1000));
+                case "buyer_offer_move" -> {
+                    int destination = integer(args, "value", 0, buyer.size() - 1);
+                    if (destination != slot) {
+                        if (buyer.offers().containsKey(destination)
+                                && !Boolean.parseBoolean(args.getOrDefault("replace", "false"))) {
+                            return "error.replace_confirmation";
+                        }
+                        buyer.offers().remove(slot);
+                        offer.slot(destination);
+                        buyer.offers().put(destination, offer);
+                    }
+                }
                 case "buyer_offer_item_from_hand" -> offer.template(hand(actor));
                 case "buyer_offer_remove" -> buyer.offers().remove(slot);
                 default -> { return "error.unknown_action"; }

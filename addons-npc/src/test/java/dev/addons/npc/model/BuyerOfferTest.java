@@ -3,6 +3,7 @@ package dev.addons.npc.model;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.bukkit.Material;
@@ -46,5 +47,20 @@ class BuyerOfferTest {
         assertTrue(offer.matches(new ItemStack(Material.IRON_INGOT, 32)));
         assertFalse(offer.matches(new ItemStack(Material.GOLD_INGOT)));
         assertFalse(offer.matches(null));
+    }
+
+    @Test
+    void movingSlotKeepsBuyerOfferSettings() {
+        BuyerOffer offer = new BuyerOffer(2, new ItemStack(Material.IRON_INGOT), 2.0);
+        offer.bulk(64, 100.0);
+
+        offer.slot(20);
+
+        assertEquals(20, offer.slot());
+        assertEquals(Material.IRON_INGOT, offer.template().getType());
+        assertEquals(2.0, offer.unitPrice());
+        assertEquals(64, offer.bulkAmount());
+        assertEquals(100.0, offer.bulkPrice());
+        assertThrows(IllegalArgumentException.class, () -> offer.slot(-1));
     }
 }

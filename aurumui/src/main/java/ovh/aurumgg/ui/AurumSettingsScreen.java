@@ -458,6 +458,7 @@ final class AurumSettingsScreen extends Screen {
     }
 
     private void shopOfferActions(List<UiAction> list, WireProtocol.AdminObject o) {
+        action(list, setting("screen.aurumui.field.slot", o.get("slot")), () -> moveOffer(o, true));
         action(list, setting("screen.aurumui.field.price", o.get("price")), () -> input(o, "shop_offer_set_price", "price"));
         action(list, setting("screen.aurumui.field.quantity", o.get("quantity")), () -> input(o, "shop_offer_set_quantity", "quantity"));
         action(list, setting("screen.aurumui.field.stock", o.get("stock")), () -> input(o, "shop_offer_set_stock", "stock"));
@@ -468,6 +469,7 @@ final class AurumSettingsScreen extends Screen {
     }
 
     private void buyerOfferActions(List<UiAction> list, WireProtocol.AdminObject o) {
+        action(list, setting("screen.aurumui.field.slot", o.get("slot")), () -> moveOffer(o, false));
         action(list, setting("screen.aurumui.field.price", o.get("price")), () -> input(o, "buyer_offer_set_price", "price"));
         action(list, setting("screen.aurumui.field.bulk", o.get("bulkAmount") + " / " + o.get("bulkPrice")), () -> form(o, "buyer_offer_set_bulk", List.of(
                 new AurumFormScreen.Field("amount", "screen.aurumui.field.bulkamount", o.get("bulkAmount"), 8),
@@ -510,6 +512,28 @@ final class AurumSettingsScreen extends Screen {
         arguments.put("replace", String.valueOf(replace));
         AurumUiClient.adminAction(scope(), parentId + ":" + slot,
                 shop ? "shop_offer_create_from_hand" : "buyer_offer_create_from_hand", Map.copyOf(arguments));
+    }
+
+    private void moveOffer(WireProtocol.AdminObject offer, boolean shop) {
+        minecraft.gui.setScreen(new AurumFormScreen(this, Component.literal(clean(offer.title())), List.of(
+                new AurumFormScreen.Field("value", "screen.aurumui.field.slot", offer.get("slot"), 3)),
+                values -> submitOfferMove(offer, shop, values, false)));
+    }
+
+    private void submitOfferMove(WireProtocol.AdminObject offer, boolean shop,
+                                 Map<String, String> values, boolean replace) {
+        String destination = values.getOrDefault("value", "");
+        boolean occupied = adminState.objects().stream().anyMatch(object ->
+                !object.id().equals(offer.id()) && object.get("slot").equals(destination));
+        if (occupied && !replace) {
+            confirm("screen.aurumui.confirm.replaceoffer",
+                    () -> submitOfferMove(offer, shop, values, true));
+            return;
+        }
+        Map<String, String> arguments = new java.util.LinkedHashMap<>(values);
+        arguments.put("replace", String.valueOf(replace));
+        AurumUiClient.adminAction(scope(), offer.id(),
+                shop ? "shop_offer_move" : "buyer_offer_move", Map.copyOf(arguments));
     }
     private void promotion(WireProtocol.AdminObject object, String action, String field) {
         form(object, action, List.of(
@@ -773,6 +797,9 @@ final class AurumSettingsScreen extends Screen {
     }
     private int statusColor() { return serverProtocol == 0 ? 0xFFFF7777 : serverProtocol == 1 ? 0xFFFFC85C : 0xFF77DD88; }
     private static String clean(String value) { return value == null ? "" : value.replaceAll("(?i)[&§][0-9A-FK-ORX]", ""); }
+    @Override public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        return AurumHotbarScroll.handle(minecraft, horizontal, vertical);
+    }
     @Override public void onClose() { settings.save(); minecraft.gui.setScreen(parent); }
     @Override public boolean isPauseScreen() { return false; }
 

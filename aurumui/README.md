@@ -1,5 +1,15 @@
 # AurumUI
 
+## Hotbar and offer slots (0.10.0)
+
+- While any AurumUI screen or confirmation form is open, the mouse wheel changes
+  the selected vanilla hotbar slot and synchronises it with the server immediately.
+  This makes every “from hand” action usable without closing the editor.
+- Existing shop and buyer offers expose their GUI slot as an editable action.
+  Moving keeps the complete offer; an occupied destination requires an explicit
+  confirmation before it is replaced. The gameplay plugin validates the range and
+  collision again, so a stale client snapshot cannot silently overwrite an offer.
+
 ## Readable screens (0.9.0)
 
 A layout and wording pass over the whole window; no new server capability.
@@ -129,7 +139,7 @@ Client (`mods/`):
 1. Minecraft Java 26.2.
 2. Fabric Loader 0.19.5 or newer.
 3. Fabric API for 26.2.
-4. `AurumUI-0.9.0.jar`.
+4. `AurumUI-0.10.0.jar`.
 
 ## Client controls
 

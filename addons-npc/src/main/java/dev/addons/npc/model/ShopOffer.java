@@ -6,7 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
 public final class ShopOffer {
-    private final int slot;
+    private int slot;
     private Material icon;
     private String displayName;
     private final List<String> lore = new ArrayList<>();
@@ -20,7 +20,7 @@ public final class ShopOffer {
     private final List<String> commands = new ArrayList<>();
 
     public ShopOffer(int slot, Material item, int stock, double price) {
-        this.slot = slot;
+        slot(slot);
         this.item = item;
         this.icon = item;
         this.stock = stock;
@@ -34,6 +34,10 @@ public final class ShopOffer {
     }
 
     public int slot() { return slot; }
+    public void slot(int slot) {
+        if (slot < 0) throw new IllegalArgumentException("Offer slot cannot be negative.");
+        this.slot = slot;
+    }
     public Material icon() { return icon; }
     public void icon(Material icon) { this.icon = icon; }
     public String displayName() { return displayName; }

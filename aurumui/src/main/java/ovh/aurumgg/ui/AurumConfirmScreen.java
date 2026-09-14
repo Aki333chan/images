@@ -35,6 +35,9 @@ final class AurumConfirmScreen extends Screen {
         }
     }
 
+    @Override public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        return AurumHotbarScroll.handle(minecraft, horizontal, vertical);
+    }
     @Override public void onClose() { minecraft.gui.setScreen(parent); }
     @Override public boolean isPauseScreen() { return false; }
 }

@@ -940,3 +940,18 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   `AurumCore-0.18.1.jar` (`179E32FDA2478BEC0E4DB8A294DE03CC8E8764F58F02F08A1C491150D718C667`),
   `AurumCompanion-0.13.2.jar` (`62DF89E59CD11D98420839E3A472392E0EFDDFE9ABE6A0C2F4A8C0545BA2187D`),
   `AurumUI-0.9.0.jar` (`36E999BC15B38D36AEDEC50B917F5D38403EA7D38BFCE7723042BCBE3160CA9D`).
+
+### 2026-09-14 — Codex, хотбар в открытом UI и перенос оферт
+
+- AurumUI 0.10.0 перехватывает колесо во всех своих экранах, формах и окнах
+  подтверждения. Выбранный vanilla hotbar slot меняется клиенту и сразу отправляется
+  серверу, поэтому действие `item from hand` не успевает увидеть старую руку. Цифровые
+  клавиши намеренно не перехватываются.
+- В карточках shop/buyer offer поле GUI slot стало действием редактирования. Клиент
+  предупреждает о занятой цели, а AddonsNPC 2.3.0 повторно проверяет диапазон и требует
+  `replace=true`; перенос сохраняет предмет, цену, stock/bulk, имя и promotion.
+- Проверено JDK 25: AddonsNPC `clean package`, 64/64 теста; AurumUI `clean build`.
+  Артефакты: `AddonsNPC-2.3.0.jar`
+  (`B91BE444A12BF1E27B0240174B442F2E8118DAEEC9FD66C797BBBECBADAAD190`) и
+  `AurumUI-0.10.0.jar`
+  (`47489C9C34AAD7B17C8B66761FA417EC341DAAFFC7ACA6DF12716DD6F5D8C641`).
