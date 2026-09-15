@@ -1,5 +1,13 @@
 # Aurum Companion
 
+## Release 0.13.4
+
+Accepts the `starting_balance` singleton in the existing authenticated economy
+rules GET/preview/apply routes. Requires Core 0.19.0 for this resource. The panel
+provides a dedicated form under Economy; preview/apply retain server scope,
+admin permission, actor-bound expiring tokens and mandatory audit reasons.
+No Fabric protocol or UI mod update, extra polling, or Vault fallback is added.
+
 ## Release 0.13.3
 
 Routes the bounded `shop-accounts:<shop>:<offset>` UI scope to AddonsNPC's

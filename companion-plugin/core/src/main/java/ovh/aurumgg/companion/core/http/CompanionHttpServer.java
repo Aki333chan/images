@@ -923,7 +923,7 @@ public final class CompanionHttpServer {
     }
 
     private static void requireRuleType(String type) {
-        if (!type.equals("policy") && !type.equals("exchange")) {
+        if (!type.equals("policy") && !type.equals("exchange") && !type.equals("starting_balance")) {
             throw new IllegalArgumentException("Unknown financial rule type");
         }
     }

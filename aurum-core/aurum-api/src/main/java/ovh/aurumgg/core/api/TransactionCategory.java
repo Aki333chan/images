@@ -26,5 +26,6 @@ public enum TransactionCategory {
     TREASURY_TRANSFER,
     ACCOUNT_CLOSE,
     ADMIN_ADJUSTMENT,
+    STARTING_BALANCE,
     MIGRATION
 }

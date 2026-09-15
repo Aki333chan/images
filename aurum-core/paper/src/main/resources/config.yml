@@ -27,6 +27,14 @@ economy:
     # Allowed digits after the decimal point, 0..8.
     scale: 2
 
+# Imported once on first ACTIVE startup; afterwards edit in the panel Economy tab.
+# Changes affect new first-join decisions only, not already promised/pending grants.
+# false or amount: "0" disables new grants. Existing players never receive a backfill.
+starting-balance:
+  enabled: false
+  currency: coins
+  amount: "100"
+
 exchange:
   # Rules may be prepared while disabled. NPC exchangers will call the same
   # quote + atomic exchange API after they are implemented.

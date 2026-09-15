@@ -910,7 +910,7 @@ export class MinecraftController {
 }
 
 function economyRuleType(raw: string): MinecraftEconomyRuleType {
-  if (raw === 'policy' || raw === 'exchange') return raw;
+  if (raw === 'policy' || raw === 'exchange' || raw === 'starting_balance') return raw;
   throw new BadRequestException('mc.err.economyRuleType');
 }
 

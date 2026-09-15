@@ -253,6 +253,20 @@ class LedgerEconomyServiceTest {
                 Map.of("actor", "panel", "reason", "test"));
     }
 
+    @Test
+    void startingGrantDuplicateRefreshesStaleCacheWithoutReissuingMoney() throws Exception {
+        var service = new LedgerEconomyService(COINS, repository, FinancialRuleResolver.none(), Runnable::run, Clock.systemUTC());
+        var request = new TransactionRequest("starting-balance:test", ALICE, BOB, "coins",
+                new BigDecimal("25"), TransactionCategory.STARTING_BALANCE, Map.of());
+        service.transfer(request).toCompletableFuture().join();
+        // Emulate committed ledger + lost cache update (including later player spending).
+        repository.put(BOB, "20.00");
+        service.applyCommittedBalance(BOB, BigDecimal.ZERO);
+        assertEquals(TransactionResult.Status.DUPLICATE, service.transfer(request).toCompletableFuture().join().status());
+        assertEquals(new BigDecimal("20.00"), service.cachedBalance(BOB).orElseThrow().balance());
+        assertEquals(new BigDecimal("75.00"), repository.value(ALICE));
+    }
+
     private static final class MemoryLedger implements LedgerRepository {
         private final Map<AccountId, BigDecimal> balances = new HashMap<>();
         private final Map<String, LedgerCommit> committed = new HashMap<>();

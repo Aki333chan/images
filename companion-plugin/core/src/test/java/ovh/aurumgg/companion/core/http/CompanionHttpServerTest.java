@@ -848,6 +848,8 @@ class CompanionHttpServerTest {
                 "policy", "sales-tax", 4, Map.of("kind", "TAX", "definition.rate", "0.1")));
 
         assertEquals(401, get("/economy/rules/policy", null).statusCode());
+        assertEquals(401, get("/economy/rules/starting_balance", null).statusCode());
+        assertEquals(200, get("/economy/rules/starting_balance", TOKEN).statusCode());
         Map<String, Object> body = JsonParser.parseObject(get("/economy/rules/policy", TOKEN).body());
         Map<?, ?> rule = (Map<?, ?>) ((List<?>) body.get("rules")).getFirst();
         assertEquals("sales-tax", rule.get("id"));

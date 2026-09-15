@@ -144,6 +144,40 @@ class RulesAdminServiceTest {
                 "enabled", "true", "effectiveFrom", "", "effectiveUntil", ""));
     }
 
+    @Test
+    void startingBalanceSingletonUsesAuditedPreviewCasAndActorBinding() throws Exception {
+        var repository = new MemoryStartingBalanceRepository();
+        service.attachStartingBalance(repository);
+        assertEquals(1, service.list(RuleType.STARTING_BALANCE).toCompletableFuture().join().orElseThrow().size());
+        var request = new RuleMutationRequest(RuleType.STARTING_BALANCE, "global", 1,
+                Map.of("enabled", "true", "currency", "coins", "amount", "250"));
+        var preview = service.preview(request, "panel:alice").toCompletableFuture().join();
+        assertEquals(RuleChangePreview.Status.READY, preview.status());
+        assertEquals(RuleApplyResult.Status.EXPIRED,
+                service.apply(preview.token(), "panel:bob", "wrong actor").toCompletableFuture().join().status());
+        var result = service.apply(preview.token(), "panel:alice", "welcome bonus").toCompletableFuture().join();
+        assertEquals(RuleApplyResult.Status.APPLIED, result.status());
+        assertEquals(2, repository.current().revision());
+        assertEquals("panel:alice", repository.actor);
+        assertEquals("welcome bonus", repository.reason);
+        assertEquals(RuleChangePreview.Status.CONFLICT, service.preview(request, "panel:alice").toCompletableFuture().join().status());
+    }
+
+    @Test
+    void startingBalanceRejectsOtherSingletonIdsAndConcurrentPreview() throws Exception {
+        var repository = new MemoryStartingBalanceRepository();
+        service.attachStartingBalance(repository);
+        var fields = Map.of("enabled", "true", "currency", "coins", "amount", "10");
+        assertEquals(RuleChangePreview.Status.INVALID, service.preview(
+                new RuleMutationRequest(RuleType.STARTING_BALANCE, "other", 0, fields), "panel:alice")
+                .toCompletableFuture().join().status());
+        var preview = service.preview(new RuleMutationRequest(RuleType.STARTING_BALANCE, "global", 1, fields),
+                "panel:alice").toCompletableFuture().join();
+        repository.save(new StartingBalanceSettings(1, false, "coins", BigDecimal.ZERO), 1, "other", "disable");
+        assertEquals(RuleApplyResult.Status.CONFLICT,
+                service.apply(preview.token(), "panel:alice", "stale change").toCompletableFuture().join().status());
+    }
+
     private static FinancialRule policy(String rate, long revision) {
         return new FinancialRule("sales-tax", revision, PolicyKind.TAX, 1,
                 java.util.Set.of(ovh.aurumgg.core.api.TransactionCategory.NPC_PURCHASE),

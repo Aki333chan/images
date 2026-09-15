@@ -53,6 +53,7 @@ import ovh.aurumgg.core.engine.migration.MigrationService;
 public final class AurumCorePlugin extends JavaPlugin implements Listener {
     enum DatabaseState { DISABLED, STARTING, READY, FAILED }
 
+    private StartingBalanceCoordinator startingBalance;
     private CoreSettings settings;
     private LanguageBundle messages;
     private volatile AurumEconomyApi economy;
@@ -247,6 +248,16 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                         tradeWindow = new TradeWindow(this, tradeCommands);
                         tradeCommands.openWith(tradeWindow::show);
                     }
+                    var starterRepository = opened.startingBalanceRepository();
+                    var starterDefaults = new ovh.aurumgg.core.engine.StartingBalanceSettings(1,
+                            getConfig().getBoolean("starting-balance.enabled", false),
+                            getConfig().getString("starting-balance.currency", settings.currency().id()),
+                            new BigDecimal(getConfig().getString("starting-balance.amount", "100")));
+                    starterRepository.initialize(starterDefaults.validate(settings.currencies()), System.currentTimeMillis());
+                    starterRepository.current().validate(settings.currencies());
+                    rulesAdmin.attachStartingBalance(starterRepository);
+                    startingBalance = new StartingBalanceCoordinator(this,
+                            new ovh.aurumgg.core.engine.StartingBalanceService(starterRepository, service, databaseExecutor));
                     activeEconomy = service;
                     economy = service;
                     if (getServer().isPrimaryThread()) enableActiveServices();
@@ -255,7 +266,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
                     databaseState = DatabaseState.READY;
                     getLogger().info("MariaDB schema is ready. Passive mode performs no monetary writes.");
                 }
-            } catch (RuntimeException | java.sql.SQLException exception) {
+            } catch (Exception exception) {
                 databaseState = DatabaseState.FAILED;
                 getLogger().severe("MariaDB initialization failed: " + exception.getMessage());
                 if (settings.configuredMode().equals("active")) {
@@ -383,6 +394,11 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
             getServer().getScheduler().runTaskTimer(this,
                     () -> { if (tradeCommands != null) tradeCommands.sweep(); }, 200L, 200L);
         }
+        if (startingBalance != null) {
+            getServer().getPluginManager().registerEvents(startingBalance, this);
+            getServer().getOnlinePlayers().forEach(startingBalance::join);
+            getServer().getScheduler().runTaskTimer(this, startingBalance::tick, 20L, 20L);
+        }
         vaultEconomy = new AurumVaultEconomy(this, activeEconomy.primaryService(), settings.currency());
         getServer().getServicesManager().register(Economy.class, vaultEconomy,
                 this, ServicePriority.Highest);
@@ -429,6 +445,7 @@ public final class AurumCorePlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
+        if (startingBalance != null) startingBalance.join(event.getPlayer());
         refresh(event.getPlayer());
         synchronizePlayerProfile(event.getPlayer());
     }

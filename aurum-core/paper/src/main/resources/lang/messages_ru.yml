@@ -6,6 +6,7 @@ player-not-online: "&cЭтот игрок сейчас не на сервере.
 balance-missing: "&eБаланс ещё не был получен от Vault."
 balance: "&f%player%: &6%amount%%symbol% &7(снимок из Vault)"
 treasury-unavailable: "&eГлобальная казна станет доступна после включения собственного ledger."
+starting-balance-received: "&aПолучен стартовый баланс: {amount} {currency}."
 status-header: "&6Состояние AurumCore"
 status-line: "&7%key%: &f%value%"
 active-only: "&eУправление деньгами включится только после проверенной миграции и перехода в active-режим."

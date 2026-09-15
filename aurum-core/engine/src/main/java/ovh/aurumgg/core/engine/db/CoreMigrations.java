@@ -434,6 +434,40 @@ public final class CoreMigrations {
                 ) ENGINE=InnoDB
                 """
         );
+        List<String> startingBalance = List.of(
+                """
+                CREATE TABLE IF NOT EXISTS aurum_starting_balance_settings (
+                    singleton TINYINT PRIMARY KEY,
+                    revision BIGINT NOT NULL,
+                    enabled BOOLEAN NOT NULL,
+                    currency_id VARCHAR(32) NOT NULL,
+                    amount DECIMAL(24,8) NOT NULL,
+                    installed_at BIGINT NOT NULL
+                ) ENGINE=InnoDB
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_starting_balance_revisions (
+                    revision BIGINT PRIMARY KEY,
+                    enabled BOOLEAN NOT NULL,
+                    currency_id VARCHAR(32) NOT NULL,
+                    amount DECIMAL(24,8) NOT NULL,
+                    actor VARCHAR(128) NOT NULL,
+                    reason VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+                ) ENGINE=InnoDB
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS aurum_starting_balance_players (
+                    player_uuid VARCHAR(128) PRIMARY KEY,
+                    currency_id VARCHAR(32) NOT NULL,
+                    amount DECIMAL(24,8) NOT NULL,
+                    settings_revision BIGINT NOT NULL,
+                    decision_status VARCHAR(16) NOT NULL,
+                    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                    updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
+                ) ENGINE=InnoDB
+                """
+        );
         return List.of(
                 new SchemaMigration(1, "ledger, treasury, policies, holds, trades and outbox",
                         checksum(statements), statements),
@@ -458,7 +492,9 @@ public final class CoreMigrations {
                 new SchemaMigration(11, "bounded economy audit read indexes",
                         checksum(auditReadIndexes), auditReadIndexes),
                 new SchemaMigration(12, "managed account registry and durable lifecycle operations",
-                        checksum(managedAccountRegistry), managedAccountRegistry)
+                        checksum(managedAccountRegistry), managedAccountRegistry),
+                new SchemaMigration(13, "starting balance settings, audit and first-join decisions",
+                        checksum(startingBalance), startingBalance)
         );
     }
 

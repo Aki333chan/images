@@ -74,6 +74,10 @@ public final class MariaDbManager implements AutoCloseable {
         return new MariaDbAccountRegistryRepository(dataSource);
     }
 
+    public MariaDbStartingBalanceRepository startingBalanceRepository() {
+        return new MariaDbStartingBalanceRepository(dataSource);
+    }
+
     @Override
     public void close() {
         dataSource.close();

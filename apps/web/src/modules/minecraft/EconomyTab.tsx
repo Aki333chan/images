@@ -3,6 +3,7 @@ import type { ModuleTabProps } from '../registry';
 import { EconomyAuditPanel } from './EconomyAuditPanel';
 import { EconomyOverviewPanel } from './EconomyOverviewPanel';
 import { EconomyRulesEditor } from './EconomyRulesEditor';
+import { StartingBalancePanel } from './StartingBalancePanel';
 import { ManagedAccountsPanel } from './ManagedAccountsPanel';
 
 /**
@@ -16,6 +17,7 @@ export function MinecraftEconomyTab({ serverId }: ModuleTabProps) {
   return (
     <div className="space-y-3">
       <EconomyOverviewPanel serverId={serverId} />
+      <StartingBalancePanel key={serverId} serverId={serverId} />
       <ManagedAccountsPanel serverId={serverId} />
       <EconomyAuditPanel serverId={serverId} />
       {hasPermission('minecraft.economy.admin') ? (

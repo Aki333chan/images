@@ -128,6 +128,12 @@ public final class LedgerEconomyService implements AurumEconomyApi {
             } else {
                 balanceCache.putAll(commit.balancesAfter());
             }
+        } else if (commit.status() == LedgerCommit.Status.DUPLICATE
+                && request.category() == TransactionCategory.STARTING_BALANCE) {
+            // A lost commit reply can leave a brand-new wallet cached at zero.
+            // Read today's ledger, never the historical balance from the original receipt.
+            balanceBlocking(request.to());
+            balanceBlocking(request.from());
         }
         TransactionResult.Status status = switch (commit.status()) {
             case COMMITTED -> TransactionResult.Status.SUCCESS;

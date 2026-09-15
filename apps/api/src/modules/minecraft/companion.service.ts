@@ -1504,7 +1504,7 @@ function stringRecord(value: unknown): Record<string, string> {
 function toEconomyRule(value: unknown): MinecraftEconomyRuleDto | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as RawEconomyRule;
-  if ((raw.type !== 'policy' && raw.type !== 'exchange') || typeof raw.id !== 'string'
+  if ((raw.type !== 'policy' && raw.type !== 'exchange' && raw.type !== 'starting_balance') || typeof raw.id !== 'string'
       || typeof raw.revision !== 'number' || !Number.isSafeInteger(raw.revision) || raw.revision < 0) {
     return null;
   }

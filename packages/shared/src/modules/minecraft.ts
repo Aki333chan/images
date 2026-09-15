@@ -582,7 +582,7 @@ export interface MinecraftEconomyAuditDto {
   records: { type: string; fields: Record<string, string> }[];
 }
 
-export type MinecraftEconomyRuleType = 'policy' | 'exchange';
+export type MinecraftEconomyRuleType = 'policy' | 'exchange' | 'starting_balance';
 
 /** Canonical full rule document; revision is used for optimistic writes. */
 export interface MinecraftEconomyRuleDto {

@@ -199,7 +199,17 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
-**Проверка NPC 2.4.0 / UI 0.11.0: выручка на выбранный счёт и restock.**
+**Проверка Core 0.19.0 / Companion 0.13.4: стартовый баланс и настройка в панели.**
+
+Реализация готова: Economy → Starting balance, preview/apply, сумма/валюта/включение.
+По умолчанию false / 100 coins; включить в панели после обновления. Требуется обновить
+панель (API и web) и два серверных JAR; UI-мод и Essentials kits не меняются.
+Следующий live-тест: новый UUID до/после AurumAuth, начисление один раз, reconnect,
+restart, изменение/отключение для следующих новых UUID. Старым игрокам backfill нет.
+Уже записанные PENDING фиксируют сумму/валюту и исполняются даже после отключения
+НОВЫХ обещаний. Подробности в README Core и последней записи журнала.
+
+**Также ожидает живого теста: NPC 2.4.0 / UI 0.11.0 — выручка и restock.**
 
 Реализация и сборки готовы, подробности в последней записи журнала и README AddonsNPC.
 Следующее действие — обновить NPC/Companion/UI и проверить живой сценарий: выбрать
@@ -1039,3 +1049,41 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   `npc-v2.3.0` и `companion-v0.13.2` удалены. Старые локальные JAR/sidecar
   NPC/Companion/UI сохранены в `archive/commerce-2026-09-14`, вне Git.
   Новые три JAR находятся в outputs. На игровой сервер обновление не ставилось.
+
+### 2026-09-15 — Codex, стартовый баланс и карточка экономики панели
+
+- Core 0.19.0: migration 13, singleton StartingBalanceSettings и журнал immutable
+  revisions с actor/reason. starting-balance.enabled=false/currency=coins/amount=100
+  импортируются один раз при первом ACTIVE запуске, дальше настройки только в БД.
+  Это отдельный RuleType.STARTING_BALANCE, не policy на каждую транзакцию.
+- Первый join пишет решение PENDING/SKIPPED с замороженными amount/currency/revision.
+  Existing PLAYER ledger/profile members при установке получают SKIPPED; старый
+  Bukkit firstPlayed также исключает backfill. Timestamp после installedAt позволяет
+  восстановить нового игрока, если первый SQL был прерван, а player.dat уже сохранился.
+  Выключенная настройка и ноль создают SKIPPED; последующее включение его не меняет.
+  Изменение/выключение относится к НОВЫМ обещаниям, записанные PENDING не отзываются.
+- StartingBalanceCoordinator хранит только онлайн-ожидающих. Join/quit и один clock
+  раз в секунду; SQL/ledger на DB executor. Ошибки повторяются через 60 сек с
+  ограничением логирования. Выплата ждёт AurumAuth.isAuthenticated через optional
+  service; установленный, но недоступный/disabled Auth закрывает выплату.
+  Другие login-плагины специально не интегрированы; без AurumAuth ждём только join.
+- SYSTEM_SOURCE:global → PLAYER, категория STARTING_BALANCE, stable key
+  starting-balance:<uuid>. Остаток не является признаком нового игрока. После SUCCESS
+  или DUPLICATE решение становится PAID; потеря ответа/ошибка finish повторяет тот же
+  intent. Редкий DUPLICATE этой категории обновляет кэш from/to из ТЕКУЩЕГО ledger,
+  чтобы потерянный ответ commit не оставлял клиенту кэш ноль. Policy/status checks
+  сохранены; policy, явно затрагивающая категорию, может изменить net или отказать.
+- Panel Economy → Starting balance: включение, сумма, ID валюты, preview diff и
+  подтверждение с причиной. БД CAS защищает конфликт параллельных редакторов; старый
+  actor-bound token не применим другим автором. MODERATOR читает, ADMIN/GM изменяет
+  через существующие minecraft.economy.view/admin и ServerScoped. Companion 0.13.4
+  разрешает starting_balance в прежних GET/preview/apply; Vault fallback/polling нет.
+- EN/RU/PL. Киты Essentials и Fabric UI не менялись. Обновлять нужно два JAR и панель
+  (API + web). Настройки применяются без рестарта, но установка JAR требует рестарт.
+- Проверено: Core 98 тестов (включая SQL persistence/CAS на H2 MySQL mode, не MariaDB),
+  Companion 173, API 695, web 111. Production build панели успешен.
+  Browser mock-прогон реального React-компонента: preview/apply/reason, read-only
+  moderator, отсутствие polling, EN/RU/PL, 390px без overflow. Скриншоты в outputs.
+  Live Paper + MariaDB + AurumAuth не выполнялся, сервер/production panel не менялись.
+- JAR SHA-256: Core 4C5603BE4D95DB4828C35673F7C896CB2BFB589955FD048B8F83BCFE62897655;
+  Companion 8F4AC9E0DAA9C66FE40C943939E8F00AEB5E09E9D96081F990BBB4A7622339DF.

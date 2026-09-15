@@ -40,6 +40,7 @@ public final class RulesAdminService implements AurumRulesAdminApi {
     private final Executor executor;
     private final Clock clock;
     private final Duration previewTtl;
+    private StartingBalanceRepository startingBalance;
     private final int maxPolicies;
     private final int maxExchanges;
     /** Accessed only on the single database executor. */
@@ -71,12 +72,15 @@ public final class RulesAdminService implements AurumRulesAdminApi {
         this.maxExchanges = maxExchanges;
     }
 
+    public void attachStartingBalance(StartingBalanceRepository repository) { this.startingBalance = repository; }
+
     @Override
     public CompletionStage<Optional<List<RuleResource>>> list(RuleType type) {
         if (type == null) return CompletableFuture.completedFuture(Optional.empty());
         return supply(() -> Optional.of(switch (type) {
             case POLICY -> policyRegistry.snapshot().stream().map(RulesAdminService::resource).toList();
             case EXCHANGE -> exchangeRegistry.snapshot().stream().map(RulesAdminService::resource).toList();
+            case STARTING_BALANCE -> List.of(startingBalance.current().resource());
         })).exceptionally(failure -> Optional.empty());
     }
 
@@ -109,8 +113,8 @@ public final class RulesAdminService implements AurumRulesAdminApi {
                 int maximum = request.type() == RuleType.POLICY ? maxPolicies : maxExchanges;
                 if (count >= maximum) throw new IllegalArgumentException("Configured rule limit reached");
             }
-            RuleResource proposed = parsed instanceof FinancialRule policy
-                    ? resource(policy) : resource((ExchangeRule) parsed);
+            RuleResource proposed = parsed instanceof StartingBalanceSettings starter ? starter.resource()
+                    : parsed instanceof FinancialRule policy ? resource(policy) : resource((ExchangeRule) parsed);
             String token = UUID.randomUUID().toString();
             Instant expires = Instant.now(clock).plus(previewTtl);
             while (previews.size() >= MAX_PREVIEWS) previews.remove(previews.keySet().iterator().next());
@@ -150,7 +154,10 @@ public final class RulesAdminService implements AurumRulesAdminApi {
         try {
             long revision;
             RuleResource saved;
-            if (entry.type() == RuleType.POLICY) {
+            if (entry.type() == RuleType.STARTING_BALANCE) {
+                saved = startingBalance.save((StartingBalanceSettings) entry.proposed(), entry.expectedRevision(),
+                        actor.trim(), reason.trim()).resource();
+            } else if (entry.type() == RuleType.POLICY) {
                 FinancialRule proposed = (FinancialRule) entry.proposed();
                 revision = policies.saveIfRevision(proposed, primary, entry.expectedRevision(),
                         actor.trim(), reason.trim());
@@ -180,6 +187,7 @@ public final class RulesAdminService implements AurumRulesAdminApi {
         return switch (type) {
             case POLICY -> policies.find(id, primary).map(RulesAdminService::resource);
             case EXCHANGE -> exchanges.findRule(id, currencies).map(RulesAdminService::resource);
+            case STARTING_BALANCE -> id.equals("global") ? Optional.of(startingBalance.current().resource()) : Optional.empty();
         };
     }
 
@@ -187,7 +195,16 @@ public final class RulesAdminService implements AurumRulesAdminApi {
         return switch (request.type()) {
             case POLICY -> parsePolicy(request);
             case EXCHANGE -> parseExchange(request);
+            case STARTING_BALANCE -> parseStartingBalance(request);
         };
+    }
+
+    private StartingBalanceSettings parseStartingBalance(RuleMutationRequest request) {
+        if (!request.id().equals("global")) throw new IllegalArgumentException("Starting balance id must be global");
+        if (!request.fields().keySet().equals(Set.of("enabled", "currency", "amount")))
+            throw new IllegalArgumentException("Expected enabled, currency and amount");
+        return new StartingBalanceSettings(request.expectedRevision(), bool(request.fields(), "enabled"),
+                required(request.fields(), "currency"), decimal(request.fields(), "amount")).validate(currencies);
     }
 
     private FinancialRule parsePolicy(RuleMutationRequest request) {
@@ -234,6 +251,7 @@ public final class RulesAdminService implements AurumRulesAdminApi {
     }
 
     private void refresh(RuleType type) throws Exception {
+        if (type == RuleType.STARTING_BALANCE) return; // no second cache; join reads this durable revision once
         if (type == RuleType.POLICY) {
             List<FinancialRule> values = policies.list(primary);
             if (values.size() > maxPolicies) throw new IllegalStateException("Policy limit exceeded");
@@ -299,6 +317,8 @@ public final class RulesAdminService implements AurumRulesAdminApi {
     }
 
     private List<String> warnings(Object value) {
+        if (value instanceof StartingBalanceSettings settings)
+            return settings.grants() ? List.of("mint-burn", "new-players-only") : List.of("disabled", "new-players-only");
         List<String> result = new ArrayList<>();
         boolean enabled = value instanceof FinancialRule policy ? policy.enabled() : ((ExchangeRule) value).enabled();
         if (!enabled) result.add("disabled");
@@ -330,6 +350,7 @@ public final class RulesAdminService implements AurumRulesAdminApi {
     }
 
     private static String id(Object value) {
+        if (value instanceof StartingBalanceSettings) return "global";
         return value instanceof FinancialRule policy ? policy.id() : ((ExchangeRule) value).id();
     }
 

@@ -1,4 +1,55 @@
-# AurumCore 0.18.1
+# AurumCore 0.19.0
+
+## Starting balance (0.19.0)
+
+A one-time new-player grant in ACTIVE mode. Configure it in the Minecraft
+server's **Economy → Starting balance** card (panel + Companion 0.13.4).
+Admins/GM can preview and confirm changes with a reason; moderators with
+economy view access can only read. Settings apply immediately, without reload.
+
+First ACTIVE startup imports this optional config block once:
+
+```yaml
+starting-balance:
+  enabled: false
+  currency: coins
+  amount: "100"
+```
+
+After initialization, MariaDB is authoritative, including after restart.
+Editing the bootstrap YAML no longer overwrites panel settings. Enable the
+switch in the panel when ready; false or zero disables new grants.
+
+- Only player UUIDs qualify. Existing ledger players/profiles are marked skipped
+  on installation; older Bukkit first-play timestamps exclude other existing players.
+- The first observed join records PENDING or SKIPPED in MariaDB. Decisions made
+  while disabled remain SKIPPED after enabling: there is no retroactive backfill.
+- A pending grant freezes its currency, amount and settings revision. Later edits
+  (including disabling new grants) do not revoke already recorded promises.
+- AurumAuth, when installed, must report an authenticated session before money is
+  submitted. A missing/unavailable AurumAuth service fails closed. Without AurumAuth,
+  a joined player is eligible for processing; other login plugins are not integrated.
+- Funds are issued from SYSTEM_SOURCE:global, not taken from global treasury.
+  Ledger category STARTING_BALANCE retains normal account/policy checks.
+  Explicit policies targeting that category may affect the actual received amount.
+- Stable key `starting-balance:<uuid>` prevents a second issuance across reconnects,
+  restarts, config/currency changes and lost completion responses. Draining a wallet
+  to zero does not make it eligible again.
+- The small online pending queue is checked once per second. Observation and payments
+  use the database executor, with 60-second retry/backoff on failures; no per-player
+  scheduler tasks, offline scans, or synchronous SQL on player join.
+- MariaDB migration 13 adds settings, immutable setting revisions (actor/reason),
+  and durable player decisions. Do not delete these records to reset a player's
+  balance; use the normal economy commands instead.
+- Offline players with an unfinished promise resume at their next authenticated join.
+  First-play timestamps after installation also recover a join whose first DB write
+  was interrupted. The ledger remains the authority for paid money.
+
+No kit changes are included. Essentials kits and the optional Fabric UI continue
+working as before; this release requires no client mod update. Tests include
+SQL persistence/CAS in H2 MySQL mode, but live Paper + MariaDB + AurumAuth
+verification remains necessary before claiming end-to-end validation.
+
 
 Version 0.18.1 adds an audited administrative credit/debit operation for any
 active non-technical managed-account member. It uses `ADMIN_ADJUSTMENT`, a
