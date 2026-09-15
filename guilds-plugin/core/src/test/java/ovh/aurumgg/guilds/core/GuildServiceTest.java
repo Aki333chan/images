@@ -76,6 +76,13 @@ class GuildServiceTest {
         assertTrue(service.invite(STRANGER, MEMBER).join().ok());
     }
 
+    @Test
+    void touchUsernameIgnoresPlayerWithoutGuild() {
+        service.touchUsername(STRANGER, "НовоеИмя");
+
+        assertTrue(service.guildOf(STRANGER).isEmpty());
+    }
+
     @Test void switchingRequiresSecondAcceptanceAndPersistsSingleMembership() throws Exception {
         prepareSwitch();
         assertEquals("guild.join.confirmSwitch", service.join(MEMBER, "Second").join().messageKey());

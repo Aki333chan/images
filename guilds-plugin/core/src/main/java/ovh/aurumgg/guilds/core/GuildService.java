@@ -934,7 +934,9 @@ public final class GuildService implements AutoCloseable {
 
     /** Обновить ник участника — он мог смениться между заходами. */
     public void touchUsername(UUID player, String username) {
-        StoredGuild guild = guilds.get(memberOf.get(player));
+        Long guildId = memberOf.get(player);
+        if (guildId == null) return;
+        StoredGuild guild = guilds.get(guildId);
         if (guild == null) return;
         Optional<GuildMember> member = memberOf(guild, player);
         if (member.isEmpty() || member.get().username().equals(username)) return;
