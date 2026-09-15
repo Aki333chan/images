@@ -61,10 +61,10 @@ Exchange engine использует версионированную котир
 
 ## Актуальные релизы Addons
 
-На 2026-09-14 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.3`, `core-v0.18.1`, `auth-v0.1.0`, `guilds-v0.5.1`,
+На 2026-09-15 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
+`companion-v0.13.4`, `core-v0.19.0`, `auth-v0.1.0`, `guilds-v0.5.1`,
 `npc-v2.4.0`, `arena-v1.6.1`, `slots-v1.6.0`. Заменённые releases и tags удалены;
-актуальный Addons commit — `94bb446`.
+актуальный Addons commit — `aa687ca`.
 
 ## Исторические выпуски и этапы
 
@@ -1087,3 +1087,8 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   Live Paper + MariaDB + AurumAuth не выполнялся, сервер/production panel не менялись.
 - JAR SHA-256: Core 4C5603BE4D95DB4828C35673F7C896CB2BFB589955FD048B8F83BCFE62897655;
   Companion 8F4AC9E0DAA9C66FE40C943939E8F00AEB5E09E9D96081F990BBB4A7622339DF.
+- Источники `e26731f`, Addons `aa687ca` отправлены в main. Releases/tags
+  `core-v0.19.0` / `companion-v0.13.4` опубликованы с JAR и sidecar;
+  GitHub asset digests совпадают с указанными SHA-256. Старые releases/tags
+  `core-v0.18.1` / `companion-v0.13.3` удалены; локальные предыдущие
+  артефакты перенесены в `archive/starting-balance-2026-09-15` для восстановления.
