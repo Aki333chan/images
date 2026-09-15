@@ -202,8 +202,9 @@ Exchange engine использует версионированную котир
 **Проверка Core 0.19.0 / Companion 0.13.4: стартовый баланс и настройка в панели.**
 
 Реализация готова: Economy → Starting balance, preview/apply, сумма/валюта/включение.
-По умолчанию false / 100 coins; включить в панели после обновления. Требуется обновить
-панель (API и web) и два серверных JAR; UI-мод и Essentials kits не меняются.
+По умолчанию false / 100 coins; включить в панели после запуска Minecraft. Панель
+(API и web) и два серверных JAR обновлены 2026-09-15; сервер оставлен OFFLINE по
+согласованной границе деплоя. UI-мод и Essentials kits не менялись.
 Следующий live-тест: новый UUID до/после AurumAuth, начисление один раз, reconnect,
 restart, изменение/отключение для следующих новых UUID. Старым игрокам backfill нет.
 Уже записанные PENDING фиксируют сумму/валюту и исполняются даже после отключения
@@ -1092,3 +1093,20 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   GitHub asset digests совпадают с указанными SHA-256. Старые releases/tags
   `core-v0.18.1` / `companion-v0.13.3` удалены; локальные предыдущие
   артефакты перенесены в `archive/starting-balance-2026-09-15` для восстановления.
+
+### 2026-09-15 — Codex, деплой стартового баланса по запросу владельца
+
+- Production /opt/aurum-panel был чистым на main/bf54a3f; fast-forward до d98b9c7,
+  prisma:generate и полный npm run build прошли. package-lock/dependencies и
+  Prisma migrations между этими коммитами не менялись, npm ci и DB deploy не нужны.
+  aurum-api перезапущен, ready=true, database=ok, redis=ok, NRestarts=0.
+  HTTPS manage.aurumgg.ovh отдаёт новый index-C-sBb58E.js / index-CiJ20z-d.css.
+- Minecraft Community #1 (fa9d9622) проверен OFFLINE через Pterodactyl до/после
+  замены. Загружены Core 0.19.0 и Companion 0.13.4; SHA-256 перечитанных с игрового
+  сервера JAR совпали с релизами. NPC 2.4.0 / Arena 1.6.1 и остальные уже актуальны.
+- Старые Core 0.18.1 / Companion 0.13.3 сохранены на игровом сервере в
+  /aurum-update-20260915 с суффиксом .previous, вне plugins. Конфиги, мир, балансы
+  и Essentials kits не менялись, полная резервная копия игрового сервера не создавалась.
+- Minecraft намеренно НЕ запускался. Migration 13 и первое ACTIVE bootstrap
+  выполнятся при следующем запуске. Пока нет live-подтверждения инициализации Core,
+  работы новой карточки с реальным Companion и стартовой выплаты после AurumAuth.
