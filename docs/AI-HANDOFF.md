@@ -62,7 +62,7 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-15 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.4`, `core-v0.19.0`, `auth-v0.1.0`, `guilds-v0.5.1`,
+`companion-v0.13.4`, `core-v0.19.0`, `auth-v0.1.0`, `guilds-v0.5.2`,
 `npc-v2.4.0`, `arena-v1.6.1`, `slots-v1.6.0`. Заменённые releases и tags удалены;
 актуальный Addons commit — `aa687ca`.
 
@@ -1126,3 +1126,6 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   печать stack trace дают краткий дополнительный шум в join tick, но для вывода о
   главной причине нужен профиль Spark именно интервала подключения после установки
   0.5.2.
+- Sources commit `a9a671b`, Addons commit `e2bd355` отправлены в main. GitHub CLI
+  на этой машине не авторизован, поэтому release/tag `guilds-v0.5.2` ещё не создан;
+  JAR уже лежит в корне Addons вместо `guilds-v0.5.1.jar` и в outputs.
