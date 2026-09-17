@@ -20,7 +20,7 @@ dependencies {
 
     // Схема версий Paper (с 26.1 суффикс -R0.1-SNAPSHOT не используется):
     // {ВЕРСИЯ}.build.+ — последний билд ветки.
-    compileOnly("io.papermc.paper:paper-api:26.2.build.+")
+    compileOnly("io.papermc.paper:paper-api:26.3.build.8-alpha")
 
     // Тесты этого модуля не поднимают Bukkit: они читают файлы языка и
     // исходники. snakeyaml — тот же разбор, что и внутри Bukkit, но без

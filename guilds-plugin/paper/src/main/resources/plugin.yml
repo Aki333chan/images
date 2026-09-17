@@ -2,7 +2,7 @@ name: AurumGuilds
 version: '${version}'
 main: ovh.aurumgg.guilds.paper.AurumGuildsPlugin
 # Формат версии Paper с 26.1: год.выпуск (раньше было 1.21.x).
-api-version: '26.2'
+api-version: '26.3'
 description: Пати и гильдии — группы игроков, HUD и общак.
 author: Aurum
 

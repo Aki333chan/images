@@ -6,7 +6,7 @@
 
     <groupId>org.chisao_o</groupId>
     <artifactId>AurumSlots</artifactId>
-    <version>1.6.1</version>
+    <version>1.6.2</version>
     <packaging>jar</packaging>
 
     <name>AurumSlots</name>
@@ -15,7 +15,7 @@
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <paper.version>26.2.build.112-stable</paper.version>
+        <paper.version>26.3.build.8-alpha</paper.version>
     </properties>
 
     <repositories>

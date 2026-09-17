@@ -690,5 +690,5 @@ AuthMe: ни SQL, ни чужих паролей в конфиге, а схем�
 ./gradlew :core:test     # логика — любым JDK 21+
 ```
 
-Готовый `AurumAuth-0.1.0.jar` кладётся в `plugins/`. Зависимости (bcrypt,
+Готовый `AurumAuth-0.1.1.jar` кладётся в `plugins/`. Зависимости (bcrypt,
 HikariCP, драйвер MariaDB) уже внутри.

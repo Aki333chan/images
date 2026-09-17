@@ -6,9 +6,9 @@
 
     <groupId>dev.addons</groupId>
     <artifactId>addons-npc</artifactId>
-    <version>2.4.0</version>
+    <version>2.4.1</version>
     <name>AddonsNPC</name>
-    <description>Configurable interactive mannequin NPCs for Paper and Spigot 26.2</description>
+    <description>Configurable interactive mannequin NPCs for Paper and Spigot 26.3</description>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
@@ -41,7 +41,7 @@
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
-            <version>26.2-R0.1-SNAPSHOT</version>
+            <version>26.3-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -81,7 +81,7 @@
                 <configuration>
                     <archive>
                         <manifestEntries>
-                            <Built-For>Minecraft 26.2</Built-For>
+                            <Built-For>Minecraft 26.3</Built-For>
                             <Implementation-Title>${project.name}</Implementation-Title>
                             <Implementation-Version>${project.version}</Implementation-Version>
                         </manifestEntries>

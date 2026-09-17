@@ -1,7 +1,7 @@
 name: AurumSlots
-version: '1.6.1'
+version: '1.6.2'
 main: org.ChisaO_o.simpleSlots.SimpleSlots
-api-version: '26.2'
+api-version: '26.3'
 description: Плагин на кастомные слот-машины через полки
 softdepend: [AurumCore]
 

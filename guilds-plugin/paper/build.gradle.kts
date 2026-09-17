@@ -45,7 +45,7 @@ dependencies {
 
     // Схема версий Paper (с 26.1 суффикс -R0.1-SNAPSHOT не используется):
     // {ВЕРСИЯ}.build.+ — последний билд ветки.
-    compileOnly("io.papermc.paper:paper-api:26.2.build.+")
+    compileOnly("io.papermc.paper:paper-api:26.3.build.8-alpha")
 
     // LuckPerms: только его Developer API. Нужен для группы гильдии и суффикса.
     compileOnly("net.luckperms:api:5.5")
@@ -97,7 +97,7 @@ dependencies {
     // сервера, поэтому проверка ключей идёт обычным JUnit.
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
     testImplementation("org.yaml:snakeyaml:2.3")
-    testImplementation("io.papermc.paper:paper-api:26.2.build.+")
+    testImplementation("io.papermc.paper:paper-api:26.3.build.8-alpha")
     testImplementation("org.mockito:mockito-core:5.23.0")
     testImplementation("ovh.aurumgg:aurum-api:0.17.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

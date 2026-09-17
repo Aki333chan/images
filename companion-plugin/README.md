@@ -1,5 +1,11 @@
 # Aurum Companion
 
+## Release 0.13.5
+
+Compatibility update for Paper 26.3 (built against
+`paper-api:26.3.build.8-alpha`) and Java 25. The Companion HTTP and Fabric wire
+protocols are unchanged.
+
 ## Release 0.13.4
 
 Accepts the `starting_balance` singleton in the existing authenticated economy

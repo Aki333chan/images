@@ -1,11 +1,11 @@
-# AurumSlots 1.6.1
+# AurumSlots 1.6.2
 
-Исправленная версия плагина слот-машин для Paper/Spigot 26.2.
+Плагин слот-машин для Paper/Spigot 26.3 и Java 25.
 
 ## Требования
 
 - Java 25 или новее.
-- Paper/Spigot 26.2.
+- Paper/Spigot 26.3.
 - Для `use_vault: true`: активный AurumCore 0.18.0 или новее. Имя параметра сохранено только для совместимости старых конфигов.
 
 ## Оплата
@@ -73,7 +73,7 @@
 mvn clean package
 ```
 
-Готовый JAR появится в `target/AurumSlots-1.6.1.jar`.
+Готовый JAR появится в `target/AurumSlots-1.6.2.jar`.
 
 ## Переименование в AurumSlots
 

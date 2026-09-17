@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class InventoryRecoveryRegressionTest {
     @Test void freshlySavedInventoryIsReadableBeforeYamlReload() {
-        // ItemStack construction requires a running Paper registry on 26.2; null slots
+        // ItemStack construction requires a running Paper registry on 26.3; null slots
         // are sufficient here because this regression concerns the container type.
         ItemStack[] original = new ItemStack[3];
         YamlConfiguration journal = new YamlConfiguration();

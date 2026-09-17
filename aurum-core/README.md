@@ -1,4 +1,8 @@
-# AurumCore 0.19.0
+# AurumCore 0.19.1
+
+Compatibility update for Paper 26.3 (built against
+`paper-api:26.3.build.8-alpha`) and Java 25. No economy schema or wire protocol
+changes are introduced by this release.
 
 ## Starting balance (0.19.0)
 

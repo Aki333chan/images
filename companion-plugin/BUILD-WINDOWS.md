@@ -1,6 +1,6 @@
 # Сборка companion-плагина на Windows 11
 
-Итог: файл `AurumCompanion-0.1.0.jar`, который кладётся в папку `plugins/`
+Итог: файл `AurumCompanion-0.13.5.jar`, который кладётся в папку `plugins/`
 игрового сервера.
 
 Собирать можно на любой машине — плагин не зависит от того, где его собрали.
@@ -88,10 +88,10 @@ BUILD SUCCESSFUL in 4m 12s
 dir paper\build\libs
 ```
 
-Нужный файл — `AurumCompanion-0.1.0.jar`. Полный путь:
+Нужный файл — `AurumCompanion-0.13.5.jar`. Полный путь:
 
 ```
-%USERPROFILE%\aurum\companion-plugin\paper\build\libs\AurumCompanion-0.1.0.jar
+%USERPROFILE%\aurum\companion-plugin\paper\build\libs\AurumCompanion-0.13.5.jar
 ```
 
 Открыть папку в проводнике:
@@ -103,7 +103,7 @@ explorer paper\build\libs
 ## Шаг 4. Установить на сервер
 
 1. Pterodactyl → нужный сервер → **Files** → папка `plugins`.
-2. **Upload** → выбрать `AurumCompanion-0.1.0.jar`.
+2. **Upload** → выбрать `AurumCompanion-0.13.5.jar`.
 3. Перезапустить сервер.
 4. При первом запуске плагин создаст `plugins/AurumCompanion/config.yml`.
    Откройте его, задайте порт и токен, снова перезапустите сервер.

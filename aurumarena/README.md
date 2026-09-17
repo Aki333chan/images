@@ -1,4 +1,4 @@
-# AurumArena 1.6.1
+# AurumArena 1.6.2
 
 Version 1.6.1 makes the AurumCore `final` account authoritative for the
 champion pool. Panel transfers are reflected in final-stat holograms and
@@ -29,7 +29,7 @@ without the Fabric client keep the normal arena sidebar; clients that complete
 the AurumUI handshake receive the same live values as a compact right-edge
 panel and retain unrelated scoreboards such as TAB.
 
-Плагин гладиаторских арен со ставками для Paper/Spigot 26.2 и Java 25.
+Плагин гладиаторских арен со ставками для Paper/Spigot 26.3 и Java 25.
 Для денежного режима и управляемого жизненного цикла требуется AurumCore 0.17.0 или новее.
 
 ## Язык
@@ -47,7 +47,7 @@ panel and retain unrelated scoreboards such as TAB.
 
 ## Сайдбар и голограммы
 
-На Paper 26.2 числовые значения строк справа от сайдбара скрываются по умолчанию. Это настраивается через `settings.sidebar.hide_scores`. Spigot 26.2 не предоставляет API пустого формата score, поэтому на чистом Spigot номера остаются видимыми; остальной функционал сохраняется.
+На Paper 26.3 числовые значения строк справа от сайдбара скрываются по умолчанию. Это настраивается через `settings.sidebar.hide_scores`. Spigot 26.3 не предоставляет API пустого формата score, поэтому на чистом Spigot номера остаются видимыми; остальной функционал сохраняется.
 
 Все голограммы AurumArena по умолчанию перекрываются стенами и отображаются на расстоянии до 32 блоков. Параметры `settings.holograms.see_through_walls`, `view_distance_blocks` и `betting_scale` применяются после `/arena reload`; голограммы над ставками и финальной статистикой пересоздаются с новыми значениями.
 

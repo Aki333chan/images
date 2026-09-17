@@ -2,7 +2,7 @@ name: AurumAuth
 version: '${version}'
 main: ovh.aurumgg.auth.paper.AurumAuthPlugin
 # Формат версии Paper с 26.1: год.выпуск (раньше было 1.21.x).
-api-version: '26.2'
+api-version: '26.3'
 description: Авторизация игроков на смешанном сервере — своя, вместо AuthMe.
 author: Aurum
 

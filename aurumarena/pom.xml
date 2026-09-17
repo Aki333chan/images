@@ -6,13 +6,13 @@
 
     <groupId>org.chisao_o</groupId>
     <artifactId>AurumArena</artifactId>
-    <version>1.6.1</version>
+    <version>1.6.2</version>
     <packaging>jar</packaging>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <paper.version>26.2.build.120-stable</paper.version>
+        <paper.version>26.3.build.8-alpha</paper.version>
     </properties>
 
     <repositories>

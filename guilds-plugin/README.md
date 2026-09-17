@@ -814,7 +814,7 @@ Citizens спавнит своих NPC настоящими сущностями
 ./gradlew :core:test     # логика — любым JDK 21+
 ```
 
-Готовый `AurumGuilds-0.5.1.jar` кладётся в `plugins/`. Зависимости (HikariCP,
+Готовый `AurumGuilds-0.5.3.jar` кладётся в `plugins/`. Зависимости (HikariCP,
 драйвер MariaDB) уже внутри. API AurumCore лежит в `local-repo/` и внутрь jar
 не попадает: зависимость `compileOnly`, классы приходят от плагина AurumCore.
 

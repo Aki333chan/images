@@ -144,7 +144,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
             getLogger().info("PlaceholderAPI подключён.");
         }
         Bukkit.getScheduler().runTaskTimer(this, this::tickAll, 10L, 10L);
-        getLogger().info("AurumArena " + getDescription().getVersion() + " enabled. API 26.2, Java "
+        getLogger().info("AurumArena " + getDescription().getVersion() + " enabled. API 26.3, Java "
                 + Runtime.version().feature() + ".");
     }
 
@@ -1725,7 +1725,7 @@ public final class GladiatorArena extends JavaPlugin implements Listener, Comman
                     objective.setDisplaySlot(DisplaySlot.SIDEBAR);
                     if (sidebarHideScores && !ScoreboardNumberFormatter.hideScores(objective) && !sidebarFormatWarningLogged) {
                         sidebarFormatWarningLogged = true;
-                        getLogger().warning("Сервер не поддерживает скрытие номеров строк sidebar. На Paper 26.2 они скрываются автоматически; Spigot 26.2 не предоставляет такой API.");
+                        getLogger().warning("Сервер не поддерживает скрытие номеров строк sidebar. На Paper 26.3 они скрываются автоматически; Spigot 26.3 не предоставляет такой API.");
                     }
                     arenaScoreboards.put(playerUuid, scoreboard);
                 } else {

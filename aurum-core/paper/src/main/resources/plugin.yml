@@ -1,7 +1,7 @@
 name: AurumCore
 version: '${version}'
 main: ovh.aurumgg.core.paper.AurumCorePlugin
-api-version: '26.2'
+api-version: '26.3'
 description: Shared economy and service foundation for the Aurum ecosystem.
 author: Aurum
 softdepend: [Vault, VaultUnlocked, PlaceholderAPI]

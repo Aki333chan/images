@@ -74,7 +74,7 @@ settings:
     # points — обычные очки полосы опыта, levels — целые уровни.
     experience_mode: points
   sidebar:
-    # Paper 26.2: скрывать красные номера строк справа. На Spigot этот API отсутствует.
+    # Paper 26.3: скрывать красные номера строк справа. На Spigot этот API отсутствует.
     hide_scores: true
   holograms:
     # false — текст перекрывается стенами и другими непрозрачными блоками.

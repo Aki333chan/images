@@ -27,7 +27,7 @@ dependencies {
     implementation(project(":core"))
     // Актуальная схема версий Paper (с 26.1 суффикс -R0.1-SNAPSHOT больше не используется):
     // {ВЕРСИЯ}.build.+ — последний билд ветки.
-    compileOnly("io.papermc.paper:paper-api:26.2.build.+")
+    compileOnly("io.papermc.paper:paper-api:26.3.build.8-alpha")
 
     // LuckPerms: только его Developer API, с Maven Central. compileOnly —
     // классы предоставляет сам LuckPerms в рантайме, внутрь нашего jar они

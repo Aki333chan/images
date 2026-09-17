@@ -9,7 +9,7 @@ import org.bukkit.entity.Mannequin;
 import org.bukkit.profile.PlayerProfile;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/** Bridges the intentionally different Paper and Spigot 26.2 mannequin APIs. */
+/** Bridges the intentionally different Paper and Spigot 26.3 mannequin APIs. */
 public final class MannequinAdapter {
     private final JavaPlugin plugin;
 
@@ -23,7 +23,7 @@ public final class MannequinAdapter {
             spigotMethod.invoke(mannequin, emptyToNull(MessageService.colorize(description)));
             return;
         } catch (NoSuchMethodException ignored) {
-            // Paper uses an Adventure component in 26.2.
+            // Paper uses an Adventure component in 26.3.
         } catch (ReflectiveOperationException exception) {
             warn("Could not set Spigot mannequin description", exception);
             return;
@@ -49,7 +49,7 @@ public final class MannequinAdapter {
             spigotMethod.invoke(mannequin, profile);
             return;
         } catch (NoSuchMethodException ignored) {
-            // Paper uses ResolvableProfile in 26.2.
+            // Paper uses ResolvableProfile in 26.3.
         } catch (ReflectiveOperationException exception) {
             warn("Could not set Spigot mannequin profile", unwrap(exception));
             return;
