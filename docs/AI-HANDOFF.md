@@ -62,8 +62,8 @@ Exchange engine использует версионированную котир
 ## Актуальные релизы Addons
 
 На 2026-09-17 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
-`companion-v0.13.4`, `core-v0.19.0`, `auth-v0.1.0`, `guilds-v0.5.2`,
-`npc-v2.4.0`, `arena-v1.6.1`, `slots-v1.6.1`. Актуальный Addons commit — `b61a9de`.
+`companion-v0.13.5`, `core-v0.19.1`, `auth-v0.1.1`, `guilds-v0.5.3`,
+`npc-v2.4.1`, `arena-v1.6.2`, `slots-v1.6.2`. Актуальный Addons commit — `7f45bdf`.
 
 ## Исторические выпуски и этапы
 
@@ -198,6 +198,16 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
+**Live smoke полного серверного пакета на Paper 26.3.**
+
+Все семь серверных плагинов собраны против явно зафиксированного
+`paper-api:26.3.build.8-alpha` (NPC — против `spigot-api:26.3-R0.1-SNAPSHOT`),
+получили `api-version: 26.3` и опубликованы. Java остаётся 25. Компиляционная и
+регрессионная проверка прошла; перед production-заменой остаётся короткий запуск
+на копии Paper 26.3 с MariaDB/VaultUnlocked и проверка enable/join/NPC/Arena/Slots.
+У полного Paper 26.3 на момент сборки ещё alpha-координата, поэтому зависимость
+зафиксирована на build 8, а не оставлена плавающей.
+
 **Проверка Core 0.19.0 / Companion 0.13.4: стартовый баланс и настройка в панели.**
 
 Реализация готова: Economy → Starting balance, preview/apply, сумма/валюта/включение.
@@ -245,7 +255,7 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
 
 ## Очередь после текущего этапа
 
-1. Довести live fault-injection на Paper 26.2 + MariaDB + VaultUnlocked: Arena, Slots,
+1. Довести live fault-injection на Paper 26.3 + MariaDB + VaultUnlocked: Arena, Slots,
    NPC, Guilds, policy limits/tax, закрытие с hold и сбой между sweep-проводками.
 2. Bankroll Slots и бюджет NPC buyers реализованы. Procurement, guild support и
    city/region accounts отложены владельцем; не начинать их вместо тестирования.
@@ -256,6 +266,25 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
    часть автоматических исправлений предлагает major NestJS 12 и требует регрессии.
 
 ## Журнал передачи
+
+### 2026-09-17 — Codex, совместимость полного пакета с Paper 26.3
+
+- Обновлены Core 0.19.1, Auth 0.1.1, Guilds 0.5.3, Companion 0.13.5,
+  AddonsNPC 2.4.1, Arena 1.6.2 и Slots 1.6.2. Для Paper-проектов явно закреплён
+  `paper-api:26.3.build.8-alpha`; NPC сохраняет dual Paper/Spigot и собирается с
+  `spigot-api:26.3-R0.1-SNAPSHOT`. Во всех JAR проверен `api-version: 26.3`.
+- Удалён случайно закоммиченный устаревший `aurumarena/dependency-reduced-pom.xml`;
+  Shade и раньше был настроен с `createDependencyReducedPom=false`.
+- Чистые сборки на Java 25 успешны. Пройдено 666 тестов: Core 98, Auth 143,
+  Guilds 133, Companion 173, NPC 74, Arena 27, Slots 18; failures/errors/skipped = 0.
+  Deprecated API дают только предупреждения, ошибок совместимости 26.3 нет.
+- Sources commit `6fd6851`, Addons commit `7f45bdf`. Все семь tag workflows
+  завершились успешно. Release JAR повторно скачаны, SHA-256 каждого полностью
+  совпал с локальным артефактом. Старые локальные файлы сохранены в
+  `outputs/archive/paper-26.3-upgrade-2026-09-17`; активный корень Addons содержит
+  только новые версии.
+- Fabric UI, wire protocol, конфиги, MariaDB schema и финансовое поведение не
+  изменялись. Live Paper 26.3 запуск в этом этапе ещё не выполнялся.
 
 ### 2026-09-13 — Codex, первый live fault-injection и история счёта
 

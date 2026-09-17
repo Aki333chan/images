@@ -178,7 +178,7 @@ Core/Companion и production-панель обновлены 2026-09-15, Minecra
    provider, а Core запускают с новым пустым ledger без shadow-import. Fresh cutover
    разрешается один раз через `active.require-verified-migration: false`; после успешного
    старта настройка возвращается в `true`.
-9. [~] Полный staging-прогон Paper 26.2 + MariaDB + VaultUnlocked, нагрузка,
+9. [~] Полный staging-прогон Paper 26.3 + MariaDB + VaultUnlocked, нагрузка,
     сбои БД/рестарты и Spark. Финальная инструкция переключения Essentials и fresh-ledger
     cutover подготовлена в `deploy/AURUM-ECOSYSTEM-FIRST-CUTOVER.md`; live-прогон ещё
     предстоит.
@@ -236,7 +236,8 @@ Core/Companion и production-панель обновлены 2026-09-15, Minecra
 
 Базовый live smoke/fault-injection Core и managed accounts выполнен: проводки,
 idempotency, lifecycle, restart persistence, Vault/PAPI и idle Spark подтверждены на
-Paper 26.2 + MariaDB + VaultUnlocked. Предметные сценарии Arena/Slots/NPC/Guilds и
+Paper 26.2 + MariaDB + VaultUnlocked; после совместимого выпуска полного пакета
+нужен повторный smoke на Paper 26.3. Предметные сценарии Arena/Slots/NPC/Guilds и
 контролируемый сбой в середине их расчёта нельзя достоверно проверить без готовых
 игровых объектов и двух одновременно доступных тестеров; они отложены владельцем до
 следующего тестового окна и перечислены в `docs/aurum-live-validation-todo.md`. Поэтому
