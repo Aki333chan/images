@@ -330,6 +330,7 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             machine.pool = Math.max(0, section.getInt(id + ".pool", 0));
             machine.founderUuid = section.getString(id + ".founder", "");
             machine.closing = section.getBoolean(id + ".closing", false);
+            machine.restoreAccountReference(section.getString(id + ".account-reference", id));
             try {
                 machine.payoutMode = SlotMachine.PayoutMode.valueOf(section.getString(
                         id + ".payout-source.mode", "DEFAULT").toUpperCase(Locale.ROOT));
@@ -365,6 +366,7 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             getConfig().set(path + ".pool", machine.pool);
             getConfig().set(path + ".founder", machine.founderUuid);
             getConfig().set(path + ".closing", machine.closing);
+            getConfig().set(path + ".account-reference", machine.accountReference());
             getConfig().set(path + ".payout-source.mode", machine.payoutMode.name());
             getConfig().set(path + ".payout-source.treasury-id",
                     machine.payoutTreasuryId.isBlank() ? null : machine.payoutTreasuryId);
@@ -565,7 +567,7 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
         }
 
         SlotMachine machine = machines.computeIfAbsent(id, key -> {
-            SlotMachine created = new SlotMachine(key);
+            SlotMachine created = SlotMachine.create(key);
             created.founderUuid = player.getUniqueId().toString();
             return created;
         });
@@ -733,7 +735,8 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
             return;
         }
         event.setCancelled(true);
-        requestMachineRemoval(event.getPlayer(), machine);
+        event.getPlayer().sendMessage(getMsg("machine_break_requires_remove")
+                .replace("%id%", machine.id));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -872,6 +875,18 @@ public final class SimpleSlots extends JavaPlugin implements CommandExecutor, Ta
 
     private void synchronizeMachineAccount(SlotMachine machine) {
         if (slotEconomy != null) slotEconomy.synchronizeMachine(machine, accountCloseDestination());
+    }
+
+    void rotateRetiredMachineAccount(SlotMachine machine, String expectedAccountReference) {
+        onMain(() -> {
+            if (!isCurrentMachine(machine) || machine.closing
+                    || !machine.accountReference().equals(expectedAccountReference)) return;
+            String retired = machine.accountReference();
+            machine.rotateAccountReference();
+            getLogger().info("Slot machine " + machine.id + " received a new account "
+                    + machine.accountReference() + " because " + retired + " is closed.");
+            saveCasinoConfig();
+        });
     }
 
     private String accountCloseDestination() {

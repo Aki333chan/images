@@ -20,6 +20,7 @@ class LocalizationResourcesTest {
             assertNotNull(locale.getString("status.aurum-unavailable"));
             assertNotNull(locale.getString("messages.payment_failed"));
             assertNotNull(locale.getString("messages.payout_pending"));
+            assertNotNull(locale.getString("messages.machine_break_requires_remove"));
         }
     }
 

@@ -55,6 +55,7 @@ messages:
   item_amount_suffix: " items"
   spin_error: "&cThe slot machine encountered an error. Contact an administrator."
   machine_protected: "&cThis block belongs to a slot machine."
+  machine_break_requires_remove: "&eMachine %id% is protected. To close the machine and its account, use /slots remove %id%."
   machine_broken: "&cMachine %id% was removed because one of its blocks was broken."
   machine_closing: "&eThis machine is closing and temporarily unavailable."
   machine_obligations: "&cMachine %id% was not removed: wait for its spin, payment and recovery records to finish."

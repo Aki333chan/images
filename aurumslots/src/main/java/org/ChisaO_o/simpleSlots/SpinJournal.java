@@ -53,6 +53,14 @@ final class SpinJournal {
                             yaml.getString(path + ".payout-source-reference", yaml.getString(path + ".machine", "")))
                     : new ovh.aurumgg.core.api.AccountId(
                             ovh.aurumgg.core.api.AccountType.SYSTEM_SOURCE, "slot-payouts");
+            ovh.aurumgg.core.api.AccountId machineAccount = schema >= 3
+                    ? new ovh.aurumgg.core.api.AccountId(
+                            ovh.aurumgg.core.api.AccountType.SLOTS,
+                            yaml.getString(path + ".machine-account-reference",
+                                    yaml.getString(path + ".machine", "")))
+                    : new ovh.aurumgg.core.api.AccountId(
+                            ovh.aurumgg.core.api.AccountType.SLOTS,
+                            yaml.getString(path + ".machine", ""));
             SpinRecord record = new SpinRecord(UUID.fromString(id),
                     UUID.fromString(yaml.getString(path + ".hold-id", "")),
                     yaml.getString(path + ".hold-key", ""),
@@ -62,7 +70,7 @@ final class SpinJournal {
                     new BigDecimal(yaml.getString(path + ".reserved-debit",
                             yaml.getString(path + ".bet", "0"))),
                     SpinRecord.State.valueOf(yaml.getString(path + ".state", "ACCEPTED")),
-                    new BigDecimal(yaml.getString(path + ".payout", "0")), payoutSource,
+                    new BigDecimal(yaml.getString(path + ".payout", "0")), payoutSource, machineAccount,
                     yaml.getLong(path + ".created-at"));
             entries.put(record.operationId(), record);
         } catch (RuntimeException error) {
@@ -71,7 +79,7 @@ final class SpinJournal {
     }
 
     private void save() {
-        YamlConfiguration yaml = new YamlConfiguration(); yaml.set("schema-version", 2);
+        YamlConfiguration yaml = new YamlConfiguration(); yaml.set("schema-version", 3);
         for (SpinRecord record : entries.values()) {
             String path = "transactions." + record.operationId();
             yaml.set(path + ".hold-id", record.holdId().toString()); yaml.set(path + ".hold-key", record.holdKey());
@@ -81,6 +89,7 @@ final class SpinJournal {
             yaml.set(path + ".state", record.state().name()); yaml.set(path + ".payout", record.payout().toPlainString());
             yaml.set(path + ".payout-source-type", record.payoutSource().type().name());
             yaml.set(path + ".payout-source-reference", record.payoutSource().reference());
+            yaml.set(path + ".machine-account-reference", record.machineAccount().reference());
             yaml.set(path + ".created-at", record.createdAt());
         }
         try { yaml.save(file); }

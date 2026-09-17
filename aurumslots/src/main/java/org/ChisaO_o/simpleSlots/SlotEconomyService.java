@@ -30,6 +30,7 @@ import ovh.aurumgg.core.api.ManagedAccountCloseRequest;
 import ovh.aurumgg.core.api.ManagedAccountMember;
 import ovh.aurumgg.core.api.ManagedAccountMutationResult;
 import ovh.aurumgg.core.api.ManagedAccountRegistration;
+import ovh.aurumgg.core.api.ManagedAccountStatus;
 import ovh.aurumgg.core.api.HoldRequest;
 import ovh.aurumgg.core.api.HoldResult;
 import ovh.aurumgg.core.api.HoldSnapshot;
@@ -80,8 +81,13 @@ final class SlotEconomyService implements Listener {
 
     void synchronizeMachine(SlotMachine machine, String destination) {
         if (!managedAccountsAvailable() || machine.closing) return;
+        String expectedAccount = machine.accountReference();
         accounts.synchronize(machineRegistration(machine, destination))
                 .thenAccept(result -> {
+                    if (isRetired(result)) {
+                        plugin.rotateRetiredMachineAccount(machine, expectedAccount);
+                        return;
+                    }
                     if (result.status() != ManagedAccountMutationResult.Status.SUCCESS
                             && result.status() != ManagedAccountMutationResult.Status.DUPLICATE) {
                         plugin.getLogger().warning("Could not synchronize managed account for slot machine "
@@ -108,7 +114,7 @@ final class SlotEconomyService implements Listener {
         if (!managedAccountsAvailable()) return CompletableFuture.completedFuture(
                 new ManagedAccountMutationResult(ManagedAccountMutationResult.Status.UNAVAILABLE, null,
                         "AurumCore account registry is unavailable"));
-        String profileKey = "slots:" + machine.id;
+        String profileKey = profileKey(machine);
         return accounts.find(profileKey).thenCompose(existing -> {
             if (existing.isPresent()) return closeMachineProfile(profileKey, destination, actor);
             return accounts.synchronize(machineRegistration(machine, destination)).thenCompose(created -> {
@@ -130,14 +136,29 @@ final class SlotEconomyService implements Listener {
     private ManagedAccountRegistration machineRegistration(SlotMachine machine, String destination) {
         String resolvedDestination = destination == null || destination.isBlank()
                 ? "treasury:global" : destination.toLowerCase(Locale.ROOT);
-        String revision = UUID.nameUUIDFromBytes((machine.id + "\u0000" + machine.founderUuid + "\u0000"
+        String accountReference = machine.accountReference();
+        String revision = UUID.nameUUIDFromBytes((machine.id + "\u0000" + accountReference + "\u0000"
+                + machine.founderUuid + "\u0000"
                 + resolvedDestination).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
         return new ManagedAccountRegistration(
-                "slots-account-sync:" + machine.id + ":" + revision, "slots:" + machine.id, "SLOTS",
+                "slots-account-sync:" + machine.id + ":" + revision, profileKey(machine), "SLOTS",
                 machine.id, "Slot machine bankroll", "SERVER", "global", machine.founderUuid,
                 "AurumSlots", "SLOTS", machine.id, resolvedDestination, false,
-                List.of(new ManagedAccountMember(new AccountId(AccountType.SLOTS, machine.id), "primary", 0)),
+                List.of(new ManagedAccountMember(new AccountId(AccountType.SLOTS, accountReference), "primary", 0)),
                 "system:AurumSlots", "synchronize slot machine account");
+    }
+
+    private static String profileKey(SlotMachine machine) {
+        return "slots:" + machine.accountReference();
+    }
+
+    static boolean isRetired(ManagedAccountMutationResult result) {
+        return result != null && result.account() != null
+                && isRetired(result.account().status());
+    }
+
+    static boolean isRetired(ManagedAccountStatus status) {
+        return status == ManagedAccountStatus.CLOSING || status == ManagedAccountStatus.CLOSED;
     }
 
     boolean hasPending(String machineId) {
@@ -189,7 +210,8 @@ final class SlotEconomyService implements Listener {
     }
 
     private void reserveBet(Player player, SlotMachine machine, UUID operation, AccountId payoutSource) {
-        reserve(operation, player.getUniqueId(), machine.id, machine.bet).whenComplete((result, error) ->
+        reserve(operation, player.getUniqueId(), machine.id, machine.accountReference(), machine.bet)
+                .whenComplete((result, error) ->
                 onMain(() -> handleReserved(player, machine, operation, payoutSource, result, error)));
     }
 
@@ -199,7 +221,7 @@ final class SlotEconomyService implements Listener {
 
     private AccountId payoutSource(SlotMachine machine) {
         return switch (plugin.payoutMode(machine)) {
-            case MACHINE, DEFAULT -> new AccountId(AccountType.SLOTS, machine.id);
+            case MACHINE, DEFAULT -> new AccountId(AccountType.SLOTS, machine.accountReference());
             case TREASURY -> new AccountId(AccountType.TREASURY, plugin.payoutTreasury(machine));
             case LEGACY -> new AccountId(AccountType.SYSTEM_SOURCE, "slot-payouts");
         };
@@ -307,7 +329,8 @@ final class SlotEconomyService implements Listener {
         }));
     }
 
-    CompletionStage<HoldResult> reserve(UUID operation, UUID playerId, String machineId, double bet) {
+    CompletionStage<HoldResult> reserve(UUID operation, UUID playerId, String machineId,
+                                        String machineAccountReference, double bet) {
         AurumEconomyApi current = api;
         if (current == null) return unavailableHold();
         long configured = plugin.getConfig().getLong("economy.hold-ttl-seconds", 300L);
@@ -315,7 +338,8 @@ final class SlotEconomyService implements Listener {
         Map<String, String> metadata = metadata(operation, machineId);
         try {
             HoldRequest request = new HoldRequest("slots-bet:" + operation, AccountId.player(playerId),
-                    new AccountId(AccountType.SLOTS, machineId), current.primaryCurrency().id(), amount(bet),
+                    new AccountId(AccountType.SLOTS, machineAccountReference),
+                    current.primaryCurrency().id(), amount(bet),
                     TransactionCategory.SLOT_BET, "slot-spin", machineId,
                     Instant.now().plusSeconds(ttl), metadata);
             return current.createHold(request);
@@ -343,7 +367,7 @@ final class SlotEconomyService implements Listener {
     CompletionStage<TransactionResult> refund(SpinRecord record) {
         // A refund returns the captured bet from the machine that received it;
         // it must never mint from the configured payout source.
-        return credit(record, new AccountId(AccountType.SLOTS, record.machineId()),
+        return credit(record, record.machineAccount(),
                 record.reservedDebit(), TransactionCategory.REFUND,
                 "slots-refund:" + record.operationId());
     }

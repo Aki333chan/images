@@ -64,10 +64,13 @@ balances: ordinary bet refunds must never spend the champion pool. Register them
 as two subaccounts under one Arena account profile, and display their individual
 and combined balances in the panel.
 
-Each Slots machine keeps its own `SLOTS:<machine-id>` account. AurumSlots 1.6.0
-pays from that account by default and checks the configured maximum-win reserve
-before accepting a spin. A machine may explicitly use a named treasury; the old
-`SYSTEM_SOURCE:slot-payouts` path survives only as a clearly named legacy mode.
+Each Slots machine lifecycle keeps its own `SLOTS:<account-reference>` account.
+AurumSlots 1.6.1 separates the visible machine ID from that durable reference:
+recreating the same name after deletion creates a new account while the closed
+ledger history stays immutable. It pays from that account by default and checks
+the configured maximum-win reserve before accepting a spin. A machine may
+explicitly use a named treasury; the old `SYSTEM_SOURCE:slot-payouts` path survives
+only as a clearly named legacy mode.
 
 AddonsNPC 2.2.0 applies the same rule to buyers. Every buyer defaults to its
 own `NPC_BUYER:<id>` member and reserves the full policy-adjusted debit before

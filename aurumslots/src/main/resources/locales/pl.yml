@@ -55,6 +55,7 @@ messages:
   item_amount_suffix: " szt."
   spin_error: "&cWystąpił błąd automatu. Skontaktuj się z administratorem."
   machine_protected: "&cTen blok należy do automatu."
+  machine_break_requires_remove: "&eMaszyna %id% jest chroniona. Aby zamknąć maszynę i jej konto, użyj /slots remove %id%."
   machine_broken: "&cMaszyna %id% została usunięta, ponieważ zniszczono jeden z jej bloków."
   machine_closing: "&eTa maszyna jest zamykana i chwilowo niedostępna."
   machine_obligations: "&cMaszyna %id% nie została usunięta: poczekaj na zakończenie obrotu, płatności i odzyskiwania operacji."

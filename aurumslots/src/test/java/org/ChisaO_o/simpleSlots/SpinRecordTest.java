@@ -31,9 +31,27 @@ class SpinRecordTest {
         assertEquals("slots-capture:" + operation, capture.idempotencyKey());
         assertEquals(AccountId.player(player), capture.from());
         assertEquals(new AccountId(AccountType.SLOTS, "spawn"), capture.to());
+        assertEquals(new AccountId(AccountType.SLOTS, "spawn"), record.machineAccount());
         assertEquals(new BigDecimal("10.00"), capture.amount());
         assertEquals(new BigDecimal("10.00"), record.reservedDebit());
         assertEquals(TransactionCategory.SLOT_BET, capture.category());
+    }
+
+    @Test
+    void generatedMachineAccountSurvivesCaptureIdentity() {
+        UUID operation = UUID.randomUUID();
+        UUID player = UUID.randomUUID();
+        AccountId generated = new AccountId(AccountType.SLOTS, "spawn~generation");
+        HoldSnapshot hold = new HoldSnapshot(UUID.randomUUID(), "slots-bet:" + operation,
+                AccountId.player(player), generated,
+                new CurrencySpec("coins", "Coins", "$", 2), new BigDecimal("5.00"),
+                new BigDecimal("5.00"), TransactionCategory.SLOT_BET, "slot-spin", "spawn",
+                HoldSnapshot.Status.HELD, Instant.now(), Instant.now().plusSeconds(60), Map.of());
+
+        SpinRecord record = SpinRecord.accepted(operation, player, "spawn", hold, generated);
+
+        assertEquals(generated, record.machineAccount());
+        assertEquals(generated, record.captureRequest().to());
     }
 
     @Test
