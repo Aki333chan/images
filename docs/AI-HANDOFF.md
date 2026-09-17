@@ -61,10 +61,9 @@ Exchange engine использует версионированную котир
 
 ## Актуальные релизы Addons
 
-На 2026-09-15 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
+На 2026-09-17 опубликованы и проверены GitHub Releases с JAR и `.sha256`:
 `companion-v0.13.4`, `core-v0.19.0`, `auth-v0.1.0`, `guilds-v0.5.2`,
-`npc-v2.4.0`, `arena-v1.6.1`, `slots-v1.6.0`. Заменённые releases и tags удалены;
-актуальный Addons commit — `aa687ca`.
+`npc-v2.4.0`, `arena-v1.6.1`, `slots-v1.6.1`. Актуальный Addons commit — `b61a9de`.
 
 ## Исторические выпуски и этапы
 
@@ -1126,6 +1125,30 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
   печать stack trace дают краткий дополнительный шум в join tick, но для вывода о
   главной причине нужен профиль Spark именно интервала подключения после установки
   0.5.2.
-- Sources commit `a9a671b`, Addons commit `e2bd355` отправлены в main. GitHub CLI
-  на этой машине не авторизован, поэтому release/tag `guilds-v0.5.2` ещё не создан;
-  JAR уже лежит в корне Addons вместо `guilds-v0.5.1.jar` и в outputs.
+- Sources commit `a9a671b`, Addons commit `e2bd355` отправлены в main. Tag/release
+  `guilds-v0.5.2` опубликован workflow 2026-09-17; asset digest совпадает с локальным.
+  JAR лежит в корне Addons вместо `guilds-v0.5.1.jar` и в outputs.
+
+### 2026-09-17 — Codex, AurumSlots 1.6.1: повторное имя после закрытия
+
+- Исправлена связь имени машины и ledger identity. `CLOSED` намеренно остаётся
+  необратимым; новая машина с тем же видимым ID получает новый внутренний
+  `account-reference` (`<id>~<uuid>`), а старый счёт остаётся в аудите. Старые
+  активные машины без нового поля продолжают использовать `SLOTS:<id>`.
+- При загрузке машины старого формата Slots синхронизирует профиль. Если Core
+  возвращает `CLOSING/CLOSED`, reference ротируется на main thread, сохраняется в
+  `machines.<id>.account-reference` и новый профиль регистрируется автоматически.
+  Повторные callbacks защищены сравнением ожидаемого reference.
+- Spin journal schema 3 фиксирует точный machine account из Core hold. Capture,
+  refund и recovery после рестарта не могут ошибочно обратиться к закрытому счёту
+  прежней машины с тем же именем; schema 1/2 читаются с прежним fallback.
+- BlockBreak связанного shelf/button/hopper больше не вызывает финансовое закрытие.
+  Блок остаётся защищённым, администратору показывается явная `/slots remove <id>`.
+  EN/RU/PL обновлены. После ротации баланс нового счёта нулевой: средства из уже
+  закрытого профиля не возвращаются из казны автоматически.
+- Проверено на JDK 25: `mvn clean test package`, 18/18 тестов. JAR
+  `AurumSlots-1.6.1.jar`, SHA-256
+  `47D2DD55287A382E78927B7AEAF358D7EAD666B3B3BC5E517804BC4612262179`.
+- Sources commit `4193531`, Addons commit `b61a9de`, tag/release `slots-v1.6.1`.
+  GitHub asset digest совпадает; JAR и sidecar лежат в outputs. Старые локальные
+  1.6.0 артефакты перемещены в `archive/slots-1.6.1-upgrade`.
