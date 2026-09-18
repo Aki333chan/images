@@ -15,6 +15,30 @@ const item = {
 };
 const snapshot = { available: true, source: 'client_snapshot', items: [item], truncated: false };
 describe('read-only 7DTD inventory', () => {
+  it('supports old snapshots without guessing capacity and validates native slot counts', () => {
+    expect(parseInventory(snapshot).slotCounts).toBeNull();
+    const slotCounts = { belt: 10, bag: 45, equipment: 4, cursor: 1 };
+    expect(parseInventory({ ...snapshot, slotCounts }).slotCounts).toEqual(slotCounts);
+    for (const counts of [
+      null,
+      [],
+      {},
+      { ...slotCounts, belt: -1 },
+      { ...slotCounts, bag: 257 },
+      { ...slotCounts, bag: 2 },
+      { ...slotCounts, cursor: 1.5 },
+    ])
+      expect(() => parseInventory({ ...snapshot, slotCounts: counts })).toThrow(
+        'invalid_inventory_response',
+      );
+    expect(
+      parseInventory({
+        ...snapshot,
+        items: [],
+        slotCounts: { belt: 0, bag: 0, equipment: 0, cursor: 0 },
+      }).items,
+    ).toEqual([]);
+  });
   it('allows platform IDs only', () => {
     validateInventoryPlayerId('Steam_76561190000000000');
     validateInventoryPlayerId('EOS_a123');

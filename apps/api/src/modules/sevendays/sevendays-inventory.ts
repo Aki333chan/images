@@ -31,6 +31,24 @@ export function parseInventory(value: unknown): SevenDaysInventory {
   )
     throw invalid();
   const items: SevenDaysInventoryItem[] = [];
+  let slotCounts: SevenDaysInventory['slotCounts'] = null;
+  if (body.slotCounts !== undefined) {
+    if (!body.slotCounts || typeof body.slotCounts !== 'object' || Array.isArray(body.slotCounts))
+      throw invalid();
+    const supplied = body.slotCounts as Record<string, number>;
+    slotCounts = { belt: 0, bag: 0, equipment: 0, cursor: 0 };
+    for (const section of Object.keys(limits) as (keyof typeof limits)[]) {
+      const count = supplied[section];
+      if (
+        typeof count !== 'number' ||
+        !Number.isInteger(count) ||
+        count < 0 ||
+        count > limits[section]
+      )
+        throw invalid();
+      slotCounts[section] = count;
+    }
+  }
   const slots = new Set<string>();
   for (const row of body.items) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) throw invalid();
@@ -40,6 +58,7 @@ export function parseInventory(value: unknown): SevenDaysInventory {
       !Number.isInteger(p.slot) ||
       p.slot < 0 ||
       p.slot >= limits[p.section] ||
+      (slotCounts !== null && p.slot >= slotCounts[p.section]) ||
       !Number.isInteger(p.itemId) ||
       p.itemId <= 0 ||
       p.itemId > 2147483647 ||
@@ -71,6 +90,7 @@ export function parseInventory(value: unknown): SevenDaysInventory {
     source: 'client_snapshot',
     fetchedAt: new Date().toISOString(),
     items,
+    slotCounts,
     truncated: body.truncated,
   };
 }

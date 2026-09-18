@@ -3,6 +3,7 @@ import type { SevenDaysInventory } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Button, Card, ErrorText, Spinner } from '../../components/ui';
 import { useI18n } from '../../i18n';
+import { IconArchive, IconClose } from '../../components/icons';
 
 export function SevenDaysInventoryPanel({
   serverId,
@@ -21,6 +22,13 @@ export function SevenDaysInventoryPanel({
   const [busy, setBusy] = useState(true);
   const [revision, setRevision] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const selectedButton = useRef<HTMLButtonElement | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const selectedItem = data?.items.find((p) => `${p.section}:${p.slot}` === selected);
+  useEffect(() => {
+    if (selected) detailHeading.current?.focus();
+  }, [selected]);
   useEffect(() => {
     heading.current?.focus();
   }, [serverId, playerId]);
@@ -29,6 +37,7 @@ export function SevenDaysInventoryPanel({
     setBusy(true);
     setError('');
     setData(null);
+    setSelected(null);
     void api<SevenDaysInventory>(
       `/api/modules/sevendays/servers/${serverId}/players/${encodeURIComponent(playerId)}/inventory`,
       { signal: abort.signal },
@@ -91,11 +100,19 @@ export function SevenDaysInventoryPanel({
         </div>
         {data?.available && (
           <>
+            <p className="text-sm text-muted">{t('sdtd.inventory.choose')}</p>
+            {!data.slotCounts && (
+              <p className="text-sm text-muted">{t('sdtd.inventory.unknownCapacity')}</p>
+            )}
             {data.truncated && (
               <p className="text-sm text-amber-400">{t('sdtd.inventory.truncated')}</p>
             )}
             {(['belt', 'bag', 'equipment', 'cursor'] as const).map((section) => {
               const items = data.items.filter((p) => p.section === section);
+              const bySlot = new Map(items.map((p) => [p.slot, p]));
+              const slots = data.slotCounts
+                ? Array.from({ length: data.slotCounts[section] }, (_, i) => i)
+                : items.map((p) => p.slot).sort((a, b) => a - b);
               return (
                 <section
                   key={section}
@@ -103,35 +120,89 @@ export function SevenDaysInventoryPanel({
                   aria-label={t(`sdtd.inventory.${section}`)}
                 >
                   <h4 className="font-medium">{t(`sdtd.inventory.${section}`)}</h4>
-                  {!items.length ? (
+                  {selectedItem?.section === section && (
+                    <div
+                      className="relative border-l-2 border-primary bg-background p-3 pr-12 text-sm"
+                      data-inventory-details
+                    >
+                      <h5 ref={detailHeading} tabIndex={-1} className="break-all font-semibold">
+                        {selectedItem.name}
+                      </h5>
+                      <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+                        {[
+                          ['ID', selectedItem.itemId],
+                          [t('sdtd.inventory.slot'), selectedItem.slot + 1],
+                          [t('sdtd.inventory.count'), selectedItem.count.toLocaleString(locale)],
+                          [t('sdtd.inventory.quality'), selectedItem.quality],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <dt className="text-xs text-muted">{label}</dt>
+                            <dd className="break-all tabular-nums">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      <button
+                        type="button"
+                        aria-label={t('sdtd.inventory.closeDetails')}
+                        className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                        onClick={() => {
+                          setSelected(null);
+                          selectedButton.current?.focus();
+                        }}
+                      >
+                        <IconClose size={16} />
+                      </button>
+                    </div>
+                  )}
+                  {!slots.length ? (
                     <p className="text-sm text-muted">{t('sdtd.inventory.empty')}</p>
                   ) : (
-                    <table className="w-full table-fixed text-sm">
-                      <thead className="text-left text-muted">
-                        <tr>
-                          <th className="w-12 pb-2">{t('sdtd.inventory.slot')}</th>
-                          <th className="pb-2">{t('sdtd.inventory.item')}</th>
-                          <th className="w-28 pb-2 pl-2 text-right">{t('sdtd.inventory.count')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((p) => (
-                          <tr key={p.slot} className="border-t border-border align-top">
-                            <td className="py-2 tabular-nums">{p.slot + 1}</td>
-                            <td className="break-all py-2 pr-2">
-                              {p.name}
-                              <span className="block text-xs text-muted">
-                                ID {p.itemId}
-                                {p.quality > 0 && ` · ${t('sdtd.inventory.quality')} ${p.quality}`}
+                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+                      {slots.map((slot) => {
+                        const p = bySlot.get(slot);
+                        const key = `${section}:${slot}`;
+                        return p ? (
+                          <button
+                            key={slot}
+                            type="button"
+                            data-inventory-slot={key}
+                            aria-pressed={selected === key}
+                            aria-label={`${t('sdtd.inventory.slot')} ${slot + 1}: ${p.name}, ${t('sdtd.inventory.count')} ${p.count}, ${t('sdtd.inventory.quality')} ${p.quality}`}
+                            title={p.name}
+                            className={`flex h-24 min-w-0 flex-col rounded border p-2 text-left hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${selected === key ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
+                            onClick={(e) => {
+                              selectedButton.current = e.currentTarget;
+                              setSelected(key);
+                            }}
+                          >
+                            <span className="flex w-full items-center justify-between gap-1 text-xs text-muted">
+                              <span>{slot + 1}</span>
+                              <IconArchive size={18} />
+                            </span>
+                            <span className="mt-1 block w-full truncate text-xs">{p.name}</span>
+                            <span className="mt-auto flex w-full flex-wrap justify-between gap-x-1 text-xs tabular-nums">
+                              <span title={t('sdtd.inventory.quality')}>Q{p.quality}</span>
+                              <span className="max-w-full truncate">
+                                ×
+                                {new Intl.NumberFormat(locale, {
+                                  notation: 'compact',
+                                  maximumFractionDigits: 1,
+                                }).format(p.count)}
                               </span>
-                            </td>
-                            <td className="whitespace-nowrap py-2 pl-2 text-right tabular-nums">
-                              {p.count.toLocaleString(locale)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            </span>
+                          </button>
+                        ) : (
+                          <div
+                            key={slot}
+                            data-inventory-slot={key}
+                            aria-label={`${t('sdtd.inventory.slot')} ${slot + 1}: ${t('sdtd.inventory.emptySlot')}`}
+                            className="h-24 min-w-0 rounded border border-dashed border-border p-2 text-xs text-muted"
+                          >
+                            {slot + 1}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </section>
               );

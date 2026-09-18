@@ -3,6 +3,7 @@ import type { SevenDaysMapSnapshot, SevenDaysMapPois } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Button, Card, ErrorText, Spinner, Input } from '../../components/ui';
 import { useI18n } from '../../i18n';
+import { IconClose } from '../../components/icons';
 import type { ModuleTabProps } from '../registry';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_PIXELS, tileSpan, visibleTiles, mapPoint } from './map-math';
 
@@ -336,6 +337,7 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
         ref={svg}
         viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
         role="group"
+        tabIndex={-1}
         aria-label={t('sdtd.map.title')}
         className="w-full rounded-lg border border-border bg-black/30"
         style={{
@@ -563,12 +565,23 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
       </svg>
       <div className="space-y-1">
         {selected && (
-          <p
-            role="status"
-            className="break-words rounded border border-border bg-background px-3 py-2 text-sm"
-          >
-            {selected}
-          </p>
+          <div className="flex items-start gap-2 rounded border border-border bg-background pl-3 text-sm">
+            <p role="status" className="min-w-0 flex-1 break-words py-2">
+              {selected}
+            </p>
+            <button
+              type="button"
+              aria-label={t('sdtd.map.clearSelection')}
+              title={t('sdtd.map.clearSelection')}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              onClick={() => {
+                setSelected('');
+                svg.current?.focus({ preventScroll: true });
+              }}
+            >
+              <IconClose size={16} />
+            </button>
+          </div>
         )}
         <p className="break-words text-xs text-muted">
           X {Math.round(view.x)} / Z {Math.round(view.z)} · {t('sdtd.map.readOnly')}

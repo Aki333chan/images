@@ -203,6 +203,8 @@ export interface SevenDaysInventoryItem {
   quality: number;
 }
 export interface SevenDaysInventory {
+  /** Absent for companion 1.0.7; never infer trailing empty slots. */
+  slotCounts?: Record<SevenDaysInventoryItem['section'], number> | null;
   available: boolean;
   reason?: 'mod_update' | 'mod_unavailable' | 'offline' | 'snapshot_pending';
   source: 'client_snapshot';

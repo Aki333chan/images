@@ -41,7 +41,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           if(p.endsWith('/state'))return {available:false,reason:'Test server'};
           if(p.endsWith('/inventory')){window.stats.inventory++;await new Promise((ok,no)=>{const timer=setTimeout(ok,80);init.signal.addEventListener('abort',()=>{window.stats.aborted++;clearTimeout(timer);no(new DOMException('aborted','AbortError'));},{once:true});});
           if(window.mode==='error')throw Error('Test network error');if(window.mode!=='ready')return {available:false,reason:window.mode,items:[]};
-          return {available:true,source:'client_snapshot',fetchedAt:'2026-09-18T12:00:00Z',truncated:false,items:[{section:'belt',slot:0,itemId:1,name:'gunPistol',count:1,quality:6},{section:'bag',slot:42,itemId:2,name:'<script>'+('LongModdedItemName'.repeat(5))+'</script>',count:2147483647,quality:0}]};}return [];}`,
+          return {available:true,slotCounts:window.legacyCounts?null:{belt:10,bag:45,equipment:4,cursor:1},source:'client_snapshot',fetchedAt:'2026-09-18T12:00:00Z',truncated:false,items:[{section:'belt',slot:0,itemId:1,name:'gunPistol',count:1,quality:6},{section:'bag',slot:42,itemId:2,name:'<script>'+('LongModdedItemName'.repeat(5))+'</script>',count:2147483647,quality:0}]};}return [];}`,
           }));
         },
       },
@@ -110,11 +110,34 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       name: catalog['sdtd.inventory.refresh'],
       exact: true,
     });
+    assert.equal(await page.locator('[data-inventory-slot]').count(), 60);
+    const pistol = page.locator('[data-inventory-slot="belt:0"]');
+    await pistol.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(
+      await page
+        .locator('[data-inventory-details] h5')
+        .evaluate((el) => el === document.activeElement),
+      true,
+    );
+    await page.getByRole('button', { name: catalog['sdtd.inventory.closeDetails'] }).click();
+    assert.equal(await pistol.evaluate((el) => el === document.activeElement), true);
+    await page.locator('[data-inventory-slot="bag:42"]').click();
+    assert.ok((await page.locator('[data-inventory-details]').innerText()).includes('<script>'));
+    assert.equal(await page.locator('[data-inventory-details] script').count(), 0);
+    assert.equal(await page.evaluate(() => window.stats.inventory), count);
     for (const [label, width, height] of [
       ['desktop', 1200, 1000],
       ['mobile', 390, 844],
     ]) {
       await page.setViewportSize({ width, height });
+      assert.equal(
+        await page
+          .locator('button[data-inventory-slot]')
+          .evaluateAll((els) => els.some((el) => el.scrollWidth > el.clientWidth + 1)),
+        false,
+        'item contents stay within their slots',
+      );
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
         false,
@@ -138,7 +161,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         0,
         'old items must not survive failed refresh',
       );
+      assert.equal(await page.locator('[data-inventory-details]').count(), 0);
     }
+    await page.evaluate(() => {
+      window.mode = 'ready';
+      window.legacyCounts = true;
+    });
+    await refresh.click();
+    await page.getByText(catalog['sdtd.inventory.unknownCapacity'], { exact: true }).waitFor();
+    assert.equal(
+      await page.locator('[data-inventory-slot]').count(),
+      2,
+      'old mod must not invent empty slots',
+    );
     await page.getByRole('button', { name: catalog['common.close'], exact: true }).click();
     assert.equal(
       await page.evaluate(() => document.activeElement.textContent),

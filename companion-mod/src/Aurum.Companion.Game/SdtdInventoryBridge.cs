@@ -41,7 +41,8 @@ namespace Aurum.Companion.Game
                     if (stacks[i] != null) Add(section, i, stacks[i].itemValue, stacks[i].count);
             }
             Stacks("belt", data.inventory, 32);
-            Stacks("bag", data.bag?.GetSlots(), 256);
+            var bag = data.bag?.GetSlots();
+            Stacks("bag", bag, 256);
             var equipment = data.equipment?.GetItems();
             if (equipment != null)
             {
@@ -51,6 +52,12 @@ namespace Aurum.Companion.Game
             if (data.dragAndDropItem != null) Add("cursor", 0, data.dragAndDropItem.itemValue, data.dragAndDropItem.count);
             return JsonWriter.Object(new[] {
                 F("available", "true"), F("source", JsonWriter.String("client_snapshot")),
+                F("slotCounts", JsonWriter.Object(new[] {
+                    F("belt", JsonWriter.Number(Math.Min(data.inventory?.Length ?? 0, 32))),
+                    F("bag", JsonWriter.Number(Math.Min(bag?.Length ?? 0, 256))),
+                    F("equipment", JsonWriter.Number(Math.Min(equipment?.Length ?? 0, 32))),
+                    F("cursor", "1")
+                })),
                 F("items", JsonWriter.Array(items)), F("truncated", JsonWriter.Bool(truncated))
             });
         });
