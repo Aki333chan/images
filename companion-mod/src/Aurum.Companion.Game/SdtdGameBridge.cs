@@ -19,7 +19,7 @@ namespace Aurum.Companion.Game
     /// главный через <see cref="MainThread"/>. Забыть об этом здесь — значит
     /// уронить сервер игроку.
     /// </remarks>
-    internal sealed partial class SdtdGameBridge : IGameBridge, IMapBridge
+    internal sealed partial class SdtdGameBridge : IGameBridge, IMapBridge, IInventoryBridge
     {
         /// <summary>Имя, от которого мод пишет в чат.</summary>
         private readonly string SenderName;

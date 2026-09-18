@@ -86,6 +86,8 @@ public abstract class PlatformUserIdentifierAbs
 
 public class ClientInfo
 {
+    public bool disconnecting;
+    public PlayerDataFile? latestPlayerData;
     public int entityId;
     public string playerName = "";
     public string ip = "";
@@ -95,6 +97,25 @@ public class ClientInfo
     public PlatformUserIdentifierAbs? CrossplatformId;
 
     public void SendPackage(NetPackage package) { }
+}
+
+public class ItemClass { public virtual string GetItemName() => "test"; }
+public class ItemValue
+{
+    public int type;
+    public ushort Quality;
+    public ItemClass? ItemClass => null;
+    public bool IsEmpty() => type == 0;
+}
+public class ItemStack { public ItemValue itemValue = new ItemValue(); public int count; }
+public class Bag { public ItemStack[] GetSlots() => new ItemStack[0]; }
+public class Equipment { public ItemValue[] GetItems() => new ItemValue[0]; }
+public class PlayerDataFile
+{
+    public ItemStack[] inventory = new ItemStack[0];
+    public Bag bag = new Bag();
+    public Equipment equipment = new Equipment();
+    public ItemStack dragAndDropItem = new ItemStack();
 }
 
 public class ClientInfoCollection

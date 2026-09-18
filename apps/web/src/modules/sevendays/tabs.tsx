@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { SevenDaysInventoryPanel } from './InventoryPanel';
 import {
   SEVENDAYS_BAN_UNITS,
   SEVENDAYS_PERMISSIONS,
@@ -25,9 +26,7 @@ const base = (serverId: string) => `/api/modules/sevendays/servers/${serverId}`;
  * Вкладки модуля 7 Days to Die.
  *
  * Их три — по числу возможностей ВАНИЛЬНОГО сервера: игроки, баны и белый
- * список. Консоль даёт ядро. Инвентаря и тикетов здесь нет потому, что на
- * голом сервере их взять неоткуда; с серверным модом они появились бы как
- * 'requires-plugin' — см. оговорку в sevendays.def.ts.
+ * список. Консоль даёт ядро. Инвентарь требует companion и отдельного права.
  */
 
 /** Единицы срока бана заданы игрой; названия — для человека. */
@@ -56,6 +55,13 @@ function targetOf(player: SevenDaysPlayerDto): string {
 
 export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: ModuleTabProps) {
   const { hasPermission } = useAuth();
+  const [inventoryPlayer, setInventoryPlayer] = useState<SevenDaysPlayerDto | null>(null);
+  const inventoryTrigger = useRef<HTMLElement | null>(null);
+  useEffect(() => setInventoryPlayer(null), [serverId]);
+  const showInventory = (player: SevenDaysPlayerDto) => {
+    inventoryTrigger.current = document.activeElement as HTMLElement | null;
+    setInventoryPlayer(player);
+  };
   const [data, setData] = useState<SevenDaysPlayersResponse | null>(null);
   const [state, setState] = useState<SevenDaysStateDto | null>(null);
   const [error, setError] = useState('');
@@ -141,6 +147,7 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
                         player={p}
                         hasPermission={hasPermission}
                         onPunish={setPunish}
+                        onInventory={showInventory}
                       />
                     </td>
                   </tr>
@@ -166,7 +173,12 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
                   </p>
                   <p className="mt-1 text-xs text-muted">{formatPosition(p)}</p>
                   <div className="mt-2">
-                    <PlayerActions player={p} hasPermission={hasPermission} onPunish={setPunish} />
+                    <PlayerActions
+                      player={p}
+                      hasPermission={hasPermission}
+                      onPunish={setPunish}
+                      onInventory={showInventory}
+                    />
                   </div>
                 </li>
               ))}
@@ -184,6 +196,27 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
           />
         )}
       </Card>
+
+      {inventoryPlayer && hasPermission(SEVENDAYS_PERMISSIONS.inventoryView) && (
+        <SevenDaysInventoryPanel
+          key={`${serverId}/${inventoryPlayer.entityId}`}
+          serverId={serverId}
+          playerId={(inventoryPlayer.platformId ?? inventoryPlayer.crossId)!}
+          name={inventoryPlayer.name}
+          onClose={() => {
+            setInventoryPlayer(null);
+            const trigger = inventoryTrigger.current;
+            const visibleTrigger = trigger?.getClientRects().length
+              ? trigger
+              : Array.from(
+                  document.querySelectorAll<HTMLButtonElement>(
+                    `[data-inventory-player="${inventoryPlayer.entityId}"]`,
+                  ),
+                ).find((button) => button.getClientRects().length > 0);
+            visibleTrigger?.focus();
+          }}
+        />
+      )}
 
       {/*
         Журнал под списком игроков, а не отдельной вкладкой: разбирающий
@@ -211,13 +244,28 @@ function PlayerActions({
   player,
   hasPermission,
   onPunish,
+  onInventory,
 }: {
   player: SevenDaysPlayerDto;
   hasPermission: (key: string) => boolean;
   onPunish: (value: { player: SevenDaysPlayerDto; kind: 'kick' | 'ban' }) => void;
+  onInventory: (player: SevenDaysPlayerDto) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-wrap justify-end gap-2">
+      {hasPermission(SEVENDAYS_PERMISSIONS.inventoryView) &&
+        (player.platformId || player.crossId) && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-controls="sdtd-inventory"
+            data-inventory-player={player.entityId}
+            onClick={() => onInventory(player)}
+          >
+            {t('sdtd.inventory.title')}
+          </Button>
+        )}
       {hasPermission(SEVENDAYS_PERMISSIONS.kick) && (
         <Button size="sm" variant="outline" onClick={() => onPunish({ player, kind: 'kick' })}>
           Кик

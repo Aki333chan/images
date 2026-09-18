@@ -42,7 +42,7 @@ import {
  * правом модуля и @ServerScoped, права проверяются ядром по текущему
  * состоянию БД, а мутирующие запросы попадают в audit_log.
  *
- * Инвентарь пока не реализован. Обратный канал тикетов и событий обеспечивает
+ * Инвентарь — только чтение клиентского снимка. Тикеты и события обеспечивает
  * серверный companion; карта читает его ограниченные read-only endpoints.
  */
 @Controller('modules/sevendays/servers/:serverId')
@@ -91,6 +91,14 @@ export class SevenDaysController {
   @ServerScoped('serverId')
   players(@Param('serverId') serverId: string): Promise<SevenDaysPlayersResponse> {
     return this.sevendays.getPlayers(serverId);
+  }
+
+  @Get('players/:playerId/inventory')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryView)
+  @ServerScoped('serverId')
+  inventory(@Param('serverId') serverId: string, @Param('playerId') playerId: string) {
+    return this.companion.inventory(serverId, playerId);
   }
 
   /** Игровой день, время суток, версия, онлайн. */

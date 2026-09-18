@@ -42,6 +42,7 @@ namespace Aurum.Companion.Core.Http
             if (config?.ForwardChat ?? true) capabilities.Add("chat-events");
             if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
             if (game is IMapBridge) { capabilities.Add("map-read"); capabilities.Add("map-pois"); }
+            if (game is IInventoryBridge) capabilities.Add("inventory-read");
             _capabilitiesJson = JsonWriter.Array(capabilities.ConvertAll(JsonWriter.String));
         }
 
@@ -81,6 +82,12 @@ namespace Aurum.Companion.Core.Http
         private HttpResponseData Route(HttpRequestData request)
         {
             string[] parts = request.Segments;
+            if (request.Method == "GET" && parts.Length == 3 && parts[0] == "players" && parts[2] == "inventory" && _game is IInventoryBridge inventory)
+            {
+                string id = Uri.UnescapeDataString(parts[1]);
+                if (!InventoryRequest.ValidPlayerId(id)) return HttpResponseData.BadRequest("invalid_player_id");
+                return HttpResponseData.Ok(inventory.ReadInventory(id));
+            }
             if (request.Method == "GET" && parts.Length >= 2 && parts[0] == "map" && _game is IMapBridge map)
             {
                 if (parts.Length == 2 && parts[1] == "info") return HttpResponseData.Ok(map.ReadMapInfo());

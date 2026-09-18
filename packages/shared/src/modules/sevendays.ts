@@ -184,12 +184,32 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'blood-moon-schedule',
   'map-read',
   'map-pois',
+  'inventory-read',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
 
 export interface SevenDaysMapInfo {
   blockSize: number;
   maxZoom: number;
+}
+
+export interface SevenDaysInventoryItem {
+  section: 'belt' | 'bag' | 'equipment' | 'cursor';
+  /** Zero-based original slot; UI displays slot + 1. */
+  slot: number;
+  itemId: number;
+  name: string;
+  count: number;
+  quality: number;
+}
+export interface SevenDaysInventory {
+  available: boolean;
+  reason?: 'mod_update' | 'mod_unavailable' | 'offline' | 'snapshot_pending';
+  source: 'client_snapshot';
+  /** Panel fetch time, NOT snapshot creation time (not supplied by the game). */
+  fetchedAt: string | null;
+  items: SevenDaysInventoryItem[];
+  truncated: boolean;
 }
 export interface SevenDaysMapPoi {
   id: number;
@@ -267,6 +287,7 @@ export interface SevenDaysActionDto {
 
 export const SEVENDAYS_PERMISSIONS = {
   mapView: 'sevendays.map.view',
+  inventoryView: 'sevendays.inventory.view',
   playersView: 'sevendays.players.view',
   kick: 'sevendays.kick',
   ban: 'sevendays.ban',

@@ -42,13 +42,8 @@ import { SevenDaysModule } from './sevendays.module';
  *                  ванильная консоль не умеет: у неё есть только say на
  *                  весь сервер.
  *
- * Чего НЕТ и почему:
- *
- *   inventory    — ванильный сервер не отдаёт содержимое рюкзака никакой
- *                  командой консоли. Технически это достижимо тем же модом
- *                  (в 7 Days to Die серверные моды существуют — TFP сама
- *                  поставляет загрузчик 0_TFP_Harmony), но в моде пока не
- *                  сделано, и объявлять невыполненное нельзя.
+ *   inventory    — companion 1.0.7+: последний клиентский снимок онлайн-игрока,
+ *                  только просмотр по отдельному праву, без изменения предметов.
  */
 export const sevenDaysManifest: GameModuleManifest = {
   id: 'sevendays',
@@ -62,8 +57,14 @@ export const sevenDaysManifest: GameModuleManifest = {
     // Обратный канал и безопасный API карты обеспечивает companion-mod/.
     tickets: 'requires-plugin',
     worldMap: 'requires-plugin',
+    inventory: 'requires-plugin',
   },
   permissions: [
+    {
+      key: SEVENDAYS_PERMISSIONS.inventoryView,
+      description: 'Просмотр последнего снимка инвентаря онлайн-игрока (без изменений)',
+      defaultRoles: ['ADMIN'],
+    },
     {
       key: SEVENDAYS_PERMISSIONS.mapView,
       description: 'Карта мира, координаты игроков и приватов (только просмотр)',

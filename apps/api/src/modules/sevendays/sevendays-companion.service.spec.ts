@@ -54,6 +54,29 @@ describe('SevenDaysCompanionService transport', () => {
     expect(await service.ping('id')).toBeNull();
     expect(seen).not.toHaveBeenCalled();
   });
+  it('reads inventory through authenticated GET without a save command', async () => {
+    const paths: string[] = [];
+    server.on('request', (req, res) => {
+      expect(req.method).toBe('GET');
+      expect(req.headers.authorization).toBe('Bearer secret-token');
+      paths.push(req.url!);
+      res.end(
+        JSON.stringify(
+          req.url === '/ping'
+            ? {
+                ok: true,
+                mod: 'aurum-companion',
+                version: '1.0.7',
+                contract: '1',
+                capabilities: ['inventory-read'],
+              }
+            : { available: true, source: 'client_snapshot', items: [], truncated: false },
+        ),
+      );
+    });
+    expect((await service.inventory('id', 'EOS_abc')).available).toBe(true);
+    expect(paths).toEqual(['/ping', '/players/EOS_abc/inventory']);
+  });
   it('does not mark an unrelated JSON service seen', async () => {
     server.on('request', (_req, res) => res.end('{"version":"1","contract":"1"}'));
     expect(await service.ping('id')).toBeNull();

@@ -1,4 +1,14 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import {
+  parseInventory,
+  unavailableInventory,
+  validateInventoryPlayerId,
+} from './sevendays-inventory';
 import { request } from 'undici';
 import { SEVENDAYS_COMPANION_CAPABILITIES, type SevenDaysCompanionCapability } from '@aurum/shared';
 import { SevenDaysConfigService } from './sevendays-config.service';
@@ -24,6 +34,30 @@ export class SevenDaysCompanionService {
   private static readonly MAX_RESPONSE_BYTES = 1024 * 1024;
 
   constructor(private readonly config: SevenDaysConfigService) {}
+
+  private inventoryReads = 0;
+  async inventory(serverId: string, playerId: string) {
+    validateInventoryPlayerId(playerId);
+    if (this.inventoryReads >= 4) throw new ServiceUnavailableException('inventory_busy');
+    this.inventoryReads++;
+    try {
+      const ping = await this.ping(serverId);
+      if (!ping) return unavailableInventory('mod_unavailable');
+      if (!ping.compatible || !ping.capabilities?.includes('inventory-read'))
+        return unavailableInventory('mod_update');
+      return parseInventory(
+        await this.call<unknown>(
+          serverId,
+          'GET',
+          `/players/${encodeURIComponent(playerId)}/inventory`,
+          undefined,
+          false,
+        ),
+      );
+    } finally {
+      this.inventoryReads--;
+    }
+  }
 
   /**
    * Проверка связи: жив ли мод и какой у него контракт.
