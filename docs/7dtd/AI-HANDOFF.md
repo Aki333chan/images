@@ -92,6 +92,25 @@ SHA256 Assembly-CSharp.dll: `3737EEDC9F143D428A69030317428C45D342BE4F11006A46D72
   после deploy проверить обновление списка игроков и исчезновение повторяющегося ERR.
   Строки INF подключения/`lp`/закрытия останутся нормальными.
 
+### Production deploy панели — 2026-09-18
+
+- По явному запросу владельца `/opt/aurum-panel` обновлён fast-forward с `2d667f7`
+  до `316acad`. Рабочая копия main была чистой. Из runtime панели менялся только API
+  Telnet; web, зависимости и Prisma schema/migrations не менялись.
+- `npm run build -w apps/api` и 27 Telnet-тестов (2 suites, detectOpenHandles)
+  прошли на VDS; `aurum-api` перезапущен в 14:32 CEST. Readiness: ready=true,
+  database=ok, redis=ok; публичная панель HTTPS 200, NRestarts=0.
+- Предыдущая сборка API и revision сохранены в
+  `/var/tmp/aurum-api-before-telnet-CWzCQg1r` (root-only). БД не мигрировали.
+- Игровой сервер, DLL/JAR, конфиги, allocations/firewall не меняли и сервер не запускали.
+  Пользователь сообщил, что 7DTD остановлен. Поэтому исчезновение Telnet ERR и работа
+  companion ещё не проверены вживую.
+- Перед деплоем пользователь показал bind failure companion с `listen-host=10.0.0.1`
+  (адрес панели). Объяснено разделение Docker bind и адреса узла; предложен `listen-host=*`
+  только при приватном allocation `10.0.0.2:8110` и ограничении доступа с панели.
+  Применение этих настроек пользователем не подтверждено. Комментарии cfg.example
+  нужно уточнить для Docker в следующем этапе; один токен не заменяет сетевую изоляцию.
+
 1. **Завершить live smoke этапа 0:** startup, /ping/state/players, ticket/report и приватный
    ответ, public/private chat, join/leave/death, broadcast, restart и занятый порт на тестовом
    сервере. Инструкция: [SMOKE-TEST](../../companion-mod/SMOKE-TEST.ru.md).
