@@ -3,6 +3,7 @@ import type { SevenDaysCompanionStatusDto, SevenDaysConfigStatusDto } from '@aur
 import { api } from '../../lib/api';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
+import { CompanionSetup } from './CompanionSetup';
 
 const base = (serverId: string) => `/api/modules/sevendays/servers/${serverId}`;
 
@@ -229,6 +230,8 @@ function CompanionCard({ serverId }: { serverId: string }) {
         вовсе: обращений игроков командой <code>/ticket</code> прямо из игры, личного ответа им
         в чат и достоверного состояния мира. Ставится только на сервер, игрокам ничего не нужно.
       </p>
+
+      <CompanionSetup serverId={serverId} />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="sm:col-span-2">

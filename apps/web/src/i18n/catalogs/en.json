@@ -1,4 +1,10 @@
 {
+  "sdtd.setup.id": "Server ID for companion",
+  "sdtd.setup.idHint": "Paste this entire line into Mods/AurumCompanion/companion.cfg. This is the Aurum Panel ID, not the short Pterodactyl ID. Restart the game server after changing the file.",
+  "sdtd.setup.networkHint": "Mod address: the private address of the GAME node, not the panel. Pterodactyl must assign port 8110 to this server on its private IP. Keep this management port inaccessible from the Internet.",
+  "sdtd.setup.statusHint": "Online confirms panel → mod connectivity. Test /ticket in game to verify the reverse connection and server ID.",
+  "sdtd.setup.copied": "Configuration line copied.",
+  "sdtd.setup.copyFailed": "Could not access the clipboard. Select and copy the line manually.",
   "mc.starter.title": "Starting balance",
   "mc.starter.hint": "One-time money for new players. Issued by AurumCore after login; existing players do not receive a backfill.",
   "mc.starter.open": "Configure",

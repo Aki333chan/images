@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Threading;
+using Aurum.Companion.Core.Http;
 
 namespace Aurum.Companion.Core.Panel
 {
@@ -27,17 +29,27 @@ namespace Aurum.Companion.Core.Panel
     public sealed class HttpClientTransport : IHttpTransport
     {
         private readonly int _timeoutMs;
+        private readonly int _maxResponseBytes;
 
-        public HttpClientTransport(int timeoutMs = 8000)
+        public HttpClientTransport(int timeoutMs = 8000, int maxResponseBytes = 65536)
         {
+            if (timeoutMs < 1 || timeoutMs > 60000) throw new ArgumentOutOfRangeException(nameof(timeoutMs));
+            if (maxResponseBytes < 1 || maxResponseBytes > 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(maxResponseBytes));
             _timeoutMs = timeoutMs;
+            _maxResponseBytes = maxResponseBytes;
         }
 
         public PanelResponse Post(string url, string jsonBody, string token)
         {
+            HttpWebRequest? request = null;
+            Timer? deadline = null;
             try
             {
-                var request = (HttpWebRequest)WebRequest.Create(url);
+                request = (HttpWebRequest)WebRequest.Create(url);
+                var pending = request;
+                // Absolute deadline also covers a slow trickle of response bytes.
+                deadline = new Timer(_ => { try { pending.Abort(); } catch (Exception) { } },
+                    null, _timeoutMs, Timeout.Infinite);
                 request.Method = "POST";
                 request.ContentType = "application/json; charset=utf-8";
                 request.Headers["Authorization"] = "Bearer " + token;
@@ -70,7 +82,9 @@ namespace Aurum.Companion.Core.Panel
                 {
                     using (response)
                     {
-                        return new PanelResponse((int)response.StatusCode, ReadBody(response));
+                        // Preserve 4xx status even if the error body is oversized or stalls.
+                        try { return new PanelResponse((int)response.StatusCode, ReadBody(response)); }
+                        catch (Exception) { return new PanelResponse((int)response.StatusCode, ""); }
                     }
                 }
                 return new PanelResponse(0, e.Status.ToString());
@@ -81,17 +95,20 @@ namespace Aurum.Companion.Core.Panel
                 // поэтому наружу отдаём только тип.
                 return new PanelResponse(0, e.GetType().Name);
             }
+            finally
+            {
+                deadline?.Dispose();
+                try { request?.Abort(); } catch (Exception) { }
+            }
         }
 
-        private static string ReadBody(HttpWebResponse response)
+        private string ReadBody(HttpWebResponse response)
         {
+            if (response.ContentLength > _maxResponseBytes) throw new BodyTooLargeException();
             using (Stream? stream = response.GetResponseStream())
             {
                 if (stream == null) return "";
-                using (var reader = new StreamReader(stream, Encoding.UTF8))
-                {
-                    return reader.ReadToEnd();
-                }
+                return BoundedBody.Read(stream, _maxResponseBytes);
             }
         }
     }

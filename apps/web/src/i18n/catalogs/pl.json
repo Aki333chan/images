@@ -1,4 +1,10 @@
 {
+  "sdtd.setup.id": "ID serwera dla companion",
+  "sdtd.setup.idHint": "Wklej cały wiersz do Mods/AurumCompanion/companion.cfg. To ID Aurum Panel, a nie krótki ID Pterodactyl. Po zmianie pliku uruchom ponownie serwer gry.",
+  "sdtd.setup.networkHint": "Adres moda to prywatny adres węzła GRY, nie panelu. W Pterodactyl przypisz temu serwerowi port 8110 na prywatnym IP. Port zarządzania nie może być dostępny z Internetu.",
+  "sdtd.setup.statusHint": "Status online potwierdza połączenie panel → mod. Przetestuj /ticket w grze, aby sprawdzić połączenie zwrotne i ID serwera.",
+  "sdtd.setup.copied": "Skopiowano wiersz konfiguracji.",
+  "sdtd.setup.copyFailed": "Brak dostępu do schowka. Zaznacz i skopiuj wiersz ręcznie.",
   "mc.starter.title": "Saldo startowe",
   "mc.starter.hint": "Jednorazowa wypłata dla nowych graczy. Core wypłaca środki po zalogowaniu; obecni gracze nie otrzymają premii wstecz.",
   "mc.starter.open": "Konfiguruj",

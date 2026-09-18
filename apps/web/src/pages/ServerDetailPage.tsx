@@ -204,7 +204,7 @@ export function ServerDetailPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-1">
           <h1 className="truncate text-xl font-bold">{server.name}</h1>
-          <p className="truncate text-xs text-muted">{server.pteroIdentifier}</p>
+          <p className="truncate text-xs text-muted">ID Pterodactyl: {server.pteroIdentifier}</p>
           {/* Адрес — крупно и отдельной строкой: это то, что спрашивают
               игроки, и то, что чаще всего приходится диктовать вслух. */}
           <ServerAddress address={server.address} />

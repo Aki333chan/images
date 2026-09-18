@@ -34,9 +34,11 @@ namespace Aurum.Companion.Core.Http
             _modVersion = modVersion;
         }
 
+        public bool IsAuthorized(string? header) => TokenAuth.Equals(_token, TokenAuth.Extract(header));
+
         public HttpResponseData Handle(HttpRequestData request, string? authorizationHeader)
         {
-            if (!TokenAuth.Equals(_token, TokenAuth.Extract(authorizationHeader)))
+            if (!IsAuthorized(authorizationHeader))
             {
                 // Ни намёка на то, чем именно не подошёл токен.
                 return HttpResponseData.Error(401, "Неверный токен");

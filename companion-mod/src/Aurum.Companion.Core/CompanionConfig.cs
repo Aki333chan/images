@@ -33,6 +33,10 @@ namespace Aurum.Companion.Core
         public string ListenHost { get; private set; } = "127.0.0.1";
 
         public int ListenPort { get; private set; } = 8110;
+        public int HttpMaxRequests { get; private set; } = 4;
+        public int HttpMaxBodyBytes { get; private set; } = 65536;
+        public int HttpIoTimeoutMs { get; private set; } = 3000;
+        public int TicketMaxPending { get; private set; } = 4;
 
         /// <summary>Сколько секунд игрок ждёт между своими обращениями.</summary>
         public int TicketCooldownSeconds { get; private set; } = 60;
@@ -66,6 +70,10 @@ namespace Aurum.Companion.Core
             config.Token = Get(values, "token", "");
             config.ListenHost = Get(values, "listen-host", "127.0.0.1");
             config.ListenPort = GetInt(values, "listen-port", 8110, 1, 65535);
+            config.HttpMaxRequests = GetInt(values, "http-max-requests", 4, 1, 16);
+            config.HttpMaxBodyBytes = GetInt(values, "http-max-body-bytes", 65536, 1024, 1048576);
+            config.HttpIoTimeoutMs = GetInt(values, "http-io-timeout-ms", 3000, 250, 30000);
+            config.TicketMaxPending = GetInt(values, "ticket-max-pending", 4, 1, 16);
             config.TicketCooldownSeconds = GetInt(values, "ticket-cooldown-seconds", 60, 0, 86400);
             config.ForwardChat = GetBool(values, "forward-chat", true);
             config.ForwardDeaths = GetBool(values, "forward-deaths", true);

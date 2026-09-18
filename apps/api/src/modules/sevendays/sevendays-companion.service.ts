@@ -20,6 +20,7 @@ export class SevenDaysCompanionService {
 
   /** Мод отвечает мгновенно — он в той же сети и ничего не считает. */
   private static readonly TIMEOUT_MS = 4000;
+  private static readonly MAX_RESPONSE_BYTES = 1024 * 1024;
 
   constructor(private readonly config: SevenDaysConfigService) {}
 
@@ -31,7 +32,11 @@ export class SevenDaysCompanionService {
    */
   async ping(serverId: string): Promise<{ version: string; contract: string } | null> {
     try {
-      const body = await this.call<{ version?: string; contract?: string }>(serverId, 'GET', '/ping');
+      const body = await this.call<{ version?: string; contract?: string }>(
+        serverId,
+        'GET',
+        '/ping',
+      );
       return { version: body.version ?? '?', contract: body.contract ?? '?' };
     } catch (e) {
       this.logger.debug(`Companion не ответил: ${(e as Error).message}`);
@@ -83,9 +88,12 @@ export class SevenDaysCompanionService {
     const creds = await this.config.readCompanion(serverId);
     const url = `http://${creds.host}:${creds.port}${path}`;
 
-    let response;
+    let text: string;
+    let statusCode: number;
+    const abort = new AbortController();
+    const deadline = setTimeout(() => abort.abort(), SevenDaysCompanionService.TIMEOUT_MS);
     try {
-      response = await request(url, {
+      const response = await request(url, {
         method,
         headers: {
           authorization: `Bearer ${creds.token}`,
@@ -94,22 +102,47 @@ export class SevenDaysCompanionService {
         body: payload === undefined ? undefined : JSON.stringify(payload),
         headersTimeout: SevenDaysCompanionService.TIMEOUT_MS,
         bodyTimeout: SevenDaysCompanionService.TIMEOUT_MS,
+        signal: abort.signal,
+        maxRedirections: 0,
       });
+      statusCode = response.statusCode;
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      try {
+        for await (const chunk of response.body) {
+          const data = Buffer.from(chunk);
+          bytes += data.length;
+          if (bytes > SevenDaysCompanionService.MAX_RESPONSE_BYTES) {
+            throw new Error('response_limit');
+          }
+          chunks.push(data);
+        }
+        text = Buffer.concat(chunks, bytes).toString('utf8');
+      } finally {
+        response.body.destroy();
+      }
     } catch {
       // В тексте ошибки undici бывает адрес — а он приватный и секретный,
       // поэтому саму ошибку наружу не пускаем и не связываем с ответом.
       throw new BadRequestException('Companion-мод не отвечает');
+    } finally {
+      clearTimeout(deadline);
     }
 
-    const text = await response.body.text();
-    if (response.statusCode >= 400) {
+    if (statusCode < 200 || statusCode >= 300) {
       // Причину мода показываем как есть: она написана для человека.
-      const reason = safeMessage(text) ?? `код ${response.statusCode}`;
+      const reason = safeMessage(text) ?? `код ${statusCode}`;
       throw new BadRequestException(`Companion-мод отказал: ${reason}`);
     }
 
+    let parsed: T;
+    try {
+      parsed = (text ? JSON.parse(text) : {}) as T;
+    } catch {
+      throw new BadRequestException('Некорректный ответ companion-мода');
+    }
     await this.config.markCompanionSeen(serverId);
-    return (text ? JSON.parse(text) : {}) as T;
+    return parsed;
   }
 }
 

@@ -24,7 +24,7 @@ namespace Aurum.Companion.Game
     /// </remarks>
     public sealed class AurumCompanionMod : IModApi
     {
-        private const string Version = "1.0.1-rc.1";
+        private const string Version = "1.0.2-rc.1";
         private const string ConfigFileName = "companion.cfg";
 
         private static CompanionConfig? _config;
@@ -64,7 +64,7 @@ namespace Aurum.Companion.Game
                 _cooldown = new TicketCooldown(_config.TicketCooldownSeconds);
 
                 var panel = new PanelClient(_config, new HttpClientTransport());
-                _tickets = new TicketService(panel, _game, _cooldown);
+                _tickets = new TicketService(panel, _game, _cooldown, maxPending: _config.TicketMaxPending);
                 _sender = new EventSender(_queue, panel, _game);
                 _sender.Start();
 
@@ -72,7 +72,10 @@ namespace Aurum.Companion.Game
                     new CompanionRouter(_game, _config.Token, Version),
                     _game,
                     _config.ListenHost,
-                    _config.ListenPort);
+                    _config.ListenPort,
+                    _config.HttpMaxRequests,
+                    _config.HttpMaxBodyBytes,
+                    _config.HttpIoTimeoutMs);
                 _http.Start();
 
                 RegisterHandlers();
