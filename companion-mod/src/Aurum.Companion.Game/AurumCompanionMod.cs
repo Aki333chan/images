@@ -24,7 +24,7 @@ namespace Aurum.Companion.Game
     /// </remarks>
     public sealed class AurumCompanionMod : IModApi
     {
-        private const string Version = "1.0.2-rc.1";
+        private const string Version = "1.0.3-rc.1";
         private const string ConfigFileName = "companion.cfg";
 
         private static CompanionConfig? _config;
@@ -41,8 +41,8 @@ namespace Aurum.Companion.Game
         {
             try
             {
-                _game = new SdtdGameBridge();
                 _config = LoadConfig(modInstance);
+                _game = new SdtdGameBridge(_config.Language);
 
                 var problems = _config.Problems();
                 if (problems.Count > 0)
@@ -69,7 +69,7 @@ namespace Aurum.Companion.Game
                 _sender.Start();
 
                 _http = new CompanionHttpServer(
-                    new CompanionRouter(_game, _config.Token, Version),
+                    new CompanionRouter(_game, _config.Token, Version, _config),
                     _game,
                     _config.ListenHost,
                     _config.ListenPort,

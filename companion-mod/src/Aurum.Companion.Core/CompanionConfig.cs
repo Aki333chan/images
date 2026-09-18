@@ -33,6 +33,7 @@ namespace Aurum.Companion.Core
         public string ListenHost { get; private set; } = "127.0.0.1";
 
         public int ListenPort { get; private set; } = 8110;
+        public string Language { get; private set; } = "en";
         public int HttpMaxRequests { get; private set; } = 4;
         public int HttpMaxBodyBytes { get; private set; } = 65536;
         public int HttpIoTimeoutMs { get; private set; } = 3000;
@@ -70,6 +71,7 @@ namespace Aurum.Companion.Core
             config.Token = Get(values, "token", "");
             config.ListenHost = Get(values, "listen-host", "127.0.0.1");
             config.ListenPort = GetInt(values, "listen-port", 8110, 1, 65535);
+            config.Language = Messages.Normalize(Get(values, "language", "en"));
             config.HttpMaxRequests = GetInt(values, "http-max-requests", 4, 1, 16);
             config.HttpMaxBodyBytes = GetInt(values, "http-max-body-bytes", 65536, 1024, 1048576);
             config.HttpIoTimeoutMs = GetInt(values, "http-io-timeout-ms", 3000, 250, 30000);

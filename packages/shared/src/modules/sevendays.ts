@@ -91,7 +91,14 @@ export interface SevenDaysWhitelistEntryDto {
  *
  * «Навсегда» в игре нет — бессрочный бан выражается большим сроком.
  */
-export const SEVENDAYS_BAN_UNITS = ['minutes', 'hours', 'days', 'weeks', 'months', 'years'] as const;
+export const SEVENDAYS_BAN_UNITS = [
+  'minutes',
+  'hours',
+  'days',
+  'weeks',
+  'months',
+  'years',
+] as const;
 export type SevenDaysBanUnit = (typeof SEVENDAYS_BAN_UNITS)[number];
 
 /**
@@ -161,12 +168,30 @@ export const SEVENDAYS_EVENT_KINDS = ['chat', 'join', 'leave', 'death', 'player-
 export type SevenDaysEventKind = (typeof SEVENDAYS_EVENT_KINDS)[number];
 
 /** Статус companion-мода. Ни адрес, ни токен наружу не уезжают. */
+export const SEVENDAYS_COMPANION_CAPABILITIES = [
+  'world-state',
+  'online-players',
+  'private-messages',
+  'broadcast',
+  'tickets',
+  'reports',
+  'localization',
+  'chat-events',
+  'death-events',
+] as const;
+export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
+
 export interface SevenDaysCompanionStatusDto {
   configured: boolean;
   /** Ответил ли мод только что. */
   online: boolean;
   version: string | null;
   lastSeenAt: string | null;
+  contract?: string | null;
+  compatible?: boolean | null;
+  /** null = old mod without capability declaration; [] = explicitly none supported. */
+  capabilities?: SevenDaysCompanionCapability[] | null;
+  language?: 'en' | 'ru' | 'pl' | null;
 }
 
 /** Флаги настройки подключения. Ни адрес, ни пароль наружу не уезжают. */

@@ -50,6 +50,7 @@ namespace Aurum.Companion.Core.Tickets
         private readonly object _gate = new object();
         private readonly HashSet<string> _pending = new HashSet<string>(StringComparer.Ordinal);
         private readonly int _maxPending;
+        private readonly Messages _messages;
 
         public TicketService(
             PanelClient panel,
@@ -61,6 +62,7 @@ namespace Aurum.Companion.Core.Tickets
         {
             if (maxPending < 1 || maxPending > 16) throw new ArgumentOutOfRangeException(nameof(maxPending));
             _panel = panel;
+            _messages = panel.Messages;
             _game = game;
             _cooldown = cooldown;
             _dispatcher = dispatcher ?? new ThreadPoolDispatcher();
@@ -83,7 +85,7 @@ namespace Aurum.Companion.Core.Tickets
                     return false;
 
                 case ChatCommandKind.Help:
-                    Tell(player, "Команды: /ticket <что случилось> — написать администрации, /report <ник> <причина> — пожаловаться на игрока.");
+                    Tell(player, _messages.Get(MessageKey.Help));
                     return true;
 
                 case ChatCommandKind.Ticket:
@@ -96,7 +98,7 @@ namespace Aurum.Companion.Core.Tickets
 
             if (!command.IsValid)
             {
-                Tell(player, command.Problem);
+                Tell(player, command.DescribeProblem(_messages));
                 return true;
             }
 
@@ -104,9 +106,9 @@ namespace Aurum.Companion.Core.Tickets
             lock (_gate)
             {
                 int wait = _cooldown.RemainingSeconds(player.PlayerId, _clock());
-                if (_pending.Contains(player.PlayerId)) rejection = "Предыдущее обращение ещё отправляется. Дождитесь ответа.";
-                else if (wait > 0) rejection = "Слишком часто. Следующее обращение через " + wait + " с.";
-                else if (_pending.Count >= _maxPending) rejection = "Отправка обращений занята. Попробуйте позже.";
+                if (_pending.Contains(player.PlayerId)) rejection = _messages.Get(MessageKey.Pending);
+                else if (wait > 0) rejection = _messages.Get(MessageKey.Cooldown, wait);
+                else if (_pending.Count >= _maxPending) rejection = _messages.Get(MessageKey.Busy);
                 else _pending.Add(player.PlayerId);
             }
             if (rejection != null)
@@ -128,7 +130,7 @@ namespace Aurum.Companion.Core.Tickets
             catch (Exception)
             {
                 lock (_gate) _pending.Remove(snapshot.PlayerId);
-                Tell(player, "Не удалось отправить обращение. Попробуйте позже.");
+                Tell(player, _messages.Get(MessageKey.Failed));
             }
             return true;
         }
@@ -146,21 +148,19 @@ namespace Aurum.Companion.Core.Tickets
                     // Отметку о времени НЕ ставим: обращение не дошло, и
                     // заставлять человека ждать минуту из-за нашей неудачи
                     // было бы несправедливо.
-                    Tell(player, "Не удалось отправить: " + result.Error + ". Попробуйте ещё раз.");
+                    Tell(player, _messages.Get(MessageKey.Rejected, result.Error ?? ""));
                     return;
                 }
 
                 _cooldown.Mark(player.PlayerId, _clock());
-                Tell(player, command.Kind == ChatCommandKind.Report
-                    ? "Жалоба отправлена администрации."
-                    : result.Created
-                        ? "Обращение отправлено. Ответ придёт сюда же, в чат."
-                        : "Дописано к вашему открытому обращению.");
+                Tell(player, _messages.Get(command.Kind == ChatCommandKind.Report
+                    ? MessageKey.ReportSent
+                    : result.Created ? MessageKey.TicketSent : MessageKey.TicketAppended));
             }
             catch (Exception e)
             {
                 _game.LogError("Обращение игрока не отправлено", e);
-                Tell(player, "Не удалось отправить обращение. Попробуйте позже.");
+                Tell(player, _messages.Get(MessageKey.Failed));
             }
         }
 

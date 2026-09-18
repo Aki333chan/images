@@ -28,9 +28,11 @@ namespace Aurum.Companion.Core.Tickets
         public string Accused { get; private set; } = "";
 
         /// <summary>Почему команда не принята. Пусто — принята.</summary>
-        public string Problem { get; private set; } = "";
+        public MessageKey ProblemKey { get; private set; } = MessageKey.None;
+        public string Problem => DescribeProblem(new Messages("en"));
+        public string DescribeProblem(Messages messages) => messages.Get(ProblemKey, MaxTextLength);
 
-        public bool IsValid => Kind != ChatCommandKind.None && Problem.Length == 0;
+        public bool IsValid => Kind != ChatCommandKind.None && ProblemKey == MessageKey.None;
 
         /// <summary>Максимум, который примет панель, — длиннее обрежется на её стороне.</summary>
         public const int MaxTextLength = 500;
@@ -85,11 +87,11 @@ namespace Aurum.Companion.Core.Tickets
             var command = new ChatCommand(ChatCommandKind.Ticket) { Text = Squash(rest) };
             if (command.Text.Length < MinTextLength)
             {
-                command.Problem = "Напишите, что случилось: /ticket пропали вещи после смерти";
+                command.ProblemKey = MessageKey.TicketUsage;
             }
             else if (command.Text.Length > MaxTextLength)
             {
-                command.Problem = "Слишком длинно — уложитесь в " + MaxTextLength + " символов";
+                command.ProblemKey = MessageKey.TooLong;
             }
             return command;
         }
@@ -100,7 +102,7 @@ namespace Aurum.Companion.Core.Tickets
             int space = rest.IndexOf(' ');
             if (space < 0)
             {
-                command.Problem = "Нужен ник и причина: /report Ник ломает чужую базу";
+                command.ProblemKey = MessageKey.ReportUsage;
                 return command;
             }
 
@@ -109,15 +111,15 @@ namespace Aurum.Companion.Core.Tickets
 
             if (command.Accused.Length == 0)
             {
-                command.Problem = "Не указан ник";
+                command.ProblemKey = MessageKey.MissingName;
             }
             else if (command.Text.Length < MinTextLength)
             {
-                command.Problem = "Напишите причину: /report Ник ломает чужую базу";
+                command.ProblemKey = MessageKey.ReportUsage;
             }
             else if (command.Text.Length > MaxTextLength)
             {
-                command.Problem = "Слишком длинно — уложитесь в " + MaxTextLength + " символов";
+                command.ProblemKey = MessageKey.TooLong;
             }
             return command;
         }

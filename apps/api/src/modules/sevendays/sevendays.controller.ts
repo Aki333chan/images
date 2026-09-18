@@ -209,9 +209,7 @@ export class SevenDaysController {
   @Get('companion')
   @RequirePermission(SEVENDAYS_PERMISSIONS.configure)
   @ServerScoped('serverId')
-  async companionStatus(
-    @Param('serverId') serverId: string,
-  ): Promise<SevenDaysCompanionStatusDto> {
+  async companionStatus(@Param('serverId') serverId: string): Promise<SevenDaysCompanionStatusDto> {
     const creds = await this.config.read(serverId);
     if (!creds.companion) {
       return { configured: false, online: false, version: null, lastSeenAt: null };
@@ -221,7 +219,11 @@ export class SevenDaysController {
       configured: true,
       online: ping !== null,
       version: ping?.version ?? null,
-      lastSeenAt: creds.companion.lastSeenAt ?? null,
+      lastSeenAt: ping ? new Date().toISOString() : (creds.companion.lastSeenAt ?? null),
+      contract: ping?.contract ?? null,
+      compatible: ping?.compatible ?? null,
+      capabilities: ping?.capabilities ?? null,
+      language: ping?.language ?? null,
     };
   }
 
@@ -239,7 +241,12 @@ export class SevenDaysController {
     return {
       ok: true,
       configured: true,
-      probe: ping ? `мод ответил, версия ${ping.version}` : 'мод не отвечает — проверьте адрес и токен',
+      online: ping !== null,
+      compatible: ping?.compatible ?? null,
+      version: ping?.version ?? null,
+      probe: ping
+        ? `мод ответил, версия ${ping.version}`
+        : 'мод не отвечает — проверьте адрес и токен',
     };
   }
 
@@ -256,6 +263,7 @@ export class SevenDaysController {
     return {
       ok: true,
       configured: true,
+      online: state.available,
       probe: state.available
         ? `сервер ответил${state.day ? `, идёт день ${state.day}` : ''}`
         : state.reason,

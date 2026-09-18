@@ -29,6 +29,11 @@ token = замените-на-длинный-случайный-токен
 listen-host = 127.0.0.1
 listen-port = 8110
 
+# Game chat messages: en (default), ru, pl. Unknown/missing values use English.
+# Язык сообщений игрокам: en, ru или pl. После изменения перезапустите сервер.
+# Język wiadomości w grze: en, ru lub pl. Zmiana wymaga restartu serwera.
+language = en
+
 # Безопасные пределы. Обычно менять не нужно. Старый cfg работает без новых строк.
 # Не более 4 HTTP-обработчиков; тело <=64 KiB; чтение/запись не дольше 3 секунд.
 http-max-requests = 4

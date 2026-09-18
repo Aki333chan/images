@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { request } from 'undici';
+import { SEVENDAYS_COMPANION_CAPABILITIES, type SevenDaysCompanionCapability } from '@aurum/shared';
 import { SevenDaysConfigService } from './sevendays-config.service';
 
 /**
@@ -30,14 +31,13 @@ export class SevenDaysCompanionService {
    * Возвращает null вместо исключения, потому что «мода нет» — это обычное
    * состояние, а не ошибка: модуль рассчитан на голый сервер.
    */
-  async ping(serverId: string): Promise<{ version: string; contract: string } | null> {
+  async ping(serverId: string): Promise<CompanionHandshake | null> {
     try {
-      const body = await this.call<{ version?: string; contract?: string }>(
-        serverId,
-        'GET',
-        '/ping',
-      );
-      return { version: body.version ?? '?', contract: body.contract ?? '?' };
+      const body = await this.call<unknown>(serverId, 'GET', '/ping', undefined, false);
+      const handshake = parseHandshake(body);
+      if (!handshake) return null;
+      await this.config.markCompanionSeen(serverId);
+      return handshake;
     } catch (e) {
       this.logger.debug(`Companion не ответил: ${(e as Error).message}`);
       return null;
@@ -84,6 +84,7 @@ export class SevenDaysCompanionService {
     method: 'GET' | 'POST',
     path: string,
     payload?: unknown,
+    markSeen = true,
   ): Promise<T> {
     const creds = await this.config.readCompanion(serverId);
     const url = `http://${creds.host}:${creds.port}${path}`;
@@ -141,9 +142,58 @@ export class SevenDaysCompanionService {
     } catch {
       throw new BadRequestException('Некорректный ответ companion-мода');
     }
-    await this.config.markCompanionSeen(serverId);
+    if (markSeen) await this.config.markCompanionSeen(serverId);
     return parsed;
   }
+}
+
+export interface CompanionHandshake {
+  version: string;
+  contract: string;
+  compatible: boolean;
+  capabilities: SevenDaysCompanionCapability[] | null;
+  language: 'en' | 'ru' | 'pl' | null;
+}
+
+/** Validate identity before showing an arbitrary HTTP service as our companion. */
+export function parseHandshake(value: unknown): CompanionHandshake | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const body = value as Record<string, unknown>;
+  if (
+    body.ok !== true ||
+    body.mod !== 'aurum-companion' ||
+    typeof body.version !== 'string' ||
+    !body.version ||
+    body.version.length > 64 ||
+    typeof body.contract !== 'string' ||
+    !body.contract ||
+    body.contract.length > 32
+  )
+    return null;
+  if (
+    body.capabilities !== undefined &&
+    (!Array.isArray(body.capabilities) ||
+      body.capabilities.length > 64 ||
+      body.capabilities.some((c) => typeof c !== 'string' || c.length > 64))
+  )
+    return null;
+  const compatible = body.contract === '1';
+  return {
+    version: body.version,
+    contract: body.contract,
+    compatible,
+    capabilities: !compatible
+      ? []
+      : body.capabilities === undefined
+        ? null
+        : SEVENDAYS_COMPANION_CAPABILITIES.filter((c) =>
+            (body.capabilities as string[]).includes(c),
+          ),
+    language:
+      body.language === 'en' || body.language === 'ru' || body.language === 'pl'
+        ? body.language
+        : null,
+  };
 }
 
 /** Состояние мира, как его отдаёт мод. */

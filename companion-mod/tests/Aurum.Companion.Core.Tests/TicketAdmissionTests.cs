@@ -34,8 +34,8 @@ public sealed class TicketAdmissionTests
         service.Handle(c, ChatCommand.Parse("/ticket test"));
         Assert.Equal(2, queue.Items.Count);
         Assert.Empty(transport.Calls);
-        Assert.Contains("ещё отправляется", game.LastMessageTo(a.PlayerId));
-        Assert.Contains("занята", game.LastMessageTo(c.PlayerId));
+        Assert.Contains("still being sent", game.LastMessageTo(a.PlayerId));
+        Assert.Contains("busy", game.LastMessageTo(c.PlayerId));
         transport.Respond(503);
         queue.Items[0](); // Failure releases both per-player and global slot.
         service.Handle(a, ChatCommand.Parse("/report Bob test"));

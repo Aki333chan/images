@@ -26,12 +26,21 @@ namespace Aurum.Companion.Core.Http
         private readonly IGameBridge _game;
         private readonly string _token;
         private readonly string _modVersion;
+        private readonly string _capabilitiesJson;
+        private readonly string _language;
 
-        public CompanionRouter(IGameBridge game, string token, string modVersion)
+        public CompanionRouter(IGameBridge game, string token, string modVersion, CompanionConfig? config = null)
         {
             _game = game;
             _token = token;
             _modVersion = modVersion;
+            _language = config?.Language ?? "en";
+            var capabilities = new List<string> {
+                "world-state", "online-players", "private-messages", "broadcast", "tickets", "reports", "localization"
+            };
+            if (config?.ForwardChat ?? true) capabilities.Add("chat-events");
+            if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
+            _capabilitiesJson = JsonWriter.Array(capabilities.ConvertAll(JsonWriter.String));
         }
 
         public bool IsAuthorized(string? header) => TokenAuth.Equals(_token, TokenAuth.Extract(header));
@@ -80,6 +89,8 @@ namespace Aurum.Companion.Core.Http
                     Field("mod", JsonWriter.String("aurum-companion")),
                     Field("version", JsonWriter.String(_modVersion)),
                     Field("contract", JsonWriter.String(ContractVersion)),
+                    Field("capabilities", _capabilitiesJson),
+                    Field("language", JsonWriter.String(_language)),
                 }));
             }
 

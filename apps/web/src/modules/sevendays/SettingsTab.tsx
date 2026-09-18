@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import type { ModuleTabProps } from '../registry';
 import { CompanionSetup } from './CompanionSetup';
+import { useI18n } from '../../i18n';
 
 const base = (serverId: string) => `/api/modules/sevendays/servers/${serverId}`;
 
@@ -17,6 +18,7 @@ const DEFAULT_PORT = '8081';
  * приходят — ровно как с RCON-паролем в модуле Minecraft.
  */
 export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
+  const { t, formatDateTime } = useI18n();
   const [status, setStatus] = useState<SevenDaysConfigStatusDto | null>(null);
   const [host, setHost] = useState('');
   const [port, setPort] = useState(DEFAULT_PORT);
@@ -38,7 +40,7 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
     setError('');
     setProbe('');
     try {
-      const res = await api<{ ok: boolean; configured: boolean; probe?: string }>(
+      const res = await api<{ ok: boolean; configured: boolean; online?: boolean }>(
         `${base(serverId)}/config`,
         {
           method: 'PUT',
@@ -54,7 +56,15 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
         setHost('');
         setPort(DEFAULT_PORT);
       }
-      setProbe(res.probe ?? (disable ? 'Подключение отключено' : 'Сохранено'));
+      setProbe(
+        t(
+          disable
+            ? 'sdtd.connection.disabled'
+            : res.online === true
+              ? 'sdtd.connection.connected'
+              : 'sdtd.connection.savedOffline',
+        ),
+      );
       load();
     } catch (e) {
       setError((e as Error).message);
@@ -63,7 +73,7 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
     }
   }
 
-  if (!status) return <Spinner />;
+  if (!status) return error ? <ErrorText>{error}</ErrorText> : <Spinner />;
 
   const canSave = host.trim().length > 0 && password.length > 0 && !busy;
 
@@ -71,35 +81,31 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
     <div className="space-y-4">
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">Консоль 7 Days to Die</h2>
+          <h2 className="font-semibold">{t('sdtd.connection.console')}</h2>
           <Badge variant={status.telnetConfigured ? 'success' : 'outline'}>
-            {status.telnetConfigured ? 'настроено' : 'не настроено'}
+            {t(
+              status.telnetConfigured
+                ? 'sdtd.connection.configured'
+                : 'sdtd.connection.notConfigured',
+            )}
           </Badge>
         </div>
 
-        <p className="text-xs text-muted">
-          7 Days to Die не поддерживает RCON — удалённое администрирование здесь идёт по
-          встроенной telnet-консоли. «RCON» в документации хостеров этой игры означает то же
-          самое подключение, названное привычным словом.
-        </p>
+        <p className="text-xs text-muted">{t('sdtd.connection.consoleHint')}</p>
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="sm:col-span-2">
-            <Label>Адрес консоли</Label>
-            <Input
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              placeholder="10.0.0.2"
-            />
+            <Label>{t('sdtd.connection.consoleHost')}</Label>
+            <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="10.0.0.2" />
           </div>
           <div>
-            <Label>Порт</Label>
+            <Label>{t('sdtd.connection.port')}</Label>
             <Input value={port} onChange={(e) => setPort(e.target.value)} inputMode="numeric" />
           </div>
         </div>
 
         <div>
-          <Label>Пароль консоли</Label>
+          <Label>{t('sdtd.connection.password')}</Label>
           <Input
             type="password"
             value={password}
@@ -107,8 +113,8 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
             autoComplete="new-password"
             placeholder={
               status.telnetConfigured
-                ? 'ввести заново для замены'
-                : 'TelnetPassword из serverconfig.xml'
+                ? t('sdtd.connection.replaceSecret')
+                : t('sdtd.connection.passwordHint')
             }
           />
         </div>
@@ -117,17 +123,17 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
         {probe && <p className="break-words text-xs text-emerald-400">{probe}</p>}
         {status.lastSeenAt && (
           <p className="text-xs text-muted">
-            Последний ответ сервера: {new Date(status.lastSeenAt).toLocaleString('ru-RU')}
+            {t('sdtd.connection.lastSeen', { date: formatDateTime(status.lastSeenAt) })}
           </p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void save()} disabled={!canSave}>
-            {busy ? 'Сохраняем…' : 'Сохранить и проверить'}
+            {t(busy ? 'sdtd.connection.saving' : 'sdtd.connection.save')}
           </Button>
           {status.telnetConfigured && (
             <Button variant="outline" onClick={() => void save(true)} disabled={busy}>
-              Отключить
+              {t('sdtd.connection.disable')}
             </Button>
           )}
         </div>
@@ -136,21 +142,12 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
       <CompanionCard serverId={serverId} />
 
       <Card className="space-y-2 text-xs text-muted">
-        <h3 className="text-sm font-semibold text-neutral-100">Что включить на игровом сервере</h3>
-        <p>
-          В <code>serverconfig.xml</code> задайте <code>TelnetEnabled=&quot;true&quot;</code>,{' '}
-          <code>TelnetPort=&quot;8081&quot;</code> и непустой{' '}
-          <code>TelnetPassword</code>, затем перезапустите сервер.
-        </p>
-        <p>
-          Пароль обязателен: с пустым <code>TelnetPassword</code> сервер принимает подключения
-          только с самого себя, и панель с другой машины до него не достучится.
-        </p>
-        <p className="text-amber-400">
-          Порт консоли наружу выставлять нельзя: telnet — это открытый текст, пароль уходит по
-          сети как есть. Адрес указывайте приватный — через тот же туннель, что и RCON остальных
-          серверов.
-        </p>
+        <h3 className="text-sm font-semibold text-neutral-100">
+          {t('sdtd.connection.serverSetup')}
+        </h3>
+        <p>{t('sdtd.connection.serverSetupHint')}</p>
+        <p>{t('sdtd.connection.passwordRequired')}</p>
+        <p className="text-amber-400">{t('sdtd.connection.privateOnly')}</p>
       </Card>
     </div>
   );
@@ -164,6 +161,7 @@ export function SevenDaysSettingsTab({ serverId }: ModuleTabProps) {
  * из игры, личных ответов им в чат и достоверного состояния мира.
  */
 function CompanionCard({ serverId }: { serverId: string }) {
+  const { t, formatDateTime } = useI18n();
   const [status, setStatus] = useState<SevenDaysCompanionStatusDto | null>(null);
   const [host, setHost] = useState('');
   const [port, setPort] = useState('8110');
@@ -185,23 +183,35 @@ function CompanionCard({ serverId }: { serverId: string }) {
     setError('');
     setProbe('');
     try {
-      const res = await api<{ ok: boolean; configured: boolean; probe?: string }>(
-        `${base(serverId)}/companion`,
-        {
-          method: 'PUT',
-          body: JSON.stringify(
-            disable
-              ? { host: null, port: null, token: null }
-              : { host: host.trim(), port: Number(port) || 8110, token },
-          ),
-        },
-      );
+      const res = await api<{
+        ok: boolean;
+        configured: boolean;
+        online?: boolean;
+        compatible?: boolean | null;
+      }>(`${base(serverId)}/companion`, {
+        method: 'PUT',
+        body: JSON.stringify(
+          disable
+            ? { host: null, port: null, token: null }
+            : { host: host.trim(), port: Number(port) || 8110, token },
+        ),
+      });
       setToken('');
       if (disable) {
         setHost('');
         setPort('8110');
       }
-      setProbe(res.probe ?? (disable ? 'Мод отключён' : 'Сохранено'));
+      setProbe(
+        t(
+          disable
+            ? 'sdtd.connection.disabled'
+            : res.online !== true
+              ? 'sdtd.connection.savedOffline'
+              : res.compatible === false
+                ? 'sdtd.connection.incompatible'
+                : 'sdtd.connection.connected',
+        ),
+      );
       load();
     } catch (e) {
       setError((e as Error).message);
@@ -210,75 +220,100 @@ function CompanionCard({ serverId }: { serverId: string }) {
     }
   }
 
-  if (!status) return <Spinner />;
+  if (!status) return error ? <ErrorText>{error}</ErrorText> : <Spinner />;
 
   const canSave = host.trim().length > 0 && token.length >= 16 && !busy;
 
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">Companion-мод</h2>
-        <Badge
-          variant={!status.configured ? 'outline' : status.online ? 'success' : 'destructive'}
-        >
-          {!status.configured ? 'не установлен' : status.online ? 'на связи' : 'не отвечает'}
+        <h2 className="font-semibold">{t('sdtd.connection.mod')}</h2>
+        <Badge variant={!status.configured ? 'outline' : status.online ? 'success' : 'destructive'}>
+          {t(
+            !status.configured
+              ? 'sdtd.connection.notConfigured'
+              : status.online
+                ? 'sdtd.connection.online'
+                : 'sdtd.connection.offline',
+          )}
         </Badge>
       </div>
 
-      <p className="text-xs text-muted">
-        Мод не обязателен — без него работает всё, кроме того, чего у ванильного сервера нет
-        вовсе: обращений игроков командой <code>/ticket</code> прямо из игры, личного ответа им
-        в чат и достоверного состояния мира. Ставится только на сервер, игрокам ничего не нужно.
-      </p>
+      <p className="text-xs text-muted">{t('sdtd.connection.modHint')}</p>
 
       <CompanionSetup serverId={serverId} />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="sm:col-span-2">
-          <Label>Адрес мода</Label>
+          <Label>{t('sdtd.connection.modHost')}</Label>
           <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="10.0.0.2" />
         </div>
         <div>
-          <Label>Порт</Label>
+          <Label>{t('sdtd.connection.port')}</Label>
           <Input value={port} onChange={(e) => setPort(e.target.value)} inputMode="numeric" />
         </div>
       </div>
 
       <div>
-        <Label>Общий секрет</Label>
+        <Label>{t('sdtd.connection.token')}</Label>
         <Input
           type="password"
           value={token}
           onChange={(e) => setToken(e.target.value)}
           autoComplete="new-password"
-          placeholder={status.configured ? 'ввести заново для замены' : 'не короче 16 символов'}
+          placeholder={t(
+            status.configured ? 'sdtd.connection.replaceSecret' : 'sdtd.connection.tokenLength',
+          )}
         />
         {/* Тот же токен идёт в companion.cfg: им мод авторизуется в панели,
             а панель — в моде. Разные значения — самая частая причина
             «мод не отвечает». */}
-        <p className="mt-1 text-[11px] text-muted">
-          Тот же самый, что в <code>companion.cfg</code> у мода. Обе стороны должны совпадать.
-        </p>
+        <p className="mt-1 text-[11px] text-muted">{t('sdtd.connection.tokenHint')}</p>
       </div>
 
       {error && <ErrorText>{error}</ErrorText>}
       {probe && <p className="break-words text-xs text-emerald-400">{probe}</p>}
       {status.configured && (
         <p className="text-xs text-muted">
-          {status.version ? `Версия мода: ${status.version}. ` : ''}
+          {status.version ? `${t('sdtd.connection.version', { version: status.version })} ` : ''}
           {status.lastSeenAt
-            ? `Последний ответ: ${new Date(status.lastSeenAt).toLocaleString('ru-RU')}`
-            : 'Мод ещё ни разу не отвечал.'}
+            ? t('sdtd.connection.lastSeen', { date: formatDateTime(status.lastSeenAt) })
+            : t('sdtd.connection.neverSeen')}
         </p>
+      )}
+
+      {status.online && (
+        <div className="space-y-2 text-xs text-muted">
+          {status.compatible === false ? (
+            <p className="text-amber-400">{t('sdtd.connection.incompatible')}</p>
+          ) : status.capabilities == null ? (
+            <p>{t('sdtd.connection.legacy')}</p>
+          ) : (
+            <>
+              <p>{t('sdtd.connection.capabilities')}</p>
+              <div className="flex flex-wrap gap-2">
+                {status.capabilities.map((capability) => (
+                  <Badge key={capability} variant="outline">
+                    {t(`sdtd.capability.${capability}`)}
+                  </Badge>
+                ))}
+                {status.capabilities.length === 0 && (
+                  <span>{t('sdtd.connection.noCapabilities')}</span>
+                )}
+              </div>
+            </>
+          )}
+          <p>{t('sdtd.connection.languageHint', { language: status.language ?? '—' })}</p>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => void save()} disabled={!canSave}>
-          {busy ? 'Сохраняем…' : 'Сохранить и проверить'}
+          {t(busy ? 'sdtd.connection.saving' : 'sdtd.connection.save')}
         </Button>
         {status.configured && (
           <Button variant="outline" onClick={() => void save(true)} disabled={busy}>
-            Отключить
+            {t('sdtd.connection.disable')}
           </Button>
         )}
       </div>

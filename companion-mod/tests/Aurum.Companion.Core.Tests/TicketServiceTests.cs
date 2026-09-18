@@ -18,6 +18,7 @@ public class TicketServiceTests
     private static CompanionConfig Config() => CompanionConfig.Parse(new[]
     {
         "panel-url = http://10.0.0.1:3001",
+        "language = ru",
         "server-id = srv-1",
         "token = токен-длиннее-шестнадцати",
     });

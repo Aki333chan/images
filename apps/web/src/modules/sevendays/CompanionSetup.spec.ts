@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SEVENDAYS_COMPANION_CAPABILITIES } from '@aurum/shared';
 
 // Match the repository's node-only web tests; browser behavior is checked separately.
 describe('Companion setup identifiers and translations', () => {
@@ -22,5 +23,11 @@ describe('Companion setup identifiers and translations', () => {
     }
     expect(catalog['sdtd.setup.idHint']).toContain('Pterodactyl');
     expect(catalog['sdtd.setup.networkHint']).toContain('8110');
+    for (const capability of SEVENDAYS_COMPANION_CAPABILITIES) {
+      expect(catalog[`sdtd.capability.${capability}`].length).toBeGreaterThan(2);
+    }
+    for (const name of ['incompatible', 'legacy', 'languageHint', 'savedOffline']) {
+      expect(catalog[`sdtd.connection.${name}`].length).toBeGreaterThan(10);
+    }
   });
 });

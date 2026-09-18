@@ -37,10 +37,12 @@ namespace Aurum.Companion.Core.Panel
     {
         private readonly CompanionConfig _config;
         private readonly IHttpTransport _transport;
+        public Messages Messages { get; }
 
         public PanelClient(CompanionConfig config, IHttpTransport transport)
         {
             _config = config;
+            Messages = new Messages(config.Language);
             _transport = transport;
         }
 
@@ -63,7 +65,7 @@ namespace Aurum.Companion.Core.Panel
         public PanelResponse SendEvents(IReadOnlyList<GameEvent> events) =>
             _transport.Post(Base + "/events", PanelPayloads.EventBatch(events), _config.Token);
 
-        private static TicketResult ReadTicketResult(PanelResponse response)
+        private TicketResult ReadTicketResult(PanelResponse response)
         {
             if (!response.IsSuccess)
             {
@@ -95,25 +97,14 @@ namespace Aurum.Companion.Core.Panel
         /// Игроку в чат уходит человеческий текст, а не код и не тело ответа:
         /// внутренние подробности панели ему ни к чему, а иногда и вредны.
         /// </remarks>
-        private static string DescribeFailure(PanelResponse response)
+        private string DescribeFailure(PanelResponse response)
         {
-            if (response.Status == 0) return "панель недоступна";
-            if (response.Status == 401 || response.Status == 403) return "сервер не авторизован в панели";
-            if (response.Status == 429) return "слишком часто, попробуйте позже";
-            if (response.Status >= 500) return "панель отвечает ошибкой";
-
-            // 4xx: у панели есть внятная причина — покажем её, если она текстом.
-            try
-            {
-                var map = JsonReader.ParseObject(response.Body);
-                string? message = JsonReader.StringOrNull(map, "message") ?? JsonReader.StringOrNull(map, "error");
-                if (!string.IsNullOrWhiteSpace(message)) return message!;
-            }
-            catch (JsonReader.JsonException)
-            {
-                // не разобрали — ниже общий текст
-            }
-            return "панель отклонила обращение";
+            // Do not expose backend/proxy details or a different language to players.
+            if (response.Status == 0) return Messages.Get(MessageKey.Unavailable);
+            if (response.Status == 401 || response.Status == 403) return Messages.Get(MessageKey.Unauthorized);
+            if (response.Status == 429) return Messages.Get(MessageKey.RateLimited);
+            if (response.Status >= 500) return Messages.Get(MessageKey.PanelError);
+            return Messages.Get(MessageKey.PanelRejected);
         }
     }
 }

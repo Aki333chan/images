@@ -21,7 +21,11 @@ namespace Aurum.Companion.Game
     internal sealed class SdtdGameBridge : IGameBridge
     {
         /// <summary>Имя, от которого мод пишет в чат.</summary>
-        private const string SenderName = "Панель";
+        private readonly string SenderName;
+        public SdtdGameBridge(string language = "en")
+        {
+            SenderName = new Aurum.Companion.Core.Messages(language).Get(Aurum.Companion.Core.MessageKey.Sender);
+        }
 
         public bool SendPrivateMessage(string playerId, string text)
         {
