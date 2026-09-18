@@ -99,15 +99,28 @@ public class ClientInfo
     public void SendPackage(NetPackage package) { }
 }
 
-public class ItemClass { public virtual string GetItemName() => "test"; }
+public enum EnumCreativeMode { None, Test, All }
+public class ItemClass {
+    public static ItemClass[] list = new ItemClass[0];
+    public int Id, MaxCount;
+    public bool HasQuality;
+    public EnumCreativeMode CreativeMode;
+    public static ItemClass? GetForId(int id) => null;
+    public virtual string GetItemName() => "test";
+}
+namespace UnityEngine { public struct Vector3 { public static Vector3 zero => new Vector3(); } }
 public class ItemValue
 {
+    public ItemValue() { }
+    public ItemValue(int id, int minQuality, int maxQuality, bool spawnWithMods) { }
     public int type;
     public ushort Quality;
     public ItemClass? ItemClass => null;
     public bool IsEmpty() => type == 0;
 }
-public class ItemStack { public ItemValue itemValue = new ItemValue(); public int count; }
+public class ItemStack { public ItemValue itemValue = new ItemValue(); public int count;
+    public ItemStack() { } public ItemStack(ItemValue value, int amount) { }
+}
 public class Bag { public ItemStack[] GetSlots() => new ItemStack[0]; }
 public class Equipment { public ItemValue[] GetItems() => new ItemValue[0]; }
 public class PlayerDataFile
@@ -233,6 +246,7 @@ public class FpsCounter
 
 public class GameManager
 {
+    public void ItemDropServer(ItemStack stack, Vector3 pos, UnityEngine.Vector3 random, int entityId, float lifetime) { }
     public PersistentPlayerList? persistentPlayers;
     public static GameManager? Instance = new GameManager();
     public World? World = new World();

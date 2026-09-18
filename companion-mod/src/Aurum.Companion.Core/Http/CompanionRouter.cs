@@ -28,6 +28,7 @@ namespace Aurum.Companion.Core.Http
         private readonly string _modVersion;
         private readonly string _capabilitiesJson;
         private readonly string _language;
+        private readonly ItemGrantGate _grants = new ItemGrantGate();
 
         public CompanionRouter(IGameBridge game, string token, string modVersion, CompanionConfig? config = null)
         {
@@ -42,7 +43,7 @@ namespace Aurum.Companion.Core.Http
             if (config?.ForwardChat ?? true) capabilities.Add("chat-events");
             if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
             if (game is IMapBridge) { capabilities.Add("map-read"); capabilities.Add("map-pois"); }
-            if (game is IInventoryBridge) capabilities.Add("inventory-read");
+            if (game is IInventoryBridge) { capabilities.Add("inventory-read"); capabilities.Add("item-drop"); }
             _capabilitiesJson = JsonWriter.Array(capabilities.ConvertAll(JsonWriter.String));
         }
 
@@ -82,6 +83,22 @@ namespace Aurum.Companion.Core.Http
         private HttpResponseData Route(HttpRequestData request)
         {
             string[] parts = request.Segments;
+            if (_game is IInventoryBridge itemBridge)
+            {
+                if (request.Method == "GET" && parts.Length == 2 && parts[0] == "items")
+                {
+                    string query = Uri.UnescapeDataString(parts[1]).Trim();
+                    if (query.Length < 2 || query.Length > 64) return HttpResponseData.BadRequest("invalid_item_search");
+                    return HttpResponseData.Ok(JsonWriter.Object(new[] {
+                        Field("sessionId", JsonWriter.String(_grants.SessionId)), Field("catalogue", itemBridge.SearchItems(query)) }));
+                }
+                if (request.Method == "POST" && parts.Length == 3 && parts[0] == "players" && parts[2] == "item-drop")
+                {
+                    var grant = ItemGrant.Read(Uri.UnescapeDataString(parts[1]), request.Body);
+                    string status = _grants.Execute(grant, () => itemBridge.DropItem(grant));
+                    return HttpResponseData.Ok(JsonWriter.Object(new[] {Field("status", JsonWriter.String(status)), Field("requestId", JsonWriter.String(grant.RequestId))}));
+                }
+            }
             if (request.Method == "GET" && parts.Length == 3 && parts[0] == "players" && parts[2] == "inventory" && _game is IInventoryBridge inventory)
             {
                 string id = Uri.UnescapeDataString(parts[1]);

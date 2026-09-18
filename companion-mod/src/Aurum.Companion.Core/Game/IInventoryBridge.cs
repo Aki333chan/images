@@ -5,6 +5,8 @@ namespace Aurum.Companion.Core.Game
     public interface IInventoryBridge
     {
         string ReadInventory(string playerId);
+        string SearchItems(string query);
+        string DropItem(ItemGrant request);
     }
 
     public static class InventoryRequest

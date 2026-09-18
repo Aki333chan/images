@@ -185,6 +185,7 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'map-read',
   'map-pois',
   'inventory-read',
+  'item-drop',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
 
@@ -212,6 +213,30 @@ export interface SevenDaysInventory {
   fetchedAt: string | null;
   items: SevenDaysInventoryItem[];
   truncated: boolean;
+}
+
+export interface SevenDaysItemCatalogue {
+  sessionId: string;
+  ready: boolean;
+  truncated: boolean;
+  items: { itemId: number; name: string; maxCount: number; hasQuality: boolean }[];
+}
+export const SEVENDAYS_GRANT_STATUSES = [
+  'spawned',
+  'offline',
+  'not_ready',
+  'invalid_item',
+  'invalid_count',
+  'invalid_quality',
+  'unknown',
+  'capacity',
+  'cooldown',
+  'session_expired',
+  'request_conflict',
+] as const;
+export interface SevenDaysItemGrantResult {
+  requestId: string;
+  status: (typeof SEVENDAYS_GRANT_STATUSES)[number];
 }
 export interface SevenDaysMapPoi {
   id: number;
@@ -290,6 +315,7 @@ export interface SevenDaysActionDto {
 export const SEVENDAYS_PERMISSIONS = {
   mapView: 'sevendays.map.view',
   inventoryView: 'sevendays.inventory.view',
+  inventoryGive: 'sevendays.inventory.give',
   playersView: 'sevendays.players.view',
   kick: 'sevendays.kick',
   ban: 'sevendays.ban',

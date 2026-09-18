@@ -4,6 +4,8 @@ import { api } from '../../lib/api';
 import { Button, Card, ErrorText, Spinner } from '../../components/ui';
 import { useI18n } from '../../i18n';
 import { IconArchive, IconClose } from '../../components/icons';
+import { useAuth } from '../../lib/auth';
+import { SevenDaysGiveItemPanel } from './GiveItemPanel';
 
 export function SevenDaysInventoryPanel({
   serverId,
@@ -17,6 +19,7 @@ export function SevenDaysInventoryPanel({
   onClose: () => void;
 }) {
   const { t, locale } = useI18n();
+  const { hasPermission } = useAuth();
   const [data, setData] = useState<SevenDaysInventory | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
@@ -86,6 +89,14 @@ export function SevenDaysInventoryPanel({
           </div>
         </div>
         <p className="max-w-prose text-sm text-muted">{t('sdtd.inventory.note')}</p>
+        {hasPermission('sevendays.inventory.give') && (
+          <SevenDaysGiveItemPanel
+            key={`${serverId}:${playerId}`}
+            serverId={serverId}
+            playerId={playerId}
+            name={name}
+          />
+        )}
         <div role="status" aria-live="polite">
           {busy && <Spinner />}
           {error && <ErrorText>{error}</ErrorText>}

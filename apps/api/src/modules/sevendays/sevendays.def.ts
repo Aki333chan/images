@@ -61,6 +61,11 @@ export const sevenDaysManifest: GameModuleManifest = {
   },
   permissions: [
     {
+      key: SEVENDAYS_PERMISSIONS.inventoryGive,
+      description: 'Выдача предметов рядом с онлайн-игроком (подтверждение и аудит)',
+      defaultRoles: ['ADMIN'],
+    },
+    {
       key: SEVENDAYS_PERMISSIONS.inventoryView,
       description: 'Просмотр последнего снимка инвентаря онлайн-игрока (без изменений)',
       defaultRoles: ['ADMIN'],

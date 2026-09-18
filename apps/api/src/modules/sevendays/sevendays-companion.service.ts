@@ -36,6 +36,18 @@ export class SevenDaysCompanionService {
   constructor(private readonly config: SevenDaysConfigService) {}
 
   private inventoryReads = 0;
+  itemSearch(serverId: string, query: string): Promise<unknown> {
+    return this.call(serverId, 'GET', `/items/${encodeURIComponent(query)}`, undefined, false);
+  }
+  itemDrop(serverId: string, playerId: string, payload: unknown): Promise<unknown> {
+    return this.call(
+      serverId,
+      'POST',
+      `/players/${encodeURIComponent(playerId)}/item-drop`,
+      payload,
+      false,
+    );
+  }
   async inventory(serverId: string, playerId: string) {
     validateInventoryPlayerId(playerId);
     if (this.inventoryReads >= 4) throw new ServiceUnavailableException('inventory_busy');

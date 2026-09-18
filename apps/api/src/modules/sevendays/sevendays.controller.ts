@@ -22,6 +22,9 @@ import {
 } from '@aurum/shared';
 import { Query } from '@nestjs/common';
 import { AuditRedactBody } from '../../audit/audit.decorators';
+import { CurrentUser, type AuthUser } from '../../auth/decorators';
+import { SevenDaysItemsService } from './sevendays-items.service';
+import { ItemGrantDto } from './dto';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysConfigService } from './sevendays-config.service';
@@ -42,7 +45,8 @@ import {
  * правом модуля и @ServerScoped, права проверяются ядром по текущему
  * состоянию БД, а мутирующие запросы попадают в audit_log.
  *
- * Инвентарь — только чтение клиентского снимка. Тикеты и события обеспечивает
+ * Инвентарь — чтение клиентского снимка, выдача отдельным серверным drop API.
+ * Тикеты и события обеспечивает
  * серверный companion; карта читает его ограниченные read-only endpoints.
  */
 @Controller('modules/sevendays/servers/:serverId')
@@ -53,9 +57,29 @@ export class SevenDaysController {
     private readonly companion: SevenDaysCompanionService,
     private readonly events: SevenDaysEventsService,
     private readonly map: SevenDaysMapService,
+    private readonly items: SevenDaysItemsService,
   ) {}
 
   // ---------- Игроки ----------
+  @Get('items')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryGive)
+  @ServerScoped('serverId')
+  itemSearch(@Param('serverId') serverId: string, @Query('q') query = '') {
+    return this.items.search(serverId, query);
+  }
+
+  @Post('players/:playerId/item-drop')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryGive)
+  @ServerScoped('serverId')
+  itemDrop(
+    @Param('serverId') serverId: string,
+    @Param('playerId') playerId: string,
+    @CurrentUser() actor: AuthUser,
+    @Body() dto: ItemGrantDto,
+  ) {
+    return this.items.give(serverId, playerId, actor.id, dto);
+  }
 
   @Get('map')
   @Header('Cache-Control', 'no-store')

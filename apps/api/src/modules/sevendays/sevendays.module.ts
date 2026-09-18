@@ -10,6 +10,7 @@ import { SevenDaysMapService } from './sevendays-map.service';
 import { SevenDaysTicketDelivery } from './sevendays-ticket-delivery';
 import { ServerMetricsModule } from '../../servers/metrics/server-metrics.module';
 import { SevenDaysPlayerCount } from './sevendays-player-count';
+import { SevenDaysItemsService } from './sevendays-items.service';
 
 /**
  * Модуль 7 Days to Die.
@@ -32,6 +33,7 @@ import { SevenDaysPlayerCount } from './sevendays-player-count';
   imports: [ServerMetricsModule],
   controllers: [SevenDaysController, SevenDaysInternalController],
   providers: [
+    SevenDaysItemsService,
     SevenDaysPlayerCount,
     SevenDaysConfigService,
     SevenDaysConsoleService,

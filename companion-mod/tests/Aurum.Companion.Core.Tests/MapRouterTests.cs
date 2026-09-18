@@ -8,9 +8,29 @@ namespace Aurum.Companion.Core.Tests;
 
 public sealed class MapRouterTests
 {
+    [Fact]
+    public void Grant_route_requires_token_and_replays_without_repeating_game_write()
+    {
+        const string token = "test-token-long-enough";
+        var bridge = new Bridge(); var router = new CompanionRouter(bridge, token, "test");
+        var catalogue = Aurum.Companion.Core.Json.JsonReader.ParseObject(router.Handle(new("GET", "/items/ammo", ""), token).Json);
+        var session = Aurum.Companion.Core.Json.JsonReader.StringOrNull(catalogue, "sessionId");
+        var body = "{\"sessionId\":\"" + session + "\",\"requestId\":\"" + Guid.NewGuid() + "\",\"itemId\":1,\"itemName\":\"test\",\"count\":1,\"quality\":0,\"confirmed\":true}";
+        var request = new HttpRequestData("POST", "/players/Steam_123/item-drop", body);
+        Assert.Equal(401, router.Handle(request, null).Status);
+        Assert.Equal(0, bridge.Reads);
+        Assert.Contains("spawned", router.Handle(request, token).Json);
+        Assert.Contains("spawned", router.Handle(request, token).Json);
+        Assert.Equal(1, bridge.Reads);
+        Assert.Equal(400, router.Handle(new("POST", "/players/Alice/item-drop", body), token).Status);
+        Assert.Contains("session_expired", new CompanionRouter(bridge, token, "test").Handle(request, token).Json);
+        Assert.Equal(1, bridge.Reads);
+    }
     private sealed class Bridge : IGameBridge, IMapBridge, IInventoryBridge
     {
         public int Reads;
+        public string SearchItems(string query) => "{\"ready\":true,\"items\":[],\"truncated\":false}";
+        public string DropItem(ItemGrant request) { Reads++; return "spawned"; }
         public string ReadInventory(string id) { Reads++; return "{\"available\":false,\"reason\":\"snapshot_pending\"}"; }
         public string ReadMapInfo() { Reads++; return "{\"available\":true}"; }
         public string ReadMapMarkers() { Reads++; return "{\"ready\":true}"; }

@@ -35,8 +35,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
               name === 'locale'
                 ? `const c=${JSON.stringify(catalog)};export const useI18n=()=>({locale:'ru',t:k=>c[k]||k});export const useT=()=>useI18n().t;`
                 : name === 'auth'
-                  ? `export const useAuth=()=>({hasPermission:k=>k==='sevendays.inventory.view'&&window.allowed});`
-                  : `window.stats={inventory:0,aborted:0};window.mode='ready';export async function api(p,init){
+                  ? `export const useAuth=()=>({hasPermission:k=>(k==='sevendays.inventory.view'&&window.allowed)||(k==='sevendays.inventory.give'&&window.giveAllowed)});`
+                  : `window.stats={inventory:0,aborted:0,searches:0,grants:[]};window.spawnedIds=new Set();window.mode='ready';window.grantMode='lost';export async function api(p,init){
+          if(p.includes('/items?q=')){window.stats.searches++; if(window.searchFails)throw Error('old companion');return {sessionId:'ac67354a-2548-4dc5-8f23-a43a90b55d9d',ready:true,truncated:true,items:[{itemId:1,name:'gunPistol',hasQuality:true,maxCount:1},{itemId:2,name:'ammoLongName'.repeat(8),hasQuality:false,maxCount:1000}]};}
+          if(p.endsWith('/item-drop')){const g=JSON.parse(init.body);window.stats.grants.push(g);await new Promise(r=>setTimeout(r,120));if(window.grantMode==='offline')return {requestId:g.requestId,status:'offline'};window.spawnedIds.add(g.requestId);if(window.grantMode==='lost')throw Error('reply lost after spawn');return {requestId:g.requestId,status:'spawned'};}
           if(p.endsWith('/players'))return {online:1,players:[{entityId:1,name:'Test Player',platformId:'Steam_123',crossId:null,level:5,ping:20,position:null}]};
           if(p.endsWith('/state'))return {available:false,reason:'Test server'};
           if(p.endsWith('/inventory')){window.stats.inventory++;await new Promise((ok,no)=>{const timer=setTimeout(ok,80);init.signal.addEventListener('abort',()=>{window.stats.aborted++;clearTimeout(timer);no(new DOMException('aborted','AbortError'));},{once:true});});
@@ -97,6 +99,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         .click();
     await open();
     await page.getByText('gunPistol', { exact: false }).waitFor();
+    assert.equal(
+      await page.getByRole('button', { name: catalog['sdtd.give.open'], exact: true }).count(),
+      0,
+    );
     assert.equal(await page.evaluate(() => document.activeElement.id), 'sdtd-inventory-title');
     const count = await page.evaluate(() => window.stats.inventory);
     await page.getByRole('button', { name: 'Обновить', exact: true }).click();
@@ -179,6 +185,94 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.evaluate(() => document.activeElement.textContent),
       catalog['sdtd.inventory.title'],
     );
+    await page.evaluate(() => {
+      window.giveAllowed = true;
+      window.render();
+    });
+    await open();
+    await page.getByRole('button', { name: catalog['sdtd.give.open'], exact: true }).click();
+    const searchInput = page.getByLabel(catalog['sdtd.give.search'], { exact: true });
+    assert.equal(await searchInput.evaluate((el) => el === document.activeElement), true);
+    assert.equal(await page.evaluate(() => window.stats.searches), 0);
+    await searchInput.fill('ammo');
+    await page.waitForTimeout(120);
+    assert.equal(await page.evaluate(() => window.stats.searches), 0, 'typing must not poll game');
+    await page.getByRole('button', { name: catalog['sdtd.give.find'], exact: true }).click();
+    await page.getByLabel(catalog['sdtd.give.item'], { exact: true }).selectOption('2');
+    const amount = page.getByRole('spinbutton');
+    await amount.fill('1001');
+    await page.getByLabel(catalog['sdtd.give.reason'], { exact: true }).fill('Test compensation');
+    await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).click();
+    assert.equal(
+      await page.getByRole('button', { name: catalog['sdtd.give.confirm'], exact: true }).count(),
+      0,
+    );
+    await amount.fill('1000');
+    for (const [label, width, height] of [
+      ['desktop', 1200, 1000],
+      ['mobile', 390, 844],
+    ]) {
+      await page.setViewportSize({ width, height });
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
+        false,
+      );
+      if (process.env.INVENTORY_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, `7dtd-give-${label}.png`),
+          fullPage: true,
+        });
+    }
+    await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).click();
+    assert.equal(
+      await page.evaluate(() => window.stats.grants.length),
+      0,
+      'review must not mutate',
+    );
+    await page
+      .getByRole('button', { name: catalog['sdtd.give.confirm'], exact: true })
+      .evaluate((el) => {
+        el.click();
+        el.click();
+      });
+    await page.getByText(catalog['sdtd.give.unknown'], { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.stats.grants.length), 1);
+    await page.evaluate(() => {
+      window.grantMode = 'ready';
+    });
+    await page.getByRole('button', { name: catalog['sdtd.give.retry'], exact: true }).click();
+    await page.getByText(catalog['sdtd.give.spawned'], { exact: true }).waitFor();
+    const grants = await page.evaluate(() => window.stats.grants);
+    assert.deepEqual(grants[0], grants[1], 'retry retains the entire confirmed payload');
+    assert.equal(await page.evaluate(() => window.spawnedIds.size), 1);
+    assert.equal(grants[0].count, 1000);
+    assert.equal(grants[0].quality, 0);
+    await page.getByRole('button', { name: catalog['sdtd.give.new'], exact: true }).click();
+    await page.getByRole('button', { name: catalog['sdtd.give.find'], exact: true }).click();
+    await page.getByLabel(catalog['sdtd.give.item'], { exact: true }).selectOption('1');
+    await page.getByLabel(catalog['sdtd.inventory.quality'], { exact: true }).selectOption('6');
+    assert.equal(await page.getByRole('spinbutton').getAttribute('max'), '1');
+    await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).click();
+    await page.evaluate(() => {
+      window.grantMode = 'offline';
+    });
+    await page.getByRole('button', { name: catalog['sdtd.give.confirm'], exact: true }).click();
+    await page.getByText(catalog['sdtd.give.offline'], { exact: true }).waitFor();
+    await page.getByRole('button', { name: catalog['sdtd.give.close'], exact: true }).click();
+    assert.equal(
+      await page
+        .getByRole('button', { name: catalog['sdtd.give.open'], exact: true })
+        .evaluate((el) => el === document.activeElement),
+      true,
+    );
+    await page.getByRole('button', { name: catalog['sdtd.give.open'], exact: true }).click();
+    await page.getByText(catalog['sdtd.give.offline'], { exact: true }).waitFor();
+    assert.equal(
+      await page.evaluate(() => window.stats.grants.length),
+      3,
+      'reopening preserves result without another write',
+    );
+    await page.getByRole('button', { name: catalog['common.close'], exact: true }).click();
     await open();
     await page.getByRole('button', { name: catalog['common.close'], exact: true }).click();
     await page.waitForTimeout(120);
@@ -188,7 +282,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.evaluate(() => window.stats.inventory), calls);
     assert.deepEqual(errors, []);
     console.log(
-      'PASS: permission gating, manual-only fetch, safe text, desktop/mobile layout, unavailable/error states, focus restoration and cancellation.',
+      'PASS: permission gating, manual-only inventory/search, safe text, desktop/mobile layout, errors, focus and cancellation; grant confirmation, bounds, double-click guard, stable replay ID after lost response, offline target and reopen without writes.',
     );
   } finally {
     await browser.close();

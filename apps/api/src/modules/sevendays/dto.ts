@@ -8,6 +8,9 @@ import {
   MaxLength,
   Min,
   MinLength,
+  IsUUID,
+  Equals,
+  Matches,
 } from 'class-validator';
 import { SEVENDAYS_BAN_UNITS, type SevenDaysBanUnit } from '@aurum/shared';
 
@@ -107,4 +110,15 @@ export class ActionRunDto {
   @IsOptional()
   @IsObject()
   args?: Record<string, string>;
+}
+
+export class ItemGrantDto {
+  @IsUUID() sessionId!: string;
+  @IsUUID() requestId!: string;
+  @IsInt() @Min(1) @Max(65535) itemId!: number;
+  @IsString() @MinLength(1) @MaxLength(128) itemName!: string;
+  @IsInt() @Min(1) @Max(1000) count!: number;
+  @IsInt() @Min(0) @Max(6) quality!: number;
+  @IsString() @MinLength(3) @MaxLength(200) @Matches(/\S/) reason!: string;
+  @Equals(true) confirmed!: boolean;
 }

@@ -92,17 +92,18 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   },
 );
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function Textarea({ className, ...props }, ref) {
-    return (
-      <textarea
-        ref={ref}
-        className={cn(FIELD, 'flex min-h-[70px] px-3 py-2 text-base sm:text-sm', className)}
-        {...props}
-      />
-    );
-  },
-);
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement>
+>(function Textarea({ className, ...props }, ref) {
+  return (
+    <textarea
+      ref={ref}
+      className={cn(FIELD, 'flex min-h-[70px] px-3 py-2 text-base sm:text-sm', className)}
+      {...props}
+    />
+  );
+});
 
 /**
  * Карточка — основная поверхность интерфейса.
@@ -111,21 +112,22 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
  * уметь дотянуться до собственного scrollTop, а прокручивать их через
  * scrollIntoView вложенного элемента нельзя — он тянет за собой и страницу.
  */
-export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  function Card({ className, children, ...props }, ref) {
-    return (
-      // На узком экране поля по 16 px с каждой стороны съедали бы почти
-      // десятую часть ширины — на мобильном отступ меньше.
-      <div
-        ref={ref}
-        className={cn('rounded-lg border border-border bg-card p-3 sm:p-4', className)}
-        {...props}
-      >
-        {children}
-      </div>
-    );
-  },
-);
+export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function Card(
+  { className, children, ...props },
+  ref,
+) {
+  return (
+    // На узком экране поля по 16 px с каждой стороны съедали бы почти
+    // десятую часть ширины — на мобильном отступ меньше.
+    <div
+      ref={ref}
+      className={cn('rounded-lg border border-border bg-card p-3 sm:p-4', className)}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+});
 
 export function Badge({
   children,
@@ -174,11 +176,13 @@ export function Label({ children, className }: { children: ReactNode; className?
 }
 
 export function Select({
+  id,
   value,
   onChange,
   options,
   className,
 }: {
+  id?: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
@@ -186,6 +190,7 @@ export function Select({
 }) {
   return (
     <select
+      id={id}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={cn(FIELD, 'h-11 max-w-full px-2 text-base sm:h-9 sm:text-sm', className)}
@@ -289,7 +294,8 @@ export function Tabs({
               'shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]',
               // motion-safe: у тех, кто попросил систему не анимировать,
               // подложка просто оказывается на новом месте.
-              placed.current && 'motion-safe:transition-[transform,width] motion-safe:duration-300 motion-safe:ease-panel',
+              placed.current &&
+                'motion-safe:transition-[transform,width] motion-safe:duration-300 motion-safe:ease-panel',
             )}
             style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
           />

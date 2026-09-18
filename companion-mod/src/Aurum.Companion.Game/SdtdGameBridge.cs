@@ -192,7 +192,7 @@ namespace Aurum.Companion.Game
         /// Три способа, потому что панель адресует по идентификатору, а человек
         /// в чате — по нику, и оба должны работать.
         /// </remarks>
-        private static ClientInfo? FindClient(string idOrName)
+        private static ClientInfo? FindClient(string idOrName, bool allowName = true)
         {
             if (string.IsNullOrWhiteSpace(idOrName)) return null;
             string needle = idOrName.Trim();
@@ -205,6 +205,7 @@ namespace Aurum.Companion.Game
                 if (string.Equals(client.CrossplatformId?.CombinedString, needle, StringComparison.Ordinal)) return client;
             }
 
+            if (!allowName) return null;
             // Ник — в последнюю очередь: он не уникален и меняется, а
             // идентификатор нет. Совпадение по нику не должно перебивать
             // точное совпадение по идентификатору.
