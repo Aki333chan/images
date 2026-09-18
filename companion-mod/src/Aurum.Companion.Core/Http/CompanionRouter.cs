@@ -50,6 +50,12 @@ namespace Aurum.Companion.Core.Http
             {
                 return HttpResponseData.BadRequest("Некорректное тело запроса: " + e.Message);
             }
+            catch (GameDispatchException e)
+            {
+                // Already-started game work cannot be undone by an HTTP timeout.
+                return HttpResponseData.Error(e.TimedOut ? 504 : 503,
+                    e.MayHaveExecuted ? "game_operation_outcome_unknown" : "game_operation_not_started");
+            }
             catch (Exception e)
             {
                 // Исключение из игрового слоя не должно ронять поток

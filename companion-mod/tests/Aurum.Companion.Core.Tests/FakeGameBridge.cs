@@ -22,6 +22,7 @@ public sealed class FakeGameBridge : IGameBridge
     public List<string> Errors { get; } = new();
     public List<OnlinePlayer> Players { get; } = new();
     public WorldState World { get; set; } = new();
+    public Exception? DispatchFailure { get; set; }
 
     /// <summary>Кого считать вышедшим: личное сообщение такому не доходит.</summary>
     public HashSet<string> Offline { get; } = new(StringComparer.Ordinal);
@@ -33,7 +34,11 @@ public sealed class FakeGameBridge : IGameBridge
         return true;
     }
 
-    public void Broadcast(string text) => Broadcasts.Add(text);
+    public void Broadcast(string text)
+    {
+        if (DispatchFailure != null) throw DispatchFailure;
+        Broadcasts.Add(text);
+    }
 
     public IReadOnlyList<OnlinePlayer> OnlinePlayers() => Players;
 

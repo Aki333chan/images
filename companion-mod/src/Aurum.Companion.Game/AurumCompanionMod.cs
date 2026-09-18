@@ -5,6 +5,8 @@ using Aurum.Companion.Core.Game;
 using Aurum.Companion.Core.Http;
 using Aurum.Companion.Core.Panel;
 using Aurum.Companion.Core.Tickets;
+using static ModEvents;
+using CompanionGameEvent = Aurum.Companion.Core.Game.GameEvent;
 
 namespace Aurum.Companion.Game
 {
@@ -15,14 +17,14 @@ namespace Aurum.Companion.Game
     /// Мод загружается штатным механизмом самой игры: класс, реализующий
     /// IModApi, находит ModManager при старте сервера. Harmony здесь НЕ нужен
     /// и не используется — все события берутся из публичного ModEvents,
-    /// который поддерживает сама TFP. Это осознанный выбор: патчи чужих
-    /// методов ломаются на каждом обновлении игры, а объявленный API — нет.
+    /// который поддерживает сама TFP. Его сигнатуры всё равно нужно проверять
+    /// сборкой против DLL целевой версии игры.
     ///
     /// Мод СЕРВЕРНЫЙ. Игрокам ставить ничего не нужно, клиент о нём не знает.
     /// </remarks>
     public sealed class AurumCompanionMod : IModApi
     {
-        private const string Version = "1.0.0";
+        private const string Version = "1.0.1-rc.1";
         private const string ConfigFileName = "companion.cfg";
 
         private static CompanionConfig? _config;
@@ -39,10 +41,6 @@ namespace Aurum.Companion.Game
         {
             try
             {
-                // Здесь нас вызывает сама игра, то есть мы уже в главном
-                // потоке — единственный момент, когда его контекст можно взять.
-                MainThread.Capture();
-
                 _game = new SdtdGameBridge();
                 _config = LoadConfig(modInstance);
 
@@ -59,6 +57,7 @@ namespace Aurum.Companion.Game
                     return;
                 }
 
+                MainThread.Capture();
                 _forwardChat = _config.ForwardChat;
                 _forwardDeaths = _config.ForwardDeaths;
                 _queue = new EventQueue(_config.EventQueueLimit);
@@ -81,6 +80,9 @@ namespace Aurum.Companion.Game
             }
             catch (Exception e)
             {
+                // A bind/initialization error must not leave the sender thread running.
+                UnregisterHandlers();
+                StopServices();
                 // Никакая наша ошибка не должна помешать серверу запуститься:
                 // без мода люди играют, без сервера — нет.
                 Log.Error("[AurumCompanion] Не удалось запуститься: " + e);
@@ -116,6 +118,28 @@ namespace Aurum.Companion.Game
             ModEvents.GameShutdown.RegisterHandler(OnGameShutdown);
         }
 
+        private static void UnregisterHandlers()
+        {
+            ModEvents.ChatMessage.UnregisterHandler(OnChatMessage);
+            ModEvents.PlayerSpawnedInWorld.UnregisterHandler(OnPlayerSpawnedInWorld);
+            ModEvents.PlayerDisconnected.UnregisterHandler(OnPlayerDisconnected);
+            ModEvents.EntityKilled.UnregisterHandler(OnEntityKilled);
+            ModEvents.GameShutdown.UnregisterHandler(OnGameShutdown);
+        }
+
+        private static void StopServices()
+        {
+            MainThread.Stop(); // Wake HTTP/ticket workers before waiting for them.
+            try { _http?.Dispose(); }
+            catch (Exception e) { Log.Error("[AurumCompanion] HTTP shutdown: " + e); }
+            try { _sender?.Stop(); }
+            catch (Exception e) { Log.Error("[AurumCompanion] Sender shutdown: " + e); }
+            _http = null;
+            _sender = null;
+            _tickets = null;
+            _queue = null;
+        }
+
         /// <summary>
         /// Сообщение игрового чата.
         /// </summary>
@@ -148,12 +172,13 @@ namespace Aurum.Companion.Game
                         : EModEventResult.Continue;
                 }
 
-                if (_forwardChat && _queue != null)
+                // Private, party and friends chat must not become public panel chat.
+                if (_forwardChat && data.ChatType == EChatType.Global && _queue != null)
                 {
                     var player = SdtdGameBridge.Describe(client);
                     if (player != null)
                     {
-                        _queue.Enqueue(new GameEvent(GameEventKind.Chat, player.PlayerId, player.Name)
+                        _queue.Enqueue(new CompanionGameEvent(GameEventKind.Chat, player.PlayerId, player.Name)
                         {
                             Text = message,
                             X = player.X,
@@ -194,7 +219,7 @@ namespace Aurum.Companion.Game
                 OnlinePlayer? player = SdtdGameBridge.Describe(data.ClientInfo);
                 if (player == null || _queue == null) return;
 
-                _queue.Enqueue(new GameEvent(GameEventKind.Join, player.PlayerId, player.Name)
+                _queue.Enqueue(new CompanionGameEvent(GameEventKind.Join, player.PlayerId, player.Name)
                 {
                     X = player.X, Y = player.Y, Z = player.Z,
                 });
@@ -216,7 +241,7 @@ namespace Aurum.Companion.Game
                 // для вышедшего незачем, а карта иначе росла бы вечно.
                 _cooldown?.Forget(player.PlayerId);
 
-                _queue?.Enqueue(new GameEvent(GameEventKind.Leave, player.PlayerId, player.Name));
+                _queue?.Enqueue(new CompanionGameEvent(GameEventKind.Leave, player.PlayerId, player.Name));
             }
             catch (Exception e)
             {
@@ -248,7 +273,7 @@ namespace Aurum.Companion.Game
                 var killerPlayer = data.KillingEntity as EntityPlayer;
                 bool pvp = killerPlayer != null && killerPlayer.entityId != victim.entityId;
 
-                var e = new GameEvent(
+                var e = new CompanionGameEvent(
                     pvp ? GameEventKind.PlayerKill : GameEventKind.Death,
                     victimPlayer.PlayerId,
                     victimPlayer.Name)
@@ -287,8 +312,7 @@ namespace Aurum.Companion.Game
         {
             try
             {
-                _http?.Stop();
-                _sender?.Stop();
+                StopServices();
                 Log.Out("[AurumCompanion] Остановлен.");
             }
             catch (Exception e)

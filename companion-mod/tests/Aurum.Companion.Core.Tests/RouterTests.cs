@@ -28,6 +28,22 @@ public class RouterTests
     private static HttpRequestData Get(string path) => new("GET", path, "");
     private static HttpRequestData Post(string path, string body) => new("POST", path, body);
 
+    [Theory]
+    [InlineData(false, false, 503, "game_operation_not_started")]
+    [InlineData(false, true, 504, "game_operation_not_started")]
+    [InlineData(true, false, 503, "game_operation_outcome_unknown")]
+    [InlineData(true, true, 504, "game_operation_outcome_unknown")]
+    public void Dispatch_failure_is_not_reported_as_success(bool started, bool timedOut, int status, string code)
+    {
+        var (router, game) = Make();
+        game.DispatchFailure = new GameDispatchException("internal details", started, timedOut);
+        var response = router.Handle(Post("/broadcast", "{\"text\":\"test\"}"), Token);
+        Assert.Equal(status, response.Status);
+        Assert.Equal(code, JsonReader.StringOrNull(JsonReader.ParseObject(response.Json), "error"));
+        Assert.Empty(game.Broadcasts);
+        Assert.DoesNotContain("internal details", response.Json);
+    }
+
     [Fact]
     public void Без_токена_ничего_не_отдаётся()
     {

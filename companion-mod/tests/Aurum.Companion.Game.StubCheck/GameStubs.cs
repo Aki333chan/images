@@ -4,12 +4,12 @@
 // проходил через компилятор там, где сборок игры нет. Границы этой проверки
 // описаны в README.md рядом.
 //
-// Все имена и сигнатуры переписаны с рабочего кода мода
-// 7DaysToDie-ServerKit под ту же версию игры (V1.0+). Опечатки сохранены
+// Используемые сигнатуры сверены с DLL сервера V3.2.0 (b10), 2026-09-18.
+// Заглушки не заменяют сборку против реальных DLL. Опечатки сохранены
 // намеренно: KilledEntitiy именно так и называется в самой игре, и если
 // «исправить» её здесь, проверка перестанет ловить настоящую ошибку.
 //
-// Всё живёт в глобальном пространстве имён — как и в самой игре.
+// Данные событий и EModEventResult вложены в ModEvents, как в игре.
 
 using System.Collections.Generic;
 
@@ -24,13 +24,6 @@ public class Mod
 {
     public string Name = "";
     public string Path = "";
-}
-
-public enum EModEventResult
-{
-    Continue,
-    StopHandlers,
-    StopHandlersAndVanilla,
 }
 
 public enum EChatType { Global, Friends, Party, Whisper }
@@ -110,7 +103,7 @@ public class NetPackageChat : NetPackage
         EChatType chatType,
         int senderEntityId,
         string message,
-        string? mainName,
+        List<int>? recipientEntityIds,
         EMessageSender sender,
         GeneratedTextManager.BbCodeSupportMode bbCode) => this;
 }
@@ -227,6 +220,30 @@ public static class Log
 // либо void — так этот API устроен начиная с V1.0. Прежние сигнатуры с
 // позиционными аргументами устарели.
 
+// Collision sentinels: these names exist in the game and must not shadow Core DTOs.
+public class WorldState { }
+namespace GameEvent { public class Stub { } }
+
+public static class ThreadManager
+{
+    public static bool IsMainThread() => true;
+    public static void AddSingleTaskMainThread(string name, System.Action action) => action();
+}
+
+public struct Vector3i
+{
+    public int x, y, z;
+}
+
+public static class ModEvents
+{
+public enum EModEventResult
+{
+    Continue,
+    StopHandlersRunVanilla,
+    StopHandlersAndVanilla,
+}
+
 public struct SChatMessageData
 {
     public ClientInfo? ClientInfo;
@@ -246,7 +263,7 @@ public struct SPlayerSpawnedInWorldData
 public struct SPlayerDisconnectedData
 {
     public ClientInfo? ClientInfo;
-    public bool Shutdown;
+    public bool GameShuttingDown;
 }
 
 public struct SEntityKilledData
@@ -257,11 +274,6 @@ public struct SEntityKilledData
 }
 
 public struct SGameShutdownData { }
-
-public struct Vector3i
-{
-    public int x, y, z;
-}
 
 public delegate EModEventResult ChatMessageHandler(ref SChatMessageData data);
 public delegate void PlayerSpawnedInWorldHandler(ref SPlayerSpawnedInWorldData data);
@@ -275,8 +287,6 @@ public class ModEvent<THandler>
     public void UnregisterHandler(THandler handler) { }
 }
 
-public static class ModEvents
-{
     public static ModEvent<ChatMessageHandler> ChatMessage = new ModEvent<ChatMessageHandler>();
     public static ModEvent<PlayerSpawnedInWorldHandler> PlayerSpawnedInWorld = new ModEvent<PlayerSpawnedInWorldHandler>();
     public static ModEvent<PlayerDisconnectedHandler> PlayerDisconnected = new ModEvent<PlayerDisconnectedHandler>();

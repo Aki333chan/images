@@ -1,5 +1,9 @@
 # Aurum ecosystem — AI handoff room
 
+> Работа с 7 Days to Die ведётся отдельно от Minecraft:
+> [handoff и план 7DTD](7dtd/AI-HANDOFF.md). 2026-09-18: companion 1.0.1-rc.1
+> собран против предоставленных DLL V3.2.0 (b10); live smoke ещё не выполнен.
+
 Этот файл — общий рабочий журнал Codex и Claude Code. Перед началом работы агент обязан
 прочитать его вместе с `docs/aurum-ecosystem-roadmap.md`, проверить фактический `git status`
 и не считать записанный здесь план заменой проверке исходников.

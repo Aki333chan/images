@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Aurum.Companion.Core;
 using Aurum.Companion.Core.Game;
+using CompanionWorldState = Aurum.Companion.Core.Game.WorldState;
 
 namespace Aurum.Companion.Game
 {
@@ -33,20 +34,23 @@ namespace Aurum.Companion.Game
                 // жалобу это не удобство, а требование — иначе разбирательство
                 // прочитал бы весь сервер.
                 client.SendPackage(NetPackageManager.GetPackage<NetPackageChat>()
-                    .Setup(EChatType.Whisper, -1, text, SenderName, EMessageSender.None,
+                    .Setup(EChatType.Whisper, -1, SenderName + ": " + text, new List<int> { client.entityId }, EMessageSender.None,
                            GeneratedTextManager.BbCodeSupportMode.Supported));
                 return true;
-            }, false);
+            });
         }
 
         public void Broadcast(string text)
         {
-            MainThread.Post(() =>
+            MainThread.Get(() =>
+            {
                 ConnectionManager.Instance.SendPackage(
                     NetPackageManager.GetPackage<NetPackageChat>()
-                        .Setup(EChatType.Global, -1, text, SenderName, EMessageSender.None,
+                        .Setup(EChatType.Global, -1, SenderName + ": " + text, null, EMessageSender.None,
                                GeneratedTextManager.BbCodeSupportMode.Supported),
-                    true, -1, -1, -1, null, 192));
+                    true, -1, -1, -1, null, 192);
+                return true;
+            });
         }
 
         public IReadOnlyList<OnlinePlayer> OnlinePlayers()
@@ -60,7 +64,7 @@ namespace Aurum.Companion.Game
                     if (player != null) result.Add(player);
                 }
                 return result;
-            }, new List<OnlinePlayer>());
+            });
         }
 
         public OnlinePlayer? FindPlayer(string idOrName)
@@ -69,14 +73,14 @@ namespace Aurum.Companion.Game
             {
                 ClientInfo? client = FindClient(idOrName);
                 return client == null ? null : Describe(client);
-            }, null);
+            });
         }
 
-        public WorldState ReadWorldState()
+        public CompanionWorldState ReadWorldState()
         {
             return MainThread.Get(() =>
             {
-                var state = new WorldState();
+                var state = new CompanionWorldState();
                 // До загрузки мира менеджера ещё нет — панель в этот момент
                 // должна получить пустое состояние, а не исключение.
                 GameManager? manager = GameManager.Instance;
@@ -102,7 +106,7 @@ namespace Aurum.Companion.Game
 
                 CountEntities(world, state);
                 return state;
-            }, new WorldState());
+            });
         }
 
         /// <summary>
@@ -113,7 +117,7 @@ namespace Aurum.Companion.Game
         /// перебор идёт в главном потоке один раз на запрос состояния, а
         /// панель спрашивает его редко. Дешёвого способа игра не даёт.
         /// </remarks>
-        private static void CountEntities(World world, WorldState state)
+        private static void CountEntities(World world, CompanionWorldState state)
         {
             var entities = world.Entities?.list;
             if (entities == null) return;
@@ -164,6 +168,7 @@ namespace Aurum.Companion.Game
                 if (client == null) continue;
                 if (string.Equals(client.InternalId?.CombinedString, needle, StringComparison.Ordinal)) return client;
                 if (string.Equals(client.PlatformId?.CombinedString, needle, StringComparison.Ordinal)) return client;
+                if (string.Equals(client.CrossplatformId?.CombinedString, needle, StringComparison.Ordinal)) return client;
             }
 
             // Ник — в последнюю очередь: он не уникален и меняется, а

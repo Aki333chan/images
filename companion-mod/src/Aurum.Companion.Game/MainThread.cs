@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using Aurum.Companion.Core.Game;
 
 namespace Aurum.Companion.Game
 {
@@ -15,71 +16,39 @@ namespace Aurum.Companion.Game
     /// из потока прослушивания, события уходят из потока отправки. Значит
     /// каждое касание мира обязано пройти здесь.
     ///
-    /// Контекст берётся в InitMod, где нас вызывает сама игра — то есть уже
-    /// в главном потоке.
+    /// Используем штатную очередь игры, без зависимости от Unity SynchronizationContext.
     /// </remarks>
     internal static class MainThread
     {
-        private static SynchronizationContext? _context;
+        private static GameThreadDispatcher? _dispatcher;
 
         public static void Capture()
         {
-            _context = SynchronizationContext.Current;
+            _dispatcher = new GameThreadDispatcher(
+                action => ThreadManager.AddSingleTaskMainThread("AurumCompanion", action),
+                ThreadManager.IsMainThread);
         }
 
         /// <summary>Есть ли куда откладывать. false — игра ещё не запустилась.</summary>
-        public static bool Ready => _context != null;
+        public static bool Ready => _dispatcher != null;
 
         /// <summary>
         /// Выполнить и дождаться результата.
         /// </summary>
         /// <remarks>
-        /// Ждём намеренно: вызывающему нужен ответ — состояние мира или
-        /// «дошло ли сообщение». Ценой того, что при зависшем сервере
-        /// зависнет и поток панели; но зависший сервер — беда сама по себе,
-        /// и маскировать её таймаутом здесь было бы хуже.
+        /// Не более 32 незавершённых callbacks и 2 секунд ожидания.
+        /// Просроченная работа не запускается; результат уже начатой может быть неизвестен.
         /// </remarks>
-        public static T Get<T>(Func<T> work, T fallback)
+        public static T Get<T>(Func<T> work)
         {
-            var context = _context;
-            if (context == null) return fallback;
-
-            T result = fallback;
-            Exception? failure = null;
-            context.Send(_ =>
-            {
-                try
-                {
-                    result = work();
-                }
-                catch (Exception e)
-                {
-                    // Исключение, брошенное здесь, ушло бы в главный поток игры
-                    // и оборвало бы кадр. Переносим его к вызывающему.
-                    failure = e;
-                }
-            }, null);
-
-            if (failure != null) throw failure;
-            return result;
+            var dispatcher = _dispatcher;
+            if (dispatcher == null) throw new GameDispatchException("Game bridge is unavailable", false);
+            return dispatcher.Invoke(work);
         }
 
-        /// <summary>Выполнить без ожидания — когда результат не нужен.</summary>
-        public static void Post(Action work)
+        public static void Stop()
         {
-            var context = _context;
-            if (context == null) return;
-            context.Post(_ =>
-            {
-                try
-                {
-                    work();
-                }
-                catch (Exception e)
-                {
-                    Log.Error("[AurumCompanion] Ошибка в отложенной работе: " + e);
-                }
-            }, null);
+            Interlocked.Exchange(ref _dispatcher, null)?.Dispose();
         }
     }
 }
