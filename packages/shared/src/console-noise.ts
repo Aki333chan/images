@@ -91,3 +91,41 @@ export function isPanelCommandEcho(text: string, commands: readonly string[]): b
   }
   return false;
 }
+
+const SEVENDAYS_ENDPOINT = '[\\[\\]0-9a-fA-F:.%]+:\\d+';
+const SEVENDAYS_CONNECTION = new RegExp(
+  `^Telnet connection (?:from|closed): ${SEVENDAYS_ENDPOINT}$`,
+);
+const SEVENDAYS_THREAD = new RegExp(
+  `^(?:Started|Exited) thread TelnetClient_${SEVENDAYS_ENDPOINT}$`,
+);
+const SEVENDAYS_COMMAND = new RegExp(
+  `^Executing command '([^']+)' by Telnet from ${SEVENDAYS_ENDPOINT}$`,
+);
+
+/** Only presentation filtering: never remove raw logs or hide warnings/errors.
+ * A manual lp has the same echo as polling; its result remains visible either way.
+ */
+export function isConsoleServiceLine(text: string, moduleId: string): boolean {
+  const commands = backgroundCommandsFor(moduleId);
+  if (moduleId !== 'sevendays') return isPanelCommandEcho(text, commands);
+
+  // Match the game's actual log envelope; chat quoting these words is NOT noise.
+  const clean = text.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  const log =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+[\d.]+\s+(INF|WRN|ERR|EXC|DBG)\s+(.*)$/.exec(
+      clean,
+    );
+  if (!log) return isPanelCommandEcho(clean, commands);
+  if (log[1] !== 'INF') return false;
+  const message = log[2] ?? '';
+  // End-point syntax only: an error message appended to the line must stay visible.
+  if (SEVENDAYS_CONNECTION.test(message)) return true;
+  if (SEVENDAYS_THREAD.test(message)) return true;
+  if (/^(?:Started|Exited) thread: Telnet client$/.test(message)) return true;
+  const command = SEVENDAYS_COMMAND.exec(message);
+  if (!command) return false;
+  const value = (command[1] ?? '').trim().toLowerCase();
+  // Only the panel's response-boundary markers, not arbitrary unknown commands.
+  return commands.includes(value) || /^aurum[0-9a-f]{24}$/.test(value);
+}

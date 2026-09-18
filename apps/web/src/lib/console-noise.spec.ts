@@ -1,6 +1,51 @@
-import { backgroundCommandsFor, isPanelCommandEcho } from '@aurum/shared';
+import { backgroundCommandsFor, isPanelCommandEcho, isConsoleServiceLine } from '@aurum/shared';
 
 const MC = backgroundCommandsFor('minecraft');
+
+describe('7DTD Telnet service log filtering', () => {
+  const line = (message: string, level = 'INF') =>
+    `2026-09-18T12:04:45 205.234 ${level} ${message}`;
+  it.each([
+    'Telnet connection from: 10.0.0.1:60828',
+    'Telnet connection closed: 10.0.0.1:60828',
+    'Started thread TelnetClient_10.0.0.1:60828',
+    'Exited thread TelnetClient_10.0.0.1:60828',
+    'Started thread: Telnet client',
+    'Telnet connection from: [::1]:60828',
+    "Executing command 'lp' by Telnet from 10.0.0.1:60828",
+    "Executing command 'LP' by Telnet from 10.0.0.1:60828",
+    "Executing command 'gettime' by Telnet from 10.0.0.1:60828",
+    "Executing command 'aurum0123456789abcdef01234567' by Telnet from 10.0.0.1:60828",
+  ])('hides service line %s only for 7DTD', (message) => {
+    expect(isConsoleServiceLine(line(message), 'sevendays')).toBe(true);
+    expect(isConsoleServiceLine(line(message), 'minecraft')).toBe(false);
+  });
+  it.each([
+    "Executing command 'shutdown' by Telnet from 127.0.0.1:60828",
+    "Executing command 'say hello' by Telnet from 10.0.0.1:60828",
+    "Executing command 'gso true' by Telnet from 10.0.0.1:60828",
+    "Executing command 'unknown' by Telnet from 10.0.0.1:60828",
+    'Chat: Player: Telnet connection closed: 10.0.0.1:60828',
+    'Telnet connection closed: 10.0.0.1:60828 with error',
+    'Exited thread SaveChunks',
+    'IOException in TelnetClient_10.0.0.1:60828: socket has been shut down',
+  ])('retains actions and diagnostic lines: %s', (message) => {
+    expect(isConsoleServiceLine(line(message), 'sevendays')).toBe(false);
+  });
+  it.each(['WRN', 'ERR', 'EXC', 'DBG'])('retains %s even for a known command', (level) => {
+    expect(
+      isConsoleServiceLine(
+        line("Executing command 'lp' by Telnet from 10.0.0.1:60828", level),
+        'sevendays',
+      ),
+    ).toBe(false);
+  });
+  it('handles ANSI without altering the raw string', () => {
+    const raw = `\x1b[32m${line('Telnet connection closed: 10.0.0.1:60828')}\x1b[0m`;
+    expect(isConsoleServiceLine(raw, 'sevendays')).toBe(true);
+    expect(raw).toContain('\x1b[32m');
+  });
+});
 
 /**
  * Фильтр живёт в shared: список фоновых команд должен быть виден и бэкенду,

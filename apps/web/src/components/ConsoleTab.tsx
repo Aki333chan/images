@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import {
   backgroundCommandsFor,
   completeFromDictionary,
-  isPanelCommandEcho,
+  isConsoleServiceLine,
   type MinecraftConsoleCompletionDto,
   type MinecraftConsoleDictionaryDto,
 } from '@aurum/shared';
@@ -157,10 +157,10 @@ export function ConsoleTab({ serverId, moduleId }: { serverId: string; moduleId:
     if (!hideNoise || background.length === 0) return { visible: lines, hidden: 0 };
     const kept: LogLine[] = [];
     for (const line of lines) {
-      if (!isPanelCommandEcho(line.text, background)) kept.push(line);
+      if (!isConsoleServiceLine(line.text, moduleId)) kept.push(line);
     }
     return { visible: kept, hidden: lines.length - kept.length };
-  }, [lines, hideNoise, background]);
+  }, [lines, hideNoise, background, moduleId]);
 
   // ---------- Автодополнение ----------
   //
