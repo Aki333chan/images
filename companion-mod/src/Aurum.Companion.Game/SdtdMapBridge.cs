@@ -12,6 +12,37 @@ namespace Aurum.Companion.Game
         private string? _mapMarkers;
         private World? _mapWorld;
         private readonly Stopwatch _mapAge = Stopwatch.StartNew();
+        private string? _pois;
+        private World? _poiWorld;
+        private readonly Stopwatch _poiAge = Stopwatch.StartNew();
+        public string ReadMapPois() => MainThread.Get(() =>
+        {
+            var world = GameManager.Instance?.World;
+            var decorator = world?.ChunkCache?.ChunkProvider?.GetDynamicPrefabDecorator();
+            if (decorator == null) { _pois = null; _poiWorld = null; return "{\"ready\":false,\"pois\":[]}"; }
+            if (_pois != null && ReferenceEquals(world, _poiWorld) && _poiAge.ElapsedMilliseconds < 60000) return _pois;
+            // Native metadata only: no prefab loading, chunk reads or rendering. One copy per minute.
+            // ponytail: native API copies the full POI reference list; paginate if huge modded worlds need it.
+            var source = new List<PrefabInstance>();
+            decorator.GetPOIPrefabs(source);
+            var items = new List<string>(); bool truncated = false; int scanned = 0;
+            foreach (var instance in source)
+            {
+                if (++scanned > 4096 || items.Count >= 2048) { truncated = true; break; }
+                if (instance?.prefab == null) continue;
+                var p = instance.GetPOIMetadata();
+                string name = p.prefabName ?? "";
+                if (name.Length > 64) name = name.Substring(0, 64);
+                items.Add(JsonWriter.Object(new[] {
+                    F("id", JsonWriter.Number(instance.id)), F("name", JsonWriter.String(name)),
+                    F("x", JsonWriter.Coordinate(p.position.x + p.size.x / 2f)),
+                    F("z", JsonWriter.Coordinate(p.position.z + p.size.z / 2f)),
+                    F("tier", JsonWriter.Number(p.tier)), F("trader", JsonWriter.Bool(p.traderArea))
+                }));
+            }
+            _pois = JsonWriter.Object(new[] { F("ready", "true"), F("pois", JsonWriter.Array(items)), F("truncated", JsonWriter.Bool(truncated)) });
+            _poiWorld = world; _poiAge.Restart(); return _pois;
+        });
         private NativeMapFiles? MapFiles() => MainThread.Get(() => GameManager.Instance?.World == null ? null : new NativeMapFiles(Path.Combine(GameIO.GetSaveGameDir(), "map")));
         public string ReadMapInfo() => MapFiles()?.Info() ?? "{\"available\":false,\"reason\":\"world_loading\"}";
         public string ReadMapTile(int zoom, int x, int z) => MapFiles()?.Tile(zoom, x, z) ?? "{\"png\":null}";

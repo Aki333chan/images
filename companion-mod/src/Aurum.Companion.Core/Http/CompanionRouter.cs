@@ -41,7 +41,7 @@ namespace Aurum.Companion.Core.Http
             };
             if (config?.ForwardChat ?? true) capabilities.Add("chat-events");
             if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
-            if (game is IMapBridge) capabilities.Add("map-read");
+            if (game is IMapBridge) { capabilities.Add("map-read"); capabilities.Add("map-pois"); }
             _capabilitiesJson = JsonWriter.Array(capabilities.ConvertAll(JsonWriter.String));
         }
 
@@ -85,6 +85,7 @@ namespace Aurum.Companion.Core.Http
             {
                 if (parts.Length == 2 && parts[1] == "info") return HttpResponseData.Ok(map.ReadMapInfo());
                 if (parts.Length == 2 && parts[1] == "markers") return HttpResponseData.Ok(map.ReadMapMarkers());
+                if (parts.Length == 2 && parts[1] == "pois") return HttpResponseData.Ok(map.ReadMapPois());
                 if (parts.Length == 5 && parts[1] == "tile")
                 {
                     if (!int.TryParse(parts[2], out int zoom) || !int.TryParse(parts[3], out int x) || !int.TryParse(parts[4], out int z) || !NativeMapFiles.ValidCoordinates(zoom, x, z)) return HttpResponseData.BadRequest("invalid_tile");

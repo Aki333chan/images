@@ -78,6 +78,14 @@ export class SevenDaysController {
     return this.map.tile(serverId, zoom, x, z);
   }
 
+  @Get('map/pois')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.mapView)
+  @ServerScoped('serverId')
+  mapPois(@Param('serverId') serverId: string) {
+    return this.map.pois(serverId);
+  }
+
   @Get('players')
   @RequirePermission(SEVENDAYS_PERMISSIONS.playersView)
   @ServerScoped('serverId')

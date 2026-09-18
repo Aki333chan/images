@@ -10,6 +10,7 @@ namespace Aurum.Companion.Core.Game
     {
         string ReadMapInfo();
         string ReadMapMarkers();
+        string ReadMapPois();
         string ReadMapTile(int zoom, int x, int z);
     }
 

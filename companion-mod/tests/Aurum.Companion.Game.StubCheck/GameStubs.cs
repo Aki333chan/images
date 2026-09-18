@@ -198,6 +198,7 @@ public class AIDirector
 
 public class World
 {
+    public ChunkCluster? ChunkCache;
     public AIDirector? aiDirector;
     public PlayerList? Players;
     public EntityList? Entities;
@@ -254,6 +255,23 @@ public static class ThreadManager
 {
     public static bool IsMainThread() => true;
     public static void AddSingleTaskMainThread(string name, System.Action action) => action();
+}
+
+public class ChunkCluster { public IChunkProvider? ChunkProvider; }
+public interface IChunkProvider { DynamicPrefabDecorator? GetDynamicPrefabDecorator(); }
+public class DynamicPrefabDecorator { public void GetPOIPrefabs(List<PrefabInstance> list) { } }
+public class PrefabInstance
+{
+    public int id;
+    public object? prefab;
+    public class POIMetadata
+    {
+        public Vector3i position, size;
+        public string prefabName = "";
+        public byte tier;
+        public bool traderArea;
+    }
+    public POIMetadata GetPOIMetadata() => new POIMetadata();
 }
 
 public struct Vector3i

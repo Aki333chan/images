@@ -45,7 +45,7 @@ const baseline = process.env.MAP_BASELINE === '1';
             contents:
               name === 'locale'
                 ? `const c=${JSON.stringify(catalog)};export const useI18n=()=>({t:k=>c[k]||k});export const useT=()=>useI18n().t;`
-                : `window.stats={calls:0,snapshots:0,active:0,max:0};const canvas=document.createElement('canvas');canvas.width=canvas.height=128;const ctx=canvas.getContext('2d');ctx.fillStyle='#344e38';ctx.fillRect(0,0,128,128);const png=canvas.toDataURL().split(',')[1];export async function api(p,init){window.stats.calls++;if(!p.includes('/tiles/')){window.stats.snapshots++;return {available:true,info:{blockSize:128,maxZoom:4},players:[{id:'p',name:'Test Player',x:-320,z:200}],claims:[{ownerId:'p',owner:'Test Owner',x:-180,z:150,size:41}],truncated:false}}window.stats.active++;window.stats.max=Math.max(window.stats.max,window.stats.active);try{await new Promise((resolve,reject)=>{const id=setTimeout(resolve,60);init.signal.addEventListener('abort',()=>{clearTimeout(id);reject(new DOMException('aborted','AbortError'))},{once:true})});if(window.failTiles)throw Error('map_busy');return {png:window.emptyTiles?null:png}}finally{window.stats.active--}}`,
+                : `window.stats={calls:0,pois:0,snapshots:0,active:0,max:0};const canvas=document.createElement('canvas');canvas.width=canvas.height=128;const ctx=canvas.getContext('2d');ctx.fillStyle='#344e38';ctx.fillRect(0,0,128,128);const png=canvas.toDataURL().split(',')[1];export async function api(p,init){window.stats.calls++;if(p.endsWith('/pois')){window.stats.pois++;if(window.oldPois)return {available:false,reason:'mod_update',pois:[],truncated:false};return {available:true,pois:[{id:1,name:'trader_bob',x:-200,z:130,tier:0,trader:true},{id:2,name:'house_01',x:-110,z:120,tier:2,trader:false}],truncated:false}}if(!p.includes('/tiles/')){window.stats.snapshots++;return {available:true,info:{blockSize:128,maxZoom:4},players:[{id:'p',name:'Test Player',x:-320,z:200}],claims:[{ownerId:'p',owner:'Test Owner',x:-180,z:150,size:41}],truncated:false}}window.stats.active++;window.stats.max=Math.max(window.stats.max,window.stats.active);try{await new Promise((resolve,reject)=>{const id=setTimeout(resolve,60);init.signal.addEventListener('abort',()=>{clearTimeout(id);reject(new DOMException('aborted','AbortError'))},{once:true})});if(window.failTiles)throw Error('map_busy');return {png:window.emptyTiles?null:png}}finally{window.stats.active--}}`,
           }));
         },
       },
@@ -139,6 +139,23 @@ const baseline = process.env.MAP_BASELINE === '1';
         'drag must not activate marker',
       );
     }
+    assert.equal(
+      await page.evaluate(() => window.stats.pois),
+      0,
+      'POI off by default makes no requests',
+    );
+    await page.getByLabel(catalog['sdtd.map.pois'], { exact: true }).check();
+    await page.getByRole('button', { name: /trader_bob/ }).waitFor();
+    await page.getByLabel(catalog['sdtd.map.poiTraders'], { exact: true }).check();
+    assert.equal(await page.getByRole('button', { name: /house_01/ }).count(), 0);
+    await page.getByLabel(catalog['sdtd.map.poiFind'], { exact: true }).selectOption('1');
+    await page.getByRole('status').filter({ hasText: 'trader_bob' }).waitFor();
+    await page.getByLabel(catalog['sdtd.map.poiTraders'], { exact: true }).uncheck();
+    await page.getByLabel(catalog['sdtd.map.poiSearch'], { exact: true }).fill('house');
+    assert.equal(await page.getByRole('button', { name: /trader_bob/ }).count(), 0);
+    await page.getByRole('button', { name: /house_01/ }).click();
+    await page.getByRole('status').filter({ hasText: 'house_01' }).waitFor();
+    await page.getByLabel(catalog['sdtd.map.poiSearch'], { exact: true }).fill('');
     await page.setViewportSize({ width: 390, height: 700 });
     const hit = await claim.locator('[data-map-hit]').boundingBox();
     assert.ok(hit.width >= 23 && hit.height >= 23, 'small claim needs usable hit area');
@@ -170,13 +187,23 @@ const baseline = process.env.MAP_BASELINE === '1';
       (await page.locator('svg image').count()) > 0,
       'network errors must not erase old terrain',
     );
+    await page.getByLabel(catalog['sdtd.map.pois'], { exact: true }).uncheck();
+    await page.evaluate(() => {
+      window.oldPois = true;
+    });
+    await page.getByLabel(catalog['sdtd.map.pois'], { exact: true }).check();
+    await page.getByText(catalog['sdtd.map.poiUpdate'], { exact: true }).waitFor();
+    assert.ok(
+      (await page.locator('svg image').count()) > 0,
+      'old POI capability must not hide map',
+    );
     await page.evaluate(() => window.unmount());
     const calls = await page.evaluate(() => window.stats.calls);
     await page.waitForTimeout(400);
     assert.equal(await page.evaluate(() => window.stats.calls), calls);
     assert.deepEqual(errors, []);
     console.log(
-      'PASS: no blank refresh/zoom frames, click/keyboard/touch claims, marker/compass drag without text selection, bounded requests/tiles, failure fallback, unmount cleanup.',
+      'PASS: no blank refresh/zoom frames, click/keyboard/touch claims, marker/compass drag without text selection, POI search/traders/navigation/old-mod fallback, bounded requests/tiles, failure fallback, unmount cleanup.',
     );
   } finally {
     await browser.close();

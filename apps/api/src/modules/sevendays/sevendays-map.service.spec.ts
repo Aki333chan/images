@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { parseMapSnapshot, SevenDaysMapService } from './sevendays-map.service';
+import { parseMapSnapshot, parseMapPois, SevenDaysMapService } from './sevendays-map.service';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysController } from './sevendays.controller';
 
@@ -122,7 +122,44 @@ describe('7DTD read-only map', () => {
     companion.mapRequest.mockResolvedValue({ png: null });
     await expect(service.tile('a', 4, 3, 3)).resolves.toEqual({ png: null });
   });
-  it.each(['mapSnapshot', 'mapTile'] as const)(
+  it('validates POI entries, deduplicates ids and caps output', () => {
+    const p = { id: 1, name: 'trader_bob', x: -20, z: 50, tier: 0, trader: true };
+    expect(
+      parseMapPois({
+        ready: true,
+        pois: [
+          p,
+          p,
+          { ...p, id: 2, x: NaN },
+          { ...p, id: 3, tier: -1 },
+          { ...p, id: 4, trader: 'true' },
+        ],
+      }).pois,
+    ).toEqual([p]);
+    const result = parseMapPois({
+      ready: true,
+      pois: Array.from({ length: 3000 }, (_, id) => ({ ...p, id })),
+    });
+    expect(result.pois).toHaveLength(2048);
+    expect(result.truncated).toBe(true);
+    expect(parseMapPois({ ready: false }).reason).toBe('world_loading');
+  });
+  it('old companion keeps map working but does not receive POI requests', async () => {
+    const { companion, service } = setup();
+    expect((await service.pois('a')).reason).toBe('mod_update');
+    expect(companion.mapRequest).not.toHaveBeenCalled();
+  });
+  it('coalesces POI requests and releases pending entry on failure', async () => {
+    const { companion, service } = setup();
+    companion.ping.mockResolvedValue({ compatible: true, capabilities: ['map-pois'] });
+    companion.mapRequest.mockRejectedValueOnce(new Error('offline'));
+    const result = await Promise.allSettled([service.pois('a'), service.pois('a')]);
+    expect(result.every((r) => r.status === 'rejected')).toBe(true);
+    expect(companion.mapRequest).toHaveBeenCalledTimes(1);
+    companion.mapRequest.mockResolvedValue({ ready: true, pois: [] });
+    expect((await service.pois('a')).available).toBe(true);
+  });
+  it.each(['mapSnapshot', 'mapTile', 'mapPois'] as const)(
     'protects %s with map permission and server scope',
     (name) => {
       const handler = SevenDaysController.prototype[name];

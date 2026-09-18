@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SevenDaysMapSnapshot } from '@aurum/shared';
+import type { SevenDaysMapSnapshot, SevenDaysMapPois } from '@aurum/shared';
 import { api } from '../../lib/api';
-import { Button, Card, ErrorText, Spinner } from '../../components/ui';
+import { Button, Card, ErrorText, Spinner, Input } from '../../components/ui';
 import { useI18n } from '../../i18n';
 import type { ModuleTabProps } from '../registry';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_PIXELS, tileSpan, visibleTiles, mapPoint } from './map-math';
@@ -11,7 +11,11 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
   const [data, setData] = useState<SevenDaysMapSnapshot | null>(null);
   const [error, setError] = useState('');
   const [view, setView] = useState({ x: 0, z: 0, zoom: 0 });
-  const [layers, setLayers] = useState({ players: true, claims: true });
+  const [layers, setLayers] = useState({ players: true, claims: true, pois: false });
+  const [pois, setPois] = useState<SevenDaysMapPois | null>(null);
+  const [poiError, setPoiError] = useState('');
+  const [poiSearch, setPoiSearch] = useState('');
+  const [tradersOnly, setTradersOnly] = useState(false);
   const [selected, setSelected] = useState('');
   const [images, setImages] = useState<Record<string, string>>({});
   const [tileError, setTileError] = useState(false);
@@ -35,6 +39,35 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
   const level = Math.min(view.zoom, maxZoom);
   const span = tileSpan(data?.info?.blockSize ?? 128, maxZoom, level);
   const tiles = visibleTiles(view.x, view.z, span);
+  useEffect(() => {
+    setPois(null);
+    setPoiError('');
+    if (!layers.pois || !data?.available) return;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function pollPois() {
+      try {
+        if (!document.hidden) {
+          const result = await api<SevenDaysMapPois>(`${base}/pois`, { signal: abort.signal });
+          if (abort.signal.aborted) return;
+          setPois(result);
+          setPoiError('');
+        }
+      } catch (e) {
+        if (!abort.signal.aborted) {
+          setPois(null);
+          setPoiError((e as Error).message);
+        }
+      } finally {
+        if (!abort.signal.aborted) timer = setTimeout(pollPois, 60000);
+      }
+    }
+    void pollPois();
+    return () => {
+      abort.abort();
+      clearTimeout(timer);
+    };
+  }, [base, layers.pois, data?.available]);
   useEffect(() => {
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -170,6 +203,17 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
     x <= MAP_WIDTH + margin &&
     z >= -margin &&
     z <= MAP_HEIGHT + margin;
+  const matchingPois = layers.pois
+    ? (pois?.pois ?? []).filter(
+        (p) =>
+          (!tradersOnly || p.trader) &&
+          p.name.toLowerCase().includes(poiSearch.trim().toLowerCase()),
+      )
+    : [];
+  const visiblePois = matchingPois.filter((p) => {
+    const q = point(p.x, p.z);
+    return onScreen(q.x, q.y);
+  });
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -208,7 +252,7 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
             </option>
           ))}
         </select>
-        {(['players', 'claims'] as const).map((k) => (
+        {(['players', 'claims', 'pois'] as const).map((k) => (
           <label key={k} className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
@@ -219,6 +263,71 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
           </label>
         ))}
       </div>
+      {layers.pois && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted">{t('sdtd.map.poiHelp')}</p>
+          {!pois && !poiError && <Spinner />}
+          {poiError && <ErrorText>{poiError}</ErrorText>}
+          {pois && !pois.available && (
+            <p className="text-sm text-amber-400">
+              {t(
+                pois.reason === 'mod_update'
+                  ? 'sdtd.map.poiUpdate'
+                  : `sdtd.map.${pois.reason ?? 'world_loading'}`,
+              )}
+            </p>
+          )}
+          {pois?.available && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  className="w-full sm:w-64"
+                  aria-label={t('sdtd.map.poiSearch')}
+                  placeholder={t('sdtd.map.poiSearch')}
+                  maxLength={128}
+                  value={poiSearch}
+                  onChange={(e) => setPoiSearch(e.target.value)}
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={tradersOnly}
+                    onChange={(e) => setTradersOnly(e.target.checked)}
+                  />
+                  {t('sdtd.map.poiTraders')}
+                </label>
+                <select
+                  className="max-w-full rounded border border-border bg-card px-3 py-2 text-base sm:text-sm"
+                  aria-label={t('sdtd.map.poiFind')}
+                  value=""
+                  onChange={(e) => {
+                    const p = matchingPois.find((p) => String(p.id) === e.target.value);
+                    if (p) {
+                      setView((v) => ({ ...v, x: p.x, z: p.z }));
+                      setSelected(
+                        `${p.name} · ${t('sdtd.map.poiTier')} ${p.tier} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`,
+                      );
+                    }
+                  }}
+                >
+                  <option value="">{t('sdtd.map.poiFind')}</option>
+                  {matchingPois.slice(0, 50).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({Math.round(p.x)}, {Math.round(p.z)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!matchingPois.length && (
+                <p className="text-sm text-muted">{t('sdtd.map.poiEmpty')}</p>
+              )}
+              {(pois.truncated || visiblePois.length > 200 || matchingPois.length > 50) && (
+                <p className="text-xs text-amber-400">{t('sdtd.map.poiLimit')}</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <p className="text-xs text-muted">{t('sdtd.map.help')}</p>
       {data.reason && <p className="text-xs text-amber-400">{t(`sdtd.map.${data.reason}`)}</p>}
       {data.truncated && <p className="text-xs text-amber-400">{t('sdtd.map.truncated')}</p>}
@@ -324,6 +433,43 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
               />
             );
           })}
+        {visiblePois.slice(0, 200).map((p) => {
+          const q = point(p.x, p.z),
+            r = 6 * markerScale;
+          const details = `${p.name} · ${p.trader ? t('sdtd.map.poiTraders') + ' · ' : ''}${t('sdtd.map.poiTier')} ${p.tier} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`;
+          return (
+            <g
+              key={`poi/${p.id}`}
+              role="button"
+              tabIndex={0}
+              aria-label={details}
+              data-map-details={details}
+              style={{ cursor: 'pointer' }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelected(details);
+                }
+              }}
+            >
+              <path
+                d={`M ${q.x} ${q.y - r} L ${q.x + r} ${q.y} L ${q.x} ${q.y + r} L ${q.x - r} ${q.y} Z`}
+                fill={p.trader ? '#34d399' : '#38bdf8'}
+                stroke="white"
+                pointerEvents="none"
+              />
+              <rect
+                x={q.x - 12 * markerScale}
+                y={q.y - 12 * markerScale}
+                width={24 * markerScale}
+                height={24 * markerScale}
+                fill="transparent"
+                pointerEvents="all"
+              />
+              <title>{details}</title>
+            </g>
+          );
+        })}
         {layers.claims &&
           data.claims.map((c, i) => {
             const p = point(c.x + 0.5, c.z + 0.5),

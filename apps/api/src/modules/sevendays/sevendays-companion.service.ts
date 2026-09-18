@@ -81,7 +81,7 @@ export class SevenDaysCompanionService {
 
   /** Fixed, validated map routes only; tile reads do not write lastSeenAt per image. */
   async mapRequest(serverId: string, path: string): Promise<unknown> {
-    if (!/^\/map\/(info|markers|tile\/\d+\/-?\d+\/-?\d+)$/.test(path))
+    if (!/^\/map\/(info|markers|pois|tile\/\d+\/-?\d+\/-?\d+)$/.test(path))
       throw new BadRequestException('invalid_map_path');
     return this.call<unknown>(serverId, 'GET', path, undefined, false);
   }

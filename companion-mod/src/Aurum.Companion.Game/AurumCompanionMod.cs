@@ -24,7 +24,7 @@ namespace Aurum.Companion.Game
     /// </remarks>
     public sealed class AurumCompanionMod : IModApi
     {
-        private const string Version = "1.0.5-rc.1";
+        private const string Version = "1.0.6-rc.1";
         private const string ConfigFileName = "companion.cfg";
 
         private static CompanionConfig? _config;

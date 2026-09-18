@@ -183,12 +183,27 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'event-ids',
   'blood-moon-schedule',
   'map-read',
+  'map-pois',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
 
 export interface SevenDaysMapInfo {
   blockSize: number;
   maxZoom: number;
+}
+export interface SevenDaysMapPoi {
+  id: number;
+  name: string;
+  x: number;
+  z: number;
+  tier: number;
+  trader: boolean;
+}
+export interface SevenDaysMapPois {
+  available: boolean;
+  reason?: 'mod_update' | 'mod_unavailable' | 'world_loading';
+  pois: SevenDaysMapPoi[];
+  truncated: boolean;
 }
 export interface SevenDaysMapPlayer {
   id: string;

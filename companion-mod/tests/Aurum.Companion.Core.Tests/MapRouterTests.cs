@@ -13,6 +13,7 @@ public sealed class MapRouterTests
         public int Reads;
         public string ReadMapInfo() { Reads++; return "{\"available\":true}"; }
         public string ReadMapMarkers() { Reads++; return "{\"ready\":true}"; }
+        public string ReadMapPois() { Reads++; return "{\"ready\":true,\"pois\":[]}"; }
         public string ReadMapTile(int zoom, int x, int z) { Reads++; return "{\"png\":null}"; }
         public bool SendPrivateMessage(string id, string text) => false;
         public void Broadcast(string text) { }
@@ -25,6 +26,7 @@ public sealed class MapRouterTests
     [Theory]
     [InlineData("/map/info")]
     [InlineData("/map/markers")]
+    [InlineData("/map/pois")]
     [InlineData("/map/tile/4/-1/-2")]
     public void Map_requires_token_and_dispatches_only_authorized_get(string path)
     {

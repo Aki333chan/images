@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import type { SevenDaysMapSnapshot } from '@aurum/shared';
+import type { SevenDaysMapSnapshot, SevenDaysMapPois, SevenDaysMapPoi } from '@aurum/shared';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 
 const blank = (reason: SevenDaysMapSnapshot['reason']): SevenDaysMapSnapshot => ({
@@ -15,6 +15,35 @@ const obj = (v: unknown): Record<string, unknown> =>
 const coordinate = (n: unknown): n is number =>
   typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 1_000_000;
 const text = (v: unknown): v is string => typeof v === 'string' && v.length <= 128;
+
+export function parseMapPois(value: unknown): SevenDaysMapPois {
+  const body = obj(value);
+  if (body.ready !== true)
+    return { available: false, reason: 'world_loading', pois: [], truncated: false };
+  const input = Array.isArray(body.pois) ? body.pois : [];
+  const pois: SevenDaysMapPoi[] = [];
+  const ids = new Set<number>();
+  for (const row of input.slice(0, 2048)) {
+    const p = obj(row);
+    if (
+      typeof p.id !== 'number' ||
+      !Number.isSafeInteger(p.id) ||
+      ids.has(p.id) ||
+      !text(p.name) ||
+      !coordinate(p.x) ||
+      !coordinate(p.z) ||
+      typeof p.tier !== 'number' ||
+      !Number.isInteger(p.tier) ||
+      p.tier < 0 ||
+      p.tier > 255 ||
+      typeof p.trader !== 'boolean'
+    )
+      continue;
+    ids.add(p.id);
+    pois.push({ id: p.id, name: p.name, x: p.x, z: p.z, tier: p.tier, trader: p.trader });
+  }
+  return { available: true, pois, truncated: body.truncated === true || input.length > 2048 };
+}
 
 export function parseMapSnapshot(infoValue: unknown, markersValue: unknown): SevenDaysMapSnapshot {
   const info = obj(infoValue),
@@ -80,7 +109,28 @@ export class SevenDaysMapService {
   private readonly pending = new Map<string, Promise<SevenDaysMapSnapshot>>();
   private readonly tiles = new Map<string, { until: number; png: string | null }>();
   private activeTiles = 0;
+  private readonly poiRequests = new Map<string, Promise<SevenDaysMapPois>>();
   constructor(private readonly companion: SevenDaysCompanionService) {}
+
+  async pois(serverId: string): Promise<SevenDaysMapPois> {
+    const pending = this.poiRequests.get(serverId);
+    if (pending) return pending;
+    if (this.poiRequests.size >= 4) throw new ServiceUnavailableException('map_busy');
+    const result = this.loadPois(serverId).finally(() => this.poiRequests.delete(serverId));
+    this.poiRequests.set(serverId, result);
+    return result;
+  }
+  private async loadPois(serverId: string): Promise<SevenDaysMapPois> {
+    const ping = await this.companion.ping(serverId);
+    if (!ping || !ping.compatible || !ping.capabilities?.includes('map-pois'))
+      return {
+        available: false,
+        reason: !ping ? 'mod_unavailable' : 'mod_update',
+        pois: [],
+        truncated: false,
+      };
+    return parseMapPois(await this.companion.mapRequest(serverId, '/map/pois'));
+  }
 
   async snapshot(serverId: string): Promise<SevenDaysMapSnapshot> {
     const cached = this.snapshots.get(serverId);
