@@ -1,8 +1,10 @@
 {
+  "sdtd.give.suggestHint": "Wpisz co najmniej 2 znaki, np. ammo lub gun. Wybierz podpowiedź, aby ustawić limit liczby i opcje jakości.",
+  "sdtd.give.retrySearch": "Ponów pobieranie podpowiedzi",
   "sdtd.capability.item-drop": "Wydaj przedmioty",
   "sdtd.give.open": "Wydaj przedmioty",
   "sdtd.give.warning": "Przedmioty pojawią się na ziemi obok gracza, nie w plecaku. Mogą je podnieść inni; znikną po maksymalnie 5 minutach, a gra może usunąć je wcześniej. Wydawaj je, gdy gracz jest gotowy do odbioru. Jeden stos na żądanie, bez losowych modyfikacji.",
-  "sdtd.give.search": "Szukaj po nazwie w grze (np. ammo lub gun)",
+  "sdtd.give.search": "Przedmiot — zacznij wpisywać nazwę",
   "sdtd.give.find": "Szukaj",
   "sdtd.give.item": "Przedmiot",
   "sdtd.give.choose": "Wybierz przedmiot",

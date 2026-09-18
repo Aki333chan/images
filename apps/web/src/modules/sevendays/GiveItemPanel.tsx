@@ -38,6 +38,8 @@ export function SevenDaysGiveItemPanel({
   const [result, setResult] = useState<SevenDaysItemGrantResult['status'] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [lookupRevision, setLookupRevision] = useState(0);
   const lock = useRef(false);
   const searchAbort = useRef<AbortController | null>(null);
   const alive = useRef(true);
@@ -61,28 +63,40 @@ export function SevenDaysGiveItemPanel({
       else searchInput.current?.focus();
     } else if (openedBefore.current) trigger.current?.focus();
   }, [open, review]);
-  async function search() {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError('');
-    setCatalogue(null);
-    setItemId('');
+  useEffect(() => {
+    setSearching(false);
+    if (!open || review || itemId || query.trim().length < 2) return;
     const abort = new AbortController();
     searchAbort.current = abort;
-    try {
-      const data = await api<SevenDaysItemCatalogue>(
-        `${base}/items?q=${encodeURIComponent(query.trim())}`,
+    const timer = setTimeout(() => {
+      setSearching(true);
+      setError('');
+      void api<SevenDaysItemCatalogue>(
+        `${base}/items?q=${encodeURIComponent(query.trim().slice(0, 64))}`,
         { signal: abort.signal },
-      );
-      if (!abort.signal.aborted) setCatalogue(data);
-    } catch (e) {
-      if (!abort.signal.aborted) setError(`${t('sdtd.give.searchFailed')} ${(e as Error).message}`);
-    } finally {
-      lock.current = false;
-      if (alive.current) setBusy(false);
-    }
-  }
+      )
+        .then((data) => {
+          if (abort.signal.aborted) return;
+          setCatalogue(data);
+          const exact = data.items.find((p) => p.name.toLowerCase() === query.trim().toLowerCase());
+          if (data.ready && exact) {
+            setItemId(String(exact.itemId));
+            setCount('1');
+            setQuality('1');
+          }
+        })
+        .catch((e: Error) => {
+          if (!abort.signal.aborted) setError(`${t('sdtd.give.searchFailed')} ${e.message}`);
+        })
+        .finally(() => {
+          if (!abort.signal.aborted) setSearching(false);
+        });
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [base, open, review, query, itemId, lookupRevision]);
   async function send() {
     if (!review || lock.current) return;
     lock.current = true;
@@ -120,33 +134,49 @@ export function SevenDaysGiveItemPanel({
           <p className="max-w-prose text-sm text-muted">{t('sdtd.give.warning')}</p>
           {!review ? (
             <>
-              <form
-                className="flex flex-wrap items-end gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void search();
-                }}
-              >
-                <label className="min-w-0 flex-1 space-y-1 text-sm">
+              <div className="space-y-2">
+                <label className="block space-y-1 text-sm">
                   {t('sdtd.give.search')}
                   <Input
                     ref={searchInput}
                     value={query}
+                    list={`${controlId}-suggestions`}
+                    autoComplete="off"
+                    aria-describedby={`${controlId}-hint`}
                     onChange={(e) => {
-                      setQuery(e.target.value);
-                      setCatalogue(null);
-                      setItemId('');
+                      const value = e.target.value;
+                      setQuery(value);
+                      setError('');
+                      setSearching(false);
+                      const chosen =
+                        catalogue?.ready &&
+                        catalogue.items.find(
+                          (p) => p.name.toLowerCase() === value.trim().toLowerCase(),
+                        );
+                      if (chosen) {
+                        setItemId(String(chosen.itemId));
+                        setCount('1');
+                        setQuality('1');
+                      } else {
+                        setCatalogue(null);
+                        setItemId('');
+                      }
                     }}
                     minLength={2}
-                    maxLength={64}
+                    maxLength={128}
                     required
                     disabled={busy}
                   />
                 </label>
-                <Button type="submit" disabled={busy || query.trim().length < 2}>
-                  {t('sdtd.give.find')}
-                </Button>
-              </form>
+                <datalist id={`${controlId}-suggestions`}>
+                  {catalogue?.ready &&
+                    catalogue.items.map((p) => <option key={p.itemId} value={p.name} />)}
+                </datalist>
+                <p id={`${controlId}-hint`} className="text-xs text-muted">
+                  {t('sdtd.give.suggestHint')}
+                </p>
+                {searching && <Spinner />}
+              </div>
               {catalogue && !catalogue.ready && <p role="status">{t('sdtd.give.not_ready')}</p>}
               {catalogue?.ready && (
                 <>
@@ -173,27 +203,6 @@ export function SevenDaysGiveItemPanel({
                         });
                       }}
                     >
-                      <div className="space-y-1 text-sm">
-                        <label htmlFor={`${controlId}-item`} className="block">
-                          {t('sdtd.give.item')}
-                        </label>
-                        <Select
-                          id={`${controlId}-item`}
-                          value={itemId}
-                          onChange={(value) => {
-                            setItemId(value);
-                            setCount('1');
-                            setQuality('1');
-                          }}
-                          options={[
-                            { value: '', label: t('sdtd.give.choose') },
-                            ...catalogue.items.map((p) => ({
-                              value: String(p.itemId),
-                              label: p.name,
-                            })),
-                          ]}
-                        />
-                      </div>
                       {item && (
                         <>
                           <p className="break-all text-sm">
@@ -264,8 +273,13 @@ export function SevenDaysGiveItemPanel({
                 <div>
                   <dt className="text-muted">{t('sdtd.give.item')}</dt>
                   <dd className="break-all">
-                    {review.itemName} ×{review.count} · {t('sdtd.inventory.quality')}{' '}
-                    {review.quality}
+                    {review.itemName} ×{review.count}
+                    {review.quality > 0 && (
+                      <>
+                        {' '}
+                        · {t('sdtd.inventory.quality')} {review.quality}
+                      </>
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -311,6 +325,7 @@ export function SevenDaysGiveItemPanel({
                       setResult(null);
                       setCatalogue(null);
                       setItemId('');
+                      setQuery('');
                     }}
                   >
                     {t('sdtd.give.new')}
@@ -320,7 +335,19 @@ export function SevenDaysGiveItemPanel({
             </div>
           )}
           {busy && <Spinner />}
-          {error && <ErrorText>{error}</ErrorText>}
+          {error && (
+            <>
+              <ErrorText>{error}</ErrorText>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLookupRevision((v) => v + 1)}
+                disabled={searching}
+              >
+                {t('sdtd.give.retrySearch')}
+              </Button>
+            </>
+          )}
           <Button
             type="button"
             variant="ghost"

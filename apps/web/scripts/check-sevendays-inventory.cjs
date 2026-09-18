@@ -194,11 +194,31 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const searchInput = page.getByLabel(catalog['sdtd.give.search'], { exact: true });
     assert.equal(await searchInput.evaluate((el) => el === document.activeElement), true);
     assert.equal(await page.evaluate(() => window.stats.searches), 0);
+    await searchInput.fill('a');
+    await page.waitForTimeout(450);
+    assert.equal(await page.evaluate(() => window.stats.searches), 0, 'requires two characters');
+    await searchInput.fill('am');
+    await page.waitForTimeout(120);
     await searchInput.fill('ammo');
     await page.waitForTimeout(120);
-    assert.equal(await page.evaluate(() => window.stats.searches), 0, 'typing must not poll game');
-    await page.getByRole('button', { name: catalog['sdtd.give.find'], exact: true }).click();
-    await page.getByLabel(catalog['sdtd.give.item'], { exact: true }).selectOption('2');
+    assert.equal(await page.evaluate(() => window.stats.searches), 0, 'typing is debounced');
+    await page.waitForFunction(() => document.querySelectorAll('datalist option').length === 2);
+    assert.equal(await searchInput.evaluate((el) => el.list.options.length), 2);
+    await searchInput.fill('gunPistol');
+    const qualitySelect = page.getByLabel(catalog['sdtd.inventory.quality'], { exact: true });
+    await qualitySelect.selectOption('6');
+    assert.deepEqual(
+      await qualitySelect.locator('option').evaluateAll((els) => els.map((el) => el.value)),
+      ['1', '2', '3', '4', '5', '6'],
+    );
+    await searchInput.fill('ammoLongName'.repeat(8));
+    assert.equal(await qualitySelect.count(), 0, 'quality is hidden after switching to ammunition');
+    await page.waitForTimeout(500);
+    assert.equal(
+      await page.evaluate(() => window.stats.searches),
+      1,
+      'selection reuses suggestions',
+    );
     const amount = page.getByRole('spinbutton');
     await amount.fill('1001');
     await page.getByLabel(catalog['sdtd.give.reason'], { exact: true }).fill('Test compensation');
@@ -248,8 +268,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(grants[0].count, 1000);
     assert.equal(grants[0].quality, 0);
     await page.getByRole('button', { name: catalog['sdtd.give.new'], exact: true }).click();
-    await page.getByRole('button', { name: catalog['sdtd.give.find'], exact: true }).click();
-    await page.getByLabel(catalog['sdtd.give.item'], { exact: true }).selectOption('1');
+    await page.evaluate(() => {
+      window.searchFails = true;
+    });
+    await searchInput.fill('gun');
+    await page
+      .getByRole('button', { name: catalog['sdtd.give.retrySearch'], exact: true })
+      .waitFor();
+    await page.evaluate(() => {
+      window.searchFails = false;
+    });
+    await page.getByRole('button', { name: catalog['sdtd.give.retrySearch'], exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('datalist option').length === 2);
+    await searchInput.fill('gunPistol');
+    assert.equal(await qualitySelect.inputValue(), '1', 'new item resets quality');
     await page.getByLabel(catalog['sdtd.inventory.quality'], { exact: true }).selectOption('6');
     assert.equal(await page.getByRole('spinbutton').getAttribute('max'), '1');
     await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).click();
@@ -258,6 +290,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     await page.getByRole('button', { name: catalog['sdtd.give.confirm'], exact: true }).click();
     await page.getByText(catalog['sdtd.give.offline'], { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.stats.grants.at(-1).quality), 6);
     await page.getByRole('button', { name: catalog['sdtd.give.close'], exact: true }).click();
     assert.equal(
       await page
@@ -282,7 +315,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.evaluate(() => window.stats.inventory), calls);
     assert.deepEqual(errors, []);
     console.log(
-      'PASS: permission gating, manual-only inventory/search, safe text, desktop/mobile layout, errors, focus and cancellation; grant confirmation, bounds, double-click guard, stable replay ID after lost response, offline target and reopen without writes.',
+      'PASS: permission gating, manual inventory, debounced autocomplete and retry, conditional quality 1–6, safe text, desktop/mobile layout, errors, focus and cancellation; grant confirmation, bounds, double-click guard, stable replay ID after lost response, offline target and reopen without writes.',
     );
   } finally {
     await browser.close();

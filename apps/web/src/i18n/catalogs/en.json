@@ -1,8 +1,10 @@
 {
+  "sdtd.give.suggestHint": "Type at least 2 characters, e.g. ammo or gun. Choose a suggestion to fill in quantity limits and quality options.",
+  "sdtd.give.retrySearch": "Retry suggestions",
   "sdtd.capability.item-drop": "Give items",
   "sdtd.give.open": "Give items",
   "sdtd.give.warning": "Items will appear on the ground beside the player, not in their backpack. Others can pick them up; lifetime is up to 5 minutes and the game may remove them earlier. Only grant when the player is ready to collect them. One stack per request, no random modifications.",
-  "sdtd.give.search": "Search game names (for example, ammo or gun)",
+  "sdtd.give.search": "Item — start typing its name",
   "sdtd.give.find": "Search",
   "sdtd.give.item": "Item",
   "sdtd.give.choose": "Choose an item",
