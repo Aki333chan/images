@@ -59,12 +59,16 @@ export const sevenDaysManifest: GameModuleManifest = {
     banKick: true,
     whitelist: true,
     quickCommands: true,
-    // Единственная возможность, которой нет на голом сервере: обратного
-    // канала из игры telnet не даёт. Её включает companion-мод —
-    // companion-mod/ в этом же репозитории.
+    // Обратный канал и безопасный API карты обеспечивает companion-mod/.
     tickets: 'requires-plugin',
+    worldMap: 'requires-plugin',
   },
   permissions: [
+    {
+      key: SEVENDAYS_PERMISSIONS.mapView,
+      description: 'Карта мира, координаты игроков и приватов (только просмотр)',
+      defaultRoles: ['ADMIN'],
+    },
     {
       key: SEVENDAYS_PERMISSIONS.playersView,
       description: 'Просмотр игроков онлайн и состояния сервера',

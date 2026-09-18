@@ -4,7 +4,9 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Header,
   Param,
+  ParseIntPipe,
   Post,
   Put,
 } from '@nestjs/common';
@@ -25,6 +27,7 @@ import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysConfigService } from './sevendays-config.service';
 import { SevenDaysEventsService } from './sevendays-events.service';
 import { SevenDaysService } from './sevendays.service';
+import { SevenDaysMapService } from './sevendays-map.service';
 import {
   ActionRunDto,
   BanDto,
@@ -39,11 +42,8 @@ import {
  * правом модуля и @ServerScoped, права проверяются ядром по текущему
  * состоянию БД, а мутирующие запросы попадают в audit_log.
  *
- * Чего здесь НЕТ и почему:
- *   инвентарь — сервер не отдаёт содержимое рюкзака никак, и плагинов,
- *               которые бы его отдали, в этой игре не бывает;
- *   тикеты    — заводит их игрок командой в игре, а обратного канала из
- *               игры в панель у 7 Days to Die нет.
+ * Инвентарь пока не реализован. Обратный канал тикетов и событий обеспечивает
+ * серверный companion; карта читает его ограниченные read-only endpoints.
  */
 @Controller('modules/sevendays/servers/:serverId')
 export class SevenDaysController {
@@ -52,9 +52,31 @@ export class SevenDaysController {
     private readonly config: SevenDaysConfigService,
     private readonly companion: SevenDaysCompanionService,
     private readonly events: SevenDaysEventsService,
+    private readonly map: SevenDaysMapService,
   ) {}
 
   // ---------- Игроки ----------
+
+  @Get('map')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.mapView)
+  @ServerScoped('serverId')
+  mapSnapshot(@Param('serverId') serverId: string) {
+    return this.map.snapshot(serverId);
+  }
+
+  @Get('map/tiles/:zoom/:x/:z')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.mapView)
+  @ServerScoped('serverId')
+  mapTile(
+    @Param('serverId') serverId: string,
+    @Param('zoom', ParseIntPipe) zoom: number,
+    @Param('x', ParseIntPipe) x: number,
+    @Param('z', ParseIntPipe) z: number,
+  ) {
+    return this.map.tile(serverId, zoom, x, z);
+  }
 
   @Get('players')
   @RequirePermission(SEVENDAYS_PERMISSIONS.playersView)

@@ -14,6 +14,7 @@ export const MODULE_CAPABILITIES = [
   'tickets',
   'guilds',
   'economy',
+  'worldMap',
 ] as const;
 export type ModuleCapability = (typeof MODULE_CAPABILITIES)[number];
 

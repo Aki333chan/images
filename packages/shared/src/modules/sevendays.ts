@@ -182,8 +182,35 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'death-events',
   'event-ids',
   'blood-moon-schedule',
+  'map-read',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
+
+export interface SevenDaysMapInfo {
+  blockSize: number;
+  maxZoom: number;
+}
+export interface SevenDaysMapPlayer {
+  id: string;
+  name: string;
+  x: number;
+  z: number;
+}
+export interface SevenDaysMapClaim {
+  ownerId: string;
+  owner: string;
+  x: number;
+  z: number;
+  size: number;
+}
+export interface SevenDaysMapSnapshot {
+  available: boolean;
+  reason?: 'mod_unavailable' | 'mod_update' | 'world_loading' | 'native_map_missing';
+  info: SevenDaysMapInfo | null;
+  players: SevenDaysMapPlayer[];
+  claims: SevenDaysMapClaim[];
+  truncated: boolean;
+}
 
 export interface SevenDaysCompanionStatusDto {
   configured: boolean;
@@ -224,6 +251,7 @@ export interface SevenDaysActionDto {
 }
 
 export const SEVENDAYS_PERMISSIONS = {
+  mapView: 'sevendays.map.view',
   playersView: 'sevendays.players.view',
   kick: 'sevendays.kick',
   ban: 'sevendays.ban',

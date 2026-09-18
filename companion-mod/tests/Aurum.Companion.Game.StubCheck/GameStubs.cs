@@ -48,7 +48,16 @@ public enum EnumGamePrefs
     ServerMaxPlayerCount,
 }
 
-public enum EnumGameStats { BloodMoonDay }
+public enum EnumGameStats { BloodMoonDay, LandClaimSize }
+public static class GameIO { public static string GetSaveGameDir() => "/test"; }
+public class PersistentPlayerName { public string DisplayName => ""; }
+public class PersistentPlayerData
+{
+    public PlatformUserIdentifierAbs? PrimaryId;
+    public PersistentPlayerName? PlayerName;
+    public List<Vector3i> GetLandProtectionBlocks() => new List<Vector3i>();
+}
+public class PersistentPlayerList { public Dictionary<string,PersistentPlayerData> Players = new Dictionary<string,PersistentPlayerData>(); }
 public static class GameStats
 {
     public static int GetInt(EnumGameStats stat) => 0;
@@ -202,6 +211,7 @@ public class FpsCounter
 
 public class GameManager
 {
+    public PersistentPlayerList? persistentPlayers;
     public static GameManager? Instance = new GameManager();
     public World? World = new World();
     public FpsCounter? fps = new FpsCounter();

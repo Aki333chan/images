@@ -29,6 +29,18 @@ public class RouterTests
     private static HttpRequestData Post(string path, string body) => new("POST", path, body);
 
     [Theory]
+    [InlineData("/map/info")]
+    [InlineData("/map/markers")]
+    [InlineData("/map/tile/4/-1/-2")]
+    public void Map_routes_require_auth_even_without_map_support(string path)
+    {
+        var (router, _) = Make();
+        Assert.Equal(401, router.Handle(Get(path), null).Status);
+        Assert.Equal(404, router.Handle(Get(path), Token).Status);
+        Assert.DoesNotContain("map-read", router.Handle(Get("/ping"), Token).Json);
+    }
+
+    [Theory]
     [InlineData(false, false, 503, "game_operation_not_started")]
     [InlineData(false, true, 504, "game_operation_not_started")]
     [InlineData(true, false, 503, "game_operation_outcome_unknown")]

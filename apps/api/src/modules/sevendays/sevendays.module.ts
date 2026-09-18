@@ -6,6 +6,7 @@ import { SevenDaysController } from './sevendays.controller';
 import { SevenDaysEventsService } from './sevendays-events.service';
 import { SevenDaysInternalController } from './sevendays-internal.controller';
 import { SevenDaysService } from './sevendays.service';
+import { SevenDaysMapService } from './sevendays-map.service';
 import { SevenDaysTicketDelivery } from './sevendays-ticket-delivery';
 import { ServerMetricsModule } from '../../servers/metrics/server-metrics.module';
 import { SevenDaysPlayerCount } from './sevendays-player-count';
@@ -30,10 +31,12 @@ import { SevenDaysPlayerCount } from './sevendays-player-count';
 @Module({
   imports: [ServerMetricsModule],
   controllers: [SevenDaysController, SevenDaysInternalController],
-  providers: [SevenDaysPlayerCount, 
+  providers: [
+    SevenDaysPlayerCount,
     SevenDaysConfigService,
     SevenDaysConsoleService,
     SevenDaysService,
+    SevenDaysMapService,
     SevenDaysCompanionService,
     SevenDaysEventsService,
     SevenDaysTicketDelivery,

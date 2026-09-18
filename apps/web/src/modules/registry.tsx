@@ -9,11 +9,7 @@ import {
   type ModuleCapability,
 } from '@aurum/shared';
 import { ConsoleTab } from '../components/ConsoleTab';
-import {
-  DummyPlayersTab,
-  DummyQuickCommandsTab,
-  DummyTicketsTab,
-} from './test-dummy/tabs';
+import { DummyPlayersTab, DummyQuickCommandsTab, DummyTicketsTab } from './test-dummy/tabs';
 import {
   MinecraftBansTab,
   MinecraftPlayersTab,
@@ -23,11 +19,7 @@ import {
 import { MinecraftGuildsTab } from './minecraft/GuildsTab';
 import { MinecraftEconomyTab } from './minecraft/EconomyTab';
 import { MinecraftSettingsTab } from './minecraft/SettingsTab';
-import {
-  PalworldBansTab,
-  PalworldPlayersTab,
-  PalworldQuickActionsWidget,
-} from './palworld/tabs';
+import { PalworldBansTab, PalworldPlayersTab, PalworldQuickActionsWidget } from './palworld/tabs';
 import { PalworldSettingsTab } from './palworld/SettingsTab';
 import {
   SevenDaysBansTab,
@@ -36,6 +28,7 @@ import {
   SevenDaysWhitelistTab,
 } from './sevendays/tabs';
 import { SevenDaysSettingsTab } from './sevendays/SettingsTab';
+import { SevenDaysMapTab } from './sevendays/MapTab';
 
 export interface ModuleTabProps {
   serverId: string;
@@ -209,7 +202,11 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
         permission: PALWORLD_PERMISSIONS.playersView,
         component: PalworldPlayersTab,
       },
-      banKick: { labelKey: 'tab.bans', permission: PALWORLD_PERMISSIONS.ban, component: PalworldBansTab },
+      banKick: {
+        labelKey: 'tab.bans',
+        permission: PALWORLD_PERMISSIONS.ban,
+        component: PalworldBansTab,
+      },
     },
     dashboard: {
       // Право проверяет сам виджет: действия под разными правами, и одного
@@ -230,6 +227,11 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
    */
   sevendays: {
     tabs: {
+      worldMap: {
+        labelKey: 'sdtd.map.title',
+        permission: SEVENDAYS_PERMISSIONS.mapView,
+        component: SevenDaysMapTab,
+      },
       playerList: {
         labelKey: 'tab.players',
         permission: SEVENDAYS_PERMISSIONS.playersView,
@@ -260,7 +262,11 @@ export const MODULE_REGISTRY: Record<string, ModuleFrontend> = {
   },
   'test-dummy': {
     tabs: {
-      playerList: { labelKey: 'tab.players', permission: 'test-dummy.players', component: DummyPlayersTab },
+      playerList: {
+        labelKey: 'tab.players',
+        permission: 'test-dummy.players',
+        component: DummyPlayersTab,
+      },
       quickCommands: {
         labelKey: 'tab.quick',
         permission: 'test-dummy.quick-commands',
