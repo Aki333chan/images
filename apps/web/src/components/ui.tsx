@@ -282,7 +282,7 @@ export function Tabs({
       <div
         ref={rowRef}
         className={cn(
-          'relative flex min-w-full gap-1 rounded-lg border border-border bg-card/60 p-1',
+          'relative flex min-w-full gap-1 rounded-lg border border-border bg-card/60 p-1 [justify-content:safe_center]',
           fill ? 'w-full' : 'w-max',
         )}
       >

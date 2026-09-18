@@ -21,6 +21,7 @@ import { KnownPlayersPanel } from './KnownPlayersPanel';
 import { PlayerName } from './PlayerName';
 import { useI18n, useT } from '../../i18n';
 import { knownByName } from './player-name';
+import { useToast } from '../../components/Toast';
 
 /**
  * Базовый путь API берётся из moduleId, а не зашит строкой.
@@ -595,11 +596,11 @@ function defaultArgs(command: MinecraftQuickCommandDto): Record<string, string> 
 
 export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabProps) {
   const t = useT();
+  const toast = useToast();
 
   const [commands, setCommands] = useState<MinecraftQuickCommandDto[] | null>(null);
   const [active, setActive] = useState<MinecraftQuickCommandDto | null>(null);
   const [args, setArgs] = useState<Record<string, string>>({});
-  const [result, setResult] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -617,13 +618,12 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
   async function run(command: MinecraftQuickCommandDto, values: Record<string, string>) {
     setBusy(true);
     setError('');
-    setResult('');
     try {
       const res = await api<{ output: string }>(`${base(moduleId, serverId)}/quick-commands/${command.id}`, {
         method: 'POST',
         body: JSON.stringify({ args: values }),
       });
-      setResult(res.output || t('mc.quick.done', { label: t(command.labelKey) }));
+      toast.success(res.output || t('mc.quick.done', { label: t(command.labelKey) }));
       setActive(null);
       setArgs({});
     } catch (e) {
@@ -649,62 +649,61 @@ export function MinecraftQuickCommandsWidget({ serverId, moduleId }: ModuleTabPr
   return (
     <Card className="space-y-3">
       {ordered.map(([plugin, list]) => (
-        <div key={plugin || 'vanilla'} className="flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-sm text-muted">
+        <div
+          key={plugin || 'vanilla'}
+          className="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-start"
+        >
+          <span className="pt-1.5 text-sm text-muted">
             {plugin ? (PLUGIN_LABELS[plugin] ?? plugin) : t('mc.quick.title')}:
           </span>
-          {list.map((c) => (
-            <Button
-              key={c.id}
-              size="sm"
-              variant="outline"
-              title={t(c.descriptionKey)}
-              disabled={busy}
-              onClick={() => {
-                // Действие с аргументами и так открывает форму — там
-                // человек видит, что именно запускает. Подтверждение нужно
-                // только для заметных действий без аргументов.
-                if (c.args.length > 0) {
-                  setArgs(defaultArgs(c));
-                  setActive(c);
-                  return;
-                }
-                if (
-                  c.destructive &&
-                  !confirm(t('mc.quick.confirm', { description: t(c.descriptionKey) }))
-                ) {
-                  return;
-                }
-                void run(c, {});
-              }}
-            >
-              {t(c.labelKey)}
-            </Button>
-          ))}
-          {/* Тюрьма стоит в ряду EssentialsX, но идёт не из каталога быстрых
+          <div className="flex flex-wrap items-center gap-2">
+            {list.map((c) => (
+              <Button
+                key={c.id}
+                size="sm"
+                variant="outline"
+                title={t(c.descriptionKey)}
+                disabled={busy}
+                onClick={() => {
+                  // Действие с аргументами и так открывает форму — там
+                  // человек видит, что именно запускает. Подтверждение нужно
+                  // только для заметных действий без аргументов.
+                  if (c.args.length > 0) {
+                    setArgs(defaultArgs(c));
+                    setActive(c);
+                    return;
+                  }
+                  if (
+                    c.destructive &&
+                    !confirm(t('mc.quick.confirm', { description: t(c.descriptionKey) }))
+                  ) {
+                    return;
+                  }
+                  void run(c, {});
+                }}
+              >
+                {t(c.labelKey)}
+              </Button>
+            ))}
+            {/* Тюрьма стоит в ряду EssentialsX, но идёт не из каталога быстрых
               команд: список тюрем задаёт админ в игре, а сама команда зависит
               от того, сидит ли уже игрок. Шаблоном с подстановками это не
               выражается — см. JailPanel. Ряд появляется, только если сервер
               подтвердил, что EssentialsX установлен. */}
-          {plugin === 'Essentials' && (
-            <JailActions
-              serverId={serverId}
-              moduleId={moduleId}
-              disabled={busy}
-              onResult={(output) => {
-                setError('');
-                setResult(output);
-              }}
-            />
-          )}
+            {plugin === 'Essentials' && (
+              <JailActions
+                serverId={serverId}
+                moduleId={moduleId}
+                disabled={busy}
+                onResult={(output) => {
+                  setError('');
+                  toast.success(output);
+                }}
+              />
+            )}
+          </div>
         </div>
       ))}
-
-      {result && (
-        <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded bg-black/40 p-2 font-mono text-xs text-emerald-300">
-          {result}
-        </pre>
-      )}
       <ErrorText>{error}</ErrorText>
 
       {active && (

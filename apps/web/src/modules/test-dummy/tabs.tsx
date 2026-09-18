@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useT } from '../../i18n';
 import { api } from '../../lib/api';
 import { Button, Card, Spinner } from '../../components/ui';
+import { useToast } from '../../components/Toast';
 import type { ModuleTabProps } from '../registry';
 
 /**
@@ -65,7 +66,7 @@ export function DummyPlayersTab({ serverId }: ModuleTabProps) {
 
 export function DummyQuickCommandsTab({ serverId }: ModuleTabProps) {
   const t = useT();
-  const [result, setResult] = useState('');
+  const toast = useToast();
   async function fakeTicket() {
     const ticket = await api<{ id: string }>(
       `/api/modules/test-dummy/servers/${serverId}/fake-ticket`,
@@ -80,7 +81,7 @@ export function DummyQuickCommandsTab({ serverId }: ModuleTabProps) {
         }),
       },
     );
-    setResult(t('dummy.ticketDone', { id: ticket.id }));
+    toast.success(t('dummy.ticketDone', { id: ticket.id }));
   }
   return (
     <Card className="space-y-3">
@@ -88,7 +89,6 @@ export function DummyQuickCommandsTab({ serverId }: ModuleTabProps) {
       <Button size="sm" onClick={() => void fakeTicket()}>
         {t('dummy.makeTicket')}
       </Button>
-      {result && <p className="text-sm text-emerald-400">{result}</p>}
     </Card>
   );
 }

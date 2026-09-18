@@ -11,6 +11,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Spinner } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { useToast } from '../../components/Toast';
 import type { ModuleTabProps } from '../registry';
 
 const base = (serverId: string) => `/api/modules/palworld/servers/${serverId}`;
@@ -418,10 +419,10 @@ export function PalworldBansTab({ serverId }: ModuleTabProps) {
 
 export function PalworldQuickActionsWidget({ serverId }: ModuleTabProps) {
   const { hasPermission } = useAuth();
+  const toast = useToast();
   const [actions, setActions] = useState<PalworldQuickActionDto[] | null>(null);
   const [active, setActive] = useState<PalworldQuickActionDto | null>(null);
   const [args, setArgs] = useState<Record<string, string>>({});
-  const [result, setResult] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -434,7 +435,6 @@ export function PalworldQuickActionsWidget({ serverId }: ModuleTabProps) {
   async function run(action: PalworldQuickActionDto, values: Record<string, string>) {
     setBusy(true);
     setError('');
-    setResult('');
     try {
       // Остановка сервера — отдельный роут со своим правом, см. контроллер.
       const path =
@@ -445,7 +445,7 @@ export function PalworldQuickActionsWidget({ serverId }: ModuleTabProps) {
         method: 'POST',
         body: JSON.stringify({ args: values }),
       });
-      setResult(res.message);
+      toast.success(res.message);
       setActive(null);
       setArgs({});
     } catch (e) {
@@ -488,7 +488,6 @@ export function PalworldQuickActionsWidget({ serverId }: ModuleTabProps) {
         ))}
       </div>
 
-      {result && <p className="text-xs text-emerald-400">{result}</p>}
       <ErrorText>{error}</ErrorText>
 
       {active && (

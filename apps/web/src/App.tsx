@@ -17,6 +17,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { MessagesPage } from './pages/MessagesPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { Spinner } from './components/ui';
+import { ToastProvider } from './components/Toast';
 
 /** Роут, требующий права; при live-потере права редиректит на /servers. */
 function Guarded({ permission, children }: { permission: string; children: JSX.Element }) {
@@ -103,9 +104,11 @@ export default function App() {
   return (
     <AuthProvider>
       <Localized>
-        <BrowserRouter>
-          <Shell />
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter>
+            <Shell />
+          </BrowserRouter>
+        </ToastProvider>
       </Localized>
     </AuthProvider>
   );

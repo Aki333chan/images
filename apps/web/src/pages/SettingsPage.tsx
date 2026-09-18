@@ -11,38 +11,120 @@ import { ALERT_SETTINGS_LIMITS, DEFAULT_ALERT_SETTINGS, ROLE_KEYS } from '@aurum
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { AiSettingsCard } from './AiSettingsCard';
-import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../components/ui';
+import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner, Tabs } from '../components/ui';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { useApiText, useT } from '../i18n';
 
 /**
- * Настройки.
- *
- * Сверху — личные, они есть у всех: свой ник и свой пароль. Ниже — настройки
- * панели, их видит только ГМ: правила создания аккаунтов, очередь заявок,
- * почта и ассистент. Заявки здесь же, а не отдельным пунктом меню:
- * переключатель и очередь, которую он порождает, читаются вместе.
+ * Настройки аккаунта и платформы.
+ * Личные параметры и GM-инструменты разнесены по разделам без изменения ACL.
  */
 export function SettingsPage() {
   const t = useT();
   const { hasPermission } = useAuth();
   const isGm = hasPermission('users.manage');
+  const [activeSection, setActiveSection] = useState('profile');
+
+  const sections = [
+    {
+      id: 'profile',
+      label: t('set.section.profile'),
+      description: t('set.section.profileHint'),
+      content: (
+        <>
+          <MyLanguage />
+          <MyNickname />
+          <MyPassword />
+        </>
+      ),
+    },
+    ...(isGm
+      ? [
+          {
+            id: 'accounts',
+            label: t('set.section.accounts'),
+            description: t('set.section.accountsHint'),
+            content: (
+              <>
+                <AccountRules />
+                <PendingApprovals />
+              </>
+            ),
+          },
+          {
+            id: 'notifications',
+            label: t('set.section.notifications'),
+            description: t('set.section.notificationsHint'),
+            content: (
+              <>
+                <SmtpSettings />
+                <AlertSettings />
+              </>
+            ),
+          },
+          {
+            id: 'ai',
+            label: t('set.section.ai'),
+            description: t('set.section.aiHint'),
+            content: <AiSettingsCard />,
+          },
+        ]
+      : []),
+  ];
+
+  const active = sections.find((section) => section.id === activeSection) ?? sections[0]!;
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">{t('nav.settings')}</h1>
-      <MyLanguage />
-      <MyNickname />
-      <MyPassword />
-      {isGm && (
-        <>
-          <AccountRules />
-          <PendingApprovals />
-          <SmtpSettings />
-          <AlertSettings />
-          <AiSettingsCard />
-        </>
-      )}
+      <div className="lg:hidden">
+        <Tabs
+          tabs={sections.map(({ id, label }) => ({ id, label }))}
+          active={active.id}
+          onChange={setActiveSection}
+        />
+      </div>
+      <div className="grid items-start gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
+        <nav
+          aria-label={t('nav.settings')}
+          className="sticky top-4 hidden space-y-1 rounded-lg border border-border bg-card/60 p-1.5 lg:block"
+        >
+          {sections.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              aria-current={active.id === section.id ? 'page' : undefined}
+              onClick={() => setActiveSection(section.id)}
+              className={
+                'flex min-h-10 w-full items-center rounded-md px-3 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 ' +
+                (active.id === section.id
+                  ? 'bg-primary/15 text-primary-200'
+                  : 'text-muted hover:bg-white/5 hover:text-neutral-100')
+              }
+            >
+              {section.label}
+            </button>
+          ))}
+        </nav>
+
+        <section className="min-w-0" aria-labelledby={`settings-${active.id}`}>
+          <div className="mb-4">
+            <h2 id={`settings-${active.id}`} className="text-lg font-semibold">
+              {active.label}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted">{active.description}</p>
+          </div>
+          {sections.map((section) => (
+            <div
+              key={section.id}
+              hidden={active.id !== section.id}
+              className="space-y-4"
+            >
+              {section.content}
+            </div>
+          ))}
+        </section>
+      </div>
     </div>
   );
 }

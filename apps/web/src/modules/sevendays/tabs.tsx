@@ -17,6 +17,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../../components/ui';
 import { Modal } from '../../components/Modal';
+import { useToast } from '../../components/Toast';
 import type { ModuleTabProps } from '../registry';
 import { useI18n } from '../../i18n';
 
@@ -702,10 +703,10 @@ export function SevenDaysWhitelistTab({ serverId }: ModuleTabProps) {
 
 export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
   const { hasPermission } = useAuth();
+  const toast = useToast();
   const [actions, setActions] = useState<SevenDaysActionDto[] | null>(null);
   const [active, setActive] = useState<SevenDaysActionDto | null>(null);
   const [args, setArgs] = useState<Record<string, string>>({});
-  const [result, setResult] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -718,7 +719,6 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
   async function run(action: SevenDaysActionDto, values: Record<string, string>) {
     setBusy(true);
     setError('');
-    setResult('');
     try {
       // Остановка сервера — отдельный роут со своим правом, см. контроллер.
       const path =
@@ -729,7 +729,7 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
         method: 'POST',
         body: JSON.stringify({ args: values }),
       });
-      setResult(res.message);
+      toast.success(res.message);
       setActive(null);
       setArgs({});
     } catch (e) {
@@ -772,7 +772,6 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
         ))}
       </div>
 
-      {result && <p className="text-xs text-emerald-400">{result}</p>}
       <ErrorText>{error}</ErrorText>
 
       {active && (
