@@ -17,9 +17,17 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
   const [tileError, setTileError] = useState(false);
   const [markerScale, setMarkerScale] = useState(1);
   const svg = useRef<SVGSVGElement | null>(null);
-  const drag = useRef<{ x: number; y: number; cx: number; cz: number; moved: boolean } | null>(
-    null,
-  );
+  const drag = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    cx: number;
+    cz: number;
+    units: number;
+    span: number;
+    moved: boolean;
+    details: string | null;
+  } | null>(null);
   const initialized = useRef(false);
   const cache = useRef(new Map<string, { url: string | null; until: number }>());
   const base = `/api/modules/sevendays/servers/${serverId}/map`;
@@ -70,9 +78,12 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
   }, [base]);
   useEffect(() => {
     const abort = new AbortController();
-    setImages({});
     setTileError(false);
-    if (!data?.info || !data.available) return;
+    if (!data?.info || !data.available) {
+      setImages({});
+      cache.current.clear();
+      return;
+    }
     // Debounce pan/zoom; two workers only, no unbounded request queue or retry loop.
     const timer = setTimeout(() => {
       const todo = visibleTiles(view.x, view.z, span);
@@ -88,16 +99,34 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
                 signal: abort.signal,
               });
               if (abort.signal.aborted) return;
+              const url = result.png ? `data:image/png;base64,${result.png}` : (entry?.url ?? null);
+              if (url && url !== entry?.url) {
+                // Decode before replacing the visible image; stale terrain remains underneath.
+                const image = new Image();
+                image.src = url;
+                await image.decode();
+                if (abort.signal.aborted) return;
+              }
               entry = {
-                url: result.png ? `data:image/png;base64,${result.png}` : null,
+                url,
                 until: Date.now() + 15000,
               };
-              if (cache.current.size >= 64)
+              cache.current.delete(key);
+              if (cache.current.size >= 96)
                 cache.current.delete(cache.current.keys().next().value!);
               cache.current.set(key, entry);
             }
             if (entry.url && !abort.signal.aborted)
-              setImages((old) => ({ ...old, [key]: entry!.url! }));
+              setImages((old) => {
+                const url = entry!.url!;
+                if (old[key] === url) return old;
+                const next = { ...old };
+                delete next[key];
+                next[key] = url;
+                // Two visible zoom levels plus a small pan buffer, never an unbounded world cache.
+                if (Object.keys(next).length > 96) delete next[Object.keys(next)[0]!];
+                return next;
+              });
           } catch {
             if (!abort.signal.aborted) setTileError(true);
           }
@@ -197,34 +226,60 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
       <svg
         ref={svg}
         viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
-        role="img"
+        role="group"
         aria-label={t('sdtd.map.title')}
         className="w-full rounded-lg border border-border bg-black/30"
-        style={{ touchAction: 'none', cursor: 'grab' }}
+        style={{
+          touchAction: 'none',
+          cursor: 'grab',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+        }}
+        onDragStart={(e) => e.preventDefault()}
         onPointerDown={(e) => {
-          drag.current = { x: e.clientX, y: e.clientY, cx: view.x, cz: view.z, moved: false };
+          if (e.button !== 0 || !e.isPrimary) return;
+          e.preventDefault();
+          const marker = (e.target as Element).closest('[data-map-details]');
+          drag.current = {
+            id: e.pointerId,
+            x: e.clientX,
+            y: e.clientY,
+            cx: view.x,
+            cz: view.z,
+            units: MAP_WIDTH / e.currentTarget.getBoundingClientRect().width,
+            span,
+            moved: false,
+            details: marker?.getAttribute('data-map-details') ?? null,
+          };
+          e.currentTarget.style.cursor = 'grabbing';
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerMove={(e) => {
           const d = drag.current;
-          if (!d) return;
-          const rect = e.currentTarget.getBoundingClientRect();
-          const dx = ((e.clientX - d.x) * MAP_WIDTH) / rect.width,
-            dy = ((e.clientY - d.y) * MAP_HEIGHT) / rect.height;
-          d.moved ||= Math.abs(dx) + Math.abs(dy) > 4;
+          if (!d || d.id !== e.pointerId) return;
+          const dx = e.clientX - d.x,
+            dy = e.clientY - d.y;
+          d.moved ||= Math.hypot(dx, dy) > 4;
+          if (!d.moved) return;
           setView((v) => ({
             ...v,
-            x: Math.max(-500000, Math.min(500000, d.cx - (dx / TILE_PIXELS) * span)),
-            z: Math.max(-500000, Math.min(500000, d.cz + (dy / TILE_PIXELS) * span)),
+            x: Math.max(-500000, Math.min(500000, d.cx - ((dx * d.units) / TILE_PIXELS) * d.span)),
+            z: Math.max(-500000, Math.min(500000, d.cz + ((dy * d.units) / TILE_PIXELS) * d.span)),
           }));
         }}
         onPointerUp={(e) => {
+          const d = drag.current;
+          if (!d || d.id !== e.pointerId) return;
+          if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 4 && d.details)
+            setSelected(d.details);
+          drag.current = null;
+          e.currentTarget.style.cursor = 'grab';
           if (e.currentTarget.hasPointerCapture(e.pointerId))
             e.currentTarget.releasePointerCapture(e.pointerId);
-          drag.current = null;
         }}
-        onPointerCancel={() => {
+        onLostPointerCapture={(e) => {
           drag.current = null;
+          e.currentTarget.style.cursor = 'grab';
         }}
       >
         {tiles.map(({ x, z }) => {
@@ -239,54 +294,100 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
                 height={TILE_PIXELS}
                 fill="none"
                 stroke="#ffffff12"
+                pointerEvents="none"
               />
-              {images[key] && (
-                <image
-                  href={images[key]}
-                  x={p.x}
-                  y={p.y}
-                  width={TILE_PIXELS}
-                  height={TILE_PIXELS}
-                />
-              )}
             </g>
           );
         })}
+        {Object.entries(images)
+          // Previous zoom levels are a scaled backdrop until current tiles are ready.
+          .sort(([a], [b]) => {
+            const az = Number(a.split('/')[0]),
+              bz = Number(b.split('/')[0]);
+            return (az === level ? 100 : az) - (bz === level ? 100 : bz);
+          })
+          .map(([key, url]) => {
+            const [zoom, x, z] = key.split('/').map(Number) as [number, number, number];
+            const oldSpan = tileSpan(data.info?.blockSize ?? 128, maxZoom, zoom);
+            const p = point(x * oldSpan, (z + 1) * oldSpan);
+            const size = (oldSpan / span) * TILE_PIXELS;
+            if (!onScreen(p.x, p.y, size)) return null;
+            return (
+              <image
+                key={key}
+                href={url}
+                x={p.x}
+                y={p.y}
+                width={size}
+                height={size}
+                pointerEvents="none"
+              />
+            );
+          })}
         {layers.claims &&
           data.claims.map((c, i) => {
             const p = point(c.x + 0.5, c.z + 0.5),
               size = (c.size / span) * TILE_PIXELS;
             if (!onScreen(p.x, p.y, size)) return null;
+            const hitSize = Math.max(size, 24 * markerScale);
+            const details = `${t('sdtd.map.claims')} · ${c.owner || c.ownerId} · X ${c.x} / Z ${c.z} · ${c.size}×${c.size}`;
             return (
-              <rect
-                key={`${c.ownerId}/${i}`}
-                x={p.x - size / 2}
-                y={p.y - size / 2}
-                width={size}
-                height={size}
-                fill="#facc1522"
-                stroke="#facc15"
-                strokeWidth="1.5"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() =>
-                  setSelected(`${c.owner} · X ${c.x} / Z ${c.z} · ${c.size}×${c.size}`)
-                }
+              <g
+                key={`${c.ownerId}/${c.x}/${c.z}/${i}`}
+                role="button"
+                tabIndex={0}
+                aria-label={details}
+                data-map-details={details}
+                style={{ cursor: 'pointer' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelected(details);
+                  }
+                }}
               >
+                <rect
+                  x={p.x - size / 2}
+                  y={p.y - size / 2}
+                  width={size}
+                  height={size}
+                  fill="#facc1522"
+                  stroke="#facc15"
+                  strokeWidth={selected === details ? 3 : 1.5}
+                  pointerEvents="none"
+                />
+                <rect
+                  data-map-hit
+                  x={p.x - hitSize / 2}
+                  y={p.y - hitSize / 2}
+                  width={hitSize}
+                  height={hitSize}
+                  fill="transparent"
+                  pointerEvents="all"
+                />
                 <title>{`${c.owner} (${c.x}, ${c.z})`}</title>
-              </rect>
+              </g>
             );
           })}
         {layers.players &&
           data.players.map((p) => {
             const q = point(p.x, p.z);
             if (!onScreen(q.x, q.y)) return null;
+            const details = `${p.name} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`;
             return (
               <g
                 key={p.id}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() =>
-                  setSelected(`${p.name} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`)
-                }
+                role="button"
+                tabIndex={0}
+                aria-label={details}
+                data-map-details={details}
+                style={{ cursor: 'pointer' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelected(details);
+                  }
+                }}
               >
                 <circle cx={q.x} cy={q.y} r={6 * markerScale} fill="#818cf8" stroke="white" />
                 <text
@@ -304,13 +405,29 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
               </g>
             );
           })}
-        <text x={12 * markerScale} y={22 * markerScale} fill="white" fontSize={16 * markerScale}>
+        <text
+          x={12 * markerScale}
+          y={22 * markerScale}
+          fill="white"
+          fontSize={16 * markerScale}
+          pointerEvents="none"
+        >
           N ↑
         </text>
       </svg>
-      <p className="break-words text-xs text-muted" aria-live="polite">
-        {selected || `X ${Math.round(view.x)} / Z ${Math.round(view.z)}`} · {t('sdtd.map.readOnly')}
-      </p>
+      <div className="space-y-1">
+        {selected && (
+          <p
+            role="status"
+            className="break-words rounded border border-border bg-background px-3 py-2 text-sm"
+          >
+            {selected}
+          </p>
+        )}
+        <p className="break-words text-xs text-muted">
+          X {Math.round(view.x)} / Z {Math.round(view.z)} · {t('sdtd.map.readOnly')}
+        </p>
+      </div>
     </Card>
   );
 }
