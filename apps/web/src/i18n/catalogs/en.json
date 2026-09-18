@@ -1,4 +1,5 @@
 {
+  "sdtd.give.submit": "Give",
   "sdtd.give.suggestHint": "Type at least 2 characters, e.g. ammo or gun. Choose a suggestion to fill in quantity limits and quality options.",
   "sdtd.give.retrySearch": "Retry suggestions",
   "sdtd.capability.item-drop": "Give items",

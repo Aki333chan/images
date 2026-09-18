@@ -37,7 +37,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
                 : name === 'auth'
                   ? `export const useAuth=()=>({hasPermission:k=>(k==='sevendays.inventory.view'&&window.allowed)||(k==='sevendays.inventory.give'&&window.giveAllowed)});`
                   : `window.stats={inventory:0,aborted:0,searches:0,grants:[]};window.spawnedIds=new Set();window.mode='ready';window.grantMode='lost';export async function api(p,init){
-          if(p.includes('/items?q=')){window.stats.searches++; if(window.searchFails)throw Error('old companion');return {sessionId:'ac67354a-2548-4dc5-8f23-a43a90b55d9d',ready:true,truncated:true,items:[{itemId:1,name:'gunPistol',hasQuality:true,maxCount:1},{itemId:2,name:'ammoLongName'.repeat(8),hasQuality:false,maxCount:1000}]};}
+          if(p.includes('/items?q=')){window.stats.searches++; if(window.searchFails)throw Error('old companion');return {sessionId:'ac67354a-2548-4dc5-8f23-a43a90b55d9d',ready:true,truncated:true,items:[{itemId:1,name:'gunPistol',hasQuality:true,maxCount:1},{itemId:2,name:'ammoLongName'.repeat(8),hasQuality:false,maxCount:1000},...Array.from({length:20},(_,i)=>({itemId:i+3,name:'ammoFixture'+i,hasQuality:false,maxCount:1000}))]};}
           if(p.endsWith('/item-drop')){const g=JSON.parse(init.body);window.stats.grants.push(g);await new Promise(r=>setTimeout(r,120));if(window.grantMode==='offline')return {requestId:g.requestId,status:'offline'};window.spawnedIds.add(g.requestId);if(window.grantMode==='lost')throw Error('reply lost after spawn');return {requestId:g.requestId,status:'spawned'};}
           if(p.endsWith('/players'))return {online:1,players:[{entityId:1,name:'Test Player',platformId:'Steam_123',crossId:null,level:5,ping:20,position:null}]};
           if(p.endsWith('/state'))return {available:false,reason:'Test server'};
@@ -202,8 +202,44 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await searchInput.fill('ammo');
     await page.waitForTimeout(120);
     assert.equal(await page.evaluate(() => window.stats.searches), 0, 'typing is debounced');
-    await page.waitForFunction(() => document.querySelectorAll('datalist option').length === 2);
-    assert.equal(await searchInput.evaluate((el) => el.list.options.length), 2);
+    await page.waitForFunction(() => document.querySelectorAll('[role="option"]').length === 21);
+    assert.equal(await page.locator('datalist').count(), 0);
+    const suggestions = page.getByRole('listbox');
+    for (const [label, width, height] of [
+      ['desktop', 1200, 1000],
+      ['mobile', 390, 844],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await suggestions.scrollIntoViewIfNeeded();
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
+        false,
+      );
+      if (process.env.INVENTORY_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, `7dtd-give-list-${label}.png`),
+          fullPage: true,
+        });
+    }
+    await suggestions.hover();
+    await page.mouse.wheel(0, 250);
+    await page.waitForFunction(() => document.querySelector('[role="listbox"]').scrollTop > 0);
+    assert.equal(
+      await searchInput.getAttribute('aria-expanded'),
+      'true',
+      'wheel must not dismiss suggestions',
+    );
+    await searchInput.press('Escape');
+    assert.equal(await suggestions.count(), 0);
+    await searchInput.press('ArrowDown');
+    await searchInput.press('Enter');
+    assert.equal(await suggestions.count(), 0);
+    assert.equal(await searchInput.inputValue(), 'ammoLongName'.repeat(8));
+    assert.equal(
+      await page.evaluate(() => window.stats.grants.length),
+      0,
+      'Enter selects, never grants',
+    );
     await searchInput.fill('gunPistol');
     const qualitySelect = page.getByLabel(catalog['sdtd.inventory.quality'], { exact: true });
     await qualitySelect.selectOption('6');
@@ -220,12 +256,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       'selection reuses suggestions',
     );
     const amount = page.getByRole('spinbutton');
+    const give = page.getByRole('button', { name: catalog['sdtd.give.submit'], exact: true });
     await amount.fill('1001');
-    await page.getByLabel(catalog['sdtd.give.reason'], { exact: true }).fill('Test compensation');
-    await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).click();
+    assert.equal(await page.getByLabel(catalog['sdtd.give.reason'], { exact: true }).count(), 0);
     assert.equal(
-      await page.getByRole('button', { name: catalog['sdtd.give.confirm'], exact: true }).count(),
+      await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).count(),
       0,
+    );
+    await give.click();
+    assert.equal(
+      await page.evaluate(() => window.stats.grants.length),
+      0,
+      'invalid count must not mutate',
     );
     await amount.fill('1000');
     for (const [label, width, height] of [
@@ -243,20 +285,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           fullPage: true,
         });
     }
-    await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).click();
-    assert.equal(
-      await page.evaluate(() => window.stats.grants.length),
-      0,
-      'review must not mutate',
-    );
-    await page
-      .getByRole('button', { name: catalog['sdtd.give.confirm'], exact: true })
-      .evaluate((el) => {
-        el.click();
-        el.click();
-      });
+    await give.evaluate((el) => {
+      el.click();
+      el.click();
+    });
     await page.getByText(catalog['sdtd.give.unknown'], { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.stats.grants.length), 1);
+    assert.equal(
+      await searchInput.isDisabled(),
+      true,
+      'uncertain request freezes the original payload',
+    );
     await page.evaluate(() => {
       window.grantMode = 'ready';
     });
@@ -267,7 +306,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.evaluate(() => window.spawnedIds.size), 1);
     assert.equal(grants[0].count, 1000);
     assert.equal(grants[0].quality, 0);
-    await page.getByRole('button', { name: catalog['sdtd.give.new'], exact: true }).click();
+    assert.equal(grants[0].reason, 'Panel item grant');
+    assert.equal(grants[0].confirmed, true);
+    assert.equal(await amount.inputValue(), '1000', 'keep values for the next grant');
+    await give.click();
+    await page.getByText(catalog['sdtd.give.spawned'], { exact: true }).waitFor();
+    assert.equal(
+      await page.evaluate(() => window.spawnedIds.size),
+      2,
+      'explicit next Give creates another grant',
+    );
+    assert.notEqual(
+      await page.evaluate(() => window.stats.grants[2].requestId),
+      grants[0].requestId,
+    );
     await page.evaluate(() => {
       window.searchFails = true;
     });
@@ -279,16 +331,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       window.searchFails = false;
     });
     await page.getByRole('button', { name: catalog['sdtd.give.retrySearch'], exact: true }).click();
-    await page.waitForFunction(() => document.querySelectorAll('datalist option').length === 2);
-    await searchInput.fill('gunPistol');
+    await page.getByRole('option').filter({ hasText: 'gunPistol' }).click();
+    assert.equal(
+      await suggestions.count(),
+      0,
+      'mouse selection closes the list even after a retry',
+    );
     assert.equal(await qualitySelect.inputValue(), '1', 'new item resets quality');
     await page.getByLabel(catalog['sdtd.inventory.quality'], { exact: true }).selectOption('6');
     assert.equal(await page.getByRole('spinbutton').getAttribute('max'), '1');
-    await page.getByRole('button', { name: catalog['sdtd.give.review'], exact: true }).click();
     await page.evaluate(() => {
       window.grantMode = 'offline';
     });
-    await page.getByRole('button', { name: catalog['sdtd.give.confirm'], exact: true }).click();
+    await give.click();
     await page.getByText(catalog['sdtd.give.offline'], { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.stats.grants.at(-1).quality), 6);
     await page.getByRole('button', { name: catalog['sdtd.give.close'], exact: true }).click();
@@ -302,7 +357,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByText(catalog['sdtd.give.offline'], { exact: true }).waitFor();
     assert.equal(
       await page.evaluate(() => window.stats.grants.length),
-      3,
+      4,
       'reopening preserves result without another write',
     );
     await page.getByRole('button', { name: catalog['common.close'], exact: true }).click();
@@ -315,7 +370,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.evaluate(() => window.stats.inventory), calls);
     assert.deepEqual(errors, []);
     console.log(
-      'PASS: permission gating, manual inventory, debounced autocomplete and retry, conditional quality 1–6, safe text, desktop/mobile layout, errors, focus and cancellation; grant confirmation, bounds, double-click guard, stable replay ID after lost response, offline target and reopen without writes.',
+      'PASS: permission gating, manual inventory, panel list with wheel/keyboard selection, debounced search and retry, conditional quality 1–6, desktop/mobile layout; one-click grants without reason/review, bounds, double-click guard, stable retry ID, repeated grant, offline target and reopen without writes.',
     );
   } finally {
     await browser.close();

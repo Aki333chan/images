@@ -1,4 +1,5 @@
 {
+  "sdtd.give.submit": "Wydaj",
   "sdtd.give.suggestHint": "Wpisz co najmniej 2 znaki, np. ammo lub gun. Wybierz podpowiedź, aby ustawić limit liczby i opcje jakości.",
   "sdtd.give.retrySearch": "Ponów pobieranie podpowiedzi",
   "sdtd.capability.item-drop": "Wydaj przedmioty",
