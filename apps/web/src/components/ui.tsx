@@ -290,7 +290,7 @@ export function Tabs({
           <span
             aria-hidden
             className={cn(
-              'pointer-events-none absolute bottom-1 top-1 rounded-md bg-primary/15',
+              'pointer-events-none absolute bottom-1 left-0 top-1 rounded-md bg-primary/15',
               'shadow-[inset_0_0_0_1px_rgba(145,132,217,.28)]',
               // motion-safe: у тех, кто попросил систему не анимировать,
               // подложка просто оказывается на новом месте.
