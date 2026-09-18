@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /** Виды событий — контракт с модом, поэтому список закрытый. */
@@ -6,6 +7,7 @@ export const SEVENDAYS_EVENT_KINDS = ['chat', 'join', 'leave', 'death', 'player-
 export type SevenDaysEventKind = (typeof SEVENDAYS_EVENT_KINDS)[number];
 
 export interface IncomingEvent {
+  eventId?: string;
   kind: string;
   playerId: string;
   playerName: string;
@@ -28,6 +30,8 @@ export interface IncomingEvent {
 @Injectable()
 export class SevenDaysEventsService {
   private readonly logger = new Logger(SevenDaysEventsService.name);
+  private readonly nextPrune = new Map<string, number>();
+  private pruneRunning = false;
 
   /**
    * Сколько дней хранить.
@@ -50,23 +54,30 @@ export class SevenDaysEventsService {
    * оказаться новее панели и прислать вид события, которого она ещё не знает.
    * Терять из-за этого остальные события было бы хуже.
    */
-  async ingest(serverId: string, events: IncomingEvent[]): Promise<{ accepted: number }> {
+  async ingest(serverId: string, events: IncomingEvent[]) {
+    const now = Date.now();
     const rows = events
       .slice(0, SevenDaysEventsService.MAX_BATCH)
-      .map((event) => this.toRow(serverId, event))
+      .map((event) => this.toRow(serverId, event, now))
       .filter((row): row is NonNullable<ReturnType<typeof this.toRow>> => row !== null);
 
-    if (rows.length === 0) return { accepted: 0 };
+    if (rows.length === 0) return { accepted: 0, duplicates: 0, discarded: events.length };
 
-    await this.prisma.sevenDaysEvent.createMany({ data: rows });
-    // Подрезаем здесь же, а не кроном: приём — единственный момент, когда
-    // таблица растёт, и отдельный крон ради этого был бы лишней движущейся
-    // частью.
-    void this.prune(serverId);
-    return { accepted: rows.length };
+    // Unique primary key + ON CONFLICT DO NOTHING: concurrent retries and API
+    // restarts are safe, without a race-prone in-memory deduplication cache.
+    const result = await this.prisma.sevenDaysEvent.createMany({
+      data: rows,
+      skipDuplicates: true,
+    });
+    this.schedulePrune(serverId);
+    return {
+      accepted: result.count,
+      duplicates: rows.length - result.count,
+      discarded: events.length - rows.length,
+    };
   }
 
-  private toRow(serverId: string, event: IncomingEvent) {
+  private toRow(serverId: string, event: IncomingEvent, now: number) {
     // Проверки типов здесь, а не в DTO: контроллер принимает пачку как есть,
     // чтобы одна непонятная запись не уносила остальные сорок девять.
     if (!event || typeof event !== 'object') return null;
@@ -79,8 +90,35 @@ export class SevenDaysEventsService {
     // Мод мог пролежать с очередью, пока панель была недоступна, но
     // неразобранная дата означала бы событие «в 1970 году» в ленте.
     if (Number.isNaN(occurredAt.getTime())) return null;
+    // Expired retries must not recreate records whose dedup keys were pruned.
+    if (
+      occurredAt.getTime() < now - SevenDaysEventsService.RETENTION_DAYS * 86_400_000 ||
+      occurredAt.getTime() > now + 5 * 60_000
+    )
+      return null;
+    if (
+      event.eventId !== undefined &&
+      (typeof event.eventId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          event.eventId,
+        ))
+    )
+      return null;
 
     return {
+      // Existing TEXT primary key, scoped by the authenticated server (not payload).
+      // Legacy mods without eventId retain generated IDs; never guess by chat text.
+      ...(event.eventId === undefined
+        ? {}
+        : {
+            id:
+              'sdtd_' +
+              createHash('sha256')
+                .update(serverId)
+                .update('\0')
+                .update(event.eventId.toLowerCase())
+                .digest('hex'),
+          }),
       serverId,
       kind: event.kind,
       playerId: event.playerId.slice(0, 128),
@@ -95,6 +133,20 @@ export class SevenDaysEventsService {
     };
   }
 
+  private schedulePrune(serverId: string): void {
+    const now = Date.now();
+    if (this.pruneRunning || (this.nextPrune.get(serverId) ?? 0) > now) return;
+    // At most one indexed delete at a time, once per active server/hour; bounded
+    // bookkeeping even when this service manages many short-lived game servers.
+    if (this.nextPrune.size >= 256 && !this.nextPrune.has(serverId))
+      this.nextPrune.delete(this.nextPrune.keys().next().value!);
+    this.nextPrune.set(serverId, now + 3_600_000);
+    this.pruneRunning = true;
+    void this.prune(serverId).finally(() => {
+      this.pruneRunning = false;
+    });
+  }
+
   private async prune(serverId: string): Promise<void> {
     const cutoff = new Date(Date.now() - SevenDaysEventsService.RETENTION_DAYS * 86_400_000);
     try {
@@ -102,6 +154,7 @@ export class SevenDaysEventsService {
         where: { serverId, occurredAt: { lt: cutoff } },
       });
     } catch (e) {
+      this.nextPrune.set(serverId, Date.now() + 60_000);
       // Не удалось подрезать — не повод отвергать принятые события.
       this.logger.warn(`Не удалось подрезать журнал событий: ${(e as Error).message}`);
     }
@@ -109,13 +162,20 @@ export class SevenDaysEventsService {
 
   /** Лента для интерфейса, свежие сверху. */
   async list(serverId: string, options: { kind?: string; limit?: number } = {}) {
+    this.schedulePrune(serverId);
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
     const kind = SEVENDAYS_EVENT_KINDS.includes(options.kind as SevenDaysEventKind)
       ? options.kind
       : undefined;
 
     const rows = await this.prisma.sevenDaysEvent.findMany({
-      where: { serverId, ...(kind ? { kind } : {}) },
+      where: {
+        serverId,
+        occurredAt: {
+          gte: new Date(Date.now() - SevenDaysEventsService.RETENTION_DAYS * 86_400_000),
+        },
+        ...(kind ? { kind } : {}),
+      },
       orderBy: { occurredAt: 'desc' },
       take: limit,
     });

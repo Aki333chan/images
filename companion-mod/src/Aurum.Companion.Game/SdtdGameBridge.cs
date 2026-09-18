@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Aurum.Companion.Core;
 using Aurum.Companion.Core.Game;
 using CompanionWorldState = Aurum.Companion.Core.Game.WorldState;
@@ -22,6 +23,9 @@ namespace Aurum.Companion.Game
     {
         /// <summary>Имя, от которого мод пишет в чат.</summary>
         private readonly string SenderName;
+        private CompanionWorldState? _cachedState;
+        private World? _cachedWorld;
+        private readonly Stopwatch _stateAge = Stopwatch.StartNew();
         public SdtdGameBridge(string language = "en")
         {
             SenderName = new Aurum.Companion.Core.Messages(language).Get(Aurum.Companion.Core.MessageKey.Sender);
@@ -89,7 +93,17 @@ namespace Aurum.Companion.Game
                 // должна получить пустое состояние, а не исключение.
                 GameManager? manager = GameManager.Instance;
                 World? world = manager?.World;
-                if (manager == null || world == null) return state;
+                if (manager == null || world == null)
+                {
+                    _cachedState = null;
+                    _cachedWorld = null;
+                    return state;
+                }
+                // Main-thread-only, bounded snapshot. Multiple panel viewers do not
+                // cause repeated entity scans. A replaced world invalidates the cache.
+                if (_cachedState != null && ReferenceEquals(world, _cachedWorld) && _stateAge.ElapsedMilliseconds < 2000)
+                    return _cachedState;
+                state.Ready = true;
 
                 ulong worldTime = world.GetWorldTime();
                 state.Day = GameUtils.WorldTimeToDays(worldTime);
@@ -100,7 +114,12 @@ namespace Aurum.Companion.Game
                 // считать «день кратен семи», хотя частота настраивается, а
                 // сама орда может быть отключена.
                 state.IsBloodMoonActive = world.aiDirector?.BloodMoonComponent?.BloodMoonActive ?? false;
-                state.BloodMoonFrequency = ReadIntPref(EnumGamePrefs.BloodMoonFrequency, -1);
+                state.BloodMoonFrequency = ReadSandboxInt(SandboxOptions.SandboxOptions.BloodMoonFrequency);
+                state.BloodMoonRange = ReadSandboxInt(SandboxOptions.SandboxOptions.BloodMoonRange);
+                // Public game statistic: includes random range, saved schedule and
+                // manual rescheduling. Never access the publicized private bmDay field.
+                if (world.aiDirector?.BloodMoonComponent != null)
+                    state.BloodMoonNextDay = GameStats.GetInt(EnumGameStats.BloodMoonDay);
 
                 state.Fps = manager.fps?.Counter ?? 0f;
                 state.MaxZombies = ReadIntPref(EnumGamePrefs.MaxSpawnedZombies, 0);
@@ -109,8 +128,19 @@ namespace Aurum.Companion.Game
                 state.Version = Constants.cVersionInformation?.LongString;
 
                 CountEntities(world, state);
+                _cachedState = state;
+                _cachedWorld = world;
+                _stateAge.Restart();
                 return state;
             });
+        }
+
+        private static int ReadSandboxInt(SandboxOptions.SandboxOptions option)
+        {
+            // Do not construct/initialize the game's settings from an HTTP request.
+            if (!SandboxOptions.SandboxOptionManager.HasInstance || !SandboxOptions.SandboxOptionManager.Current.IsInit)
+                return -1;
+            return SandboxOptions.SandboxOptionManager.GetInt(option);
         }
 
         /// <summary>

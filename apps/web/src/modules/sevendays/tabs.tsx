@@ -17,6 +17,7 @@ import { useAuth } from '../../lib/auth';
 import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner } from '../../components/ui';
 import { Modal } from '../../components/Modal';
 import type { ModuleTabProps } from '../registry';
+import { useI18n } from '../../i18n';
 
 const base = (serverId: string) => `/api/modules/sevendays/servers/${serverId}`;
 
@@ -136,7 +137,11 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
                     <td className="py-2 text-xs text-muted">{formatPosition(p)}</td>
                     <td className="py-2 text-muted">{p.ping !== null ? `${p.ping} мс` : '—'}</td>
                     <td className="py-2 text-right">
-                      <PlayerActions player={p} hasPermission={hasPermission} onPunish={setPunish} />
+                      <PlayerActions
+                        player={p}
+                        hasPermission={hasPermission}
+                        onPunish={setPunish}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -186,7 +191,11 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
         самое, только за прошедшее время. Отдельная вкладка заставила бы
         ходить туда-сюда.
       */}
-      <SevenDaysEventsPanel serverId={serverId} moduleId={moduleId} capabilityState={capabilityState} />
+      <SevenDaysEventsPanel
+        serverId={serverId}
+        moduleId={moduleId}
+        capabilityState={capabilityState}
+      />
     </div>
   );
 }
@@ -232,6 +241,7 @@ function PlayerActions({
  * осталось» — первое, что смотрит дежурный.
  */
 function ServerState({ state }: { state: SevenDaysStateDto }) {
+  const { t } = useI18n();
   if (!state.available) {
     return <Card className="text-xs text-muted">{state.reason}</Card>;
   }
@@ -243,27 +253,39 @@ function ServerState({ state }: { state: SevenDaysStateDto }) {
     <Card className="space-y-3">
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted">День</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t('sdtd.state.day')}
+          </div>
           <div className="text-sm font-semibold">{state.day ?? '—'}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted">Время</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t('sdtd.state.time')}
+          </div>
           <div className="text-sm font-semibold">{state.time ?? '—'}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted">Кровавая луна</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t('sdtd.state.bloodMoon')}
+          </div>
           <div className={`text-sm font-semibold ${bloodMoonNow ? 'text-red-400' : ''}`}>
             {bloodMoonNow
               ? fromMod
-                ? 'идёт сейчас'
-                : 'сегодня ночью'
-              : state.daysToBloodMoon === null || state.daysToBloodMoon === undefined
-                ? '—'
-                : `через ${state.daysToBloodMoon} дн.`}
+                ? t('sdtd.state.active')
+                : t('sdtd.state.tonight')
+              : fromMod && state.bloodMoonFrequency === 0
+                ? t('sdtd.state.disabled')
+                : state.daysToBloodMoon === null || state.daysToBloodMoon === undefined
+                  ? t('sdtd.state.unknown')
+                  : state.daysToBloodMoon === 0
+                    ? t('sdtd.state.tonight')
+                    : t('sdtd.state.inDays', { days: state.daysToBloodMoon })}
           </div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted">Онлайн</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t('sdtd.state.online')}
+          </div>
           <div className="text-sm font-semibold">
             {state.onlineCount ?? '—'}
             {fromMod && state.maxPlayers ? ` / ${state.maxPlayers}` : ''}
@@ -274,7 +296,9 @@ function ServerState({ state }: { state: SevenDaysStateDto }) {
         {fromMod && (
           <>
             <div>
-              <div className="text-[11px] uppercase tracking-wide text-muted">FPS сервера</div>
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t('sdtd.state.fps')}
+              </div>
               <div
                 className={`text-sm font-semibold ${
                   typeof state.fps === 'number' && state.fps < 20 ? 'text-red-400' : ''
@@ -284,7 +308,9 @@ function ServerState({ state }: { state: SevenDaysStateDto }) {
               </div>
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-wide text-muted">Зомби</div>
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t('sdtd.state.zombies')}
+              </div>
               <div className="text-sm font-semibold">
                 {state.zombies ?? '—'}
                 {state.maxZombies ? ` / ${state.maxZombies}` : ''}
@@ -294,7 +320,9 @@ function ServerState({ state }: { state: SevenDaysStateDto }) {
         )}
 
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wide text-muted">Версия</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t('sdtd.state.version')}
+          </div>
           <div className="truncate text-sm font-semibold">{state.version ?? '—'}</div>
         </div>
       </div>
@@ -307,11 +335,21 @@ function ServerState({ state }: { state: SevenDaysStateDto }) {
       <p className="text-[11px] text-muted">
         {fromMod ? (
           <>
-            Данные от companion-мода — от самой игры
-            {state.bloodMoonFrequency ? `, орда каждые ${state.bloodMoonFrequency} дн.` : ''}
+            {t('sdtd.state.fromMod')}
+            {typeof state.bloodMoonFrequency === 'number' && state.bloodMoonFrequency > 0
+              ? ` ${t(
+                  (state.bloodMoonRange ?? 0) > 0
+                    ? 'sdtd.state.intervalRange'
+                    : 'sdtd.state.interval',
+                  {
+                    days: state.bloodMoonFrequency,
+                    max: state.bloodMoonFrequency + (state.bloodMoonRange ?? 0),
+                  },
+                )}`
+              : ''}
           </>
         ) : (
-          'Данные из консоли. Срок до кровавой луны посчитан по номеру дня и верен только при стандартной частоте орды — точное значение даёт companion-мод.'
+          t('sdtd.state.fromConsole')
         )}
       </p>
     </Card>
@@ -410,7 +448,11 @@ function PunishModal({
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Отмена
           </Button>
-          <Button variant="destructive" onClick={() => void submit()} disabled={busy || !durationOk}>
+          <Button
+            variant="destructive"
+            onClick={() => void submit()}
+            disabled={busy || !durationOk}
+          >
             {kind === 'kick' ? 'Кикнуть' : 'Забанить'}
           </Button>
         </div>
@@ -466,8 +508,8 @@ export function SevenDaysBansTab({ serverId }: ModuleTabProps) {
 
       <p className="mb-3 text-xs text-muted">
         Список ведёт сам игровой сервер — панель его только показывает. Поэтому здесь виден бан,
-        выданный и из игровой консоли тоже, но не видно, кто из персонала его выдал: игра такого
-        не хранит. Кто нажал кнопку в панели, видно в журнале действий.
+        выданный и из игровой консоли тоже, но не видно, кто из персонала его выдал: игра такого не
+        хранит. Кто нажал кнопку в панели, видно в журнале действий.
       </p>
 
       <ErrorText>{error}</ErrorText>
@@ -565,7 +607,9 @@ export function SevenDaysWhitelistTab({ serverId }: ModuleTabProps) {
         <Input
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && target.trim() && void change('POST', target.trim())}
+          onKeyDown={(e) =>
+            e.key === 'Enter' && target.trim() && void change('POST', target.trim())
+          }
           placeholder="Ник или Steam_7656…"
         />
         <Button
@@ -789,8 +833,7 @@ export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
         <Spinner />
       ) : events.length === 0 ? (
         <p className="text-xs text-muted">
-          Пока пусто. События приносит companion-мод — без него игра о них ничего не
-          рассказывает.
+          Пока пусто. События приносит companion-мод — без него игра о них ничего не рассказывает.
         </p>
       ) : (
         <ul className="space-y-1.5">

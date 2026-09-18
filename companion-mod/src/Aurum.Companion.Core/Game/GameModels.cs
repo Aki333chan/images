@@ -48,6 +48,7 @@ namespace Aurum.Companion.Core.Game
     /// </remarks>
     public sealed class WorldState
     {
+        public bool Ready { get; set; }
         public int Day { get; set; }
         public int Hour { get; set; }
         public int Minute { get; set; }
@@ -55,6 +56,8 @@ namespace Aurum.Companion.Core.Game
 
         /// <summary>Через сколько дней орда. -1 — сервер не сказал.</summary>
         public int BloodMoonFrequency { get; set; } = -1;
+        public int BloodMoonRange { get; set; } = -1;
+        public int BloodMoonNextDay { get; set; } = -1;
 
         public float Fps { get; set; }
         public int Zombies { get; set; }
@@ -84,6 +87,8 @@ namespace Aurum.Companion.Core.Game
     /// </remarks>
     public sealed class GameEvent
     {
+        // Assigned once, not on serialization/retry. Separate occurrences get separate IDs.
+        public string EventId { get; } = Guid.NewGuid().ToString("D");
         public GameEvent(GameEventKind kind, string playerId, string playerName)
         {
             Kind = kind;

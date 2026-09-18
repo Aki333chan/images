@@ -36,7 +36,8 @@ namespace Aurum.Companion.Core.Http
             _modVersion = modVersion;
             _language = config?.Language ?? "en";
             var capabilities = new List<string> {
-                "world-state", "online-players", "private-messages", "broadcast", "tickets", "reports", "localization"
+                "world-state", "online-players", "private-messages", "broadcast", "tickets", "reports", "localization",
+                "event-ids", "blood-moon-schedule"
             };
             if (config?.ForwardChat ?? true) capabilities.Add("chat-events");
             if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
@@ -173,12 +174,15 @@ namespace Aurum.Companion.Core.Http
 
         private static string WorldStateJson(WorldState s) => JsonWriter.Object(new[]
         {
+            Field("ready", JsonWriter.Bool(s.Ready)),
             Field("day", JsonWriter.Number(s.Day)),
             Field("hour", JsonWriter.Number(s.Hour)),
             Field("minute", JsonWriter.Number(s.Minute)),
             // Не «день кратен семи», а факт от самой игры.
             Field("bloodMoonActive", JsonWriter.Bool(s.IsBloodMoonActive)),
             Field("bloodMoonFrequency", s.BloodMoonFrequency < 0 ? "null" : JsonWriter.Number(s.BloodMoonFrequency)),
+            Field("bloodMoonRange", s.BloodMoonRange < 0 ? "null" : JsonWriter.Number(s.BloodMoonRange)),
+            Field("bloodMoonNextDay", s.BloodMoonNextDay <= 0 ? "null" : JsonWriter.Number(s.BloodMoonNextDay)),
             Field("fps", JsonWriter.Coordinate(s.Fps)),
             Field("zombies", JsonWriter.Number(s.Zombies)),
             Field("maxZombies", JsonWriter.Number(s.MaxZombies)),

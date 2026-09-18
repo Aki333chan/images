@@ -198,6 +198,7 @@ export function parseHandshake(value: unknown): CompanionHandshake | null {
 
 /** Состояние мира, как его отдаёт мод. */
 export interface CompanionWorldState {
+  ready?: boolean;
   day: number;
   hour: number;
   minute: number;
@@ -205,6 +206,8 @@ export interface CompanionWorldState {
   bloodMoonActive: boolean;
   /** Частота орды из настроек сервера. null — сервер не сказал. */
   bloodMoonFrequency: number | null;
+  bloodMoonRange?: number | null;
+  bloodMoonNextDay?: number | null;
   fps: number;
   zombies: number;
   maxZombies: number;

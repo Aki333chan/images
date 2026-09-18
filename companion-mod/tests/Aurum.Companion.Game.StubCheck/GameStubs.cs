@@ -48,6 +48,22 @@ public enum EnumGamePrefs
     ServerMaxPlayerCount,
 }
 
+public enum EnumGameStats { BloodMoonDay }
+public static class GameStats
+{
+    public static int GetInt(EnumGameStats stat) => 0;
+}
+namespace SandboxOptions
+{
+    public enum SandboxOptions { BloodMoonFrequency, BloodMoonRange }
+    public class SandboxOptionManager
+    {
+        public static bool HasInstance => true;
+        public static SandboxOptionManager Current => new SandboxOptionManager();
+        public bool IsInit => true;
+        public static int GetInt(SandboxOptions option) => 0;
+    }
+}
 public static class GamePrefs
 {
     public static int GetInt(EnumGamePrefs pref) => 0;

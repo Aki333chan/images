@@ -137,6 +137,8 @@ export interface SevenDaysStateDto {
   bloodMoonActive?: boolean | null;
   /** Частота орды из настроек сервера. Только от мода. */
   bloodMoonFrequency?: number | null;
+  bloodMoonRange?: number | null;
+  bloodMoonNextDay?: number | null;
   /**
    * Кадры сервера. Только от мода.
    *
@@ -178,6 +180,8 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'localization',
   'chat-events',
   'death-events',
+  'event-ids',
+  'blood-moon-schedule',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
 

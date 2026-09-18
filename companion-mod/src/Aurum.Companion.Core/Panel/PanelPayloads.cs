@@ -39,6 +39,7 @@ namespace Aurum.Companion.Core.Panel
         public static string Event(GameEvent e) =>
             JsonWriter.Object(new[]
             {
+                Field("eventId", JsonWriter.String(e.EventId)),
                 Field("kind", JsonWriter.String(KindName(e.Kind))),
                 Field("playerId", JsonWriter.String(e.PlayerId)),
                 Field("playerName", JsonWriter.String(e.PlayerName)),

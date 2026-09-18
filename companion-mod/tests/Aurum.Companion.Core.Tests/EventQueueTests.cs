@@ -14,6 +14,20 @@ namespace Aurum.Companion.Core.Tests;
 /// </summary>
 public class EventQueueTests
 {
+    [Fact]
+    public void Event_identity_survives_serialization_and_retry_but_not_separate_occurrences()
+    {
+        var first = Event("test");
+        Assert.True(System.Guid.TryParse(first.EventId, out _));
+        Assert.NotEqual(first.EventId, Event("test").EventId);
+        var queue = new EventQueue(10);
+        queue.Enqueue(first);
+        var sent = queue.Take(10);
+        string payload = PanelPayloads.EventBatch(sent);
+        queue.Requeue(sent);
+        Assert.Equal(payload, PanelPayloads.EventBatch(queue.Take(10)));
+        Assert.Contains(first.EventId, payload);
+    }
     private static GameEvent Event(string name) =>
         new(GameEventKind.Chat, "Steam_1", name);
 

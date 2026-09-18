@@ -8,13 +8,10 @@ import {
   type SevenDaysStateDto,
   type SevenDaysWhitelistEntryDto,
 } from '@aurum/shared';
-import { SevenDaysCompanionService } from './sevendays-companion.service';
+import { SevenDaysCompanionService, type CompanionWorldState } from './sevendays-companion.service';
 import { SevenDaysConfigService } from './sevendays-config.service';
 import { arg, optionalArg, SevenDaysConsoleService } from './sevendays-console.service';
-import {
-  SEVENDAYS_ACTIONS,
-  type SevenDaysActionDefinition,
-} from './sevendays-actions.config';
+import { SEVENDAYS_ACTIONS, type SevenDaysActionDefinition } from './sevendays-actions.config';
 import {
   parseBans,
   parseGameTime,
@@ -22,6 +19,23 @@ import {
   parseVersion,
   parseWhitelist,
 } from './sevendays-parsers';
+
+/** A missing schedule (including old mods) must not invent a seven-day countdown. */
+export function companionBloodMoonCountdown(state: CompanionWorldState): number | null {
+  if (state.bloodMoonActive === true) return 0;
+  if (state.bloodMoonFrequency === 0) return null;
+  const next = state.bloodMoonNextDay;
+  if (
+    typeof next !== 'number' ||
+    !Number.isInteger(next) ||
+    next < 1 ||
+    !Number.isInteger(state.day) ||
+    state.day < 1 ||
+    next < state.day
+  )
+    return null;
+  return next - state.day;
+}
 
 /**
  * Модуль 7 Days to Die.
@@ -109,21 +123,19 @@ export class SevenDaysService {
 
     const state = await this.companion.state(serverId);
     if (!state) return null;
-
-    // Частоту орды мод берёт из настроек сервера. Если она известна —
-    // считаем по ней, а не по семи из головы.
-    const every = state.bloodMoonFrequency && state.bloodMoonFrequency > 0
-      ? state.bloodMoonFrequency
-      : undefined;
+    if (state.ready === false || !Number.isInteger(state.day) || state.day < 1)
+      return { available: false, source: 'companion', reason: 'Мир ещё загружается' };
 
     return {
       available: true,
       source: 'companion',
       day: state.day,
       time: `${String(state.hour).padStart(2, '0')}:${String(state.minute).padStart(2, '0')}`,
-      daysToBloodMoon: state.bloodMoonActive ? 0 : daysToBloodMoon(state.day, every),
+      daysToBloodMoon: companionBloodMoonCountdown(state),
       bloodMoonActive: state.bloodMoonActive,
       bloodMoonFrequency: state.bloodMoonFrequency,
+      bloodMoonRange: state.bloodMoonRange ?? null,
+      bloodMoonNextDay: state.bloodMoonNextDay ?? null,
       version: state.version,
       onlineCount: state.onlinePlayers,
       fps: state.fps,
