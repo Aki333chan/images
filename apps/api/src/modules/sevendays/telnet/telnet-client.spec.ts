@@ -18,6 +18,7 @@ describe('isLogLine', () => {
     expect(isLogLine('2026-03-14T19:43:54 432.501 INF Time: 12.34m FPS: 32.0')).toBe(true);
     expect(isLogLine('2026-03-14T19:43:55 433.102 WRN Player disconnected')).toBe(true);
     expect(isLogLine('2026-03-14T19:43:56 433.900 ERR NullReference')).toBe(true);
+    expect(isLogLine('2026-03-14T19:43:56 433.900 EXC Socket closed')).toBe(true);
   });
 
   it('строку ответа за лог не принимает', () => {
@@ -32,7 +33,7 @@ describe('isLogLine', () => {
 describe('extractResponse', () => {
   it('берёт то, что между эхом команды и меткой', () => {
     const raw = [
-      '2026-03-14T19:43:54 432.501 INF Executing command \'lp\' by Telnet from 127.0.0.1:46610',
+      "2026-03-14T19:43:54 432.501 INF Executing command 'lp' by Telnet from 127.0.0.1:46610",
       '0. id=171, Lost, pos=(342.4, 49.0, -541.9), ping=13',
       'Total of 1 in the game',
       `2026-03-14T19:43:54 432.700 INF Executing command '${MARKER}' by Telnet from 127.0.0.1:46610`,
@@ -85,7 +86,9 @@ describe('extractResponse', () => {
   });
 
   it('без эха команды отдаёт всё до метки, а не пустоту', () => {
-    const raw = ['Game version: V 2.0 (b28)', `*** ERROR: unknown command '${MARKER}'`].join('\r\n');
+    const raw = ['Game version: V 2.0 (b28)', `*** ERROR: unknown command '${MARKER}'`].join(
+      '\r\n',
+    );
     expect(extractResponse(raw, 'version', MARKER)).toBe('Game version: V 2.0 (b28)');
   });
 
@@ -97,6 +100,13 @@ describe('extractResponse', () => {
 
     expect(extractResponse(raw, 'saveworld', MARKER)).toBe('');
   });
+
+  it('не обрезает ответ по вхождению метки внутри обычной строки', () => {
+    const body = `quoted unknown command '${MARKER}'`;
+    expect(
+      extractResponse(`${body}\r\n*** ERROR: unknown command '${MARKER}'\r\n`, 'lp', MARKER),
+    ).toBe(body);
+  });
 });
 
 describe('telnetCommand: проверки до отправки', () => {
@@ -105,9 +115,7 @@ describe('telnetCommand: проверки до отправки', () => {
   // Перевод строки внутри аргумента — это вторая команда. Без этой проверки
   // ник «Lost\r\nshutdown» выключил бы сервер.
   it('команда с переводом строки отвергается, а не отправляется', async () => {
-    await expect(telnetCommand(options, 'kick Lost\r\nshutdown')).rejects.toThrow(
-      'перевод строки',
-    );
+    await expect(telnetCommand(options, 'kick Lost\r\nshutdown')).rejects.toThrow('перевод строки');
     await expect(telnetCommand(options, 'say привет\nshutdown')).rejects.toThrow('перевод строки');
   });
 
@@ -118,5 +126,17 @@ describe('telnetCommand: проверки до отправки', () => {
   // Пароль не должен всплыть ни в одном сообщении об ошибке.
   it('пароль в текст ошибки не попадает', async () => {
     await expect(telnetCommand(options, 'say x\nshutdown')).rejects.not.toThrow(/секрет/);
+  });
+
+  it('управляющие символы в пароле не могут отправить вторую команду', async () => {
+    await expect(
+      telnetCommand({ ...options, password: 'secret\r\nshutdown' }, 'lp'),
+    ).rejects.toThrow('символ');
+    await expect(telnetCommand(options, 'lp\0')).rejects.toThrow('символ');
+  });
+
+  it('отвергает пустую команду и некорректный таймаут', async () => {
+    await expect(telnetCommand(options, ' ')).rejects.toThrow('пустой');
+    await expect(telnetCommand({ ...options, timeoutMs: NaN }, 'lp')).rejects.toThrow('таймаут');
   });
 });

@@ -1,4 +1,6 @@
 import { Socket } from 'net';
+import { randomBytes } from 'crypto';
+import { StringDecoder } from 'string_decoder';
 
 /**
  * Клиент консоли 7 Days to Die.
@@ -7,8 +9,8 @@ import { Socket } from 'net';
  * В serverconfig.xml, который поставляется с игрой, нет ни одного свойства со
  * словом rcon: удалённое администрирование — это встроенный telnet
  * (TelnetEnabled=true, TelnetPort=8081, TelnetPassword). Второй интерфейс,
- * WebDashboard на 8080, по умолчанию выключен и предназначен для просмотра, а
- * не для управления. Source RCON игра не реализует вовсе, и «RCON» в
+ * WebDashboard на 8080 — отдельный HTTP API, не этот транспорт.
+ * Source RCON игра не реализует, и «RCON» в
  * документации хостеров — это то же самое telnet-подключение, названное
  * привычным словом.
  *
@@ -31,13 +33,16 @@ import { Socket } from 'net';
  * сообщения об ошибках он не попадает.
  */
 
-/** Порт telnet по умолчанию из serverconfig.xml игры. */
+/** Стандартный Telnet-порт egg Pterodactyl / панели. */
 export const SEVENDAYS_DEFAULT_PORT = 8081;
 
 /** Строки рукопожатия — ровно те, что печатает сервер. */
 const PROMPT_PASSWORD = 'Please enter password';
 const AUTH_OK = 'Logon successful.';
 const AUTH_FAILED = 'Password incorrect';
+const READY_BANNER = "Press 'help' to get a list of all commands. Press 'exit' to end session.";
+const MAX_RESPONSE_BYTES = 1024 * 1024;
+const CLOSE_GRACE_MS = 1000;
 
 /** Консоль игры режет команды длиннее этого. */
 const MAX_COMMAND_LENGTH = 1000;
@@ -63,6 +68,7 @@ export interface TelnetOptions {
  * здесь меньше, чем цена неверно склеенного ответа.
  */
 export async function telnetCommand(options: TelnetOptions, command: string): Promise<string> {
+  if (!command.trim()) throw new Error('Команда не может быть пустой');
   if (command.length > MAX_COMMAND_LENGTH) {
     throw new Error(`Команда длиннее ${MAX_COMMAND_LENGTH} символов`);
   }
@@ -71,75 +77,124 @@ export async function telnetCommand(options: TelnetOptions, command: string): Pr
     // значило бы позволить выполнить что угодно там, где ожидался ник.
     throw new Error('Команда не может содержать перевод строки');
   }
+  if (command.includes('\0') || /[\r\n\0]/.test(options.password)) {
+    throw new Error('Недопустимый управляющий символ в параметрах telnet');
+  }
 
   const timeoutMs = options.timeoutMs ?? 8_000;
-  const marker = `aurum${Math.random().toString(36).slice(2, 10)}`;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw new Error('Некорректный таймаут telnet');
+  }
+  const marker = `aurum${randomBytes(12).toString('hex')}`;
+  // Require the entire marker reply line, not a substring in an echoed chat message.
+  const endOfResponse = new RegExp(
+    `(?:^|\\r?\\n)\\*\\*\\* ERROR: unknown command '${marker}'\\r?\\n`,
+  );
 
   return new Promise<string>((resolve, reject) => {
     const socket = new Socket();
+    const decoder = new StringDecoder('utf8');
     let buffer = '';
-    let authorised = false;
-    let sent = false;
+    let receivedBytes = 0;
+    let passwordSent = false;
+    let commandSent = false;
+    let result: string | undefined;
     let done = false;
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
     const finish = (error: Error | null, value?: string) => {
       if (done) return;
       done = true;
+      clearTimeout(timer);
+      if (closeTimer) clearTimeout(closeTimer);
       socket.destroy();
       if (error) reject(error);
       else resolve(value ?? '');
     };
 
     const timer = setTimeout(
-      () => finish(new Error('Сервер 7 Days to Die не ответил вовремя')),
+      () =>
+        finish(
+          new Error(
+            commandSent
+              ? 'Сервер не подтвердил результат команды вовремя; не повторяйте её автоматически'
+              : 'Сервер 7 Days to Die не завершил подключение или авторизацию вовремя',
+          ),
+        ),
       timeoutMs,
     );
-    socket.setTimeout(timeoutMs);
-    socket.on('timeout', () => finish(new Error('Сервер 7 Days to Die не ответил вовремя')));
-    socket.on('error', (e) => finish(new Error(`Не удалось подключиться к консоли: ${e.message}`)));
+    socket.on('error', () => {
+      // A fully framed result remains valid even if graceful teardown fails.
+      if (result !== undefined) finish(null, result);
+      else
+        finish(
+          new Error(
+            commandSent
+              ? 'Соединение прервано до подтверждения результата команды; не повторяйте её автоматически'
+              : 'Не удалось подключиться к telnet-консоли',
+          ),
+        );
+    });
     socket.on('close', () => {
-      clearTimeout(timer);
-      if (!done) finish(new Error('Сервер закрыл соединение до ответа'));
+      if (result !== undefined) finish(null, result);
+      else
+        finish(
+          new Error(
+            commandSent
+              ? 'Сервер закрыл соединение до подтверждения результата; не повторяйте команду автоматически'
+              : 'Сервер закрыл соединение до авторизации',
+          ),
+        );
     });
 
     socket.on('data', (chunk) => {
+      // Keep draining while the game processes exit. Do not grow a post-result buffer.
+      if (done || result !== undefined) return;
+      receivedBytes += chunk.length;
+      if (receivedBytes > MAX_RESPONSE_BYTES) {
+        return finish(
+          new Error('Ответ telnet превысил допустимый размер; результат команды не подтверждён'),
+        );
+      }
       // Байты \x00 в потоке встречаются — они не часть текста.
-      buffer += chunk.toString('utf8').replace(/\0/g, '');
+      buffer += decoder.write(chunk).replace(/\0/g, '');
 
-      if (!authorised) {
+      if (!commandSent) {
         if (buffer.includes(AUTH_FAILED)) {
           return finish(new Error('Пароль telnet-консоли не подошёл'));
         }
-        if (buffer.includes(AUTH_OK)) {
-          authorised = true;
+        // A nonempty configured password must get an explicit authentication ACK.
+        // Passwordless local sessions instead receive the game's welcome banner.
+        if (
+          buffer.includes(AUTH_OK) ||
+          (!options.password && !passwordSent && buffer.includes(READY_BANNER))
+        ) {
+          commandSent = true;
           buffer = '';
-        } else if (buffer.includes(PROMPT_PASSWORD) && !sent) {
-          sent = true;
+          socket.write(command + CRLF + marker + CRLF);
+        } else if (buffer.includes(PROMPT_PASSWORD) && !passwordSent) {
+          if (!options.password) return finish(new Error('Telnet-сервер требует пароль'));
+          passwordSent = true;
           socket.write(options.password + CRLF);
         }
         return;
       }
 
-      if (!buffer.includes(`unknown command '${marker}'`)) return;
+      if (!endOfResponse.test(buffer)) return;
+      result = extractResponse(buffer, command, marker);
+      buffer = '';
       clearTimeout(timer);
-      finish(null, extractResponse(buffer, command, marker));
+      // Do not destroy/end while the game is still writing. V3.2 TelnetConnection
+      // consumes exit itself and closes the session before its next write cycle.
+      closeTimer = setTimeout(() => finish(null, result), CLOSE_GRACE_MS);
+      socket.write('exit' + CRLF);
     });
 
-    socket.connect(options.port, options.host, () => {
-      // Пустой пароль сервер не спрашивает — он пускает сразу, но только с
-      // локального адреса. Отправляем команду и метку следом; если приглашение
-      // всё-таки придёт, пароль уйдёт из обработчика data.
-      setTimeout(() => {
-        if (done) return;
-        if (!authorised && !sent && options.password) {
-          sent = true;
-          socket.write(options.password + CRLF);
-        }
-        authorised = true;
-        socket.write(command + CRLF);
-        socket.write(marker + CRLF);
-      }, 150);
-    });
+    try {
+      socket.connect(options.port, options.host);
+    } catch {
+      finish(new Error('Не удалось открыть telnet-соединение'));
+    }
   });
 }
 
@@ -157,14 +212,9 @@ export function extractResponse(raw: string, command: string, marker: string): s
   // Резать нужно по границе СТРОКИ, а не по тексту метки: сама метка стоит в
   // середине строки «*** ERROR: unknown command '…'», и обрыв по ней оставил
   // бы в конце ответа огрызок «*** ERROR:».
-  const at = raw.indexOf(`unknown command '${marker}'`);
-  let body = raw;
-  if (at !== -1) {
-    const lineStart = raw.lastIndexOf('\n', at);
-    body = lineStart === -1 ? '' : raw.slice(0, lineStart);
-  }
-
-  const lines = body.split(/\r?\n/);
+  const allLines = raw.split(/\r?\n/);
+  const markerAt = allLines.indexOf(`*** ERROR: unknown command '${marker}'`);
+  const lines = markerAt === -1 ? allLines : allLines.slice(0, markerAt);
   // Эхо команды — последняя её отметка перед ответом: если та же команда
   // выполнялась раньше в этом же куске потока, нам нужна свежая.
   const echo = `Executing command '${command}' by Telnet`;
@@ -185,5 +235,7 @@ export function extractResponse(raw: string, command: string, marker: string): s
  * уровень. Уровни игра печатает свои: INF, WRN, ERR.
  */
 export function isLogLine(line: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\s+[\d.]+\s+(INF|WRN|ERR)\b/.test(line.trim());
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\s+[\d.]+\s+(INF|WRN|ERR|EXC|DBG)\b/.test(
+    line.trim(),
+  );
 }
