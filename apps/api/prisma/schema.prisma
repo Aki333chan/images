@@ -160,12 +160,34 @@ model Server {
   minecraftBans   MinecraftBan[]
   palworldBans    PalworldBan[]
   sevenDaysEvents SevenDaysEvent[]
+  sevenDaysTools SevenDaysTools?
+  sevenDaysToolRuns SevenDaysToolRun[]
   activitySamples ServerActivitySample[]
   metrics         ServerMetricSample?
   alertStates     ServerAlertState[]
   jailRecords     MinecraftJailRecord[]
 
   @@map("servers")
+}
+
+model SevenDaysTools {
+  serverId String @id @map("server_id")
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  revision Int @default(1)
+  data Json
+  @@map("mod_sevendays_tools")
+}
+
+model SevenDaysToolRun {
+  serverId String @map("server_id")
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  requestId String @map("request_id")
+  fingerprint String
+  result Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  @@id([serverId, requestId])
+  @@index([createdAt])
+  @@map("mod_sevendays_tool_runs")
 }
 
 /// Последний снимок нагрузки сервера. РОВНО ОДНА строка на сервер.

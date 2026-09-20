@@ -342,6 +342,8 @@ export interface SevenDaysActionDto {
 }
 
 export const SEVENDAYS_PERMISSIONS = {
+  toolsManage: 'sevendays.tools.manage',
+  teleport: 'sevendays.teleport',
   mapView: 'sevendays.map.view',
   inventoryView: 'sevendays.inventory.view',
   inventoryGive: 'sevendays.inventory.give',
@@ -357,6 +359,33 @@ export const SEVENDAYS_PERMISSIONS = {
   eventsView: 'sevendays.events.view',
   configure: 'sevendays.configure',
 } as const;
+
+export interface SevenDaysPoint {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+}
+export interface SevenDaysKitItem {
+  name: string;
+  count: number;
+  quality: number;
+}
+export interface SevenDaysKit {
+  id: string;
+  name: string;
+  items: SevenDaysKitItem[];
+}
+export interface SevenDaysTools {
+  revision: number;
+  points: SevenDaysPoint[];
+  kits: SevenDaysKit[];
+}
+export interface SevenDaysToolResult {
+  status: 'sent' | 'complete' | 'partial' | 'unknown';
+  items?: { name: string; status: string }[];
+}
 
 /**
  * Кровавая луна приходит каждый седьмой игровой день — это правило самой

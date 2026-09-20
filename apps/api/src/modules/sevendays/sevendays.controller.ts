@@ -24,6 +24,7 @@ import { Query } from '@nestjs/common';
 import { AuditRedactBody } from '../../audit/audit.decorators';
 import { CurrentUser, type AuthUser } from '../../auth/decorators';
 import { SevenDaysItemsService } from './sevendays-items.service';
+import { SevenDaysToolsService } from './sevendays-tools.service';
 import { ItemGrantDto, SavedStackDto } from './dto';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
@@ -58,12 +59,64 @@ export class SevenDaysController {
     private readonly events: SevenDaysEventsService,
     private readonly map: SevenDaysMapService,
     private readonly items: SevenDaysItemsService,
+    private readonly tools: SevenDaysToolsService,
   ) {}
+
+  @Get('tools')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(
+    SEVENDAYS_PERMISSIONS.toolsManage,
+    SEVENDAYS_PERMISSIONS.teleport,
+    SEVENDAYS_PERMISSIONS.inventoryGive,
+  )
+  @ServerScoped('serverId')
+  readTools(@Param('serverId') serverId: string) {
+    return this.tools.read(serverId);
+  }
+
+  @Put('tools')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.toolsManage)
+  @ServerScoped('serverId')
+  saveTools(
+    @Param('serverId') serverId: string,
+    @CurrentUser() actor: AuthUser,
+    @Body() body: unknown,
+  ) {
+    return this.tools.save(serverId, actor.id, body);
+  }
+
+  @Post('players/:playerId/teleport')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.teleport)
+  @ServerScoped('serverId')
+  teleport(
+    @Param('serverId') serverId: string,
+    @Param('playerId') playerId: string,
+    @CurrentUser() actor: AuthUser,
+    @Body() body: unknown,
+  ) {
+    return this.tools.teleport(serverId, actor.id, playerId, body);
+  }
+
+  @Post('players/:playerId/kit')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryGive)
+  @ServerScoped('serverId')
+  giveKit(
+    @Param('serverId') serverId: string,
+    @Param('playerId') playerId: string,
+    @CurrentUser() actor: AuthUser,
+    @Body() body: unknown,
+  ) {
+    return this.tools.giveKit(serverId, actor.id, playerId, body);
+  }
 
   // ---------- Игроки ----------
   @Get('items')
   @Header('Cache-Control', 'no-store')
-  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryGive, SEVENDAYS_PERMISSIONS.inventoryEdit)
+  @RequirePermission(
+    SEVENDAYS_PERMISSIONS.inventoryGive,
+    SEVENDAYS_PERMISSIONS.inventoryEdit,
+    SEVENDAYS_PERMISSIONS.toolsManage,
+  )
   @ServerScoped('serverId')
   itemSearch(@Param('serverId') serverId: string, @Query('q') query = '') {
     return this.items.search(serverId, query);

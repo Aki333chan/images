@@ -1,4 +1,11 @@
 {
+  "invalid_tools": "Nieprawidłowe ustawienia punktu lub zestawu. Sprawdź nazwy, całkowite współrzędne, ilości i limit 100 wpisów.",
+  "invalid_request_id": "Nieprawidłowy identyfikator operacji. Odśwież panel.",
+  "tools_revision_conflict": "Ustawienia zmieniono w innym oknie. Odśwież przed zapisaniem; Twoich zmian nie zapisano.",
+  "request_id_conflict": "Ten identyfikator został użyty z innymi parametrami. Sprawdź poprzedni wynik.",
+  "tools_busy": "Zbyt wiele operacji administracyjnych. Poczekaj na zakończenie bieżącej.",
+  "kit_not_found": "Nie znaleziono zapisanego zestawu. Odśwież listę.",
+  "kit_catalogue_changed": "Przedmiot zestawu nie pasuje do bieżącego katalogu, ilości lub jakości. Popraw zestaw. Niczego nie wydano.",
   "mc.protected.companion": "To plugin companion samego panelu: po jego wyłączeniu panel straci łączność z serwerem i nie będzie już czym włączyć go z powrotem. Usuwaj go wyłącznie ręcznie przez SFTP.",
   "mc.protected.known": "{name} to jeden z pluginów, na których stoi panel. Nie da się go stąd wyłączyć ani usunąć: jeśli nie jest już potrzebny, usuń go ręcznie przez SFTP.",
   "mc.err.toggleNeedsCompanion": "Gorące przełączanie wymaga pluginu companion na serwerze gry. Bez niego plugin da się wyłączyć tylko przez przeniesienie pliku.",

@@ -150,7 +150,7 @@ describe('7DTD item grants', () => {
     ]) {
       expect(Reflect.getMetadata('requiredPermission', route)).toEqual([
         'sevendays.inventory.give',
-        ...(route === SevenDaysController.prototype.itemSearch ? ['sevendays.inventory.edit'] : []),
+        ...(route === SevenDaysController.prototype.itemSearch ? ['sevendays.inventory.edit', 'sevendays.tools.manage'] : []),
       ]);
       expect(Reflect.getMetadata('serverScopeParam', route)).toBe('serverId');
     }

@@ -1,4 +1,11 @@
 {
+  "invalid_tools": "Invalid point or kit settings. Check names, integer coordinates, quantities and the 100-entry limit.",
+  "invalid_request_id": "Invalid operation ID. Refresh the panel.",
+  "tools_revision_conflict": "Settings changed in another window. Refresh before saving; your changes were not written.",
+  "request_id_conflict": "This operation ID was already used for different parameters. Check the previous outcome.",
+  "tools_busy": "Too many administration operations. Wait for the current operation to finish.",
+  "kit_not_found": "Saved kit not found. Refresh the list.",
+  "kit_catalogue_changed": "A kit item no longer matches the current catalogue, quantity or quality. Edit the kit. Nothing was given.",
   "mc.protected.companion": "This is the panel’s own companion plugin: disable it and the panel loses its link to the server, with nothing left to turn it back on. Remove it by hand over SFTP only.",
   "mc.protected.known": "{name} is one of the plugins the panel stands on. It cannot be disabled or deleted from here: remove it by hand over SFTP if it is no longer needed.",
   "mc.err.toggleNeedsCompanion": "Hot toggling needs the companion plugin on the game server. Without it a plugin can only be disabled by moving its file.",

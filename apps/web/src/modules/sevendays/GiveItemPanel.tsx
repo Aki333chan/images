@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { SevenDaysItemCatalogue } from '@aurum/shared';
+import type { SevenDaysItemCatalogue, SevenDaysKitItem } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Button, ErrorText, Input, Select, Spinner } from '../../components/ui';
 import { useI18n } from '../../i18n';
@@ -21,10 +21,12 @@ export function SevenDaysGiveItemPanel({
   playerId,
   name,
   savedTarget,
+  onPick,
 }: {
   serverId: string;
   playerId: string;
   name: string;
+  onPick?: (item: SevenDaysKitItem) => void;
   savedTarget?: {
     revision: string;
     section: 'belt' | 'bag';
@@ -217,15 +219,23 @@ export function SevenDaysGiveItemPanel({
         onClick={() => setOpen(true)}
         disabled={open}
       >
-        {t(savedTarget ? 'sdtd.edit.replaceOpen' : 'sdtd.give.open')}
+        {t(
+          onPick ? 'sdtd.tools.addItem' : savedTarget ? 'sdtd.edit.replaceOpen' : 'sdtd.give.open',
+        )}
       </Button>
       {open && (
         <section
-          aria-label={`${t(savedTarget ? 'sdtd.edit.replaceOpen' : 'sdtd.give.open')} · ${name}`}
+          aria-label={`${t(onPick ? 'sdtd.tools.addItem' : savedTarget ? 'sdtd.edit.replaceOpen' : 'sdtd.give.open')} · ${name}`}
           className="mt-4 space-y-4"
         >
           <p className="max-w-prose text-sm text-muted">
-            {t(savedTarget ? 'sdtd.edit.replaceNote' : 'sdtd.give.warning')}
+            {t(
+              onPick
+                ? 'sdtd.tools.pickNote'
+                : savedTarget
+                  ? 'sdtd.edit.replaceNote'
+                  : 'sdtd.give.warning',
+            )}
           </p>
           <form
             className="space-y-4"
@@ -233,6 +243,20 @@ export function SevenDaysGiveItemPanel({
               e.preventDefault();
               if (!item || !catalogue || frozen || (savedTarget?.occupied && !replaceConfirmed))
                 return;
+              if (onPick) {
+                onPick({
+                  name: item.name,
+                  count: Number(count),
+                  quality: item.hasQuality ? Number(quality) : 0,
+                });
+                setQuery('');
+                setItemId('');
+                setCatalogue(null);
+                setCount('1');
+                setQuality('1');
+                setOpen(false);
+                return;
+              }
               void send({
                 sessionId: catalogue.sessionId,
                 requestId: crypto.randomUUID(),
@@ -442,7 +466,13 @@ export function SevenDaysGiveItemPanel({
                   type="submit"
                   disabled={!item || frozen || (!!savedTarget?.occupied && !replaceConfirmed)}
                 >
-                  {t(savedTarget ? 'sdtd.edit.replaceSubmit' : 'sdtd.give.submit')}
+                  {t(
+                    onPick
+                      ? 'sdtd.tools.addItem'
+                      : savedTarget
+                        ? 'sdtd.edit.replaceSubmit'
+                        : 'sdtd.give.submit',
+                  )}
                 </Button>
               )}
               <Button

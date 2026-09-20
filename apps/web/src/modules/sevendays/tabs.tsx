@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SevenDaysInventoryPanel } from './InventoryPanel';
 import { SevenDaysSavedPlayersPanel } from './SavedPlayersPanel';
+import { SevenDaysToolsPanel } from './ToolsPanel';
 import {
   SEVENDAYS_BAN_UNITS,
   SEVENDAYS_PERMISSIONS,
@@ -259,6 +260,12 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
           }}
         />
       )}
+      <SevenDaysToolsPanel
+        key={`tools/${serverId}`}
+        serverId={serverId}
+        players={data.players}
+        onRefreshPlayers={load}
+      />
       {inventoryPlayer && hasPermission(SEVENDAYS_PERMISSIONS.inventoryView) && (
         <SevenDaysInventoryPanel
           key={`${serverId}/${inventoryPlayer.id}/${inventoryPlayer.saved}`}
