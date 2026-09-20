@@ -142,6 +142,21 @@ export class SevenDaysController {
     return this.map.snapshot(serverId);
   }
 
+  @Get('zones')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.mapView)
+  @ServerScoped('serverId')
+  zones(@Param('serverId') serverId: string) {
+    return this.map.zones(serverId);
+  }
+
+  @Put('zones')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.configure)
+  @ServerScoped('serverId')
+  saveZones(@Param('serverId') serverId: string, @Body() body: unknown) {
+    return this.map.zones(serverId, body);
+  }
+
   @Post('players/:playerId/saved-stack')
   @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryEdit)
   @ServerScoped('serverId')

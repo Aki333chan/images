@@ -43,6 +43,7 @@ namespace Aurum.Companion.Core.Http
             if (config?.ForwardChat ?? true) capabilities.Add("chat-events");
             if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
             if (game is IMapBridge) { capabilities.Add("map-read"); capabilities.Add("map-pois"); }
+            if (game is IZoneBridge) capabilities.Add("zones-v1");
             if (game is IInventoryBridge) { capabilities.Add("inventory-read"); capabilities.Add("item-drop"); }
             if (game is ISavedInventoryBridge) { capabilities.Add("inventory-saved-read"); capabilities.Add("inventory-saved-reduce"); capabilities.Add("inventory-saved-replace"); }
             _capabilitiesJson = JsonWriter.Array(capabilities.ConvertAll(JsonWriter.String));
@@ -84,6 +85,16 @@ namespace Aurum.Companion.Core.Http
         private HttpResponseData Route(HttpRequestData request)
         {
             string[] parts = request.Segments;
+            if (parts.Length == 1 && parts[0] == "zones" && _game is IZoneBridge zones)
+            {
+                try
+                {
+                    if (request.Method == "GET") return HttpResponseData.Ok(zones.ReadZones());
+                    if (request.Method == "POST") return HttpResponseData.Ok(zones.SaveZones(ZoneRules.Read(request.Body)));
+                }
+                catch (InvalidOperationException e) when (e.Message.StartsWith("zones_", StringComparison.Ordinal) || e.Message == "world_loading")
+                { return HttpResponseData.Error(e.Message == "zones_revision_conflict" ? 409 : 503, e.Message); }
+            }
             if (_game is IInventoryBridge itemBridge)
             {
                 if (request.Method == "GET" && parts.Length == 2 && parts[0] == "items")

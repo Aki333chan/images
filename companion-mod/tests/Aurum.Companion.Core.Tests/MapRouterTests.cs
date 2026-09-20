@@ -8,6 +8,19 @@ namespace Aurum.Companion.Core.Tests;
 
 public sealed class MapRouterTests
 {
+    [Fact] public void Zones_require_auth_validate_payload_and_report_conflicts()
+    {
+        const string token = "test-token-long-enough";
+        var bridge = new Bridge(); var router = new CompanionRouter(bridge, token, "test");
+        var request = new HttpRequestData("POST", "/zones", new ZoneRules().Write());
+        Assert.Equal(401, router.Handle(request, null).Status);
+        Assert.Equal(400, router.Handle(new("POST", "/zones", "{}"), token).Status);
+        Assert.Equal(0, bridge.Reads);
+        Assert.Equal(200, router.Handle(request, token).Status);
+        Assert.Equal(1, bridge.Reads);
+        bridge.Conflict = true;
+        Assert.Equal(409, router.Handle(request, token).Status);
+    }
     [Fact] public void Saved_edit_requires_auth_confirmation_and_bounded_slot()
     {
         const string token = "test-token-long-enough";
@@ -38,8 +51,11 @@ public sealed class MapRouterTests
         Assert.Contains("session_expired", new CompanionRouter(bridge, token, "test").Handle(request, token).Json);
         Assert.Equal(1, bridge.Reads);
     }
-    private sealed class Bridge : IGameBridge, IMapBridge, IInventoryBridge, ISavedInventoryBridge
+    private sealed class Bridge : IGameBridge, IMapBridge, IInventoryBridge, ISavedInventoryBridge, IZoneBridge
     {
+        public bool Conflict;
+        public string ReadZones() => new ZoneRules().Write();
+        public string SaveZones(ZoneRules rules) { if (Conflict) throw new InvalidOperationException("zones_revision_conflict"); Reads++; return rules.Write(); }
         public int Reads;
         public string EditSavedStack(SavedStackChange change) { Reads++; return "saved"; }
         public string SavedPlayers(string query, int offset) { Reads++; return "{\"ready\":true,\"players\":[],\"hasMore\":false,\"truncated\":false}"; }

@@ -6,9 +6,11 @@ import { useI18n } from '../../i18n';
 import { IconClose } from '../../components/icons';
 import type { ModuleTabProps } from '../registry';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_PIXELS, tileSpan, visibleTiles, mapPoint } from './map-math';
+import { SevenDaysZoneEditor, useSevenDaysZones } from './ZoneEditor';
 
 export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
   const { t } = useI18n();
+  const zones = useSevenDaysZones(serverId);
   const [data, setData] = useState<SevenDaysMapSnapshot | null>(null);
   const [error, setError] = useState('');
   const [view, setView] = useState({ x: 0, z: 0, zoom: 0 });
@@ -32,6 +34,7 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
     span: number;
     moved: boolean;
     details: string | null;
+    zoneId: string | null;
   } | null>(null);
   const initialized = useRef(false);
   const cache = useRef(new Map<string, { url: string | null; until: number }>());
@@ -219,6 +222,20 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Button
+          variant={zones.open ? 'default' : 'outline'}
+          aria-expanded={zones.open}
+          disabled={zones.busy}
+          onClick={() => {
+            if (zones.open && zones.dirty && !window.confirm(t('sdtd.zones.discard'))) return;
+            zones.setOpen(!zones.open);
+            zones.setDraft(null);
+            zones.setDrawing(false);
+            zones.setCorner(null);
+          }}
+        >
+          {t('sdtd.zones.title')}
+        </Button>
+        <Button
           variant="outline"
           disabled={level <= 0}
           onClick={() => setView((v) => ({ ...v, zoom: Math.max(0, v.zoom - 1) }))}
@@ -333,6 +350,11 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
       {data.reason && <p className="text-xs text-amber-400">{t(`sdtd.map.${data.reason}`)}</p>}
       {data.truncated && <p className="text-xs text-amber-400">{t('sdtd.map.truncated')}</p>}
       {tileError && <p className="text-xs text-amber-400">{t('sdtd.map.tileError')}</p>}
+      {zones.open && zones.drawing && (
+        <p role="status" className="text-sm text-primary">
+          {t(zones.corner ? 'sdtd.zones.secondCorner' : 'sdtd.zones.firstCorner')}
+        </p>
+      )}
       <svg
         ref={svg}
         viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
@@ -345,7 +367,7 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
           display: 'block',
           marginInline: 'auto',
           touchAction: 'none',
-          cursor: 'grab',
+          cursor: zones.drawing ? 'crosshair' : 'grab',
           userSelect: 'none',
           WebkitUserSelect: 'none',
         }}
@@ -364,6 +386,8 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
             span,
             moved: false,
             details: marker?.getAttribute('data-map-details') ?? null,
+            zoneId:
+              (e.target as Element).closest('[data-zone-id]')?.getAttribute('data-zone-id') ?? null,
           };
           e.currentTarget.style.cursor = 'grabbing';
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -384,16 +408,35 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
         onPointerUp={(e) => {
           const d = drag.current;
           if (!d || d.id !== e.pointerId) return;
-          if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 4 && d.details)
-            setSelected(d.details);
+          if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 4) {
+            if (zones.open && zones.drawing) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              zones.pick(
+                Math.round(
+                  view.x +
+                    ((((e.clientX - rect.left) * MAP_WIDTH) / rect.width - MAP_WIDTH / 2) /
+                      TILE_PIXELS) *
+                      span,
+                ),
+                Math.round(
+                  view.z -
+                    ((((e.clientY - rect.top) * MAP_HEIGHT) / rect.height - MAP_HEIGHT / 2) /
+                      TILE_PIXELS) *
+                      span,
+                ),
+              );
+            } else if (d.zoneId && zones.open)
+              zones.choose(zones.data?.zones.find((z) => z.id === d.zoneId) ?? null);
+            else if (d.details) setSelected(d.details);
+          }
           drag.current = null;
-          e.currentTarget.style.cursor = 'grab';
+          e.currentTarget.style.cursor = zones.drawing ? 'crosshair' : 'grab';
           if (e.currentTarget.hasPointerCapture(e.pointerId))
             e.currentTarget.releasePointerCapture(e.pointerId);
         }}
         onLostPointerCapture={(e) => {
           drag.current = null;
-          e.currentTarget.style.cursor = 'grab';
+          e.currentTarget.style.cursor = zones.drawing ? 'crosshair' : 'grab';
         }}
       >
         {tiles.map(({ x, z }) => {
@@ -438,6 +481,52 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
               />
             );
           })}
+        {zones.open &&
+          [
+            ...(zones.data?.zones ?? []).filter((z) => z.id !== zones.draft?.id),
+            ...(zones.draft && !zones.drawing ? [zones.draft] : []),
+          ].map((z) => {
+            const p = point(z.x1, z.z2),
+              q = point(z.x2, z.z1);
+            if (![p.x, p.y, q.x, q.y].every(Number.isFinite)) return null;
+            return (
+              <g
+                key={z.id}
+                role="button"
+                tabIndex={0}
+                aria-label={z.name || t('sdtd.zones.new')}
+                data-zone-id={z.id}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    zones.choose(z);
+                  }
+                }}
+              >
+                <rect
+                  x={p.x}
+                  y={p.y}
+                  width={q.x - p.x}
+                  height={q.y - p.y}
+                  fill={zones.draft?.id === z.id ? '#a78bfa33' : '#34d39922'}
+                  stroke={z.enabled ? '#a78bfa' : '#9ca3af'}
+                  strokeWidth={zones.draft?.id === z.id ? 3 : 2}
+                  strokeDasharray={z.enabled ? undefined : '6 4'}
+                />
+                <title>{z.name}</title>
+              </g>
+            );
+          })}
+        {zones.open && zones.corner && (
+          <circle
+            cx={point(zones.corner.x, zones.corner.z).x}
+            cy={point(zones.corner.x, zones.corner.z).y}
+            r={5 * markerScale}
+            fill="#a78bfa"
+            stroke="white"
+            pointerEvents="none"
+          />
+        )}
         {visiblePois.slice(0, 200).map((p) => {
           const q = point(p.x, p.z),
             r = 6 * markerScale;
@@ -587,9 +676,11 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
           </div>
         )}
         <p className="break-words text-xs text-muted">
-          X {Math.round(view.x)} / Z {Math.round(view.z)} · {t('sdtd.map.readOnly')}
+          X {Math.round(view.x)} / Z {Math.round(view.z)} ·{' '}
+          {t(zones.open ? 'sdtd.zones.coordinates' : 'sdtd.map.readOnly')}
         </p>
       </div>
+      <SevenDaysZoneEditor zone={zones} />
     </Card>
   );
 }

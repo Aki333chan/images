@@ -10,8 +10,8 @@ namespace Aurum.Companion.Core.Json
     /// </summary>
     /// <remarks>
     /// Мод читает чужой JSON в двух местах: ответ панели на отправленный тикет
-    /// и тело запроса от панели. Оба — плоские объекты из строк, чисел и
-    /// логических значений.
+    /// и тело запроса от панели. Правила зон содержат вложенные объекты и массивы;
+    /// глубина и длина массивов ограничены.
     ///
     /// Разбор намеренно строгий: на некорректном вводе бросает, а не
     /// возвращает полупустой объект. Мод стоит на живом сервере, и «тихо
@@ -25,8 +25,7 @@ namespace Aurum.Companion.Core.Json
         }
 
         /// <summary>
-        /// Разбирает объект верхнего уровня в плоскую карту.
-        /// Вложенные объекты и массивы сохраняются как исходный текст.
+        /// Разбирает объект, включая вложенные объекты и массивы (глубина до 16).
         /// </summary>
         public static Dictionary<string, object?> ParseObject(string json)
         {
@@ -46,16 +45,17 @@ namespace Aurum.Companion.Core.Json
         public static bool BoolOrDefault(Dictionary<string, object?> map, string key, bool fallback = false) =>
             map.TryGetValue(key, out var value) && value is bool b ? b : fallback;
 
-        private static object? ParseValue(string s, ref int i)
+        private static object? ParseValue(string s, ref int i, int depth = 0)
         {
+            if (depth > 16) throw new JsonException("Слишком глубокий JSON");
             SkipWhitespace(s, ref i);
             if (i >= s.Length) throw new JsonException("Неожиданный конец JSON");
 
             char c = s[i];
             switch (c)
             {
-                case '{': return ParseObjectBody(s, ref i);
-                case '[': return ParseRaw(s, ref i, '[', ']');
+                case '{': return ParseObjectBody(s, ref i, depth + 1);
+                case '[': return ParseArrayBody(s, ref i, depth + 1);
                 case '"': return ParseString(s, ref i);
                 case 't': Expect(s, ref i, "true"); return true;
                 case 'f': Expect(s, ref i, "false"); return false;
@@ -64,7 +64,7 @@ namespace Aurum.Companion.Core.Json
             }
         }
 
-        private static Dictionary<string, object?> ParseObjectBody(string s, ref int i)
+        private static Dictionary<string, object?> ParseObjectBody(string s, ref int i, int depth)
         {
             var map = new Dictionary<string, object?>(StringComparer.Ordinal);
             i++; // '{'
@@ -79,7 +79,8 @@ namespace Aurum.Companion.Core.Json
                 SkipWhitespace(s, ref i);
                 if (i >= s.Length || s[i] != ':') throw new JsonException("Ожидалось двоеточие");
                 i++;
-                map[key] = ParseValue(s, ref i);
+                if (map.ContainsKey(key)) throw new JsonException("Повторное имя поля");
+                map[key] = ParseValue(s, ref i, depth);
                 SkipWhitespace(s, ref i);
                 if (i >= s.Length) throw new JsonException("Незакрытый объект");
                 if (s[i] == ',') { i++; continue; }
@@ -88,30 +89,21 @@ namespace Aurum.Companion.Core.Json
             }
         }
 
-        /// <summary>Вложенная структура возвращается как есть: моду её содержимое не нужно.</summary>
-        private static string ParseRaw(string s, ref int i, char open, char close)
+        private static List<object?> ParseArrayBody(string s, ref int i, int depth)
         {
-            int start = i;
-            int depth = 0;
-            bool inString = false;
-            for (; i < s.Length; i++)
+            var values = new List<object?>();
+            i++;
+            SkipWhitespace(s, ref i);
+            if (i < s.Length && s[i] == ']') { i++; return values; }
+            while (true)
             {
-                char c = s[i];
-                if (inString)
-                {
-                    if (c == '\\') i++;
-                    else if (c == '"') inString = false;
-                    continue;
-                }
-                if (c == '"') { inString = true; continue; }
-                if (c == open) depth++;
-                else if (c == close)
-                {
-                    depth--;
-                    if (depth == 0) { i++; return s.Substring(start, i - start); }
-                }
+                if (values.Count >= 2048) throw new JsonException("Слишком большой массив");
+                values.Add(ParseValue(s, ref i, depth));
+                SkipWhitespace(s, ref i);
+                if (i >= s.Length) throw new JsonException("Незакрытый массив");
+                if (s[i] == ']') { i++; return values; }
+                if (s[i++] != ',') throw new JsonException("Ожидалась запятая");
             }
-            throw new JsonException("Незакрытая структура");
         }
 
         private static string ParseString(string s, ref int i)

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import type { SevenDaysMapSnapshot, SevenDaysMapPois, SevenDaysMapPoi } from '@aurum/shared';
+import { parseSevenDaysZones } from '@aurum/shared';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 
 const blank = (reason: SevenDaysMapSnapshot['reason']): SevenDaysMapSnapshot => ({
@@ -111,6 +112,20 @@ export class SevenDaysMapService {
   private activeTiles = 0;
   private readonly poiRequests = new Map<string, Promise<SevenDaysMapPois>>();
   constructor(private readonly companion: SevenDaysCompanionService) {}
+
+  async zones(serverId: string, payload?: unknown) {
+    let body: unknown;
+    if (payload !== undefined) {
+      try {
+        body = parseSevenDaysZones(payload);
+      } catch {
+        throw new BadRequestException('invalid_zones');
+      }
+      if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 60000)
+        throw new BadRequestException('zones_payload_too_large');
+    }
+    return parseSevenDaysZones(await this.companion.zoneRequest(serverId, body));
+  }
 
   async pois(serverId: string): Promise<SevenDaysMapPois> {
     const pending = this.poiRequests.get(serverId);

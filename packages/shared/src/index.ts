@@ -18,3 +18,4 @@ export * from './modules/minecraft-console';
 export * from './modules/minecraft-loaders';
 export * from './modules/palworld';
 export * from './modules/sevendays';
+export * from './modules/sevendays-zones';

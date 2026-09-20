@@ -1,0 +1,21 @@
+<configs>
+  <append xpath="/buffs">
+    <!-- Leases expire in 3 seconds without the server runtime. Never grant creative/fly privileges. -->
+    <buff name="aurumZoneProtection" hidden="true">
+      <stack_type value="replace"/><duration value="3"/>
+      <effect_group><passive_effect name="GeneralDamageResist" operation="base_add" value="1"/></effect_group>
+    </buff>
+    <buff name="aurumZoneRegeneration" hidden="true">
+      <stack_type value="replace"/><duration value="3"/>
+      <effect_group><passive_effect name="HealthChangeOT" operation="base_add" value="1"/></effect_group>
+    </buff>
+    <buff name="aurumZoneStamina" hidden="true">
+      <stack_type value="replace"/><duration value="3"/>
+      <effect_group><passive_effect name="StaminaChangeOT" operation="base_add" value="3"/></effect_group>
+    </buff>
+    <buff name="aurumZoneSpeed" hidden="true">
+      <stack_type value="replace"/><duration value="3"/>
+      <effect_group><passive_effect name="RunSpeed" operation="perc_add" value="0.15"/></effect_group>
+    </buff>
+  </append>
+</configs>

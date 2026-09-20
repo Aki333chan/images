@@ -15,16 +15,16 @@ namespace Aurum.Companion.Game
     /// </summary>
     /// <remarks>
     /// Мод загружается штатным механизмом самой игры: класс, реализующий
-    /// IModApi, находит ModManager при старте сервера. Harmony здесь НЕ нужен
-    /// и не используется — все события берутся из публичного ModEvents,
-    /// который поддерживает сама TFP. Его сигнатуры всё равно нужно проверять
+    /// IModApi, находит ModManager при старте сервера. Основные события использует
+    /// публичный ModEvents; ограничения зон дополнительно используют Harmony.
+    /// Сигнатуры обоих путей нужно проверять
     /// сборкой против DLL целевой версии игры.
     ///
     /// Мод СЕРВЕРНЫЙ. Игрокам ставить ничего не нужно, клиент о нём не знает.
     /// </remarks>
     public sealed class AurumCompanionMod : IModApi
     {
-        private const string Version = "1.0.12-rc.1";
+        private const string Version = "1.0.13-rc.1";
         private const string ConfigFileName = "companion.cfg";
 
         private static CompanionConfig? _config;
@@ -58,6 +58,8 @@ namespace Aurum.Companion.Game
                 }
 
                 MainThread.Capture();
+                try { _game.StartZones(); }
+                catch (Exception e) { Log.Error("[AurumCompanion] Zones unavailable (Harmony required): " + e.Message); }
                 _forwardChat = _config.ForwardChat;
                 _forwardDeaths = _config.ForwardDeaths;
                 _queue = new EventQueue(_config.EventQueueLimit);
@@ -132,6 +134,8 @@ namespace Aurum.Companion.Game
 
         private static void StopServices()
         {
+            try { _game?.StopZones(); }
+            catch (Exception e) { Log.Error("[AurumCompanion] Zones shutdown: " + e.Message); }
             MainThread.Stop(); // Wake HTTP/ticket workers before waiting for them.
             try { _http?.Dispose(); }
             catch (Exception e) { Log.Error("[AurumCompanion] HTTP shutdown: " + e); }

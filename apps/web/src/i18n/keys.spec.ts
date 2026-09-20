@@ -40,6 +40,7 @@ const NAMESPACES = [
   'dummy',
   'login',
   'language',
+  'help',
   'cron',
   'size',
   'role',
@@ -49,7 +50,7 @@ const NAMESPACES = [
   'address',
   'console',
   // С точкой после подпространства: у этих имён верхний уровень занят правами.
-  'ai\\.(?:err|sum)',
+  'ai\\.(?:err|sum|help)',
   'auth\\.err',
   'users\\.err',
 ];

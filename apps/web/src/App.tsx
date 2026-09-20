@@ -15,14 +15,25 @@ import { MarketPage } from './pages/MarketPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MessagesPage } from './pages/MessagesPage';
+import { HelpPage } from './pages/HelpPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { Spinner } from './components/ui';
 import { ToastProvider } from './components/Toast';
 
 /** Роут, требующий права; при live-потере права редиректит на /servers. */
-function Guarded({ permission, children }: { permission: string; children: JSX.Element }) {
+function Guarded({
+  permission,
+  children,
+}: {
+  permission: string | readonly string[];
+  children: JSX.Element;
+}) {
   const { hasPermission } = useAuth();
-  if (!hasPermission(permission)) return <Navigate to="/servers" replace />;
+  const allowed =
+    typeof permission === 'string'
+      ? hasPermission(permission)
+      : permission.some((key) => hasPermission(key));
+  if (!allowed) return <Navigate to="/servers" replace />;
   return children;
 }
 
@@ -67,7 +78,7 @@ function Shell() {
         <Route
           path="/access"
           element={
-            <Guarded permission="users.manage">
+            <Guarded permission={['users.manage', 'users.create.moderator']}>
               <AccessControlPage />
             </Guarded>
           }
@@ -90,6 +101,7 @@ function Shell() {
         />
         <Route path="/messages" element={<MessagesPage />} />
         <Route path="/security" element={<SecurityPage />} />
+        <Route path="/help" element={<HelpPage />} />
         {/* Настройки доступны всем: там же лежат личные — свой ник и пароль.
             Блоки для ГМ (правила аккаунтов, почта, ассистент) внутри страницы
             показываются по праву users.manage. */}

@@ -8,6 +8,7 @@ import {
   IconAccess,
   IconAudit,
   IconClose,
+  IconHelp,
   IconLogout,
   IconMarket,
   IconMenu,
@@ -90,11 +91,23 @@ export function Layout() {
     },
     // Установка плагина — запуск чужого кода на сервере, поэтому право
     // по умолчанию только у ГМ и Админа.
-    { to: '/market', labelKey: 'nav.market', permission: 'minecraft.plugins.install', icon: IconMarket },
+    {
+      to: '/market',
+      labelKey: 'nav.market',
+      permission: 'minecraft.plugins.install',
+      icon: IconMarket,
+    },
     // Доступы видны и Админу: у него есть право заводить Модераторов.
-    { to: '/access', labelKey: 'nav.access', permission: 'users.create.moderator', icon: IconAccess },
+    {
+      to: '/access',
+      labelKey: 'nav.access',
+      permission: 'users.create.moderator',
+      icon: IconAccess,
+    },
     // Без права: внутри есть личный блок — свой ник и пароль.
     { to: '/settings', labelKey: 'nav.settings', permission: null, icon: IconSettings },
+    // Справка сама фильтрует главы и ответы по фактическим правам аккаунта.
+    { to: '/help', labelKey: 'nav.help', permission: null, icon: IconHelp },
     { to: '/audit', labelKey: 'nav.audit', permission: 'audit.view', icon: IconAudit },
     { to: '/security', labelKey: 'nav.security', permission: null, icon: IconSecurity },
   ];
@@ -191,7 +204,13 @@ export function Layout() {
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
           )}
         </button>
-        <img src="/logo-128.png" alt="" width={26} height={26} className="h-[26px] w-[26px] object-contain" />
+        <img
+          src="/logo-128.png"
+          alt=""
+          width={26}
+          height={26}
+          className="h-[26px] w-[26px] object-contain"
+        />
         <span className="truncate text-[15px] font-medium text-primary-200">Aurum Panel</span>
       </header>
 
@@ -241,9 +260,9 @@ export function Layout() {
         <Outlet />
       </main>
 
-      {/* Ассистент живёт в раскладке, а не на странице: кнопка должна быть
-          видна на всех экранах панели. Сам компонент прячется, если у роли
-          нет права ai.chat. */}
+      {/* Быстрая справка живёт в раскладке, а не на странице: кнопка должна
+          быть видна везде. Переход к платному AI внутри неё уже зависит от
+          отдельного права ai.chat. */}
       <AiAssistant />
     </div>
   );

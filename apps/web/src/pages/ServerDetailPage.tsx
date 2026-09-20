@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { MinecraftPluginsDto, ServerDto } from '@aurum/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -31,6 +31,8 @@ export function ServerDetailPage() {
   const apiText = useApiText();
   const { serverId = '' } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
   const { me, modules, hasPermission, canSeeServer } = useAuth();
   const runtime = useServerRuntime(serverId);
   const [server, setServer] = useState<ServerDto | null>(null);
@@ -50,9 +52,12 @@ export function ServerDetailPage() {
     data: MinecraftPluginsDto;
   } | null>(null);
 
-  const rememberMinecraftPlugins = useCallback((data: MinecraftPluginsDto) => {
-    setMinecraftPlugins({ serverId, data });
-  }, [serverId]);
+  const rememberMinecraftPlugins = useCallback(
+    (data: MinecraftPluginsDto) => {
+      setMinecraftPlugins({ serverId, data });
+    },
+    [serverId],
+  );
 
   // canSeeServer в зависимостях: если ГМ отвяжет этот сервер, доступ пропадёт
   // на лету и пользователя вернёт к списку.
@@ -112,13 +117,19 @@ export function ServerDetailPage() {
           const tab = resolveTab(manifest.id, capability);
           if (!tab) return [];
           if (tab.permission && !hasPermission(tab.permission)) return [];
-          if (tab.requiresPlugin && !hasEnabledPlugin(
-            minecraftPlugins?.serverId === serverId ? minecraftPlugins.data : null,
-            tab.requiresPlugin,
-          )) return [];
+          if (
+            tab.requiresPlugin &&
+            !hasEnabledPlugin(
+              minecraftPlugins?.serverId === serverId ? minecraftPlugins.data : null,
+              tab.requiresPlugin,
+            )
+          )
+            return [];
           // id как string: ниже к списку добавляются вкладки, которых в
           // перечислении capability нет.
-          return [{ id: capability as string, label: t(tab.labelKey), component: tab.component, state }];
+          return [
+            { id: capability as string, label: t(tab.labelKey), component: tab.component, state },
+          ];
         });
 
     // Настройки модуля — последними среди модульных: пользуются ими редко.
@@ -169,11 +180,20 @@ export function ServerDetailPage() {
    */
   useEffect(() => {
     if (tabs.length === 0) return;
+    // Запрошенная вкладка уже прошла фильтр прав и возможностей выше. Она
+    // имеет приоритет даже после ручного выбора: так работают ссылки из
+    // справки и обычные закладки браузера.
+    const requested = tabs.find((t) => t.id === requestedTab);
+    if (requested && requested.id !== activeTab) {
+      setActiveTab(requested.id);
+      return;
+    }
     const known = tabs.some((t) => t.id === activeTab);
     if (known && tabPickedByUser) return;
+    // Подставленный вручную неизвестный tab не открывает скрытый UI.
     const preferred = tabs.find((t) => t.id === 'console') ?? tabs[0];
     if (preferred && preferred.id !== activeTab) setActiveTab(preferred.id);
-  }, [tabs, activeTab, tabPickedByUser]);
+  }, [tabs, activeTab, tabPickedByUser, requestedTab]);
 
   if (error) return <p className="text-red-400">{error}</p>;
   if (!server) return <Spinner />;
@@ -355,6 +375,14 @@ export function ServerDetailPage() {
             onChange={(id) => {
               setTabPickedByUser(true);
               setActiveTab(id);
+              setSearchParams(
+                (current) => {
+                  const next = new URLSearchParams(current);
+                  next.set('tab', id);
+                  return next;
+                },
+                { replace: true },
+              );
             }}
           />
           {ActiveComponent && active && (
@@ -371,11 +399,7 @@ export function ServerDetailPage() {
           доступной вкладки пока нет — иначе plugin-gated вкладка никогда не
           получила бы первый снимок и возникла циклическая блокировка. */}
       {manifest?.id === 'minecraft' && (
-        <PluginsPanel
-          key={server.id}
-          serverId={server.id}
-          onData={rememberMinecraftPlugins}
-        />
+        <PluginsPanel key={server.id} serverId={server.id} onData={rememberMinecraftPlugins} />
       )}
     </div>
   );
@@ -460,7 +484,11 @@ function ModuleBadge({
   const label = name ?? t('server.module.none');
 
   if (!canManage) {
-    return <p className="truncate text-[11px] text-muted">{t('server.module')} {label}</p>;
+    return (
+      <p className="truncate text-[11px] text-muted">
+        {t('server.module')} {label}
+      </p>
+    );
   }
 
   return (

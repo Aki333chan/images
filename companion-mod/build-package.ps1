@@ -1,10 +1,13 @@
 param(
     [Parameter(Mandatory = $true)][string]$GameManagedDirectory,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
-    [string]$Dotnet = 'dotnet'
+    [string]$Dotnet = 'dotnet',
+    [string]$HarmonyAssembly = ''
 )
 $ErrorActionPreference = 'Stop'
 $managed = (Resolve-Path -LiteralPath $GameManagedDirectory).Path
+if (-not $HarmonyAssembly) { $HarmonyAssembly = Join-Path $managed '../../Mods/0_TFP_Harmony/0Harmony.dll' }
+$harmony = (Resolve-Path -LiteralPath $HarmonyAssembly).Path
 $required = @('Assembly-CSharp.dll', 'Assembly-CSharp-firstpass.dll', 'UnityEngine.CoreModule.dll', 'LogLibrary.dll')
 foreach ($file in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $managed $file) -PathType Leaf)) {
@@ -24,7 +27,7 @@ foreach ($project in @('src/Aurum.Companion.Core', 'tests/Aurum.Companion.Game.S
 }
 & $Dotnet test (Join-Path $PSScriptRoot 'tests/Aurum.Companion.Core.Tests') -c Release --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
-& $Dotnet build (Join-Path $gameProject 'Aurum.Companion.Game.csproj') -c Release "-p:GameManagedDirectory=$managed" --nologo
+& $Dotnet build (Join-Path $gameProject 'Aurum.Companion.Game.csproj') -c Release "-p:GameManagedDirectory=$managed" "-p:HarmonyAssembly=$harmony" --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Real game reference build failed' }
 
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -39,6 +42,9 @@ foreach ($file in @('Aurum.Companion.dll', 'Aurum.Companion.Core.dll', 'ModInfo.
     Copy-Item -LiteralPath (Join-Path $gameProject "bin/Release/net48/$file") -Destination $modFolder
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'SMOKE-TEST.ru.md') -Destination (Join-Path $modFolder 'SMOKE-TEST.ru.md')
+$configFolder = Join-Path $modFolder 'Config'
+$null = New-Item -ItemType Directory -Path $configFolder
+Copy-Item -LiteralPath (Join-Path $gameProject 'Config/buffs.xml') -Destination $configFolder
 Compress-Archive -LiteralPath $modFolder -DestinationPath $zip
 $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$zip.sha256", "$digest  $([IO.Path]::GetFileName($zip))`n", [Text.UTF8Encoding]::new($false))

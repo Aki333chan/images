@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useI18n } from '../i18n';
 import { LOCALE_TAGS } from '@aurum/shared';
 import type {
@@ -12,16 +12,9 @@ import type {
 import { api, getAccessToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, Card, ErrorText, Input } from './ui';
-import {
-  IconBack,
-  IconCaretDown,
-  IconClose,
-  IconEraser,
-  IconSend,
-  IconSettings,
-  IconSparkle,
-} from './icons';
+import { IconBack, IconClose, IconEraser, IconSend, IconSettings, IconSparkle } from './icons';
 import { helpTopicFor, type HelpTopic } from './assistant-help';
+import { HelpQuestions } from './HelpQuestions';
 
 /**
  * AI-ассистент: плавающая кнопка в углу и окно чата.
@@ -201,9 +194,8 @@ export function AiAssistant() {
   }
 
   function openHelp() {
-    const activeTab = document.querySelector<HTMLElement>(
-      'main [data-tab][aria-current="page"]',
-    )?.dataset.tab;
+    const activeTab = document.querySelector<HTMLElement>('main [data-tab][aria-current="page"]')
+      ?.dataset.tab;
     setHelpTopic(helpTopicFor(location.pathname, activeTab ?? null));
     setView('help');
     setOpen(true);
@@ -253,9 +245,7 @@ export function AiAssistant() {
                     {t(view === 'help' ? 'ai.help.title' : 'ai.title')}
                   </div>
                   {view === 'help' && (
-                    <div className="truncate text-[11px] text-muted">
-                      {t(helpTopic.titleKey)}
-                    </div>
+                    <div className="truncate text-[11px] text-muted">{t(helpTopic.titleKey)}</div>
                   )}
                   {view === 'chat' && usage && (
                     // Полная фраза — в подсказке: в шапке она помещается
@@ -303,7 +293,13 @@ export function AiAssistant() {
             </header>
 
             {view === 'help' ? (
-              <HelpHome topic={helpTopic} canChat={canChat} onChat={() => setView('chat')} />
+              <HelpHome
+                topic={helpTopic}
+                pathname={location.pathname}
+                canChat={canChat}
+                onChat={() => setView('chat')}
+                onOpenGuide={() => setOpen(false)}
+              />
             ) : (
               <>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
@@ -317,7 +313,10 @@ export function AiAssistant() {
                   {feed.map((item, i) => {
                     if (item.kind === 'tool') {
                       return (
-                        <p key={i} className="flex items-center gap-1.5 text-[11px] italic text-muted">
+                        <p
+                          key={i}
+                          className="flex items-center gap-1.5 text-[11px] italic text-muted"
+                        >
                           <IconSettings size={12} className="shrink-0" />
                           {item.summary}
                         </p>
@@ -373,12 +372,16 @@ export function AiAssistant() {
 
 function HelpHome({
   topic,
+  pathname,
   canChat,
   onChat,
+  onOpenGuide,
 }: {
   topic: HelpTopic;
+  pathname: string;
   canChat: boolean;
   onChat: () => void;
+  onOpenGuide: () => void;
 }) {
   const { t } = useI18n();
   return (
@@ -387,38 +390,34 @@ function HelpHome({
         <h2 className="text-base font-semibold">{t(topic.titleKey)}</h2>
         <p className="mt-1 text-sm leading-5 text-muted">{t('ai.help.intro')}</p>
 
-        <div className="mt-4 border-y border-border">
-          {topic.questionIds.map((id) => (
-            <details key={id} className="group border-b border-border last:border-b-0">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-sm py-3 text-sm font-medium transition-colors hover:text-primary-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 [&::-webkit-details-marker]:hidden">
-                <span>{t(`ai.help.faq.${id}.q`)}</span>
-                <IconCaretDown
-                  size={14}
-                  className="shrink-0 text-muted transition-transform duration-200 group-open:rotate-180"
-                />
-              </summary>
-              <p className="max-w-prose pb-3 pr-7 text-sm leading-6 text-muted">
-                {t(`ai.help.faq.${id}.a`)}
-              </p>
-            </details>
-          ))}
+        <div className="mt-4">
+          <HelpQuestions topic={topic} pathname={pathname} onNavigate={onOpenGuide} />
         </div>
       </div>
 
-      {canChat && (
-        <div
-          className="shrink-0 border-t border-border p-3"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      <div
+        className="shrink-0 space-y-2 border-t border-border p-3"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
+        <Link
+          to="/help"
+          onClick={onOpenGuide}
+          className="flex min-h-10 w-full items-center justify-center rounded-md border border-neutral-800 px-3 text-sm font-medium text-neutral-200 transition-colors hover:border-primary/60 hover:bg-primary/10 hover:text-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
         >
-          <Button className="w-full" onClick={onChat}>
-            <IconSparkle size={16} />
-            {t('ai.help.askAi')}
-          </Button>
-          <p className="mt-2 text-center text-[11px] leading-4 text-muted">
-            {t('ai.help.aiHint')}
-          </p>
-        </div>
-      )}
+          {t('ai.help.full')}
+        </Link>
+        {canChat && (
+          <>
+            <Button className="w-full" onClick={onChat}>
+              <IconSparkle size={16} />
+              {t('ai.help.askAi')}
+            </Button>
+            <p className="mt-2 text-center text-[11px] leading-4 text-muted">
+              {t('ai.help.aiHint')}
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }

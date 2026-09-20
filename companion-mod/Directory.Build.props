@@ -9,7 +9,7 @@
   -->
   <PropertyGroup>
     <LangVersion>11.0</LangVersion>
-    <Version>1.0.12-rc.1</Version>
+    <Version>1.0.13-rc.1</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

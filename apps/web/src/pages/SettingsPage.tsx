@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type {
   AlertSettingsDto,
   AppSettingsDto,
@@ -11,7 +12,17 @@ import { ALERT_SETTINGS_LIMITS, DEFAULT_ALERT_SETTINGS, ROLE_KEYS } from '@aurum
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { AiSettingsCard } from './AiSettingsCard';
-import { Badge, Button, Card, ErrorText, Input, Label, Select, Spinner, Tabs } from '../components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorText,
+  Input,
+  Label,
+  Select,
+  Spinner,
+  Tabs,
+} from '../components/ui';
 import { LanguagePicker } from '../components/LanguagePicker';
 import { useApiText, useT } from '../i18n';
 
@@ -23,7 +34,9 @@ export function SettingsPage() {
   const t = useT();
   const { hasPermission } = useAuth();
   const isGm = hasPermission('users.manage');
-  const [activeSection, setActiveSection] = useState('profile');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedSection = searchParams.get('section');
+  const [activeSection, setActiveSection] = useState(requestedSection ?? 'profile');
 
   const sections = [
     {
@@ -74,6 +87,27 @@ export function SettingsPage() {
 
   const active = sections.find((section) => section.id === activeSection) ?? sections[0]!;
 
+  useEffect(() => {
+    const allowed =
+      requestedSection === 'profile' ||
+      (isGm && ['accounts', 'notifications', 'ai'].includes(requestedSection ?? ''));
+    if (requestedSection && allowed) {
+      setActiveSection(requestedSection);
+    }
+  }, [requestedSection, isGm]);
+
+  function chooseSection(id: string) {
+    setActiveSection(id);
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set('section', id);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">{t('nav.settings')}</h1>
@@ -81,7 +115,7 @@ export function SettingsPage() {
         <Tabs
           tabs={sections.map(({ id, label }) => ({ id, label }))}
           active={active.id}
-          onChange={setActiveSection}
+          onChange={chooseSection}
         />
       </div>
       <div className="grid items-start gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
@@ -93,8 +127,9 @@ export function SettingsPage() {
             <button
               key={section.id}
               type="button"
+              data-tab={section.id}
               aria-current={active.id === section.id ? 'page' : undefined}
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => chooseSection(section.id)}
               className={
                 'flex min-h-10 w-full items-center rounded-md px-3 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 ' +
                 (active.id === section.id
@@ -115,11 +150,7 @@ export function SettingsPage() {
             <p className="mt-1 max-w-2xl text-sm text-muted">{active.description}</p>
           </div>
           {sections.map((section) => (
-            <div
-              key={section.id}
-              hidden={active.id !== section.id}
-              className="space-y-4"
-            >
+            <div key={section.id} hidden={active.id !== section.id} className="space-y-4">
               {section.content}
             </div>
           ))}
@@ -233,15 +264,9 @@ function MyNickname() {
         </Button>
       </div>
 
-      {!allowed && (
-        <p className="text-xs text-muted">
-          {t('set.nick.locked')}
-        </p>
-      )}
+      {!allowed && <p className="text-xs text-muted">{t('set.nick.locked')}</p>}
       {allowed && me?.user.nicknameChangeAllowed && (
-        <p className="text-xs text-amber-400">
-          {t('set.nick.allowed')}
-        </p>
+        <p className="text-xs text-amber-400">{t('set.nick.allowed')}</p>
       )}
       {error && <ErrorText>{error}</ErrorText>}
       {saved && <p className="text-xs text-emerald-400">{saved}</p>}
@@ -315,9 +340,7 @@ function MyPassword() {
           />
         </div>
       </div>
-      <p className="text-xs text-muted">
-        {t('set.pwd.hint')}
-      </p>
+      <p className="text-xs text-muted">{t('set.pwd.hint')}</p>
       {mismatch && <ErrorText>{t('set.pwd.mismatch')}</ErrorText>}
       <Button size="sm" disabled={!canSubmit} onClick={() => void save()}>
         {t('set.pwd.change')}
@@ -390,9 +413,7 @@ function AccountRules() {
           </span>
         </span>
       </label>
-      <p className="text-xs text-muted">
-        {t('set.rules.note')}
-      </p>
+      <p className="text-xs text-muted">{t('set.rules.note')}</p>
 
       {/* Одна галочка на всю фичу: и на молчаливую установку companion, и на
           предложение полного пакета. Тот, кто её снимает, снимает целиком. */}
@@ -590,9 +611,7 @@ function SmtpSettings() {
           {t(settings.configured ? 'set.smtp.on' : 'set.smtp.off')}
         </Badge>
       </div>
-      <p className="text-xs text-muted">
-        {t('set.smtp.hint')}
-      </p>
+      <p className="text-xs text-muted">{t('set.smtp.hint')}</p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -717,7 +736,12 @@ function AlertSettings() {
     }
   }
 
-  if (!value) return <Card><Spinner /></Card>;
+  if (!value)
+    return (
+      <Card>
+        <Spinner />
+      </Card>
+    );
 
   const L = ALERT_SETTINGS_LIMITS;
   const patch = (over: Partial<AlertSettingsDto>) => setValue({ ...value, ...over });
@@ -731,9 +755,7 @@ function AlertSettings() {
         </Badge>
       </div>
 
-      <p className="text-xs text-muted">
-        {t('set.alerts.hint')}
-      </p>
+      <p className="text-xs text-muted">{t('set.alerts.hint')}</p>
 
       <label className="flex cursor-pointer items-start gap-2 text-sm">
         <input
@@ -765,9 +787,7 @@ function AlertSettings() {
             value={value.sustainedMinutes}
             onChange={(e) => patch({ sustainedMinutes: Number(e.target.value) })}
           />
-          <p className="mt-1 text-[11px] text-muted">
-            {t('set.alerts.sustainedHint')}
-          </p>
+          <p className="mt-1 text-[11px] text-muted">{t('set.alerts.sustainedHint')}</p>
         </div>
         <div>
           <Label>{t('set.alerts.cooldown')}</Label>
@@ -778,9 +798,7 @@ function AlertSettings() {
             value={value.cooldownMinutes}
             onChange={(e) => patch({ cooldownMinutes: Number(e.target.value) })}
           />
-          <p className="mt-1 text-[11px] text-muted">
-            {t('set.alerts.cooldownHint')}
-          </p>
+          <p className="mt-1 text-[11px] text-muted">{t('set.alerts.cooldownHint')}</p>
         </div>
       </div>
 
