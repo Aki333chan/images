@@ -6,6 +6,7 @@ import {
   SEVENDAYS_PERMISSIONS,
   type SevenDaysActionDto,
   type SevenDaysEventDto,
+  type SevenDaysPlayerHistory,
   type SevenDaysEventKind,
   type SevenDaysBanDto,
   type SevenDaysBanUnit,
@@ -23,6 +24,7 @@ import type { ModuleTabProps } from '../registry';
 import { useI18n } from '../../i18n';
 
 const base = (serverId: string) => `/api/modules/sevendays/servers/${serverId}`;
+type HistoryPlayer = { id: string; name: string; alternateId?: string };
 
 /**
  * Вкладки модуля 7 Days to Die.
@@ -57,6 +59,35 @@ function targetOf(player: SevenDaysPlayerDto): string {
 
 export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: ModuleTabProps) {
   const { hasPermission } = useAuth();
+  const [historyPlayer, setHistoryPlayer] = useState<HistoryPlayer | null>(null);
+  const historyTrigger = useRef<HTMLElement | null>(null);
+  const restoreHistoryFocus = useRef(false);
+  useEffect(() => {
+    if (!historyPlayer && restoreHistoryFocus.current) {
+      restoreHistoryFocus.current = false;
+      const target = historyTrigger.current;
+      if (target?.isConnected) target.focus();
+      else document.getElementById('sdtd-events-title')?.focus();
+    }
+  }, [historyPlayer]);
+  const showHistory = (player: HistoryPlayer) => {
+    historyTrigger.current = document.activeElement as HTMLElement;
+    setHistoryPlayer({ ...player });
+  };
+  const historyPanel = (
+    <SevenDaysEventsPanel
+      key={`${serverId}/${historyPlayer?.id ?? ''}`}
+      serverId={serverId}
+      moduleId={moduleId}
+      capabilityState={capabilityState}
+      player={historyPlayer}
+      onPlayer={showHistory}
+      onClear={() => {
+        restoreHistoryFocus.current = true;
+        setHistoryPlayer(null);
+      }}
+    />
+  );
   const [inventoryPlayer, setInventoryPlayer] = useState<{
     id: string;
     name: string;
@@ -64,7 +95,10 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
     saved: boolean;
   } | null>(null);
   const inventoryTrigger = useRef<HTMLElement | null>(null);
-  useEffect(() => setInventoryPlayer(null), [serverId]);
+  useEffect(() => {
+    setInventoryPlayer(null);
+    setHistoryPlayer(null);
+  }, [serverId]);
   const showInventory = (player: SevenDaysPlayerDto) => {
     inventoryTrigger.current = document.activeElement as HTMLElement | null;
     setInventoryPlayer({
@@ -99,12 +133,15 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
 
   if (error && !data) {
     return (
-      <Card>
-        <ErrorText>{error}</ErrorText>
-        <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
-          Повторить
-        </Button>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <ErrorText>{error}</ErrorText>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => void load()}>
+            Повторить
+          </Button>
+        </Card>
+        {historyPanel}
+      </div>
     );
   }
   if (!data) return <Spinner />;
@@ -160,6 +197,7 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
                         hasPermission={hasPermission}
                         onPunish={setPunish}
                         onInventory={showInventory}
+                        onHistory={showHistory}
                       />
                     </td>
                   </tr>
@@ -190,6 +228,7 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
                       hasPermission={hasPermission}
                       onPunish={setPunish}
                       onInventory={showInventory}
+                      onHistory={showHistory}
                     />
                   </div>
                 </li>
@@ -213,6 +252,7 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
         <SevenDaysSavedPlayersPanel
           key={serverId}
           serverId={serverId}
+          onHistory={hasPermission(SEVENDAYS_PERMISSIONS.eventsView) ? showHistory : undefined}
           onInventory={(player) => {
             inventoryTrigger.current = document.activeElement as HTMLElement | null;
             setInventoryPlayer({ ...player, saved: true });
@@ -247,11 +287,7 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
         самое, только за прошедшее время. Отдельная вкладка заставила бы
         ходить туда-сюда.
       */}
-      <SevenDaysEventsPanel
-        serverId={serverId}
-        moduleId={moduleId}
-        capabilityState={capabilityState}
-      />
+      {historyPanel}
     </div>
   );
 }
@@ -268,15 +304,32 @@ function PlayerActions({
   hasPermission,
   onPunish,
   onInventory,
+  onHistory,
 }: {
   player: SevenDaysPlayerDto;
   hasPermission: (key: string) => boolean;
   onPunish: (value: { player: SevenDaysPlayerDto; kind: 'kick' | 'ban' }) => void;
   onInventory: (player: SevenDaysPlayerDto) => void;
+  onHistory: (player: HistoryPlayer) => void;
 }) {
   const { t } = useI18n();
   return (
     <div className="flex flex-wrap justify-end gap-2">
+      {hasPermission(SEVENDAYS_PERMISSIONS.eventsView) && (player.platformId || player.crossId) && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            onHistory({
+              id: (player.platformId ?? player.crossId)!,
+              name: player.name,
+              alternateId: player.crossId ?? undefined,
+            })
+          }
+        >
+          {t('sdtd.history.open')}
+        </Button>
+      )}
       {hasPermission(SEVENDAYS_PERMISSIONS.inventoryView) &&
         (player.platformId || player.crossId) && (
           <Button
@@ -832,22 +885,13 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
 
 // -------------------------------------------------- Журнал событий (виджет)
 
-/** Как называется каждое событие для человека. */
-const EVENT_LABELS: Record<SevenDaysEventKind, string> = {
-  chat: 'чат',
-  join: 'вход',
-  leave: 'выход',
-  death: 'смерть',
-  'player-kill': 'PvP',
-};
-
-const EVENT_FILTERS: { value: string; label: string }[] = [
-  { value: '', label: 'Все события' },
-  { value: 'chat', label: 'Чат' },
-  { value: 'player-kill', label: 'PvP' },
-  { value: 'death', label: 'Смерти' },
-  { value: 'join', label: 'Входы' },
-  { value: 'leave', label: 'Выходы' },
+const EVENT_FILTERS: (SevenDaysEventKind | '')[] = [
+  '',
+  'chat',
+  'player-kill',
+  'death',
+  'join',
+  'leave',
 ];
 
 /**
@@ -858,32 +902,58 @@ const EVENT_FILTERS: { value: string; label: string }[] = [
  * числом, поэтому по умолчанию показывается всё подряд, а не только
  * «интересное»: что окажется интересным, заранее неизвестно.
  */
-export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
+export function SevenDaysEventsPanel({
+  serverId,
+  player,
+  onPlayer,
+  onClear,
+}: ModuleTabProps & {
+  player?: HistoryPlayer | null;
+  onPlayer?: (player: HistoryPlayer) => void;
+  onClear?: () => void;
+}) {
   const { hasPermission } = useAuth();
   const { t, locale } = useI18n();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(!!player);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (player) heading.current?.focus();
+  }, [player]);
+  const cursor = cursors[cursors.length - 1];
   const [refresh, setRefresh] = useState(0);
   const [events, setEvents] = useState<SevenDaysEventDto[] | null>(null);
   const [kind, setKind] = useState('');
   const [error, setError] = useState('');
 
   const allowed = hasPermission(SEVENDAYS_PERMISSIONS.eventsView);
+  const invalidHistoryMessage = t('sdtd.history.invalid');
 
   const load = useCallback(
     (filter: string, signal?: AbortSignal) => {
       if (!allowed) return Promise.resolve();
       setError('');
       setEvents(null);
+      setNextCursor(null);
       const qs = `?limit=5${filter ? `&kind=${encodeURIComponent(filter)}` : ''}`;
-      return api<SevenDaysEventDto[]>(`${base(serverId)}/events${qs}`, { signal })
+      const url = player
+        ? `${base(serverId)}/players/${encodeURIComponent(player.id)}/history?kind=${encodeURIComponent(filter)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${player.alternateId ? `&alternateId=${encodeURIComponent(player.alternateId)}` : ''}`
+        : `${base(serverId)}/events${qs}`;
+      return api<SevenDaysEventDto[] | SevenDaysPlayerHistory>(url, { signal })
         .then((result) => {
-          if (!signal?.aborted) setEvents(result.slice(0, 5));
+          if (signal?.aborted) return;
+          if (player && !Array.isArray(result)) {
+            setEvents(result.events.slice(0, 10));
+            setNextCursor(result.nextCursor);
+          } else if (Array.isArray(result)) setEvents(result.slice(0, 5));
+          else throw new Error(invalidHistoryMessage);
         })
         .catch((e: Error) => {
           if (!signal?.aborted) setError(e.message);
         });
     },
-    [serverId, allowed],
+    [serverId, allowed, player, cursor, invalidHistoryMessage],
   );
 
   useEffect(() => {
@@ -898,7 +968,19 @@ export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">{t('sdtd.events.title')}</h2>
+        <h2
+          id="sdtd-events-title"
+          ref={heading}
+          tabIndex={-1}
+          className="min-w-0 break-words font-semibold"
+        >
+          {player ? `${t('sdtd.history.open')} · ${player.name}` : t('sdtd.events.title')}
+        </h2>
+        {player && (
+          <Button size="sm" variant="ghost" onClick={onClear}>
+            {t('sdtd.history.clear')}
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"
@@ -912,38 +994,74 @@ export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
       {expanded && (
         <div id="sdtd-events-content" className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="mr-auto text-sm text-muted">{t('sdtd.events.latest')}</p>
-            <Select value={kind} onChange={setKind} options={EVENT_FILTERS} />
+            <p className="mr-auto text-sm text-muted">
+              {t(player ? 'sdtd.history.note' : 'sdtd.events.latest')}
+            </p>
+            <label htmlFor="sdtd-event-kind" className="sr-only">
+              {t('sdtd.history.filter')}
+            </label>
+            <Select
+              id="sdtd-event-kind"
+              value={kind}
+              onChange={(value) => {
+                setKind(value);
+                setCursors([undefined]);
+              }}
+              options={EVENT_FILTERS.map((value) => ({
+                value,
+                label: t(`sdtd.history.kind.${value || 'all'}`),
+              }))}
+            />
             <Button
               size="sm"
               variant="outline"
               disabled={events === null && !error}
-              onClick={() => setRefresh((value) => value + 1)}
+              onClick={() => {
+                setCursors([undefined]);
+                setRefresh((value) => value + 1);
+              }}
             >
-              Обновить
+              {t('sdtd.inventory.refresh')}
             </Button>
           </div>
 
           <ErrorText>{error}</ErrorText>
 
-          {events === null ? (
+          {events === null && !error ? (
             <Spinner />
-          ) : events.length === 0 ? (
-            <p className="text-xs text-muted">
-              Пока пусто. События приносит companion-мод — без него игра о них ничего не
-              рассказывает.
-            </p>
+          ) : events?.length === 0 ? (
+            <p className="text-xs text-muted">{t('sdtd.history.empty')}</p>
           ) : (
             <ul className="space-y-1.5">
-              {events.map((e) => (
+              {events?.map((e) => (
                 <li key={e.id} className="rounded-md border border-border px-3 py-2 text-sm">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <Badge variant={e.kind === 'player-kill' ? 'destructive' : 'outline'}>
-                      {EVENT_LABELS[e.kind] ?? e.kind}
+                      {t(`sdtd.history.kind.${e.kind}`)}
                     </Badge>
-                    <span className="font-medium">{e.playerName}</span>
+                    <button
+                      type="button"
+                      className="break-all text-left font-medium underline decoration-dotted underline-offset-4"
+                      title={e.playerId}
+                      onClick={() => onPlayer?.({ id: e.playerId, name: e.playerName })}
+                    >
+                      {e.playerName}
+                    </button>
                     {e.kind === 'player-kill' && e.actorName && (
-                      <span className="text-muted">убит игроком {e.actorName}</span>
+                      <span className="min-w-0 text-muted">
+                        {t('sdtd.history.killedBy')}{' '}
+                        <button
+                          type="button"
+                          className="break-all text-left underline decoration-dotted underline-offset-4"
+                          title={e.actorId ?? undefined}
+                          disabled={!e.actorId}
+                          onClick={() =>
+                            e.actorId && onPlayer?.({ id: e.actorId, name: e.actorName! })
+                          }
+                        >
+                          {e.actorName}
+                        </button>
+                      </span>
                     )}
                     <span className="ml-auto text-[11px] text-muted">
                       {new Date(e.occurredAt).toLocaleString(locale)}
@@ -960,6 +1078,25 @@ export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
                 </li>
               ))}
             </ul>
+          )}
+          {player && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                disabled={!events || cursors.length === 1}
+                onClick={() => setCursors((c) => c.slice(0, -1))}
+              >
+                {t('sdtd.inventory.savedPrevious')}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!events || !nextCursor}
+                onClick={() => nextCursor && setCursors((c) => [...c, nextCursor])}
+              >
+                {t('sdtd.history.older')}
+              </Button>
+              <span className="break-all font-mono text-xs text-muted">{player.id}</span>
+            </div>
           )}
         </div>
       )}

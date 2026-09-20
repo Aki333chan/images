@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import type { SevenDaysEvent } from '@prisma/client';
+import { validateInventoryPlayerId } from './sevendays-inventory';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -161,6 +163,79 @@ export class SevenDaysEventsService {
   }
 
   /** Лента для интерфейса, свежие сверху. */
+  async history(
+    serverId: string,
+    playerId: string,
+    kind?: string,
+    cursor?: string,
+    alternateId?: string,
+  ) {
+    validateInventoryPlayerId(playerId);
+    if (alternateId !== undefined) validateInventoryPlayerId(alternateId);
+    // lp exposes both platform and cross-platform IDs. Never merge by nickname.
+    const ids = [...new Set([playerId, ...(alternateId ? [alternateId] : [])])];
+    if (
+      kind !== undefined &&
+      (typeof kind !== 'string' ||
+        (kind !== '' && !SEVENDAYS_EVENT_KINDS.includes(kind as SevenDaysEventKind)))
+    )
+      throw new BadRequestException('invalid_event_kind');
+    let after: { at: string; id: string } | undefined;
+    if (cursor !== undefined) {
+      try {
+        if (typeof cursor !== 'string' || cursor.length > 256 || !/^[A-Za-z0-9_-]+$/.test(cursor))
+          throw new Error();
+        const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+        if (
+          typeof value.at !== 'string' ||
+          new Date(value.at).toISOString() !== value.at ||
+          typeof value.id !== 'string' ||
+          !/^[A-Za-z0-9_-]{1,80}$/.test(value.id)
+        )
+          throw new Error();
+        after = value;
+      } catch {
+        throw new BadRequestException('invalid_event_cursor');
+      }
+    }
+    const rows = await this.prisma.sevenDaysEvent.findMany({
+      where: {
+        serverId,
+        occurredAt: {
+          gte: new Date(Date.now() - SevenDaysEventsService.RETENTION_DAYS * 86_400_000),
+        },
+        ...(kind ? { kind } : {}),
+        AND: [
+          { OR: [{ playerId: { in: ids } }, { actorId: { in: ids } }] },
+          ...(after
+            ? [
+                {
+                  OR: [
+                    { occurredAt: { lt: new Date(after.at) } },
+                    { occurredAt: new Date(after.at), id: { lt: after.id } },
+                  ],
+                },
+              ]
+            : []),
+        ],
+      },
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+      take: 11,
+    });
+    const page = rows.slice(0, 10);
+    const last = page[page.length - 1];
+    return {
+      events: page.map(serialize),
+      retentionDays: SevenDaysEventsService.RETENTION_DAYS,
+      nextCursor:
+        rows.length > 10 && last
+          ? Buffer.from(
+              JSON.stringify({ at: last.occurredAt.toISOString(), id: last.id }),
+            ).toString('base64url')
+          : null,
+    };
+  }
+
   async list(serverId: string, options: { kind?: string; limit?: number } = {}) {
     this.schedulePrune(serverId);
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
@@ -180,21 +255,23 @@ export class SevenDaysEventsService {
       take: limit,
     });
 
-    return rows.map((row) => ({
-      id: row.id,
-      kind: row.kind,
-      playerId: row.playerId,
-      playerName: row.playerName,
-      text: row.text,
-      actorId: row.actorId,
-      actorName: row.actorName,
-      position:
-        row.x !== null && row.y !== null && row.z !== null
-          ? { x: row.x, y: row.y, z: row.z }
-          : null,
-      occurredAt: row.occurredAt.toISOString(),
-    }));
+    return rows.map(serialize);
   }
+}
+
+function serialize(row: SevenDaysEvent) {
+  return {
+    id: row.id,
+    kind: row.kind as SevenDaysEventKind,
+    playerId: row.playerId,
+    playerName: row.playerName,
+    text: row.text,
+    actorId: row.actorId,
+    actorName: row.actorName,
+    position:
+      row.x !== null && row.y !== null && row.z !== null ? { x: row.x, y: row.y, z: row.z } : null,
+    occurredAt: row.occurredAt.toISOString(),
+  };
 }
 
 function finiteOrNull(value: unknown): number | null {

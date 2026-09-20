@@ -166,6 +166,12 @@ export interface SevenDaysEventDto {
   occurredAt: string;
 }
 
+export interface SevenDaysPlayerHistory {
+  events: SevenDaysEventDto[];
+  nextCursor: string | null;
+  retentionDays: number;
+}
+
 export const SEVENDAYS_EVENT_KINDS = ['chat', 'join', 'leave', 'death', 'player-kill'] as const;
 export type SevenDaysEventKind = (typeof SEVENDAYS_EVENT_KINDS)[number];
 

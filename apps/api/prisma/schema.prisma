@@ -318,6 +318,8 @@ model SevenDaysEvent {
 
   @@index([serverId, occurredAt])
   @@index([serverId, kind, occurredAt])
+  @@index([serverId, playerId, occurredAt, id], map: "sdtd_event_player_history_idx")
+  @@index([serverId, actorId, occurredAt, id], map: "sdtd_event_actor_history_idx")
   @@map("mod_sevendays_events")
 }
 

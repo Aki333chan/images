@@ -271,6 +271,19 @@ export class SevenDaysController {
   }
 
   // ---------- Журнал событий ----------
+  @Get('players/:playerId/history')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.eventsView)
+  @ServerScoped('serverId')
+  playerHistory(
+    @Param('serverId') serverId: string,
+    @Param('playerId') playerId: string,
+    @Query('kind') kind?: string,
+    @Query('cursor') cursor?: string,
+    @Query('alternateId') alternateId?: string,
+  ) {
+    return this.events.history(serverId, playerId, kind, cursor, alternateId);
+  }
 
   /**
    * Лента событий игры. Существует только при установленном моде: сама игра

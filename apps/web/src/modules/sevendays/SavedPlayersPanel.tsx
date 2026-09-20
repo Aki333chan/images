@@ -7,9 +7,11 @@ import { useI18n } from '../../i18n';
 export function SevenDaysSavedPlayersPanel({
   serverId,
   onInventory,
+  onHistory,
 }: {
   serverId: string;
   onInventory: (player: { id: string; name: string }) => void;
+  onHistory?: (player: { id: string; name: string }) => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -98,6 +100,11 @@ export function SevenDaysSavedPlayersPanel({
                   <Button size="sm" variant="outline" onClick={() => onInventory(player)}>
                     {t('sdtd.inventory.savedOpen')}
                   </Button>
+                  {onHistory && (
+                    <Button size="sm" variant="outline" onClick={() => onHistory(player)}>
+                      {t('sdtd.history.open')}
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
