@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, ServiceUnavailableException } from '@n
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { AuditService } from '../../audit/audit.service';
 import { validateInventoryPlayerId } from './sevendays-inventory';
-import { ItemGrantDto } from './dto';
+import { ItemGrantDto, SavedStackDto } from './dto';
 import {
   SEVENDAYS_GRANT_STATUSES,
   type SevenDaysItemCatalogue,
@@ -59,6 +59,61 @@ export class SevenDaysItemsService {
     const ping = await this.companion.ping(serverId);
     if (!ping?.compatible || !ping.capabilities?.includes('item-drop'))
       throw new BadRequestException('item_drop_requires_companion_1_0_9');
+  }
+  async reduceSaved(serverId: string, playerId: string, actorId: string, dto: SavedStackDto) {
+    validateInventoryPlayerId(playerId);
+    if (this.active >= 4) throw new ServiceUnavailableException('inventory_busy');
+    this.active++;
+    try {
+      const ping = await this.companion.ping(serverId);
+      if (!ping?.compatible || !ping.capabilities?.includes('inventory-saved-reduce'))
+        throw new BadRequestException('saved_edit_requires_companion_1_0_11');
+      const metadata = { playerId, ...dto };
+      await this.audit.log({
+        actorId,
+        action: 'sevendays.saved-stack.attempt',
+        targetType: 'server',
+        targetId: serverId,
+        metadata,
+      });
+      let status = 'unknown';
+      try {
+        const raw = (await this.companion.savedStack(serverId, playerId, dto)) as {
+          requestId?: string;
+          status?: string;
+        } | null;
+        if (
+          raw?.requestId === dto.requestId.toLowerCase() &&
+          [
+            'saved',
+            'busy',
+            'offline_required',
+            'revision_conflict',
+            'unsupported',
+            'invalid_stack',
+            'write_failed',
+            'unknown',
+          ].includes(raw.status ?? '')
+        )
+          status = raw!.status!;
+      } catch {
+        /* No retries: a lost response does not prove that the save was unchanged. */
+      }
+      try {
+        await this.audit.log({
+          actorId,
+          action: 'sevendays.saved-stack.result',
+          targetType: 'server',
+          targetId: serverId,
+          metadata: { ...metadata, status },
+        });
+      } catch {
+        /* Attempt already recorded. */
+      }
+      return { requestId: dto.requestId.toLowerCase(), status };
+    } finally {
+      this.active--;
+    }
   }
   async search(serverId: string, query: string) {
     if (typeof query !== 'string') throw new BadRequestException('invalid_item_search');

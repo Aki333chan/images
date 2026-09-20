@@ -860,6 +860,9 @@ const EVENT_FILTERS: { value: string; label: string }[] = [
  */
 export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
   const { hasPermission } = useAuth();
+  const { t, locale } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const [refresh, setRefresh] = useState(0);
   const [events, setEvents] = useState<SevenDaysEventDto[] | null>(null);
   const [kind, setKind] = useState('');
   const [error, setError] = useState('');
@@ -867,69 +870,98 @@ export function SevenDaysEventsPanel({ serverId }: ModuleTabProps) {
   const allowed = hasPermission(SEVENDAYS_PERMISSIONS.eventsView);
 
   const load = useCallback(
-    (filter: string) => {
+    (filter: string, signal?: AbortSignal) => {
       if (!allowed) return Promise.resolve();
       setError('');
-      const qs = filter ? `?kind=${encodeURIComponent(filter)}` : '';
-      return api<SevenDaysEventDto[]>(`${base(serverId)}/events${qs}`)
-        .then(setEvents)
-        .catch((e: Error) => setError(e.message));
+      setEvents(null);
+      const qs = `?limit=5${filter ? `&kind=${encodeURIComponent(filter)}` : ''}`;
+      return api<SevenDaysEventDto[]>(`${base(serverId)}/events${qs}`, { signal })
+        .then((result) => {
+          if (!signal?.aborted) setEvents(result.slice(0, 5));
+        })
+        .catch((e: Error) => {
+          if (!signal?.aborted) setError(e.message);
+        });
     },
     [serverId, allowed],
   );
 
   useEffect(() => {
-    void load(kind);
-  }, [load, kind]);
+    if (!expanded) return;
+    const abort = new AbortController();
+    void load(kind, abort.signal);
+    return () => abort.abort();
+  }, [load, kind, expanded, refresh]);
 
   if (!allowed) return null;
 
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">Журнал событий</h2>
-        <div className="flex gap-2">
-          <Select value={kind} onChange={setKind} options={EVENT_FILTERS} />
-          <Button size="sm" variant="outline" onClick={() => void load(kind)}>
-            Обновить
-          </Button>
-        </div>
+        <h2 className="font-semibold">{t('sdtd.events.title')}</h2>
+        <Button
+          size="sm"
+          variant="outline"
+          aria-expanded={expanded}
+          aria-controls="sdtd-events-content"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {t(expanded ? 'sdtd.events.collapse' : 'sdtd.events.expand')}
+        </Button>
       </div>
+      {expanded && (
+        <div id="sdtd-events-content" className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="mr-auto text-sm text-muted">{t('sdtd.events.latest')}</p>
+            <Select value={kind} onChange={setKind} options={EVENT_FILTERS} />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={events === null && !error}
+              onClick={() => setRefresh((value) => value + 1)}
+            >
+              Обновить
+            </Button>
+          </div>
 
-      <ErrorText>{error}</ErrorText>
+          <ErrorText>{error}</ErrorText>
 
-      {events === null ? (
-        <Spinner />
-      ) : events.length === 0 ? (
-        <p className="text-xs text-muted">
-          Пока пусто. События приносит companion-мод — без него игра о них ничего не рассказывает.
-        </p>
-      ) : (
-        <ul className="space-y-1.5">
-          {events.map((e) => (
-            <li key={e.id} className="rounded-md border border-border px-3 py-2 text-sm">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <Badge variant={e.kind === 'player-kill' ? 'destructive' : 'outline'}>
-                  {EVENT_LABELS[e.kind] ?? e.kind}
-                </Badge>
-                <span className="font-medium">{e.playerName}</span>
-                {e.kind === 'player-kill' && e.actorName && (
-                  <span className="text-muted">убит игроком {e.actorName}</span>
-                )}
-                <span className="ml-auto text-[11px] text-muted">
-                  {new Date(e.occurredAt).toLocaleString('ru-RU')}
-                </span>
-              </div>
-              {e.text && <p className="mt-1 break-words text-muted">{e.text}</p>}
-              {/* Координаты — для разбора жалоб, а не для красоты. */}
-              {e.position && (
-                <p className="mt-1 font-mono text-[11px] text-muted">
-                  {Math.round(e.position.x)}, {Math.round(e.position.y)}, {Math.round(e.position.z)}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+          {events === null ? (
+            <Spinner />
+          ) : events.length === 0 ? (
+            <p className="text-xs text-muted">
+              Пока пусто. События приносит companion-мод — без него игра о них ничего не
+              рассказывает.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {events.map((e) => (
+                <li key={e.id} className="rounded-md border border-border px-3 py-2 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <Badge variant={e.kind === 'player-kill' ? 'destructive' : 'outline'}>
+                      {EVENT_LABELS[e.kind] ?? e.kind}
+                    </Badge>
+                    <span className="font-medium">{e.playerName}</span>
+                    {e.kind === 'player-kill' && e.actorName && (
+                      <span className="text-muted">убит игроком {e.actorName}</span>
+                    )}
+                    <span className="ml-auto text-[11px] text-muted">
+                      {new Date(e.occurredAt).toLocaleString(locale)}
+                    </span>
+                  </div>
+                  {e.text && <p className="mt-1 break-words text-muted">{e.text}</p>}
+                  {/* Координаты — для разбора жалоб, а не для красоты. */}
+                  {e.position && (
+                    <p className="mt-1 font-mono text-[11px] text-muted">
+                      {Math.round(e.position.x)}, {Math.round(e.position.y)},{' '}
+                      {Math.round(e.position.z)}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </Card>
   );

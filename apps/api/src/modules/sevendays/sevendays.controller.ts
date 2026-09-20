@@ -24,7 +24,7 @@ import { Query } from '@nestjs/common';
 import { AuditRedactBody } from '../../audit/audit.decorators';
 import { CurrentUser, type AuthUser } from '../../auth/decorators';
 import { SevenDaysItemsService } from './sevendays-items.service';
-import { ItemGrantDto } from './dto';
+import { ItemGrantDto, SavedStackDto } from './dto';
 import { RequirePermission, ServerScoped } from '../../rbac/rbac.decorators';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysConfigService } from './sevendays-config.service';
@@ -87,6 +87,18 @@ export class SevenDaysController {
   @ServerScoped('serverId')
   mapSnapshot(@Param('serverId') serverId: string) {
     return this.map.snapshot(serverId);
+  }
+
+  @Post('players/:playerId/saved-stack')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryEdit)
+  @ServerScoped('serverId')
+  savedStack(
+    @Param('serverId') serverId: string,
+    @Param('playerId') playerId: string,
+    @CurrentUser() actor: AuthUser,
+    @Body() dto: SavedStackDto,
+  ) {
+    return this.items.reduceSaved(serverId, playerId, actor.id, dto);
   }
 
   @Get('map/tiles/:zoom/:x/:z')

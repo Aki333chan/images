@@ -23,7 +23,7 @@ namespace Aurum.Companion.Game
             return InventoryJson(data, "client_snapshot", null);
         });
 
-        private static string InventoryJson(PlayerDataFile data, string source, string? savedAt)
+        private static string InventoryJson(PlayerDataFile data, string source, string? savedAt, string? revision = null)
         {
             var items = new List<string>();
             bool truncated = false;
@@ -57,6 +57,7 @@ namespace Aurum.Companion.Game
             if (data.dragAndDropItem != null) Add("cursor", 0, data.dragAndDropItem.itemValue, data.dragAndDropItem.count);
             return JsonWriter.Object(new[] {
                 F("available", "true"), F("source", JsonWriter.String(source)), F("savedAt", JsonWriter.String(savedAt)),
+                F("revision", JsonWriter.String(revision)),
                 F("slotCounts", JsonWriter.Object(new[] {
                     F("belt", JsonWriter.Number(Math.Min(data.inventory?.Length ?? 0, 32))),
                     F("bag", JsonWriter.Number(Math.Min(bag?.Length ?? 0, 256))),

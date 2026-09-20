@@ -5,8 +5,8 @@ describe('7DTD native map projection', () => {
     expect(tileSpan(128, 4, 0)).toBe(2048);
   });
   it('places north above and east to the right', () => {
-    expect(mapPoint(-10, -20, -10, -20, 128)).toEqual({ x: 500, y: 300 });
-    expect(mapPoint(118, 108, -10, -20, 128)).toEqual({ x: 660, y: 140 });
+    expect(mapPoint(-10, -20, -10, -20, 128)).toEqual({ x: 500, y: 225 });
+    expect(mapPoint(118, 108, -10, -20, 128)).toEqual({ x: 660, y: 65 });
   });
   it('floors negative indices and keeps each viewport bounded', () => {
     const tiles = visibleTiles(-1, -1, 128);

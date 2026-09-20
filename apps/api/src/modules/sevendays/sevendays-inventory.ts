@@ -52,6 +52,11 @@ export function parseInventory(
   )
     throw invalid();
   const items: SevenDaysInventoryItem[] = [];
+  if (
+    body.revision != null &&
+    (typeof body.revision !== 'string' || !/^[a-f0-9]{64}$/.test(body.revision))
+  )
+    throw invalid();
   let slotCounts: SevenDaysInventory['slotCounts'] = null;
   if (body.slotCounts !== undefined) {
     if (!body.slotCounts || typeof body.slotCounts !== 'object' || Array.isArray(body.slotCounts))
@@ -109,7 +114,9 @@ export function parseInventory(
   return {
     available: true,
     source,
-    ...(source === 'saved_file' ? { savedAt: body.savedAt as string } : {}),
+    ...(source === 'saved_file'
+      ? { savedAt: body.savedAt as string, revision: (body.revision as string) ?? null }
+      : {}),
     fetchedAt: new Date().toISOString(),
     items,
     slotCounts,

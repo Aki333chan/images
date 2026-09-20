@@ -115,6 +115,8 @@ const baseline = process.env.MAP_BASELINE === '1';
     await page.getByRole('status').filter({ hasText: 'Test Owner' }).waitFor();
     const map = page.locator('svg[role="group"]');
     const view = await map.getAttribute('viewBox');
+    assert.equal(view, '0 0 1000 450', '25% shorter map viewport');
+    assert.ok((await map.boundingBox()).height <= 0.56 * page.viewportSize().height, 'map fits the screen height');
     await page.getByRole('button', { name: catalog['sdtd.map.clearSelection'] }).click();
     assert.equal(await page.getByRole('status').count(), 0);
     assert.equal(await map.getAttribute('viewBox'), view);

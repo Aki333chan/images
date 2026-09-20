@@ -61,6 +61,11 @@ export const sevenDaysManifest: GameModuleManifest = {
   },
   permissions: [
     {
+      key: SEVENDAYS_PERMISSIONS.inventoryEdit,
+      description: 'Уменьшение и удаление стаков офлайн-игроков (копия сохранения и аудит)',
+      defaultRoles: ['ADMIN'],
+    },
+    {
       key: SEVENDAYS_PERMISSIONS.inventoryGive,
       description: 'Выдача предметов рядом с онлайн-игроком (подтверждение и аудит)',
       defaultRoles: ['ADMIN'],

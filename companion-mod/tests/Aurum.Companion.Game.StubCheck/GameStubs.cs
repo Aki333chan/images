@@ -51,7 +51,9 @@ public enum EnumGamePrefs
 public enum EnumGameStats { BloodMoonDay, LandClaimSize }
 public static class GameIO { public static string GetSaveGameDir() => "/test"; public static string GetPlayerDataDir() => "/test/Player"; }
 public class PooledBinaryReader : System.IDisposable { public void SetBaseStream(System.IO.Stream stream) { } public void Dispose() { } }
-public static class MemoryPools { public static ReaderPool poolBinaryReader = new ReaderPool(); }
+public class PooledBinaryWriter : System.IDisposable { public void SetBaseStream(System.IO.Stream stream) { } public void Flush() { } public void Dispose() { } }
+public static class MemoryPools { public static ReaderPool poolBinaryReader = new ReaderPool(); public static WriterPool poolBinaryWriter = new WriterPool(); }
+public class WriterPool { public PooledBinaryWriter AllocSync(bool reset) => new PooledBinaryWriter(); }
 public class ReaderPool { public PooledBinaryReader AllocSync(bool reset) => new PooledBinaryReader(); }
 public class PersistentPlayerName { public string DisplayName => ""; }
 public class PersistentPlayerData
@@ -122,6 +124,7 @@ public class ItemValue
     public bool IsEmpty() => type == 0;
 }
 public class ItemStack { public ItemValue itemValue = new ItemValue(); public int count;
+    public static ItemStack Empty => new ItemStack(); public ItemStack Clone() => new ItemStack();
     public ItemStack() { } public ItemStack(ItemValue value, int amount) { }
 }
 public class Bag { public ItemStack[] GetSlots() => new ItemStack[0]; }

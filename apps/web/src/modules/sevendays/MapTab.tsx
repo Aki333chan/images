@@ -341,6 +341,9 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
         aria-label={t('sdtd.map.title')}
         className="w-full rounded-lg border border-border bg-black/30"
         style={{
+          maxWidth: '122svh',
+          display: 'block',
+          marginInline: 'auto',
           touchAction: 'none',
           cursor: 'grab',
           userSelect: 'none',

@@ -122,3 +122,12 @@ export class ItemGrantDto {
   @IsString() @MinLength(3) @MaxLength(200) @Matches(/\S/) reason!: string;
   @Equals(true) confirmed!: boolean;
 }
+
+export class SavedStackDto {
+  @IsUUID() requestId!: string;
+  @IsString() @Matches(/^[a-f0-9]{64}$/) revision!: string;
+  @IsIn(['belt', 'bag']) section!: 'belt' | 'bag';
+  @IsInt() @Min(0) @Max(255) slot!: number;
+  @IsInt() @Min(0) @Max(2147483647) count!: number;
+  @Equals(true) confirmed!: boolean;
+}

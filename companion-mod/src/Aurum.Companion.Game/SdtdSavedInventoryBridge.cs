@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using System.Linq;
 using Aurum.Companion.Core.Game;
 using Aurum.Companion.Core.Json;
 
@@ -16,6 +17,8 @@ namespace Aurum.Companion.Game
         private static readonly MethodInfo? SavedReader = typeof(PlayerDataFile).GetMethod("Read",
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
             new[] { typeof(PooledBinaryReader), typeof(uint) }, null);
+        private static readonly MethodInfo? SavedWriter = typeof(PlayerDataFile).GetMethod("Write",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(PooledBinaryWriter) }, null);
 
         public string SavedPlayers(string query, int offset) => MainThread.Get(() =>
         {
@@ -71,7 +74,7 @@ namespace Aurum.Companion.Game
                         stream.Position = 5;
                         var data = new PlayerDataFile();
                         SavedReader.Invoke(data, new object[] { reader, (uint)59 });
-                        return InventoryJson(data, "saved_file", snapshot.SavedAt.ToString("O"));
+                        return InventoryJson(data, "saved_file", snapshot.SavedAt.ToString("O"), snapshot.Revision);
                     }
                 });
                 return snapshot.Unchanged() ? result : SaveError("save_busy");
@@ -85,5 +88,53 @@ namespace Aurum.Companion.Game
         }
         private static string SaveError(string reason) => JsonWriter.Object(new[] {
             F("available", "false"), F("reason", JsonWriter.String(reason)), F("source", JsonWriter.String("saved_file")) });
+
+        public string ReduceSavedStack(string playerId, string revision, string section, int slot, int count, string requestId)
+        {
+            if (Interlocked.CompareExchange(ref _savedRead, 1, 0) != 0) return "busy";
+            try
+            {
+                // Native V3.2 b10 connection Update/DisconnectClient and player Load/Save are synchronous
+                // on this thread. No yield between offline check and atomic replace: spawn cannot interleave.
+                return MainThread.Get(() =>
+                {
+                    var manager = GameManager.Instance;
+                    if (manager?.World == null || FindClient(playerId, false) != null) return "offline_required";
+                    if (manager.persistentPlayers?.Players == null || !manager.persistentPlayers.Players.Any(p => p.Value.PrimaryId?.CombinedString == playerId)) return "offline_required";
+                    if (SavedReader == null || SavedWriter == null) return "unsupported";
+                    var snapshot = SavedPlayerFile.Read(GameIO.GetPlayerDataDir(), playerId);
+                    // Bound synchronous transaction I/O; large saves remain viewable but not editable.
+                    if (snapshot.Bytes.Length > 1024 * 1024) return "unsupported";
+                    if (snapshot.Revision != revision) return "revision_conflict";
+                    var data = new PlayerDataFile();
+                    using (var stream = new MemoryStream(snapshot.Bytes, false))
+                    using (var reader = MemoryPools.poolBinaryReader.AllocSync(false))
+                    { stream.Position = 5; reader.SetBaseStream(stream); SavedReader.Invoke(data, new object[] { reader, (uint)59 }); }
+                    byte[] Encode()
+                    {
+                        using (var stream = new MemoryStream())
+                        using (var writer = MemoryPools.poolBinaryWriter.AllocSync(false))
+                        {
+                            stream.Write(snapshot.Bytes, 0, 5); writer.SetBaseStream(stream);
+                            SavedWriter!.Invoke(data, new object[] { writer }); writer.Flush(); return stream.ToArray();
+                        }
+                    }
+                    // Refuse any save whose native round trip changes unrelated fields or mod data.
+                    if (!snapshot.Bytes.SequenceEqual(Encode())) return "unsupported";
+                    var stacks = section == "belt" ? data.inventory : section == "bag" ? data.bag?.GetSlots() : null;
+                    if (stacks == null || slot < 0 || slot >= stacks.Length || stacks[slot] == null || count < 0 || count >= stacks[slot].count) return "invalid_stack";
+                    if (count == 0) stacks[slot] = ItemStack.Empty.Clone();
+                    else stacks[slot].count = count;
+                    snapshot.Replace(Encode(), requestId);
+                    return "saved";
+                });
+            }
+            catch (GameDispatchException) { return "unknown"; }
+            catch (IOException e) { return e.Message == "save_commit_unknown" ? "unknown" : "busy"; }
+            catch (UnauthorizedAccessException) { return "write_failed"; }
+            catch (TargetInvocationException) { return "unsupported"; }
+            catch (NotSupportedException) { return "unsupported"; }
+            finally { Interlocked.Exchange(ref _savedRead, 0); }
+        }
     }
 }

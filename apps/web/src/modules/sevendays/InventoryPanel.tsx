@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n';
 import { IconArchive, IconClose } from '../../components/icons';
 import { useAuth } from '../../lib/auth';
 import { SevenDaysGiveItemPanel } from './GiveItemPanel';
+import { SevenDaysReduceStack } from './ReduceStack';
 
 export function SevenDaysInventoryPanel({
   serverId,
@@ -25,6 +26,7 @@ export function SevenDaysInventoryPanel({
   const [data, setData] = useState<SevenDaysInventory | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
+  const [editing, setEditing] = useState(false);
   const [revision, setRevision] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const detailHeading = useRef<HTMLHeadingElement>(null);
@@ -77,7 +79,7 @@ export function SevenDaysInventoryPanel({
             <Button
               size="sm"
               variant="outline"
-              disabled={busy}
+              disabled={busy || editing}
               onClick={() => {
                 setBusy(true);
                 setRevision((r) => r + 1);
@@ -85,7 +87,7 @@ export function SevenDaysInventoryPanel({
             >
               {t('sdtd.inventory.refresh')}
             </Button>
-            <Button size="sm" variant="ghost" onClick={onClose}>
+            <Button size="sm" variant="ghost" disabled={editing} onClick={onClose}>
               {t('common.close')}
             </Button>
           </div>
@@ -161,8 +163,22 @@ export function SevenDaysInventoryPanel({
                           </div>
                         ))}
                       </dl>
+                      {saved &&
+                        data.revision &&
+                        hasPermission('sevendays.inventory.edit') &&
+                        (selectedItem.section === 'belt' || selectedItem.section === 'bag') && (
+                          <SevenDaysReduceStack
+                            key={`${data.revision}/${selected}`}
+                            serverId={serverId}
+                            playerId={playerId}
+                            revision={data.revision}
+                            item={selectedItem}
+                            onBusy={setEditing}
+                          />
+                        )}
                       <button
                         type="button"
+                        disabled={editing}
                         aria-label={t('sdtd.inventory.closeDetails')}
                         className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                         onClick={() => {
@@ -185,6 +201,7 @@ export function SevenDaysInventoryPanel({
                           <button
                             key={slot}
                             type="button"
+                            disabled={editing}
                             data-inventory-slot={key}
                             aria-pressed={selected === key}
                             aria-label={`${t('sdtd.inventory.slot')} ${slot + 1}: ${p.name}, ${t('sdtd.inventory.count')} ${p.count}, ${t('sdtd.inventory.quality')} ${p.quality}`}

@@ -186,6 +186,7 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'map-pois',
   'inventory-read',
   'inventory-saved-read',
+  'inventory-saved-reduce',
   'item-drop',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
@@ -220,6 +221,7 @@ export interface SevenDaysInventory {
   source: 'client_snapshot' | 'saved_file';
   /** Primary save modification time, not the panel fetch time. */
   savedAt?: string | null;
+  revision?: string | null;
   /** Panel fetch time, NOT snapshot creation time (not supplied by the game). */
   fetchedAt: string | null;
   items: SevenDaysInventoryItem[];
@@ -335,6 +337,7 @@ export const SEVENDAYS_PERMISSIONS = {
   mapView: 'sevendays.map.view',
   inventoryView: 'sevendays.inventory.view',
   inventoryGive: 'sevendays.inventory.give',
+  inventoryEdit: 'sevendays.inventory.edit',
   playersView: 'sevendays.players.view',
   kick: 'sevendays.kick',
   ban: 'sevendays.ban',

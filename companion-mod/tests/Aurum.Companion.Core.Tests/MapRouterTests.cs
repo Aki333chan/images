@@ -8,6 +8,18 @@ namespace Aurum.Companion.Core.Tests;
 
 public sealed class MapRouterTests
 {
+    [Fact] public void Saved_edit_requires_auth_confirmation_and_bounded_slot()
+    {
+        const string token = "test-token-long-enough";
+        var bridge = new Bridge(); var router = new CompanionRouter(bridge, token, "test");
+        string body = "{\"requestId\":\"" + Guid.NewGuid() + "\",\"revision\":\"" + new string('a',64) + "\",\"section\":\"belt\",\"slot\":1,\"count\":0,\"confirmed\":true}";
+        var request = new HttpRequestData("POST", "/players/Steam_123/saved-stack", body);
+        Assert.Equal(401, router.Handle(request, null).Status);
+        foreach (var invalid in new[] { body.Replace("true", "false"), body.Replace("\"slot\":1", "\"slot\":32"), body.Replace("\"count\":0", "\"count\":-1"), body.Replace("belt", "equipment") })
+            Assert.Equal(400, router.Handle(new("POST", request.Path, invalid), token).Status);
+        Assert.Equal(0, bridge.Reads);
+        Assert.Contains("saved", router.Handle(request, token).Json); Assert.Equal(1, bridge.Reads);
+    }
     [Fact]
     public void Grant_route_requires_token_and_replays_without_repeating_game_write()
     {
@@ -29,6 +41,7 @@ public sealed class MapRouterTests
     private sealed class Bridge : IGameBridge, IMapBridge, IInventoryBridge, ISavedInventoryBridge
     {
         public int Reads;
+        public string ReduceSavedStack(string id, string revision, string section, int slot, int count, string requestId) { Reads++; return "saved"; }
         public string SavedPlayers(string query, int offset) { Reads++; return "{\"ready\":true,\"players\":[],\"hasMore\":false,\"truncated\":false}"; }
         public string ReadSavedInventory(string id) { Reads++; return "{\"available\":false,\"source\":\"saved_file\",\"reason\":\"save_missing\"}"; }
         public string SearchItems(string query) => "{\"ready\":true,\"items\":[],\"truncated\":false}";

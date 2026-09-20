@@ -1,5 +1,5 @@
 export const MAP_WIDTH = 1000,
-  MAP_HEIGHT = 600,
+  MAP_HEIGHT = 450,
   TILE_PIXELS = 160;
 export function tileSpan(blockSize: number, maxZoom: number, zoom: number) {
   return blockSize * 2 ** (maxZoom - zoom);

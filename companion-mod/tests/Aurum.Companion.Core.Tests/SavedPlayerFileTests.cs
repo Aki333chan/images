@@ -50,4 +50,33 @@ public sealed class SavedPlayerFileTests : IDisposable
         File.Delete(file); Assert.False(read.Unchanged());
     }
     public void Dispose() { Directory.Delete(_root, true); }
+    [Fact] public void Atomic_replace_keeps_original_backup_and_rejects_stale_revision()
+    {
+        var file = Seed(); var first = SavedPlayerFile.Read(_root, Id);
+        var request = Guid.NewGuid().ToString("D");
+        var updated = new byte[] {116,116,112,0,59,2};
+        first.Replace(updated, request);
+        Assert.Equal(first.Bytes, File.ReadAllBytes(file + ".aurum-" + request + ".bak"));
+        Assert.Equal(updated, File.ReadAllBytes(file));
+        Assert.False(File.Exists(file + ".aurum-" + request + ".tmp"));
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-1));
+        Assert.NotEqual(first.Revision, SavedPlayerFile.Read(_root, Id).Revision);
+        Assert.Throws<IOException>(() => first.Replace(updated, Guid.NewGuid().ToString("D")));
+    }
+    [Fact] public void Refuses_existing_receipts_or_backup_limit_without_touching_primary()
+    {
+        var file = Seed(); var read = SavedPlayerFile.Read(_root, Id); var request = Guid.NewGuid().ToString("D");
+        File.WriteAllText(file + ".aurum-" + request + ".bak", "existing");
+        Assert.Throws<IOException>(() => read.Replace(read.Bytes, request));
+        for (int i = 0; i < 100; i++) File.WriteAllText(Path.Combine(_root, "Steam_" + i + ".ttp.aurum-test.bak"), "backup");
+        Assert.Throws<IOException>(() => read.Replace(read.Bytes, Guid.NewGuid().ToString("D")));
+        Assert.Equal(read.Bytes, File.ReadAllBytes(file));
+    }
+    [Fact] public void Rejects_invalid_header_and_request_path()
+    {
+        var file = Seed(); var read = SavedPlayerFile.Read(_root, Id);
+        Assert.Throws<InvalidDataException>(() => read.Replace(new byte[] {116,116,112,0,60}, Guid.NewGuid().ToString("D")));
+        Assert.Throws<InvalidDataException>(() => read.Replace(read.Bytes, "../bad"));
+        Assert.Equal(read.Bytes, File.ReadAllBytes(file));
+    }
 }

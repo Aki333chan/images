@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { validate } from 'class-validator';
-import { ItemGrantDto } from './dto';
+import { ItemGrantDto, SavedStackDto } from './dto';
 import { parseItemCatalogue, SevenDaysItemsService } from './sevendays-items.service';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { AuditService } from '../../audit/audit.service';
@@ -32,6 +32,7 @@ function fixture() {
     ping: jest.fn().mockResolvedValue({ compatible: true, capabilities: ['item-drop'] }),
     itemSearch: jest.fn().mockResolvedValue(catalogue),
     itemDrop: jest.fn().mockResolvedValue({ status: 'spawned', requestId }),
+    savedStack: jest.fn().mockResolvedValue({ status: 'saved', requestId }),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const service = new SevenDaysItemsService(
@@ -41,6 +42,26 @@ function fixture() {
   return { service, companion, audit };
 }
 describe('7DTD item grants', () => {
+  it('audits saved edits before writing, requires capability and never retries unknown results', async () => {
+    const { service, companion, audit } = fixture();
+    const dto = { requestId, revision: 'a'.repeat(64), section: 'bag' as const, slot: 0, count: 0, confirmed: true };
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).rejects.toThrow('saved_edit_requires');
+    expect(companion.savedStack).not.toHaveBeenCalled();
+    companion.ping.mockResolvedValue({ compatible: true, capabilities: ['inventory-saved-reduce'] });
+    audit.log.mockRejectedValueOnce(new Error('db down'));
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).rejects.toThrow('db down');
+    expect(companion.savedStack).not.toHaveBeenCalled();
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).resolves.toMatchObject({ status: 'saved' });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'sevendays.saved-stack.attempt' }));
+    companion.savedStack.mockRejectedValueOnce(new Error('reply lost'));
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).resolves.toMatchObject({ status: 'unknown' });
+    expect(companion.savedStack).toHaveBeenCalledTimes(2);
+    expect(Reflect.getMetadata('requiredPermission', SevenDaysController.prototype.savedStack)).toEqual(['sevendays.inventory.edit']);
+    expect(Reflect.getMetadata('serverScopeParam', SevenDaysController.prototype.savedStack)).toBe('serverId');
+    expect(await validate(Object.assign(new SavedStackDto(), dto))).toHaveLength(0);
+    for (const bad of [{ confirmed: false }, { section: 'equipment' }, { slot: -1 }, { count: -1 }, { count: 1.5 }, { revision: 'bad' }, { requestId: 'bad' }])
+      expect((await validate(Object.assign(new SavedStackDto(), dto, bad))).length).toBeGreaterThan(0);
+  });
   it('requires distinct server-scoped admin permission on search and write', () => {
     for (const route of [
       SevenDaysController.prototype.itemSearch,

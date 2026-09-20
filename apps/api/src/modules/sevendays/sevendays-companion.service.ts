@@ -49,6 +49,15 @@ export class SevenDaysCompanionService {
       false,
     );
   }
+  savedStack(serverId: string, playerId: string, payload: unknown): Promise<unknown> {
+    return this.call(
+      serverId,
+      'POST',
+      `/players/${encodeURIComponent(playerId)}/saved-stack`,
+      payload,
+      false,
+    );
+  }
   async inventory(serverId: string, playerId: string, saved = false) {
     validateInventoryPlayerId(playerId);
     const source = saved ? 'saved_file' : 'client_snapshot';
