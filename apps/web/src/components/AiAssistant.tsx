@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useI18n } from '../i18n';
 import { LOCALE_TAGS } from '@aurum/shared';
 import type {
@@ -11,7 +12,16 @@ import type {
 import { api, getAccessToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, Card, ErrorText, Input } from './ui';
-import { IconClose, IconEraser, IconSparkle } from './icons';
+import {
+  IconBack,
+  IconCaretDown,
+  IconClose,
+  IconEraser,
+  IconSend,
+  IconSettings,
+  IconSparkle,
+} from './icons';
+import { helpTopicFor, type HelpTopic } from './assistant-help';
 
 /**
  * AI-ассистент: плавающая кнопка в углу и окно чата.
@@ -44,7 +54,11 @@ type FeedItem =
 export function AiAssistant() {
   const { t, locale } = useI18n();
   const { hasPermission } = useAuth();
+  const location = useLocation();
+  const canChat = hasPermission('ai.chat');
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<'help' | 'chat'>('help');
+  const [helpTopic, setHelpTopic] = useState<HelpTopic>(() => helpTopicFor('/servers', null));
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -59,12 +73,12 @@ export function AiAssistant() {
   }, []);
 
   useEffect(() => {
-    if (open) loadUsage();
-  }, [open, loadUsage]);
+    if (open && view === 'chat' && canChat) loadUsage();
+  }, [open, view, canChat, loadUsage]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [feed]);
+    if (view === 'chat') bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [feed, view]);
 
   // Escape закрывает окно — как и у остальных всплывающих элементов панели.
   useEffect(() => {
@@ -73,8 +87,6 @@ export function AiAssistant() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
-
-  if (!hasPermission('ai.chat')) return null;
 
   /** История для сервера: следы инструментов туда не нужны, только реплики. */
   const historyFor = (items: FeedItem[]): AiChatMessage[] =>
@@ -188,21 +200,28 @@ export function AiAssistant() {
     }
   }
 
+  function openHelp() {
+    const activeTab = document.querySelector<HTMLElement>(
+      'main [data-tab][aria-current="page"]',
+    )?.dataset.tab;
+    setHelpTopic(helpTopicFor(location.pathname, activeTab ?? null));
+    setView('help');
+    setOpen(true);
+  }
+
   return (
     <>
       {/* Плавающая кнопка. Отступ снизу учитывает полосу жестов iPhone. */}
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          aria-label={t('ai.open')}
-          // Таблетка с подписью, а не безымянный кружок: у ассистента нет
-          // пункта в меню, и по одной иконке в углу непонятно, что это.
-          className="fixed bottom-4 right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-primary-foreground shadow-md transition-[filter,transform] duration-200 ease-panel hover:-translate-y-0.5 hover:brightness-110"
+          onClick={openHelp}
+          aria-label={t('ai.help.open')}
+          title={t('ai.help.open')}
+          className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-primary/50 bg-primary text-primary-foreground shadow-md transition-[filter,transform] duration-200 ease-panel hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          <IconSparkle size={17} />
-          {t('ai.title')}
+          <IconSparkle size={18} />
         </button>
       )}
 
@@ -210,7 +229,7 @@ export function AiAssistant() {
         <div
           className="fixed inset-0 z-50 flex sm:inset-auto sm:bottom-4 sm:right-4 sm:h-[600px] sm:max-h-[85vh] sm:w-[420px]"
           role="dialog"
-          aria-label={t('ai.titleFull')}
+          aria-label={t(view === 'help' ? 'ai.help.title' : 'ai.titleFull')}
         >
           <Card className="flex min-h-0 w-full flex-col gap-0 rounded-none p-0 sm:rounded-lg">
             <header
@@ -218,10 +237,27 @@ export function AiAssistant() {
               style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
             >
               <div className="flex min-w-0 items-center gap-2">
+                {view === 'chat' && (
+                  <button
+                    type="button"
+                    onClick={() => setView('help')}
+                    aria-label={t('ai.help.back')}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
+                  >
+                    <IconBack size={16} />
+                  </button>
+                )}
                 <IconSparkle size={16} className="shrink-0 text-primary" />
                 <div className="min-w-0">
-                  <div className="truncate font-semibold">{t('ai.title')}</div>
-                  {usage && (
+                  <div className="truncate font-semibold">
+                    {t(view === 'help' ? 'ai.help.title' : 'ai.title')}
+                  </div>
+                  {view === 'help' && (
+                    <div className="truncate text-[11px] text-muted">
+                      {t(helpTopic.titleKey)}
+                    </div>
+                  )}
+                  {view === 'chat' && usage && (
                     // Полная фраза — в подсказке: в шапке она помещается
                     // только по-русски, а обрезается ровно на лимите.
                     <div
@@ -244,7 +280,7 @@ export function AiAssistant() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {feed.length > 0 && (
+                {view === 'chat' && feed.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setFeed([])}
@@ -266,63 +302,124 @@ export function AiAssistant() {
               </div>
             </header>
 
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-              {feed.length === 0 && (
-                <div className="space-y-2 text-sm text-muted">
-                  <p>{t('ai.hello')}</p>
-                  <p className="text-xs">
-                    {t('ai.helloHint')}
-                  </p>
+            {view === 'help' ? (
+              <HelpHome topic={helpTopic} canChat={canChat} onChat={() => setView('chat')} />
+            ) : (
+              <>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                  {feed.length === 0 && (
+                    <div className="space-y-2 text-sm text-muted">
+                      <p>{t('ai.hello')}</p>
+                      <p className="text-xs">{t('ai.helloHint')}</p>
+                    </div>
+                  )}
+
+                  {feed.map((item, i) => {
+                    if (item.kind === 'tool') {
+                      return (
+                        <p key={i} className="flex items-center gap-1.5 text-[11px] italic text-muted">
+                          <IconSettings size={12} className="shrink-0" />
+                          {item.summary}
+                        </p>
+                      );
+                    }
+                    if (item.kind === 'action') {
+                      return <ActionCard key={i} action={item.action} onResolve={resolve} />;
+                    }
+                    return (
+                      <div
+                        key={i}
+                        className={`max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm ${
+                          item.role === 'user' ? 'ml-auto bg-primary/20' : 'bg-white/5'
+                        }`}
+                      >
+                        {item.text || (busy ? '…' : '')}
+                      </div>
+                    );
+                  })}
+                  <div ref={bottomRef} />
                 </div>
-              )}
 
-              {feed.map((item, i) => {
-                if (item.kind === 'tool') {
-                  return (
-                    <p key={i} className="text-[11px] italic text-muted">
-                      ⚙ {item.summary}
-                    </p>
-                  );
-                }
-                if (item.kind === 'action') {
-                  return <ActionCard key={i} action={item.action} onResolve={resolve} />;
-                }
-                return (
-                  <div
-                    key={i}
-                    className={`max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm ${
-                      item.role === 'user' ? 'ml-auto bg-primary/20' : 'bg-white/5'
-                    }`}
-                  >
-                    {item.text || (busy ? '…' : '')}
+                <div
+                  className="shrink-0 space-y-2 border-t border-border p-3"
+                  style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+                >
+                  {error && <ErrorText>{error}</ErrorText>}
+                  <div className="flex gap-2">
+                    <Input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && void send()}
+                      placeholder={t(busy ? 'ai.typing' : 'ai.ask')}
+                      disabled={busy}
+                    />
+                    <Button
+                      onClick={() => void send()}
+                      disabled={busy || !input.trim()}
+                      aria-label={t('ai.send')}
+                    >
+                      <IconSend size={16} />
+                    </Button>
                   </div>
-                );
-              })}
-              <div ref={bottomRef} />
-            </div>
-
-            <div
-              className="shrink-0 space-y-2 border-t border-border p-3"
-              style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
-            >
-              {error && <ErrorText>{error}</ErrorText>}
-              <div className="flex gap-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void send()}
-                  placeholder={t(busy ? 'ai.typing' : 'ai.ask')}
-                  disabled={busy}
-                />
-                <Button onClick={() => void send()} disabled={busy || !input.trim()}>
-                  →
-                </Button>
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </Card>
         </div>
       )}
     </>
+  );
+}
+
+function HelpHome({
+  topic,
+  canChat,
+  onChat,
+}: {
+  topic: HelpTopic;
+  canChat: boolean;
+  onChat: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <h2 className="text-base font-semibold">{t(topic.titleKey)}</h2>
+        <p className="mt-1 text-sm leading-5 text-muted">{t('ai.help.intro')}</p>
+
+        <div className="mt-4 border-y border-border">
+          {topic.questionIds.map((id) => (
+            <details key={id} className="group border-b border-border last:border-b-0">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-sm py-3 text-sm font-medium transition-colors hover:text-primary-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 [&::-webkit-details-marker]:hidden">
+                <span>{t(`ai.help.faq.${id}.q`)}</span>
+                <IconCaretDown
+                  size={14}
+                  className="shrink-0 text-muted transition-transform duration-200 group-open:rotate-180"
+                />
+              </summary>
+              <p className="max-w-prose pb-3 pr-7 text-sm leading-6 text-muted">
+                {t(`ai.help.faq.${id}.a`)}
+              </p>
+            </details>
+          ))}
+        </div>
+      </div>
+
+      {canChat && (
+        <div
+          className="shrink-0 border-t border-border p-3"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
+          <Button className="w-full" onClick={onChat}>
+            <IconSparkle size={16} />
+            {t('ai.help.askAi')}
+          </Button>
+          <p className="mt-2 text-center text-[11px] leading-4 text-muted">
+            {t('ai.help.aiHint')}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
