@@ -42,7 +42,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           if(p.includes('/saved-players?')){window.savedCalls=(window.savedCalls||0)+1;return window.savedOld ? {ready:false,reason:'mod_update',players:[],hasMore:false,truncated:false} : {ready:true,players:[{id:'Steam_456',name:'Offline Test Player'}],hasMore:p.includes('offset=0'),truncated:false};}
           if(p.includes('/events?')){window.eventQuery=p;window.eventCalls=(window.eventCalls||0)+1;return Array.from({length:20},(_,i)=>({id:String(i),kind:i%2?'leave':'join',playerName:'Event Player '+i,occurredAt:'2026-09-20T12:00:00Z'}));}
           if(p.endsWith('/saved-stack')){window.edits=(window.edits||[]);const dto=JSON.parse(init.body);window.edits.push(dto);await new Promise(r=>setTimeout(r,100));return {requestId:dto.requestId,status:'unknown'};}
-          if(p.endsWith('/saved-inventory')){window.savedReads=(window.savedReads||0)+1;return window.savedBusy ? {available:false,source:'saved_file',reason:'save_busy',items:[]} : {available:true,source:'saved_file',revision:'a'.repeat(64),savedAt:'2026-09-19T08:00:00Z',fetchedAt:'2026-09-20T12:00:00Z',slotCounts:{belt:10,bag:45,equipment:4,cursor:1},truncated:false,items:[{section:'belt',slot:0,itemId:1,name:'gunPistol',count:1,quality:6}]};}
+          if(p.endsWith('/saved-inventory')){window.savedReads=(window.savedReads||0)+1;return window.savedBusy ? {available:false,source:'saved_file',reason:'save_busy',items:[]} : {available:true,canReplace:!window.reduceOnly,source:'saved_file',revision:'a'.repeat(64),savedAt:'2026-09-19T08:00:00Z',fetchedAt:'2026-09-20T12:00:00Z',slotCounts:{belt:10,bag:45,equipment:4,cursor:1},truncated:false,items:[{section:'belt',slot:0,itemId:1,name:'gunPistol',count:1,quality:6}]};}
           if(p.endsWith('/players'))return {online:1,players:[{entityId:1,name:'Test Player',platformId:'Steam_123',crossId:null,level:5,ping:20,position:null}]};
           if(p.endsWith('/state'))return {available:false,reason:'Test server'};
           if(p.endsWith('/inventory')){window.stats.inventory++;await new Promise((ok,no)=>{const timer=setTimeout(ok,80);init.signal.addEventListener('abort',()=>{window.stats.aborted++;clearTimeout(timer);no(new DOMException('aborted','AbortError'));},{once:true});});
@@ -406,24 +406,140 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         });
     }
     await page.locator('[data-inventory-slot="belt:0"]').click();
-    assert.equal(await page.getByText(catalog['sdtd.edit.note'], { exact: true }).count(), 0, 'view permission does not permit edits');
-    await page.evaluate(() => { window.editAllowed = true; });
-    await page.getByRole('button', { name: catalog['sdtd.inventory.closeDetails'], exact: true }).click();
+    assert.equal(
+      await page.getByText(catalog['sdtd.edit.note'], { exact: true }).count(),
+      0,
+      'view permission does not permit edits',
+    );
+    await page.evaluate(() => {
+      window.editAllowed = true;
+    });
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.closeDetails'], exact: true })
+      .click();
     await page.locator('[data-inventory-slot="belt:0"]').click();
-    const removeStack = page.getByRole('button', { name: catalog['sdtd.edit.remove'], exact: true });
+    const removeStack = page.getByRole('button', {
+      name: catalog['sdtd.edit.remove'],
+      exact: true,
+    });
     assert.equal(await removeStack.isDisabled(), true);
     await page.getByLabel(catalog['sdtd.edit.confirm'], { exact: true }).check();
-    for (const [label, width] of [['desktop', 1200], ['mobile', 390]]) {
+    for (const [label, width] of [
+      ['desktop', 1200],
+      ['mobile', 390],
+    ]) {
       await page.setViewportSize({ width, height: 900 });
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-      if(process.env.INVENTORY_SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, `7dtd-edit-${label}.png`), fullPage: true });
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+      );
+      if (process.env.INVENTORY_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, `7dtd-edit-${label}.png`),
+          fullPage: true,
+        });
     }
-    await removeStack.evaluate(el => {el.click(); el.click();});
+    await removeStack.evaluate((el) => {
+      el.click();
+      el.click();
+    });
     await page.getByText(catalog['sdtd.edit.unknown'], { exact: false }).waitFor();
     assert.equal(await page.evaluate(() => window.edits.length), 1);
     assert.equal(await removeStack.isDisabled(), true, 'unknown outcome locks the stale form');
     assert.equal(await page.evaluate(() => window.edits[0].revision), 'a'.repeat(64));
-    await page.evaluate(() => { window.savedBusy = true; });
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.refresh'], exact: true })
+      .click();
+    await page.locator('[data-inventory-slot="bag:0"]').click();
+    await page.getByRole('button', { name: catalog['sdtd.edit.replaceOpen'], exact: true }).click();
+    await page.getByRole('combobox', { name: catalog['sdtd.give.search'] }).fill('ammoFixture0');
+    await page.getByRole('spinbutton').fill('5');
+    assert.equal(
+      await page.getByLabel(catalog['sdtd.edit.replaceConfirm'], { exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      await page.getByLabel(catalog['sdtd.inventory.quality'], { exact: true }).count(),
+      0,
+    );
+    const saveSlot = page.getByRole('button', {
+      name: catalog['sdtd.edit.replaceSubmit'],
+      exact: true,
+    });
+    await saveSlot.evaluate((el) => {
+      el.click();
+      el.click();
+    });
+    await page.getByText(catalog['sdtd.edit.unknown'], { exact: false }).waitFor();
+    assert.equal(await page.evaluate(() => window.edits.length), 2);
+    assert.equal(await saveSlot.isDisabled(), true);
+    assert.deepEqual(
+      await page.evaluate(() => ({
+        section: window.edits[1].section,
+        slot: window.edits[1].slot,
+        count: window.edits[1].count,
+        quality: window.edits[1].quality,
+        operation: window.edits[1].operation,
+      })),
+      { section: 'bag', slot: 0, count: 5, quality: 0, operation: 'replace' },
+    );
+    assert.equal(
+      await page.getByRole('button', { name: catalog['sdtd.give.retry'], exact: true }).count(),
+      0,
+      'saved writes must not offer replay',
+    );
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.refresh'], exact: true })
+      .click();
+    await page.locator('[data-inventory-slot="belt:0"]').click();
+    await page.getByRole('button', { name: catalog['sdtd.edit.replaceOpen'], exact: true }).click();
+    await page.getByRole('combobox', { name: catalog['sdtd.give.search'] }).fill('gunPistol');
+    await page.getByLabel(catalog['sdtd.inventory.quality'], { exact: true }).selectOption('6');
+    assert.equal(
+      await saveSlot.isDisabled(),
+      true,
+      'occupied slot needs explicit replacement confirmation',
+    );
+    await page.getByLabel(catalog['sdtd.edit.replaceConfirm'], { exact: true }).check();
+    for (const [label, width] of [
+      ['desktop', 1200],
+      ['mobile', 390],
+    ]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+      );
+      if (process.env.INVENTORY_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, `7dtd-replace-${label}.png`),
+          fullPage: true,
+        });
+    }
+    await saveSlot.click();
+    await page.getByText(catalog['sdtd.edit.unknown'], { exact: false }).waitFor();
+    assert.equal(await page.evaluate(() => window.edits[2].quality), 6);
+    await page.evaluate(() => {
+      window.reduceOnly = true;
+    });
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.refresh'], exact: true })
+      .click();
+    await page.locator('[data-inventory-slot="belt:0"]').click();
+    assert.equal(
+      await page
+        .getByRole('button', { name: catalog['sdtd.edit.replaceOpen'], exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(
+      await page.locator('[data-inventory-slot="bag:0"]').isDisabled(),
+      true,
+      'old mod cannot fill empty slots',
+    );
+    await page.evaluate(() => {
+      window.savedBusy = true;
+    });
     await page
       .getByRole('button', { name: catalog['sdtd.inventory.refresh'], exact: true })
       .click();
@@ -441,12 +557,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       .getByRole('button', { name: catalog['sdtd.inventory.savedFind'], exact: true })
       .click();
     await page.getByText(catalog['sdtd.inventory.mod_update'], { exact: true }).waitFor();
-    assert.equal(await page.evaluate(() => window.eventCalls || 0), 0, 'collapsed log does not fetch');
+    assert.equal(
+      await page.evaluate(() => window.eventCalls || 0),
+      0,
+      'collapsed log does not fetch',
+    );
     await page.getByRole('button', { name: catalog['sdtd.events.expand'], exact: true }).click();
     await page.getByText('Event Player 0', { exact: true }).waitFor();
     assert.equal(await page.locator('#sdtd-events-content li').count(), 5);
     assert.match(await page.evaluate(() => window.eventQuery), /limit=5/);
-    if(process.env.INVENTORY_SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, '7dtd-events-mobile.png'), fullPage: true });
+    if (process.env.INVENTORY_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, '7dtd-events-mobile.png'),
+        fullPage: true,
+      });
     await page.getByRole('button', { name: catalog['sdtd.events.collapse'], exact: true }).click();
     assert.equal(await page.locator('#sdtd-events-content').count(), 0);
     const calls = await page.evaluate(() => window.stats.inventory);

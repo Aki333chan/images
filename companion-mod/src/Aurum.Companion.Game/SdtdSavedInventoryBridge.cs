@@ -89,8 +89,10 @@ namespace Aurum.Companion.Game
         private static string SaveError(string reason) => JsonWriter.Object(new[] {
             F("available", "false"), F("reason", JsonWriter.String(reason)), F("source", JsonWriter.String("saved_file")) });
 
-        public string ReduceSavedStack(string playerId, string revision, string section, int slot, int count, string requestId)
+        public string EditSavedStack(SavedStackChange change)
         {
+            var playerId = change.PlayerId; var revision = change.Revision;
+            var section = change.Section; int slot = change.Slot, count = change.Count;
             if (Interlocked.CompareExchange(ref _savedRead, 1, 0) != 0) return "busy";
             try
             {
@@ -122,10 +124,21 @@ namespace Aurum.Companion.Game
                     // Refuse any save whose native round trip changes unrelated fields or mod data.
                     if (!snapshot.Bytes.SequenceEqual(Encode())) return "unsupported";
                     var stacks = section == "belt" ? data.inventory : section == "bag" ? data.bag?.GetSlots() : null;
-                    if (stacks == null || slot < 0 || slot >= stacks.Length || stacks[slot] == null || count < 0 || count >= stacks[slot].count) return "invalid_stack";
-                    if (count == 0) stacks[slot] = ItemStack.Empty.Clone();
-                    else stacks[slot].count = count;
-                    snapshot.Replace(Encode(), requestId);
+                    if (stacks == null || slot < 0 || slot >= stacks.Length) return "invalid_stack";
+                    if (change.Replace)
+                    {
+                        var item = ItemClass.GetForId(change.ItemId);
+                        if (!Grantable(item) || !change.MatchesItem(item!.Id, item.GetItemName(), GrantLimit(item), item.HasQuality)) return "invalid_stack";
+                        // Explicit replacement: a fresh native instance, not an in-place quality/mod edit.
+                        stacks[slot] = new ItemStack(new ItemValue(change.ItemId, change.Quality, change.Quality, false), count);
+                    }
+                    else
+                    {
+                        if (stacks[slot] == null || count < 0 || count >= stacks[slot].count) return "invalid_stack";
+                        if (count == 0) stacks[slot] = ItemStack.Empty.Clone();
+                        else stacks[slot].count = count;
+                    }
+                    snapshot.Replace(Encode(), change.RequestId);
                     return "saved";
                 });
             }

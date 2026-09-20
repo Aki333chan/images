@@ -102,6 +102,6 @@ namespace Aurum.Companion.Core.Game
     {
         string SavedPlayers(string query, int offset);
         string ReadSavedInventory(string playerId);
-        string ReduceSavedStack(string playerId, string revision, string section, int slot, int count, string requestId);
+        string EditSavedStack(SavedStackChange change);
     }
 }

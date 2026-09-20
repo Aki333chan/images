@@ -11,6 +11,7 @@ import {
   IsUUID,
   Equals,
   Matches,
+  ValidateIf,
 } from 'class-validator';
 import { SEVENDAYS_BAN_UNITS, type SevenDaysBanUnit } from '@aurum/shared';
 
@@ -124,6 +125,22 @@ export class ItemGrantDto {
 }
 
 export class SavedStackDto {
+  @ValidateIf((o) => o.operation !== undefined) @Equals('replace') operation?: 'replace';
+  @ValidateIf((o) => o.operation === 'replace' || o.itemId !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  itemId?: number;
+  @ValidateIf((o) => o.operation === 'replace' || o.itemName !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  itemName?: string;
+  @ValidateIf((o) => o.operation === 'replace' || o.quality !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  quality?: number;
   @IsUUID() requestId!: string;
   @IsString() @Matches(/^[a-f0-9]{64}$/) revision!: string;
   @IsIn(['belt', 'bag']) section!: 'belt' | 'bag';

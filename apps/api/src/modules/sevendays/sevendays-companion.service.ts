@@ -71,7 +71,7 @@ export class SevenDaysCompanionService {
         !ping.capabilities?.includes(saved ? 'inventory-saved-read' : 'inventory-read')
       )
         return unavailableInventory('mod_update', source);
-      return parseInventory(
+      const inventory = parseInventory(
         await this.call<unknown>(
           serverId,
           'GET',
@@ -81,6 +81,10 @@ export class SevenDaysCompanionService {
         ),
         source,
       );
+      return {
+        ...inventory,
+        canReplace: saved && ping.capabilities?.includes('inventory-saved-replace') === true,
+      };
     } finally {
       this.inventoryReads--;
     }

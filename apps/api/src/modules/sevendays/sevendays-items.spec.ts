@@ -42,25 +42,106 @@ function fixture() {
   return { service, companion, audit };
 }
 describe('7DTD item grants', () => {
+  it('validates replacement fields and rejects replacement against a reduce-only mod', async () => {
+    const { service, companion } = fixture();
+    const dto = {
+      requestId,
+      revision: 'a'.repeat(64),
+      section: 'bag' as const,
+      slot: 0,
+      count: 1,
+      confirmed: true,
+      operation: 'replace' as const,
+      itemId: 2,
+      itemName: 'gunPistol',
+      quality: 6,
+    };
+    expect(await validate(Object.assign(new SavedStackDto(), dto))).toHaveLength(0);
+    for (const bad of [
+      { operation: null },
+      { operation: 'add' },
+      { itemId: undefined },
+      { itemName: undefined },
+      { quality: undefined },
+      { quality: 7 },
+      { itemId: 0 },
+    ])
+      expect((await validate(Object.assign(new SavedStackDto(), dto, bad))).length).toBeGreaterThan(
+        0,
+      );
+    companion.ping.mockResolvedValue({
+      compatible: true,
+      capabilities: ['inventory-saved-reduce'],
+    });
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).rejects.toThrow('1_0_12');
+    expect(companion.savedStack).not.toHaveBeenCalled();
+    companion.ping.mockResolvedValue({
+      compatible: true,
+      capabilities: ['inventory-saved-replace'],
+    });
+    for (const count of [0, 1001])
+      await expect(service.reduceSaved('s', 'Steam_1', 'admin', { ...dto, count })).rejects.toThrow(
+        'invalid_stack',
+      );
+    await expect(
+      service.reduceSaved('s', 'Steam_1', 'admin', { ...dto, operation: undefined }),
+    ).rejects.toThrow('invalid_stack');
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).resolves.toMatchObject({
+      status: 'saved',
+    });
+    expect(companion.savedStack).toHaveBeenCalledWith('s', 'Steam_1', dto);
+  });
   it('audits saved edits before writing, requires capability and never retries unknown results', async () => {
     const { service, companion, audit } = fixture();
-    const dto = { requestId, revision: 'a'.repeat(64), section: 'bag' as const, slot: 0, count: 0, confirmed: true };
-    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).rejects.toThrow('saved_edit_requires');
+    const dto = {
+      requestId,
+      revision: 'a'.repeat(64),
+      section: 'bag' as const,
+      slot: 0,
+      count: 0,
+      confirmed: true,
+    };
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).rejects.toThrow(
+      'saved_edit_requires',
+    );
     expect(companion.savedStack).not.toHaveBeenCalled();
-    companion.ping.mockResolvedValue({ compatible: true, capabilities: ['inventory-saved-reduce'] });
+    companion.ping.mockResolvedValue({
+      compatible: true,
+      capabilities: ['inventory-saved-reduce'],
+    });
     audit.log.mockRejectedValueOnce(new Error('db down'));
     await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).rejects.toThrow('db down');
     expect(companion.savedStack).not.toHaveBeenCalled();
-    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).resolves.toMatchObject({ status: 'saved' });
-    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'sevendays.saved-stack.attempt' }));
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).resolves.toMatchObject({
+      status: 'saved',
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'sevendays.saved-stack.attempt' }),
+    );
     companion.savedStack.mockRejectedValueOnce(new Error('reply lost'));
-    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).resolves.toMatchObject({ status: 'unknown' });
+    await expect(service.reduceSaved('s', 'Steam_1', 'admin', dto)).resolves.toMatchObject({
+      status: 'unknown',
+    });
     expect(companion.savedStack).toHaveBeenCalledTimes(2);
-    expect(Reflect.getMetadata('requiredPermission', SevenDaysController.prototype.savedStack)).toEqual(['sevendays.inventory.edit']);
-    expect(Reflect.getMetadata('serverScopeParam', SevenDaysController.prototype.savedStack)).toBe('serverId');
+    expect(
+      Reflect.getMetadata('requiredPermission', SevenDaysController.prototype.savedStack),
+    ).toEqual(['sevendays.inventory.edit']);
+    expect(Reflect.getMetadata('serverScopeParam', SevenDaysController.prototype.savedStack)).toBe(
+      'serverId',
+    );
     expect(await validate(Object.assign(new SavedStackDto(), dto))).toHaveLength(0);
-    for (const bad of [{ confirmed: false }, { section: 'equipment' }, { slot: -1 }, { count: -1 }, { count: 1.5 }, { revision: 'bad' }, { requestId: 'bad' }])
-      expect((await validate(Object.assign(new SavedStackDto(), dto, bad))).length).toBeGreaterThan(0);
+    for (const bad of [
+      { confirmed: false },
+      { section: 'equipment' },
+      { slot: -1 },
+      { count: -1 },
+      { count: 1.5 },
+      { revision: 'bad' },
+      { requestId: 'bad' },
+    ])
+      expect((await validate(Object.assign(new SavedStackDto(), dto, bad))).length).toBeGreaterThan(
+        0,
+      );
   });
   it('requires distinct server-scoped admin permission on search and write', () => {
     for (const route of [
@@ -69,6 +150,7 @@ describe('7DTD item grants', () => {
     ]) {
       expect(Reflect.getMetadata('requiredPermission', route)).toEqual([
         'sevendays.inventory.give',
+        ...(route === SevenDaysController.prototype.itemSearch ? ['sevendays.inventory.edit'] : []),
       ]);
       expect(Reflect.getMetadata('serverScopeParam', route)).toBe('serverId');
     }

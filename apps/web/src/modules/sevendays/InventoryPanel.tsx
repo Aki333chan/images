@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SevenDaysInventory } from '@aurum/shared';
+import type { SevenDaysInventory, SevenDaysInventoryItem } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Button, Card, ErrorText, Spinner } from '../../components/ui';
 import { useI18n } from '../../i18n';
@@ -32,7 +32,20 @@ export function SevenDaysInventoryPanel({
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const selectedButton = useRef<HTMLButtonElement | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const selectedItem = data?.items.find((p) => `${p.section}:${p.slot}` === selected);
+  const canReplace =
+    saved && !!data?.canReplace && !!data?.revision && hasPermission('sevendays.inventory.edit');
+  const selectedItem =
+    data?.items.find((p) => `${p.section}:${p.slot}` === selected) ??
+    (canReplace && selected
+      ? {
+          section: selected.split(':')[0] as SevenDaysInventoryItem['section'],
+          slot: Number(selected.split(':')[1]),
+          itemId: 0,
+          name: t('sdtd.inventory.emptySlot'),
+          count: 0,
+          quality: 0,
+        }
+      : undefined);
   useEffect(() => {
     if (selected) detailHeading.current?.focus();
   }, [selected]);
@@ -152,7 +165,7 @@ export function SevenDaysInventoryPanel({
                       </h5>
                       <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
                         {[
-                          ['ID', selectedItem.itemId],
+                          ...(selectedItem.itemId ? [['ID', selectedItem.itemId]] : []),
                           [t('sdtd.inventory.slot'), selectedItem.slot + 1],
                           [t('sdtd.inventory.count'), selectedItem.count.toLocaleString(locale)],
                           [t('sdtd.inventory.quality'), selectedItem.quality],
@@ -165,17 +178,37 @@ export function SevenDaysInventoryPanel({
                       </dl>
                       {saved &&
                         data.revision &&
+                        selectedItem.count > 0 &&
                         hasPermission('sevendays.inventory.edit') &&
                         (selectedItem.section === 'belt' || selectedItem.section === 'bag') && (
-                          <SevenDaysReduceStack
-                            key={`${data.revision}/${selected}`}
+                          <fieldset disabled={editing}>
+                            <SevenDaysReduceStack
+                              key={`${data.revision}/${selected}`}
+                              serverId={serverId}
+                              playerId={playerId}
+                              revision={data.revision}
+                              item={selectedItem}
+                              onBusy={setEditing}
+                            />
+                          </fieldset>
+                        )}
+                      {canReplace && (section === 'belt' || section === 'bag') && (
+                        <fieldset disabled={editing}>
+                          <SevenDaysGiveItemPanel
+                            key={`replace/${data.revision}/${selected}`}
                             serverId={serverId}
                             playerId={playerId}
-                            revision={data.revision}
-                            item={selectedItem}
-                            onBusy={setEditing}
+                            name={name}
+                            savedTarget={{
+                              revision: data.revision!,
+                              section,
+                              slot: selectedItem.slot,
+                              occupied: selectedItem.count > 0,
+                              onBusy: setEditing,
+                            }}
                           />
-                        )}
+                        </fieldset>
+                      )}
                       <button
                         type="button"
                         disabled={editing}
@@ -229,14 +262,23 @@ export function SevenDaysInventoryPanel({
                             </span>
                           </button>
                         ) : (
-                          <div
+                          <button
                             key={slot}
+                            type="button"
+                            disabled={
+                              editing || !canReplace || (section !== 'belt' && section !== 'bag')
+                            }
+                            aria-pressed={selected === key}
+                            onClick={(e) => {
+                              selectedButton.current = e.currentTarget;
+                              setSelected(key);
+                            }}
                             data-inventory-slot={key}
                             aria-label={`${t('sdtd.inventory.slot')} ${slot + 1}: ${t('sdtd.inventory.emptySlot')}`}
-                            className="h-24 min-w-0 rounded border border-dashed border-border p-2 text-xs text-muted"
+                            className={`h-24 min-w-0 rounded border border-dashed p-2 text-left text-xs text-muted enabled:hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${selected === key ? 'border-primary bg-primary/10' : 'border-border'}`}
                           >
                             {slot + 1}
-                          </div>
+                          </button>
                         );
                       })}
                     </div>

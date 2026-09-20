@@ -187,6 +187,7 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'inventory-read',
   'inventory-saved-read',
   'inventory-saved-reduce',
+  'inventory-saved-replace',
   'item-drop',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
@@ -222,6 +223,7 @@ export interface SevenDaysInventory {
   /** Primary save modification time, not the panel fetch time. */
   savedAt?: string | null;
   revision?: string | null;
+  canReplace?: boolean;
   /** Panel fetch time, NOT snapshot creation time (not supplied by the game). */
   fetchedAt: string | null;
   items: SevenDaysInventoryItem[];

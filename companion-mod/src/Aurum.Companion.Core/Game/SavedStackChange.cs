@@ -8,6 +8,9 @@ namespace Aurum.Companion.Core.Game
     {
         public string PlayerId = "", Revision = "", Section = "", RequestId = "";
         public int Slot, Count;
+        public bool Replace;
+        public int ItemId, Quality;
+        public string ItemName = "";
         public static SavedStackChange Read(string playerId, string body)
         {
             var map = JsonReader.ParseObject(body);
@@ -19,11 +22,25 @@ namespace Aurum.Companion.Core.Game
                 return (int)n;
             }
             var c = new SavedStackChange { PlayerId = playerId, Revision = Text("revision"), Section = Text("section"), RequestId = Text("requestId"), Slot = Number("slot", 255), Count = Number("count", int.MaxValue) };
+            if (map.ContainsKey("operation") && Text("operation") != "replace")
+                throw new JsonReader.JsonException("invalid_stack");
+            c.Replace = Text("operation") == "replace";
+            if (c.Replace)
+            {
+                c.ItemId = Number("itemId", 65535); c.Quality = Number("quality", 6); c.ItemName = Text("itemName");
+                if (c.ItemId < 1 || c.Count < 1 || c.Count > 1000 || c.ItemName.Length < 1 || c.ItemName.Length > 128)
+                    throw new JsonReader.JsonException("invalid_stack");
+            }
+            else if (map.ContainsKey("itemId") || map.ContainsKey("itemName") || map.ContainsKey("quality"))
+                throw new JsonReader.JsonException("invalid_stack");
             if (!InventoryRequest.ValidPlayerId(playerId) || !JsonReader.BoolOrDefault(map, "confirmed") ||
                 !Regex.IsMatch(c.Revision, "\\A[a-f0-9]{64}\\z") || !Guid.TryParseExact(c.RequestId, "D", out _) ||
                 (c.Section != "belt" && c.Section != "bag") || (c.Section == "belt" && c.Slot >= 32))
                 throw new JsonReader.JsonException("invalid_stack");
             c.RequestId = c.RequestId.ToLowerInvariant(); return c;
         }
+        public bool MatchesItem(int id, string name, int maxCount, bool hasQuality) =>
+            Replace && ItemId == id && ItemName == name && Count >= 1 && Count <= maxCount &&
+            (hasQuality ? Quality >= 1 && Quality <= 6 : Quality == 0);
     }
 }

@@ -44,7 +44,7 @@ namespace Aurum.Companion.Core.Http
             if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
             if (game is IMapBridge) { capabilities.Add("map-read"); capabilities.Add("map-pois"); }
             if (game is IInventoryBridge) { capabilities.Add("inventory-read"); capabilities.Add("item-drop"); }
-            if (game is ISavedInventoryBridge) { capabilities.Add("inventory-saved-read"); capabilities.Add("inventory-saved-reduce"); }
+            if (game is ISavedInventoryBridge) { capabilities.Add("inventory-saved-read"); capabilities.Add("inventory-saved-reduce"); capabilities.Add("inventory-saved-replace"); }
             _capabilitiesJson = JsonWriter.Array(capabilities.ConvertAll(JsonWriter.String));
         }
 
@@ -104,7 +104,7 @@ namespace Aurum.Companion.Core.Http
             {
                 var change = SavedStackChange.Read(Uri.UnescapeDataString(parts[1]), request.Body);
                 return HttpResponseData.Ok(JsonWriter.Object(new[] {
-                    Field("status", JsonWriter.String(editor.ReduceSavedStack(change.PlayerId, change.Revision, change.Section, change.Slot, change.Count, change.RequestId))),
+                    Field("status", JsonWriter.String(editor.EditSavedStack(change))),
                     Field("requestId", JsonWriter.String(change.RequestId)) }));
             }
             if (request.Method == "GET" && _game is ISavedInventoryBridge saved)

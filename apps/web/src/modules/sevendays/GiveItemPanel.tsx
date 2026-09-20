@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { SevenDaysItemCatalogue, SevenDaysItemGrantResult } from '@aurum/shared';
+import type { SevenDaysItemCatalogue } from '@aurum/shared';
 import { api } from '../../lib/api';
 import { Button, ErrorText, Input, Select, Spinner } from '../../components/ui';
 import { useI18n } from '../../i18n';
@@ -20,10 +20,18 @@ export function SevenDaysGiveItemPanel({
   serverId,
   playerId,
   name,
+  savedTarget,
 }: {
   serverId: string;
   playerId: string;
   name: string;
+  savedTarget?: {
+    revision: string;
+    section: 'belt' | 'bag';
+    slot: number;
+    occupied: boolean;
+    onBusy: (busy: boolean) => void;
+  };
 }) {
   const { t } = useI18n();
   const controlId = useId();
@@ -34,7 +42,8 @@ export function SevenDaysGiveItemPanel({
   const [count, setCount] = useState('1');
   const [quality, setQuality] = useState('1');
   const [request, setRequest] = useState<Grant | null>(null);
-  const [result, setResult] = useState<SevenDaysItemGrantResult['status'] | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [replaceConfirmed, setReplaceConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -53,9 +62,10 @@ export function SevenDaysGiveItemPanel({
   const items = catalogue?.ready
     ? catalogue.items.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
     : [];
-  const frozen = busy || result === 'unknown';
+  const frozen = busy || result === 'unknown' || (!!savedTarget && result !== null);
   const showSuggestions = suggestionsOpen && !frozen && query.trim().length >= 2;
   const base = `/api/modules/sevendays/servers/${serverId}`;
+  useEffect(() => setReplaceConfirmed(false), [query, count, quality]);
 
   useEffect(() => {
     alive.current = true;
@@ -131,17 +141,51 @@ export function SevenDaysGiveItemPanel({
     lock.current = true;
     const started = Date.now();
     setBusy(true);
+    savedTarget?.onBusy(true);
     setRequest(payload);
     setError('');
     setResult(null);
     setSuggestionsOpen(false);
     try {
-      const response = await api<SevenDaysItemGrantResult>(
-        `${base}/players/${encodeURIComponent(playerId)}/item-drop`,
-        { method: 'POST', body: JSON.stringify(payload) },
+      const response = await api<{ requestId: string; status: string }>(
+        `${base}/players/${encodeURIComponent(playerId)}/${savedTarget ? 'saved-stack' : 'item-drop'}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(
+            savedTarget
+              ? {
+                  requestId: payload.requestId,
+                  revision: savedTarget.revision,
+                  section: savedTarget.section,
+                  slot: savedTarget.slot,
+                  operation: 'replace',
+                  itemId: payload.itemId,
+                  itemName: payload.itemName,
+                  count: payload.count,
+                  quality: payload.quality,
+                  confirmed: true,
+                }
+              : payload,
+          ),
+        },
       );
       if (alive.current) {
-        setResult(response.status);
+        const knownSaved = [
+          'saved',
+          'busy',
+          'offline_required',
+          'revision_conflict',
+          'unsupported',
+          'invalid_stack',
+          'write_failed',
+          'unknown',
+        ];
+        setResult(
+          response.requestId !== payload.requestId ||
+            (savedTarget && !knownSaved.includes(response.status))
+            ? 'unknown'
+            : response.status,
+        );
         if (response.status === 'session_expired') {
           setCatalogue(null);
           setItemId('');
@@ -151,6 +195,7 @@ export function SevenDaysGiveItemPanel({
     } catch {
       if (alive.current) setResult('unknown');
     } finally {
+      savedTarget?.onBusy(false);
       // Keep rapid double-clicks/Enter repeats inside the game's one-second grant limit.
       if (alive.current)
         unlockTimer.current = setTimeout(
@@ -172,16 +217,22 @@ export function SevenDaysGiveItemPanel({
         onClick={() => setOpen(true)}
         disabled={open}
       >
-        {t('sdtd.give.open')}
+        {t(savedTarget ? 'sdtd.edit.replaceOpen' : 'sdtd.give.open')}
       </Button>
       {open && (
-        <section aria-label={`${t('sdtd.give.open')} · ${name}`} className="mt-4 space-y-4">
-          <p className="max-w-prose text-sm text-muted">{t('sdtd.give.warning')}</p>
+        <section
+          aria-label={`${t(savedTarget ? 'sdtd.edit.replaceOpen' : 'sdtd.give.open')} · ${name}`}
+          className="mt-4 space-y-4"
+        >
+          <p className="max-w-prose text-sm text-muted">
+            {t(savedTarget ? 'sdtd.edit.replaceNote' : 'sdtd.give.warning')}
+          </p>
           <form
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!item || !catalogue || frozen) return;
+              if (!item || !catalogue || frozen || (savedTarget?.occupied && !replaceConfirmed))
+                return;
               void send({
                 sessionId: catalogue.sessionId,
                 requestId: crypto.randomUUID(),
@@ -370,14 +421,28 @@ export function SevenDaysGiveItemPanel({
                 </Button>
               </>
             )}
+            {savedTarget?.occupied && (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={replaceConfirmed}
+                  disabled={frozen}
+                  onChange={(e) => setReplaceConfirmed(e.target.checked)}
+                />
+                <span>{t('sdtd.edit.replaceConfirm')}</span>
+              </label>
+            )}
             <div className="flex flex-wrap items-center gap-2">
-              {result === 'unknown' && request ? (
+              {!savedTarget && result === 'unknown' && request ? (
                 <Button type="button" disabled={busy} onClick={() => void send(request)}>
                   {t('sdtd.give.retry')}
                 </Button>
               ) : (
-                <Button type="submit" disabled={!item || frozen}>
-                  {t('sdtd.give.submit')}
+                <Button
+                  type="submit"
+                  disabled={!item || frozen || (!!savedTarget?.occupied && !replaceConfirmed)}
+                >
+                  {t(savedTarget ? 'sdtd.edit.replaceSubmit' : 'sdtd.give.submit')}
                 </Button>
               )}
               <Button
@@ -389,7 +454,7 @@ export function SevenDaysGiveItemPanel({
                   setSuggestionsOpen(false);
                 }}
               >
-                {t('sdtd.give.close')}
+                {t(savedTarget ? 'sdtd.edit.replaceClose' : 'sdtd.give.close')}
               </Button>
               {busy && <Spinner />}
             </div>
@@ -406,7 +471,10 @@ export function SevenDaysGiveItemPanel({
                     </>
                   )}
                 </p>
-                <p>{t(`sdtd.give.${result}`)}</p>
+                <p>
+                  {t(`sdtd.${savedTarget ? 'edit' : 'give'}.${result}`)}{' '}
+                  {savedTarget && t('sdtd.edit.refresh')}
+                </p>
                 <p className="break-all font-mono text-xs text-muted">ID: {request.requestId}</p>
               </>
             )}

@@ -62,12 +62,27 @@ export class SevenDaysItemsService {
   }
   async reduceSaved(serverId: string, playerId: string, actorId: string, dto: SavedStackDto) {
     validateInventoryPlayerId(playerId);
+    if (
+      dto.operation === 'replace'
+        ? dto.count < 1 || dto.count > 1000
+        : dto.itemId !== undefined || dto.itemName !== undefined || dto.quality !== undefined
+    )
+      throw new BadRequestException('invalid_stack');
     if (this.active >= 4) throw new ServiceUnavailableException('inventory_busy');
     this.active++;
     try {
       const ping = await this.companion.ping(serverId);
-      if (!ping?.compatible || !ping.capabilities?.includes('inventory-saved-reduce'))
-        throw new BadRequestException('saved_edit_requires_companion_1_0_11');
+      if (
+        !ping?.compatible ||
+        !ping.capabilities?.includes(
+          dto.operation === 'replace' ? 'inventory-saved-replace' : 'inventory-saved-reduce',
+        )
+      )
+        throw new BadRequestException(
+          dto.operation === 'replace'
+            ? 'saved_edit_requires_companion_1_0_12'
+            : 'saved_edit_requires_companion_1_0_11',
+        );
       const metadata = { playerId, ...dto };
       await this.audit.log({
         actorId,

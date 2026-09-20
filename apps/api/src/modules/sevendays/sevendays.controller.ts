@@ -63,7 +63,7 @@ export class SevenDaysController {
   // ---------- Игроки ----------
   @Get('items')
   @Header('Cache-Control', 'no-store')
-  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryGive)
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryGive, SEVENDAYS_PERMISSIONS.inventoryEdit)
   @ServerScoped('serverId')
   itemSearch(@Param('serverId') serverId: string, @Query('q') query = '') {
     return this.items.search(serverId, query);

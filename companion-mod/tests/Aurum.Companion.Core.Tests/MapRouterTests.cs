@@ -41,7 +41,7 @@ public sealed class MapRouterTests
     private sealed class Bridge : IGameBridge, IMapBridge, IInventoryBridge, ISavedInventoryBridge
     {
         public int Reads;
-        public string ReduceSavedStack(string id, string revision, string section, int slot, int count, string requestId) { Reads++; return "saved"; }
+        public string EditSavedStack(SavedStackChange change) { Reads++; return "saved"; }
         public string SavedPlayers(string query, int offset) { Reads++; return "{\"ready\":true,\"players\":[],\"hasMore\":false,\"truncated\":false}"; }
         public string ReadSavedInventory(string id) { Reads++; return "{\"available\":false,\"source\":\"saved_file\",\"reason\":\"save_missing\"}"; }
         public string SearchItems(string query) => "{\"ready\":true,\"items\":[],\"truncated\":false}";
