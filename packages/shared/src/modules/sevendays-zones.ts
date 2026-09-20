@@ -40,6 +40,25 @@ export const defaultZoneMovement = (): SevenDaysZoneMovement => ({
   kickOnFailure: false,
 });
 export const SEVENDAYS_ZONE_BONUSES = ['none', 'regeneration', 'stamina', 'speed'] as const;
+export interface SevenDaysZoneSchedule {
+  enabled: boolean;
+  start: number;
+  end: number;
+  offsetMinutes: number;
+  /** Bits 0..6 = Monday..Sunday. Overnight intervals belong to their start day. */
+  days: number;
+  fromMinute: number;
+  toMinute: number;
+}
+export const defaultZoneSchedule = (): SevenDaysZoneSchedule => ({
+  enabled: false,
+  start: 0,
+  end: 0,
+  offsetMinutes: 0,
+  days: 127,
+  fromMinute: 0,
+  toMinute: 0,
+});
 export interface SevenDaysZone {
   id: string;
   name: string;
@@ -62,6 +81,7 @@ export interface SevenDaysZone {
   enterCommands: string[];
   exitCommands: string[];
   movement: SevenDaysZoneMovement;
+  schedule: SevenDaysZoneSchedule;
 }
 export interface SevenDaysZones {
   revision: number;
@@ -145,7 +165,29 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'enterCommands',
       'exitCommands',
       'movement',
+      'schedule',
     ]);
+    const schedule = object(z.schedule, [
+      'enabled',
+      'start',
+      'end',
+      'offsetMinutes',
+      'days',
+      'fromMinute',
+      'toMinute',
+    ]);
+    if (
+      typeof schedule.enabled !== 'boolean' ||
+      !number(schedule.start, 0, 253402300799, true) ||
+      !number(schedule.end, 0, 253402300799, true) ||
+      (schedule.start !== 0 && schedule.end !== 0 && schedule.start >= schedule.end) ||
+      !number(schedule.offsetMinutes, -720, 840, true) ||
+      schedule.offsetMinutes % 15 !== 0 ||
+      !number(schedule.days, 0, 127, true) ||
+      !number(schedule.fromMinute, 0, 1439, true) ||
+      !number(schedule.toMinute, 0, 1439, true)
+    )
+      return invalid();
     const movement = object(z.movement, [
       'mode',
       'priority',
@@ -183,6 +225,7 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
     )
       return invalid();
     if (!Array.isArray(movement.sentences) || movement.sentences.length > 64) return invalid();
+    if (movement.mode === 'prison' && schedule.enabled) throw new Error('zones_prison_schedule');
     const sentenced = new Set<string>();
     const sentences = movement.sentences
       .map((value) => {

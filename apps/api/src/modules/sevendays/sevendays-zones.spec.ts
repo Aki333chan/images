@@ -1,5 +1,10 @@
 import 'reflect-metadata';
-import { parseSevenDaysZones, defaultZoneMovement, type SevenDaysZones } from '@aurum/shared';
+import {
+  parseSevenDaysZones,
+  defaultZoneMovement,
+  defaultZoneSchedule,
+  type SevenDaysZones,
+} from '@aurum/shared';
 import { SevenDaysMapService } from './sevendays-map.service';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysController } from './sevendays.controller';
@@ -30,11 +35,49 @@ const fixture = (): SevenDaysZones => ({
       enterCommands: [],
       exitCommands: [],
       movement: defaultZoneMovement(),
+      schedule: defaultZoneSchedule(),
     },
   ],
 });
 
 describe('7DTD zones', () => {
+  it('validates schedules and protects timed script activation with command authority', async () => {
+    const data = fixture();
+    data.zones[0]!.schedule = {
+      ...defaultZoneSchedule(),
+      enabled: true,
+      days: 1,
+      fromMinute: 1320,
+      toMinute: 120,
+      offsetMinutes: 120,
+    };
+    expect(parseSevenDaysZones(data)).toEqual(data);
+    for (const patch of [
+      { days: 128 },
+      { days: -1 },
+      { offsetMinutes: 13 },
+      { offsetMinutes: 900 },
+      { start: 100, end: 99 },
+      { start: -1 },
+      { toMinute: 1440 },
+      { enabled: 'true' },
+      { unknown: 1 },
+    ]) {
+      const next = structuredClone(data);
+      Object.assign(next.zones[0]!.schedule, patch);
+      expect(() => parseSevenDaysZones(next)).toThrow();
+    }
+    const prison = structuredClone(data);
+    prison.zones[0]!.movement.mode = 'prison';
+    expect(() => parseSevenDaysZones(prison)).toThrow('zones_prison_schedule');
+    const remote = { zoneRequest: jest.fn().mockResolvedValue(data) };
+    const service = new SevenDaysMapService(remote as unknown as SevenDaysCompanionService);
+    await service.zones('s', data); // Normal zone schedule needs manage, not command authority.
+    data.zones[0]!.enterCommands = ['buffplayer {player} buffExample'];
+    const next = structuredClone(data);
+    next.zones[0]!.schedule.enabled = false;
+    await expect(service.zones('s', next)).rejects.toThrow('zones_commands_permission_required');
+  });
   it('validates prison assignments, internal destinations and protects releases', async () => {
     const current = fixture();
     current.zones[0]!.type = 'prison';

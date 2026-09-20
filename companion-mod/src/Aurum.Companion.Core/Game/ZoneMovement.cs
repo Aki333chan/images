@@ -32,12 +32,12 @@ namespace Aurum.Companion.Core.Game
         public ZoneRule? Select(ZoneRules rules, int player, string[] identities, double x, double z,
             ISet<string>? before, long utc)
         {
-            var prison = ZoneMovementPolicy.Order(rules.Zones.Where(v => v.Enabled && v.Movement.Mode == "prison" &&
+            var prison = ZoneMovementPolicy.Order(rules.Zones.Where(v => v.IsActive && v.Movement.Mode == "prison" &&
                 v.Movement.Sentences.Any(s => (s.Until == 0 || s.Until > utc) && identities.Contains(s.Player, StringComparer.Ordinal)))).FirstOrDefault();
             if (prison != null) { Remove(player); return prison; }
             if (!_events.TryGetValue(player, out var joined))
                 _events[player] = joined = new HashSet<string>(StringComparer.Ordinal);
-            var eligible = rules.Zones.Where(v => v.Enabled && v.Movement.Mode == "event" &&
+            var eligible = rules.Zones.Where(v => v.IsActive && v.Movement.Mode == "event" &&
                 v.Movement.Players.Any(id => identities.Contains(id, StringComparer.Ordinal))).ToArray();
             joined.RemoveWhere(id => !eligible.Any(v => v.Id == id));
             if (before != null)
@@ -47,7 +47,7 @@ namespace Aurum.Companion.Core.Game
         }
         public void RulesChanged(ZoneRules rules)
         {
-            var enabled = new HashSet<string>(rules.Zones.Where(v => v.Enabled && v.Movement.Mode == "event").Select(v => v.Id), StringComparer.Ordinal);
+            var enabled = new HashSet<string>(rules.Zones.Where(v => v.IsActive && v.Movement.Mode == "event").Select(v => v.Id), StringComparer.Ordinal);
             foreach (var joined in _events.Values) joined.RemoveWhere(id => !enabled.Contains(id));
         }
         public void Remove(int player) => _events.Remove(player);
@@ -78,8 +78,9 @@ namespace Aurum.Companion.Core.Game
         {
             double x = movement.X + 0.5, z = movement.Z + 0.5;
             var owner = rules.Zones.FirstOrDefault(v => ReferenceEquals(v.Movement, movement));
-            if (movement.IsContainment && (owner == null || !owner.Contains(x, z))) return false;
-            return !rules.Zones.Any(v => v.Movement.Mode != "none" && v.Contains(x, z) &&
+            // Validate geometry across schedules too: a destination must not become a chain tomorrow.
+            if (movement.IsContainment && (owner == null || !owner.Enabled || !owner.InBounds(x, z))) return false;
+            return !rules.Zones.Any(v => v.Movement.Mode != "none" && v.Enabled && v.InBounds(x, z) &&
                 !(movement.IsContainment && ReferenceEquals(v, owner)));
         }
     }

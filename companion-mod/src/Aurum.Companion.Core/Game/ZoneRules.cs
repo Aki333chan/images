@@ -18,7 +18,12 @@ namespace Aurum.Companion.Core.Game
         public int CommandCooldown = 30;
         public string[] EnterCommands = Array.Empty<string>(), ExitCommands = Array.Empty<string>();
         public ZoneMovement Movement = new ZoneMovement();
-        public bool Contains(double x, double z) => Enabled &&
+        public ZoneSchedule Schedule = new ZoneSchedule();
+        // Runtime-only snapshot, refreshed in the existing game-thread tick. Never serialized.
+        public bool ScheduleActive = true;
+        public bool IsActive => Enabled && ScheduleActive;
+        public bool Contains(double x, double z) => IsActive && InBounds(x, z);
+        public bool InBounds(double x, double z) =>
             x >= X1 && x <= X2 && z >= Z1 && z <= Z2;
     }
 
@@ -49,7 +54,9 @@ namespace Aurum.Companion.Core.Game
                 }
                 if (allowLegacy && !map.ContainsKey("movement"))
                     map["movement"] = JsonReader.ParseObject(WriteMovement(new ZoneMovement()));
-                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands", "movement");
+                if (allowLegacy && !map.ContainsKey("schedule"))
+                    map["schedule"] = JsonReader.ParseObject(WriteSchedule(new ZoneSchedule()));
+                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands", "movement", "schedule");
                 var z = new ZoneRule {
                     Id = Text(map, "id", 48), Name = Text(map, "name", 80), Type = Text(map, "type", 24),
                     Enabled = Boolean(map, "enabled"), NoPvp = Boolean(map, "noPvp"), NoDamage = Boolean(map, "noDamage"),
@@ -59,13 +66,14 @@ namespace Aurum.Companion.Core.Game
                     Enter = Text(map, "enter", 240), Exit = Text(map, "exit", 240), Bonus = Text(map, "bonus", 24),
                     CommandsEnabled = Boolean(map, "commandsEnabled"), CommandCooldown = (int)Number(map, "commandCooldown", 10, 86400, true),
                     EnterCommands = Commands(map, "enterCommands"), ExitCommands = Commands(map, "exitCommands"),
-                    Movement = ReadMovement(map["movement"], allowLegacy)
+                    Movement = ReadMovement(map["movement"], allowLegacy), Schedule = ReadSchedule(map["schedule"])
                 };
                 if (!Regex.IsMatch(z.Id, "\\A[a-z0-9][a-z0-9_-]{0,47}\\z") || !ids.Add(z.Id) ||
                     string.IsNullOrWhiteSpace(z.Name) || z.X1 >= z.X2 || z.Z1 >= z.Z2 ||
                     !new[] { "safe", "information", "sanctuary", "bonus", "custom", "restricted", "portal", "prison", "event" }.Contains(z.Type) ||
                     !new[] { "none", "regeneration", "stamina", "speed" }.Contains(z.Bonus)) throw Invalid();
                 zones.Add(z);
+                if (z.Movement.Mode == "prison" && z.Schedule.Enabled) throw new JsonReader.JsonException("zones_prison_schedule");
             }
             result.Zones = zones.ToArray();
             var prisoners = result.Zones.Where(z => z.Enabled && z.Movement.Mode == "prison")
@@ -74,6 +82,18 @@ namespace Aurum.Companion.Core.Game
             if (result.Zones.Any(z => z.Enabled && z.Movement.Mode != "none" && !ZoneMovementPolicy.DestinationClear(result, z.Movement)))
                 throw new JsonReader.JsonException("zones_destination_conflict");
             return result;
+        }
+
+        public string[] RefreshSchedules(long utc)
+        {
+            List<string>? changed = null;
+            foreach (var zone in Zones)
+            {
+                bool active = zone.Schedule.Allows(utc);
+                if (zone.ScheduleActive != active) (changed ?? (changed = new List<string>())).Add(zone.Id);
+                zone.ScheduleActive = active;
+            }
+            return changed?.ToArray() ?? Array.Empty<string>();
         }
 
         // Deny wins overlaps; an attacker in a safe zone must not shoot out of it either.
@@ -106,8 +126,27 @@ namespace Aurum.Companion.Core.Game
                 Pair("enter", JsonWriter.String(z.Enter)), Pair("exit", JsonWriter.String(z.Exit)), Pair("bonus", JsonWriter.String(z.Bonus)),
                 Pair("commandsEnabled", JsonWriter.Bool(z.CommandsEnabled)), Pair("commandCooldown", JsonWriter.Number(z.CommandCooldown)),
                 Pair("enterCommands", JsonWriter.Array(z.EnterCommands.Select(JsonWriter.String))), Pair("exitCommands", JsonWriter.Array(z.ExitCommands.Select(JsonWriter.String))),
-                Pair("movement", WriteMovement(z.Movement))
+                Pair("movement", WriteMovement(z.Movement)), Pair("schedule", WriteSchedule(z.Schedule))
             })))) });
+
+        private static ZoneSchedule ReadSchedule(object? value)
+        {
+            if (!(value is Dictionary<string, object?> map)) throw Invalid();
+            Keys(map, "enabled", "start", "end", "offsetMinutes", "days", "fromMinute", "toMinute");
+            var s = new ZoneSchedule {
+                Enabled = Boolean(map, "enabled"), Start = (long)Number(map, "start", 0, 253402300799, true),
+                End = (long)Number(map, "end", 0, 253402300799, true), OffsetMinutes = (int)Number(map, "offsetMinutes", -720, 840, true),
+                Days = (int)Number(map, "days", 0, 127, true), FromMinute = (int)Number(map, "fromMinute", 0, 1439, true),
+                ToMinute = (int)Number(map, "toMinute", 0, 1439, true)
+            };
+            if (s.OffsetMinutes % 15 != 0 || (s.Start != 0 && s.End != 0 && s.Start >= s.End)) throw Invalid();
+            return s;
+        }
+        private static string WriteSchedule(ZoneSchedule s) => JsonWriter.Object(new[] {
+            Pair("enabled", JsonWriter.Bool(s.Enabled)), Pair("start", JsonWriter.Number(s.Start)), Pair("end", JsonWriter.Number(s.End)),
+            Pair("offsetMinutes", JsonWriter.Number(s.OffsetMinutes)), Pair("days", JsonWriter.Number(s.Days)),
+            Pair("fromMinute", JsonWriter.Number(s.FromMinute)), Pair("toMinute", JsonWriter.Number(s.ToMinute))
+        });
 
         private static ZoneMovement ReadMovement(object? value, bool allowLegacy)
         {

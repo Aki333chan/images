@@ -76,6 +76,7 @@ namespace Aurum.Companion.Game
                     var loaded = ZoneRules.Read(File.ReadAllText(path), allowLegacy: true);
                     CheckBuffs(loaded);
                     _rules = loaded;
+                    _rules.RefreshSchedules(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
                 }
             }
             catch (Exception e)
@@ -119,6 +120,7 @@ namespace Aurum.Companion.Game
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
             _rules = next;
+            _rules.RefreshSchedules(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             _containment.RulesChanged(next);
             _returns.Clear();
             _inside.Clear(); // Edits must not replay entry/exit messages or future rewards.
@@ -154,6 +156,8 @@ namespace Aurum.Companion.Game
                 var world = GameManager.Instance.World;
                 var online = new HashSet<int>();
                 long utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var scheduleChanges = _rules.RefreshSchedules(utc);
+                if (scheduleChanges.Length != 0) _containment.RulesChanged(_rules);
                 int commandBudget = 8;
                 foreach (var player in world.Players.list)
                 {
@@ -163,6 +167,10 @@ namespace Aurum.Companion.Game
                     var active = _rules.Zones.Where(z => z.Contains(player.position.x, player.position.z)).ToArray();
                     var ids = new HashSet<string>(active.Select(z => z.Id), StringComparer.Ordinal);
                     bool observed = _inside.TryGetValue(player.entityId, out var before);
+                    // Clock transitions are not crossings; preserve real crossings in unrelated zones.
+                    if (observed)
+                        foreach (string changed in scheduleChanges)
+                            if (ids.Contains(changed)) before!.Add(changed); else before!.Remove(changed);
                     var clientInfo = ConnectionManager.Instance.Clients.ForEntityId(player.entityId);
                     var identities = new[] { clientInfo?.InternalId?.CombinedString, clientInfo?.PlatformId?.CombinedString,
                         clientInfo?.CrossplatformId?.CombinedString }.Where(id => id != null).Cast<string>().ToArray();
@@ -197,7 +205,7 @@ namespace Aurum.Companion.Game
                         {
                             bool entered = ids.Contains(z.Id) && !before!.Contains(z.Id);
                             bool exited = !ids.Contains(z.Id) && before!.Contains(z.Id);
-                            if (z.Enabled && z.CommandsEnabled && (entered || exited))
+                            if (z.IsActive && z.CommandsEnabled && (entered || exited))
                                 RunCommands(player, z, entered, ref commandBudget);
                         }
                 }
@@ -205,7 +213,7 @@ namespace Aurum.Companion.Game
                 _containment.Retain(online);
                 foreach (int id in _returns.Keys.Where(id => !online.Contains(id)).ToArray()) _returns.Remove(id);
                 // ponytail: bounded scan of loaded entities only (64/sec). Use a native movement hook if a measured need arises.
-                if (_rules.Zones.Any(z => z.Enabled && z.Despawn != 0))
+                if (_rules.Zones.Any(z => z.IsActive && z.Despawn != 0))
                 {
                     var entities = world.Entities.list;
                     int count = Math.Min(64, entities.Count);

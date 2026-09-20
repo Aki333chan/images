@@ -6,6 +6,7 @@ import {
   parseSevenDaysZones,
   hasZoneCommands,
   defaultZoneMovement,
+  defaultZoneSchedule,
   type SevenDaysZone,
   type SevenDaysZones,
 } from '@aurum/shared';
@@ -13,6 +14,7 @@ import { useAuth } from '../../lib/auth';
 import { useI18n } from '../../i18n';
 import { api } from '../../lib/api';
 import { Button, ErrorText, Input, Spinner } from '../../components/ui';
+import { zoneClock, zoneOffset, zoneDate, zoneDateUtc } from './zone-time';
 
 const selectClass =
   'block w-full rounded border border-border bg-card px-3 py-2 text-base sm:text-sm';
@@ -101,6 +103,7 @@ export function useSevenDaysZones(serverId: string) {
       enterCommands: [],
       exitCommands: [],
       movement: defaultZoneMovement(),
+      schedule: defaultZoneSchedule(),
       ...zonePreset('safe'),
     });
     setCorner(null);
@@ -161,7 +164,9 @@ export function useSevenDaysZones(serverId: string) {
         t(
           (e as Error).message === 'zones_destination_conflict'
             ? 'sdtd.zones.destinationConflict'
-            : 'sdtd.zones.invalid',
+            : (e as Error).message === 'zones_prison_schedule'
+              ? 'sdtd.zones.schedule.prison'
+              : 'sdtd.zones.invalid',
         ),
       );
       return;
@@ -347,6 +352,7 @@ export function SevenDaysZoneEditor({
                     const type = e.target.value as SevenDaysZone['type'];
                     change({
                       ...zonePreset(type),
+                      schedule: type === 'prison' ? { ...z.schedule, enabled: false } : z.schedule,
                       movement: {
                         ...z.movement,
                         mode:
@@ -383,6 +389,143 @@ export function SevenDaysZoneEditor({
               />
               {t('sdtd.zones.enabled')}
             </label>
+            <details
+              className="border-t border-border pt-3"
+              open={z.schedule.enabled ? true : undefined}
+            >
+              <summary className="cursor-pointer text-sm font-semibold">
+                {t('sdtd.zones.schedule.title')}
+              </summary>
+              <div className="mt-3 space-y-3">
+                <p className="max-w-prose text-xs text-muted">
+                  {t(
+                    z.movement.mode === 'prison'
+                      ? 'sdtd.zones.schedule.prison'
+                      : 'sdtd.zones.schedule.help',
+                  )}
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    disabled={z.movement.mode === 'prison'}
+                    checked={z.schedule.enabled}
+                    onChange={(e) =>
+                      change({ schedule: { ...z.schedule, enabled: e.target.checked } })
+                    }
+                  />
+                  {t('sdtd.zones.schedule.enabled')}
+                </label>
+                {z.schedule.enabled && z.movement.mode !== 'prison' && (
+                  <fieldset className="space-y-3">
+                    <label className="block space-y-1 text-sm">
+                      {t('sdtd.zones.schedule.offset')}
+                      <select
+                        className={selectClass}
+                        aria-label={t('sdtd.zones.schedule.offset')}
+                        value={z.schedule.offsetMinutes}
+                        onChange={(e) =>
+                          change({
+                            schedule: { ...z.schedule, offsetMinutes: Number(e.target.value) },
+                          })
+                        }
+                      >
+                        {Array.from({ length: 105 }, (_, i) => i * 15 - 720).map((offset) => (
+                          <option key={offset} value={offset}>
+                            {zoneOffset(offset)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="max-w-prose text-xs text-muted">
+                      {t('sdtd.zones.schedule.offsetHelp')}
+                    </p>
+                    <fieldset>
+                      <legend className="mb-2 text-sm font-semibold">
+                        {t('sdtd.zones.schedule.days')}
+                      </legend>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2">
+                        {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day, index) => (
+                          <label key={day} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={(z.schedule.days & (1 << index)) !== 0}
+                              onChange={(e) =>
+                                change({
+                                  schedule: {
+                                    ...z.schedule,
+                                    days: e.target.checked
+                                      ? z.schedule.days | (1 << index)
+                                      : z.schedule.days & ~(1 << index),
+                                  },
+                                })
+                              }
+                            />
+                            {t(`sdtd.zones.schedule.${day}`)}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    {z.schedule.days === 0 && (
+                      <p role="status" className="text-sm text-amber-400">
+                        {t('sdtd.zones.schedule.noDays')}
+                      </p>
+                    )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(['fromMinute', 'toMinute'] as const).map((key) => (
+                        <label key={key} className="min-w-0 space-y-1 text-sm">
+                          {t(`sdtd.zones.schedule.${key}`)}
+                          <Input
+                            type="time"
+                            required
+                            step={60}
+                            value={
+                              Number.isFinite(z.schedule[key]) ? zoneClock(z.schedule[key]) : ''
+                            }
+                            onChange={(e) => {
+                              const [hour = NaN, minute = NaN] = e.target.value
+                                .split(':')
+                                .map(Number);
+                              change({ schedule: { ...z.schedule, [key]: hour * 60 + minute } });
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="max-w-prose text-xs text-muted">
+                      {t('sdtd.zones.schedule.hoursHelp')}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(['start', 'end'] as const).map((key) => (
+                        <label key={key} className="min-w-0 space-y-1 text-sm">
+                          {t(`sdtd.zones.schedule.${key}`)}
+                          <Input
+                            type="datetime-local"
+                            step={60}
+                            min="1970-01-02T00:00"
+                            max="9999-12-30T23:59"
+                            value={zoneDate(z.schedule[key], z.schedule.offsetMinutes)}
+                            onChange={(e) =>
+                              change({
+                                schedule: {
+                                  ...z.schedule,
+                                  [key]: zoneDateUtc(e.target.value, z.schedule.offsetMinutes),
+                                },
+                              })
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="max-w-prose text-xs text-muted">
+                      {t('sdtd.zones.schedule.datesHelp')}
+                    </p>
+                    <p className="max-w-prose text-xs text-muted">
+                      {t('sdtd.zones.schedule.transitions')}
+                    </p>
+                  </fieldset>
+                )}
+              </div>
+            </details>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(['x1', 'z1', 'x2', 'z2'] as const).map((key) => (
                 <label key={key} className="space-y-1 text-sm">
@@ -498,6 +641,10 @@ export function SevenDaysZoneEditor({
                           ...z.movement,
                           mode: e.target.value as SevenDaysZone['movement']['mode'],
                         },
+                        schedule:
+                          e.target.value === 'prison'
+                            ? { ...z.schedule, enabled: false }
+                            : z.schedule,
                       })
                     }
                   >
