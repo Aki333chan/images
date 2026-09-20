@@ -6,9 +6,11 @@ export const SEVENDAYS_ZONE_TYPES = [
   'custom',
   'restricted',
   'portal',
+  'prison',
+  'event',
 ] as const;
 export interface SevenDaysZoneMovement {
-  mode: 'none' | 'restricted' | 'portal';
+  mode: 'none' | 'restricted' | 'portal' | 'prison' | 'event';
   priority: number;
   minLevel: number;
   maxLevel: number;
@@ -18,6 +20,9 @@ export interface SevenDaysZoneMovement {
   z: number;
   cooldown: number;
   message: string;
+  sentences: { player: string; until: number }[];
+  dismount: boolean;
+  kickOnFailure: boolean;
 }
 export const defaultZoneMovement = (): SevenDaysZoneMovement => ({
   mode: 'none',
@@ -30,6 +35,9 @@ export const defaultZoneMovement = (): SevenDaysZoneMovement => ({
   z: 0,
   cooldown: 10,
   message: '',
+  sentences: [],
+  dismount: false,
+  kickOnFailure: false,
 });
 export const SEVENDAYS_ZONE_BONUSES = ['none', 'regeneration', 'stamina', 'speed'] as const;
 export interface SevenDaysZone {
@@ -81,6 +89,7 @@ export const hasZoneCommands = (zone: SevenDaysZone): boolean =>
   zone.commandsEnabled ||
   zone.enterCommands.length > 0 ||
   zone.exitCommands.length > 0 ||
+  zone.movement.sentences.length > 0 ||
   zone.movement.mode !== 'none';
 
 /** Same strict boundary in API, browser and companion. No silent unknown rule fallback. */
@@ -148,9 +157,14 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'z',
       'cooldown',
       'message',
+      'sentences',
+      'dismount',
+      'kickOnFailure',
     ]);
     if (
-      !['none', 'restricted', 'portal'].includes(movement.mode as string) ||
+      !['none', 'restricted', 'portal', 'prison', 'event'].includes(movement.mode as string) ||
+      typeof movement.dismount !== 'boolean' ||
+      typeof movement.kickOnFailure !== 'boolean' ||
       !number(movement.priority, -1000, 1000, true) ||
       !number(movement.minLevel, 0, 10000, true) ||
       !number(movement.maxLevel, 0, 10000, true) ||
@@ -168,6 +182,22 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       new Set(movement.players).size !== movement.players.length
     )
       return invalid();
+    if (!Array.isArray(movement.sentences) || movement.sentences.length > 64) return invalid();
+    const sentenced = new Set<string>();
+    const sentences = movement.sentences
+      .map((value) => {
+        const s = object(value, ['player', 'until']);
+        if (
+          !text(s.player, 121) ||
+          !/^[A-Za-z][A-Za-z0-9]{0,23}_[A-Za-z0-9_-]{1,96}$/.test(s.player) ||
+          sentenced.has(s.player) ||
+          !number(s.until, 0, 253402300799, true)
+        )
+          return invalid();
+        sentenced.add(s.player);
+        return { player: s.player, until: s.until };
+      })
+      .sort((a, b) => (a.player < b.player ? -1 : a.player > b.player ? 1 : 0));
     if (
       !text(z.id, 48) ||
       !/^[a-z0-9][a-z0-9_-]{0,47}$/.test(z.id) ||
@@ -203,17 +233,27 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
     ids.add(z.id);
     return {
       ...z,
-      movement: { ...movement, players: [...movement.players].sort() },
+      movement: { ...movement, players: [...movement.players].sort(), sentences },
     } as unknown as SevenDaysZone;
   });
+  const prisoners = zones
+    .filter((z) => z.enabled && z.movement.mode === 'prison')
+    .flatMap((z) => z.movement.sentences.map((s) => s.player));
+  if (new Set(prisoners).size !== prisoners.length) return invalid();
+  const contains = (z: SevenDaysZone, x: number, y: number) =>
+    x >= z.x1 && x <= z.x2 && y >= z.z1 && y <= z.z2;
   for (const zone of zones) {
     const m = zone.movement;
+    const containment = m.mode === 'prison' || m.mode === 'event';
+    if (zone.enabled && containment && !contains(zone, m.x + 0.5, m.z + 0.5))
+      throw new Error('zones_destination_conflict');
     if (
       zone.enabled &&
       m.mode !== 'none' &&
       zones.some(
         (other) =>
           other.enabled &&
+          !(containment && other.id === zone.id) &&
           other.movement.mode !== 'none' &&
           m.x + 0.5 >= other.x1 &&
           m.x + 0.5 <= other.x2 &&

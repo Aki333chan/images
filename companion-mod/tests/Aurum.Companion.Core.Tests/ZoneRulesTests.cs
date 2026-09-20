@@ -61,7 +61,7 @@ public sealed class ZoneRulesTests
     public void MovementRejectsUnsafeConfigAndLoadsOldFilesOnlyExplicitly()
     {
         var zone = Safe(); var rules = new ZoneRules { Zones = new[] { zone } };
-        const string movement = ",\"movement\":{\"mode\":\"none\",\"priority\":0,\"minLevel\":0,\"maxLevel\":0,\"players\":[],\"x\":0,\"y\":65,\"z\":0,\"cooldown\":10,\"message\":\"\"}";
+        const string movement = ",\"movement\":{\"mode\":\"none\",\"priority\":0,\"minLevel\":0,\"maxLevel\":0,\"players\":[],\"x\":0,\"y\":65,\"z\":0,\"cooldown\":10,\"message\":\"\",\"dismount\":false,\"kickOnFailure\":false,\"sentences\":[]}";
         string legacy = rules.Write().Replace(movement, "");
         Assert.NotEqual(rules.Write(), legacy);
         Assert.ThrowsAny<Exception>(() => ZoneRules.Read(legacy));

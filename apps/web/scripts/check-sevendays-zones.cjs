@@ -82,6 +82,32 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await button('sdtd.zones.save').click();
     await page.waitForFunction(() => window.zones.revision === 5);
     assert.equal(await page.evaluate(() => window.zones.zones[0].movement.mode), 'portal');
+    await page.getByLabel(catalog['sdtd.zones.type'], {exact:true}).selectOption('event');
+    for (const [key, value] of [['X1','-10'],['Z1','-10'],['X2','10'],['Z2','10'],['X','0'],['Z','0']])
+      await page.getByLabel(key, {exact:true}).fill(value);
+    assert.equal(await page.getByLabel(catalog['sdtd.zones.minLevel'], {exact:true}).count(), 0);
+    await page.getByLabel(catalog['sdtd.zones.participants'], {exact:true}).fill('Steam_123');
+    await button('sdtd.zones.save').click();
+    await page.waitForFunction(() => window.zones.revision === 6);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.mode), 'event');
+    await page.getByLabel(catalog['sdtd.zones.type'], {exact:true}).selectOption('prison');
+    await page.getByLabel(catalog['sdtd.zones.addOnlinePlayer'], {exact:true}).selectOption('Steam_123');
+    await page.getByLabel(`${catalog['sdtd.zones.releaseAt']} Steam_123`, {exact:true}).fill('2030-10-01T12:30');
+    await page.getByLabel(catalog['sdtd.zones.prisonerId'], {exact:true}).fill('EOS_offline');
+    await button('sdtd.zones.addPrisoner').click();
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.sentences.length), 0); // Staged until Save.
+    assert.equal(await page.getByLabel(catalog['sdtd.zones.kickOnFailure'], {exact:true}).isChecked(), false);
+    await page.getByLabel(catalog['sdtd.zones.dismount'], {exact:true}).check();
+    await button('sdtd.zones.save').click();
+    await page.waitForFunction(() => window.zones.revision === 7);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.sentences.length), 2);
+    assert.ok(await page.evaluate(() => window.zones.zones[0].movement.sentences.find(s => s.player === 'Steam_123').until > 1900000000));
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.sentences.find(s => s.player === 'EOS_offline').until), 0);
+    await button('sdtd.zones.release').first().click();
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.sentences.length), 2);
+    await button('sdtd.zones.save').click();
+    await page.waitForFunction(() => window.zones.revision === 8);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.sentences.length), 1);
     for (const [name, width] of [['desktop', 1200], ['mobile', 390]]) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(() => document.fonts.ready); await page.evaluate(() => scrollTo(0, 0));
@@ -95,13 +121,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.getByLabel(catalog['sdtd.zones.name'], { exact: true }).inputValue(), 'Unsaved edit');
     await page.evaluate(() => { window.conflict = false; window.commandsAllowed = false; window.render(); });
     await button('sdtd.zones.title').click();
-    await page.locator('svg [data-zone-id]').click();
+    // Tiny zone overlaps the player marker; select by the native zone list instead.
+    await page.getByLabel(catalog['sdtd.zones.select'], {exact:true}).selectOption(await page.evaluate(() => window.zones.zones[0].id));
     assert.equal(await page.getByLabel(catalog['sdtd.zones.name'], {exact:true}).isDisabled(), true);
     assert.equal(await button('sdtd.zones.delete').isDisabled(), true);
     await page.evaluate(() => { window.allowed = false; window.render(); });
     await button('sdtd.zones.title').click();
     assert.equal(await button('sdtd.zones.add').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: two corners, defaults, stable save, restricted/portal settings, online IDs, unloaded destination retains draft, command authority, keyboard selection, conflict, read-only, desktop/mobile overflow.');
+    console.log('PASS: drawing, restricted/portal/event/prison settings, online/offline assignments, timed/manual release staged until save, default safety flags, unloaded destination, permissions, keyboard, conflict, desktop/mobile.');
   } finally { await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

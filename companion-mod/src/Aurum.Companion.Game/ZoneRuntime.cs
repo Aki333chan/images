@@ -22,6 +22,14 @@ namespace Aurum.Companion.Game
         private float _nextTick;
         private int _creatureCursor;
         private readonly ZoneCommandGate _commandGate = new ZoneCommandGate();
+        private readonly ZoneContainment _containment = new ZoneContainment();
+        private readonly Dictionary<int, ReturnAttempts> _returns = new Dictionary<int, ReturnAttempts>();
+        private sealed class ReturnAttempts
+        {
+            public string Zone = "";
+            public double Since;
+            public int Count;
+        }
         private double _commandWarningAfter;
         private readonly Dictionary<int, HashSet<string>> _inside = new Dictionary<int, HashSet<string>>();
         private readonly Dictionary<int, float> _noticeAfter = new Dictionary<int, float>();
@@ -59,6 +67,7 @@ namespace Aurum.Companion.Game
             string path = Path.Combine(GameIO.GetSaveGameDir(), "aurum-zones.json");
             if (_path == path) return;
             _path = path; _rules = new ZoneRules(); _inside.Clear(); _noticeAfter.Clear(); _commandGate.Clear(); _error = null;
+            _containment.Clear(); _returns.Clear();
             try
             {
                 if (File.Exists(path))
@@ -110,6 +119,8 @@ namespace Aurum.Companion.Game
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
             _rules = next;
+            _containment.RulesChanged(next);
+            _returns.Clear();
             _inside.Clear(); // Edits must not replay entry/exit messages or future rewards.
             _nextTick = 0;
             return _rules.Write();
@@ -142,10 +153,12 @@ namespace Aurum.Companion.Game
                 if (_error != null) return;
                 var world = GameManager.Instance.World;
                 var online = new HashSet<int>();
+                long utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 int commandBudget = 8;
                 foreach (var player in world.Players.list)
                 {
-                    if (player == null || player.IsDead()) continue;
+                    if (player == null) continue;
+                    if (player.IsDead()) { _containment.Remove(player.entityId); _returns.Remove(player.entityId); _inside.Remove(player.entityId); continue; }
                     online.Add(player.entityId);
                     var active = _rules.Zones.Where(z => z.Contains(player.position.x, player.position.z)).ToArray();
                     var ids = new HashSet<string>(active.Select(z => z.Id), StringComparer.Ordinal);
@@ -153,8 +166,12 @@ namespace Aurum.Companion.Game
                     var clientInfo = ConnectionManager.Instance.Clients.ForEntityId(player.entityId);
                     var identities = new[] { clientInfo?.InternalId?.CombinedString, clientInfo?.PlatformId?.CombinedString,
                         clientInfo?.CrossplatformId?.CombinedString }.Where(id => id != null).Cast<string>().ToArray();
-                    var movement = ZoneMovementPolicy.Select(_rules, player.position.x, player.position.z,
-                        player.Progression?.Level ?? -1, identities, before);
+                    var holding = _containment.Select(_rules, player.entityId, identities, player.position.x,
+                        player.position.z, before, utc);
+                    var movement = holding != null ? (holding.Contains(player.position.x, player.position.z) ? null : holding) :
+                        ZoneMovementPolicy.Select(_rules, player.position.x, player.position.z,
+                            player.Progression?.Level ?? -1, identities, before);
+                    if (movement == null || !movement.Movement.IsContainment) _returns.Remove(player.entityId);
                     if (observed &&
                         (!_noticeAfter.TryGetValue(player.entityId, out float after) || Time.realtimeSinceStartup >= after))
                     {
@@ -175,7 +192,7 @@ namespace Aurum.Companion.Game
                     }
                     // Denied players cannot trigger entry rewards; a structured portal owns this transition.
                     if (movement != null) RunMovement(player, clientInfo, movement, ref commandBudget);
-                    else if (observed)
+                    else if (observed && holding == null)
                         foreach (var z in _rules.Zones)
                         {
                             bool entered = ids.Contains(z.Id) && !before!.Contains(z.Id);
@@ -185,6 +202,8 @@ namespace Aurum.Companion.Game
                         }
                 }
                 foreach (int id in _inside.Keys.Where(id => !online.Contains(id)).ToArray()) { _inside.Remove(id); _noticeAfter.Remove(id); }
+                _containment.Retain(online);
+                foreach (int id in _returns.Keys.Where(id => !online.Contains(id)).ToArray()) _returns.Remove(id);
                 // ponytail: bounded scan of loaded entities only (64/sec). Use a native movement hook if a measured need arises.
                 if (_rules.Zones.Any(z => z.Enabled && z.Despawn != 0))
                 {
@@ -226,10 +245,30 @@ namespace Aurum.Companion.Game
             budget--;
             try
             {
-                // Do not teleport an occupied vehicle or detach a passenger implicitly.
-                if (player.AttachedToEntity != null || !ZoneMovementPolicy.DestinationClear(_rules, m) || !DestinationReady(m))
+                // Count observed failed returns, not successful packet sends: the client may not move.
+                if (m.IsContainment)
                 {
-                    Log.Warning("[AurumCompanion] Zone movement skipped: " + zone.Id + " entity=" + player.entityId + " destination unavailable or player mounted.");
+                    if (!_returns.TryGetValue(player.entityId, out var attempts) || attempts.Zone != zone.Id)
+                        _returns[player.entityId] = attempts = new ReturnAttempts { Zone = zone.Id, Since = Time.realtimeSinceStartup };
+                    if (attempts.Count >= 3 && Time.realtimeSinceStartup - attempts.Since >= 30 && m.KickOnFailure)
+                    {
+                        new ConsoleCmdKick().Execute(new List<string> { player.entityId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            "Zone return failed. Please contact a server administrator." }, default(CommandSenderInfo));
+                        Log.Warning("[AurumCompanion] Zone return failed repeatedly; strict kick: " + zone.Id + " entity=" + player.entityId);
+                        return;
+                    }
+                    attempts.Count++;
+                }
+                if (!ZoneMovementPolicy.DestinationClear(_rules, m) || !DestinationReady(m))
+                {
+                    Log.Warning("[AurumCompanion] Zone movement skipped: " + zone.Id + " entity=" + player.entityId + " destination unavailable.");
+                    return;
+                }
+                if (player.AttachedToEntity != null)
+                {
+                    // Explicit opt-in; leave the vehicle where it is and wait for native detach before teleport.
+                    if (m.IsContainment && m.Dismount) player.SendDetach();
+                    else Log.Warning("[AurumCompanion] Zone movement skipped: " + zone.Id + " entity=" + player.entityId + " player mounted.");
                     return;
                 }
                 // Public native packet, same path as teleportplayer; never call publicized protected helpers.
@@ -277,11 +316,11 @@ namespace Aurum.Companion.Game
         private static int BonusIndex(string bonus) => bonus == "regeneration" ? 1 : bonus == "stamina" ? 2 : bonus == "speed" ? 3 : 0;
         private void PlayerSpawned(ref ModEvents.SPlayerSpawnedInWorldData data)
         {
-            if (data.RespawnType != RespawnType.Teleport) { _inside.Remove(data.EntityId); _noticeAfter.Remove(data.EntityId); }
+            if (data.RespawnType != RespawnType.Teleport) { _inside.Remove(data.EntityId); _noticeAfter.Remove(data.EntityId); _containment.Remove(data.EntityId); _returns.Remove(data.EntityId); }
         }
         private void PlayerLeft(ref ModEvents.SPlayerDisconnectedData data)
         {
-            if (data.ClientInfo != null) { _inside.Remove(data.ClientInfo.entityId); _noticeAfter.Remove(data.ClientInfo.entityId); }
+            if (data.ClientInfo != null) { _inside.Remove(data.ClientInfo.entityId); _noticeAfter.Remove(data.ClientInfo.entityId); _containment.Remove(data.ClientInfo.entityId); _returns.Remove(data.ClientInfo.entityId); }
         }
         private static int Category(Entity e)
         {
@@ -329,6 +368,7 @@ namespace Aurum.Companion.Game
             Unpatch();
             _inside.Clear(); _noticeAfter.Clear();
             _commandGate.Clear();
+            _containment.Clear(); _returns.Clear();
         }
         private void Unpatch()
         {

@@ -35,6 +35,47 @@ const fixture = (): SevenDaysZones => ({
 });
 
 describe('7DTD zones', () => {
+  it('validates prison assignments, internal destinations and protects releases', async () => {
+    const current = fixture();
+    current.zones[0]!.type = 'prison';
+    current.zones[0]!.movement.mode = 'prison';
+    current.zones[0]!.movement.sentences = [{ player: 'Steam_1', until: 2000000000 }];
+    expect(parseSevenDaysZones(current)).toEqual(current);
+    for (const patch of [
+      { x: 100 },
+      { sentences: [{ player: 'Alice', until: 0 }] },
+      { sentences: [{ player: 'Steam_1', until: -1 }] },
+      { kickOnFailure: 'true' },
+      {
+        sentences: [
+          { player: 'Steam_1', until: 0 },
+          { player: 'Steam_1', until: 1 },
+        ],
+      },
+    ]) {
+      const next = structuredClone(current);
+      Object.assign(next.zones[0]!.movement, patch);
+      expect(() => parseSevenDaysZones(next)).toThrow();
+    }
+    const remote = { zoneRequest: jest.fn().mockResolvedValue(current) };
+    const service = new SevenDaysMapService(remote as unknown as SevenDaysCompanionService);
+    const released = structuredClone(current);
+    released.zones[0]!.movement.sentences = [];
+    await expect(service.zones('s', released)).rejects.toThrow(
+      'zones_commands_permission_required',
+    );
+    await service.zones('s', released, true);
+    expect(remote.zoneRequest).toHaveBeenLastCalledWith('s', released);
+    const duplicate = structuredClone(current.zones[0]!);
+    duplicate.id = 'another';
+    expect(() =>
+      parseSevenDaysZones({ ...current, zones: [...current.zones, duplicate] }),
+    ).toThrow();
+    const ev = fixture();
+    ev.zones[0]!.type = 'event';
+    ev.zones[0]!.movement.mode = 'event';
+    expect(parseSevenDaysZones(ev)).toEqual(ev);
+  });
   it('validates movement rules, identities, destination conflicts and protects automatic teleports', async () => {
     const current = fixture();
     current.zones[0]!.movement = {

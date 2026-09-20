@@ -20,7 +20,7 @@ const selectClass =
 export function zonePreset(type: SevenDaysZone['type']) {
   return {
     type,
-    noPvp: type === 'safe' || type === 'sanctuary' || type === 'restricted',
+    noPvp: ['safe', 'sanctuary', 'restricted', 'prison', 'event'].includes(type),
     noDamage: false,
     blockSpawn: type === 'sanctuary' ? 5 : 0,
     despawn: 0,
@@ -232,14 +232,30 @@ export function SevenDaysZoneEditor({
 }) {
   const { t } = useI18n();
   const z = zone.draft;
+  const containment = z?.movement.mode === 'prison' || z?.movement.mode === 'event';
+  const [prisonerId, setPrisonerId] = useState('');
   const selectedId = z?.id;
   const nameInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
+    setPrisonerId('');
     if (selectedId && !zone.drawing) nameInput.current?.focus({ preventScroll: true });
   }, [selectedId, zone.drawing]);
   if (!zone.open) return null;
   const change = (fields: Partial<SevenDaysZone>) => {
     if (z) zone.setDraft({ ...z, ...fields });
+  };
+  const addPrisoner = (player: string) => {
+    if (
+      !z ||
+      z.movement.sentences.length >= 64 ||
+      !/^[A-Za-z][A-Za-z0-9]{0,23}_[A-Za-z0-9_-]{1,96}$/.test(player) ||
+      z.movement.sentences.some((s) => s.player === player)
+    )
+      return;
+    change({
+      movement: { ...z.movement, sentences: [...z.movement.sentences, { player, until: 0 }] },
+    });
+    setPrisonerId('');
   };
   return (
     <section className="space-y-4 border-t border-border pt-4" aria-label={t('sdtd.zones.title')}>
@@ -333,7 +349,13 @@ export function SevenDaysZoneEditor({
                       ...zonePreset(type),
                       movement: {
                         ...z.movement,
-                        mode: type === 'restricted' || type === 'portal' ? type : 'none',
+                        mode:
+                          type === 'restricted' ||
+                          type === 'portal' ||
+                          type === 'prison' ||
+                          type === 'event'
+                            ? type
+                            : 'none',
                       },
                     });
                   }}
@@ -343,7 +365,8 @@ export function SevenDaysZoneEditor({
                       key={type}
                       value={type}
                       disabled={
-                        !zone.commandsManage && (type === 'restricted' || type === 'portal')
+                        !zone.commandsManage &&
+                        ['restricted', 'portal', 'prison', 'event'].includes(type)
                       }
                     >
                       {t(`sdtd.zones.type.${type}`)}
@@ -478,7 +501,7 @@ export function SevenDaysZoneEditor({
                       })
                     }
                   >
-                    {(['none', 'restricted', 'portal'] as const).map((mode) => (
+                    {(['none', 'restricted', 'portal', 'prison', 'event'] as const).map((mode) => (
                       <option key={mode} value={mode}>
                         {t(`sdtd.zones.movement.${mode}`)}
                       </option>
@@ -490,39 +513,149 @@ export function SevenDaysZoneEditor({
                     <p className="max-w-prose text-xs text-muted">
                       {t(`sdtd.zones.movementHelp.${z.movement.mode}`)}
                     </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {(['minLevel', 'maxLevel'] as const).map((key) => (
-                        <label key={key} className="block space-y-1 text-sm">
-                          {t(`sdtd.zones.${key}`)}
-                          <Input
-                            required
-                            type="number"
-                            min={0}
-                            max={10000}
-                            step={1}
-                            value={Number.isFinite(z.movement[key]) ? z.movement[key] : ''}
-                            onChange={(e) =>
-                              change({ movement: { ...z.movement, [key]: e.target.valueAsNumber } })
+                    {!containment && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {(['minLevel', 'maxLevel'] as const).map((key) => (
+                          <label key={key} className="block space-y-1 text-sm">
+                            {t(`sdtd.zones.${key}`)}
+                            <Input
+                              required
+                              type="number"
+                              min={0}
+                              max={10000}
+                              step={1}
+                              value={Number.isFinite(z.movement[key]) ? z.movement[key] : ''}
+                              onChange={(e) =>
+                                change({
+                                  movement: { ...z.movement, [key]: e.target.valueAsNumber },
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    {z.movement.mode === 'prison' ? (
+                      <fieldset className="space-y-3">
+                        <legend className="mb-2 text-sm font-semibold">
+                          {t('sdtd.zones.prisoners')}
+                        </legend>
+                        <p className="max-w-prose text-xs text-muted">
+                          {t('sdtd.zones.sentencesHelp')}
+                        </p>
+                        {z.movement.sentences.length === 0 && (
+                          <p className="text-sm text-muted">{t('sdtd.zones.noPrisoners')}</p>
+                        )}
+                        {z.movement.sentences.map((sentence) => (
+                          <div
+                            key={sentence.player}
+                            className="space-y-2 border-b border-border pb-3"
+                          >
+                            <p className="break-all text-sm">
+                              {players.find((p) => p.id === sentence.player)?.name ??
+                                sentence.player}
+                            </p>
+                            <div className="flex flex-wrap items-end gap-2">
+                              <label className="min-w-0 flex-1 space-y-1 text-sm">
+                                {t('sdtd.zones.releaseAt')}
+                                <Input
+                                  type="datetime-local"
+                                  aria-label={`${t('sdtd.zones.releaseAt')} ${sentence.player}`}
+                                  value={
+                                    sentence.until
+                                      ? new Date(
+                                          sentence.until * 1000 -
+                                            new Date(sentence.until * 1000).getTimezoneOffset() *
+                                              60000,
+                                        )
+                                          .toISOString()
+                                          .slice(0, 16)
+                                      : ''
+                                  }
+                                  onChange={(e) =>
+                                    change({
+                                      movement: {
+                                        ...z.movement,
+                                        sentences: z.movement.sentences.map((s) =>
+                                          s.player !== sentence.player
+                                            ? s
+                                            : {
+                                                ...s,
+                                                until: e.target.value
+                                                  ? Math.floor(
+                                                      new Date(e.target.value).getTime() / 1000,
+                                                    )
+                                                  : 0,
+                                              },
+                                        ),
+                                      },
+                                    })
+                                  }
+                                />
+                              </label>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() =>
+                                  change({
+                                    movement: {
+                                      ...z.movement,
+                                      sentences: z.movement.sentences.filter(
+                                        (s) => s.player !== sentence.player,
+                                      ),
+                                    },
+                                  })
+                                }
+                              >
+                                {t('sdtd.zones.release')}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex flex-wrap items-end gap-2">
+                          <label className="min-w-0 flex-1 space-y-1 text-sm">
+                            {t('sdtd.zones.prisonerId')}
+                            <Input
+                              maxLength={121}
+                              value={prisonerId}
+                              onChange={(e) => setPrisonerId(e.target.value)}
+                            />
+                          </label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={
+                              z.movement.sentences.length >= 64 ||
+                              !/^[A-Za-z][A-Za-z0-9]{0,23}_[A-Za-z0-9_-]{1,96}$/.test(
+                                prisonerId.trim(),
+                              ) ||
+                              z.movement.sentences.some((s) => s.player === prisonerId.trim())
                             }
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <label className="block space-y-1 text-sm">
-                      {t('sdtd.zones.allowedPlayers')}
-                      <textarea
-                        rows={3}
-                        aria-label={t('sdtd.zones.allowedPlayers')}
-                        maxLength={7808}
-                        className={`${selectClass} font-mono`}
-                        value={z.movement.players.join('\n')}
-                        onChange={(e) =>
-                          change({
-                            movement: { ...z.movement, players: e.target.value.split(/\r?\n/) },
-                          })
-                        }
-                      />
-                    </label>
+                            onClick={() => addPrisoner(prisonerId.trim())}
+                          >
+                            {t('sdtd.zones.addPrisoner')}
+                          </Button>
+                        </div>
+                      </fieldset>
+                    ) : (
+                      <label className="block space-y-1 text-sm">
+                        {t(containment ? 'sdtd.zones.participants' : 'sdtd.zones.allowedPlayers')}
+                        <textarea
+                          rows={3}
+                          aria-label={t(
+                            containment ? 'sdtd.zones.participants' : 'sdtd.zones.allowedPlayers',
+                          )}
+                          maxLength={7808}
+                          className={`${selectClass} font-mono`}
+                          value={z.movement.players.join('\n')}
+                          onChange={(e) =>
+                            change({
+                              movement: { ...z.movement, players: e.target.value.split(/\r?\n/) },
+                            })
+                          }
+                        />
+                      </label>
+                    )}
                     <label className="block space-y-1 text-sm">
                       {t('sdtd.zones.addOnlinePlayer')}
                       <select
@@ -530,7 +663,8 @@ export function SevenDaysZoneEditor({
                         aria-label={t('sdtd.zones.addOnlinePlayer')}
                         value=""
                         onChange={(e) => {
-                          if (e.target.value)
+                          if (z.movement.mode === 'prison') addPrisoner(e.target.value);
+                          else if (e.target.value)
                             change({
                               movement: {
                                 ...z.movement,
@@ -541,7 +675,11 @@ export function SevenDaysZoneEditor({
                       >
                         <option value="">{t('sdtd.zones.chooseOnlinePlayer')}</option>
                         {players
-                          .filter((p) => !z.movement.players.includes(p.id))
+                          .filter((p) =>
+                            z.movement.mode === 'prison'
+                              ? !z.movement.sentences.some((s) => s.player === p.id)
+                              : !z.movement.players.includes(p.id),
+                          )
                           .map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name}
@@ -549,13 +687,17 @@ export function SevenDaysZoneEditor({
                           ))}
                       </select>
                     </label>
-                    <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.accessHelp')}</p>
+                    {!containment && (
+                      <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.accessHelp')}</p>
+                    )}
                     <fieldset className="space-y-2">
                       <legend className="mb-2 text-sm font-semibold">
                         {t(
-                          z.movement.mode === 'restricted'
-                            ? 'sdtd.zones.returnPoint'
-                            : 'sdtd.zones.destination',
+                          containment
+                            ? 'sdtd.zones.internalReturn'
+                            : z.movement.mode === 'restricted'
+                              ? 'sdtd.zones.returnPoint'
+                              : 'sdtd.zones.destination',
                         )}
                       </legend>
                       <div className="grid grid-cols-3 gap-3">
@@ -579,7 +721,11 @@ export function SevenDaysZoneEditor({
                         ))}
                       </div>
                       <p className="max-w-prose text-xs text-muted">
-                        {t('sdtd.zones.destinationHelp')}
+                        {t(
+                          containment
+                            ? 'sdtd.zones.internalReturnHelp'
+                            : 'sdtd.zones.destinationHelp',
+                        )}
                       </p>
                     </fieldset>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -600,6 +746,26 @@ export function SevenDaysZoneEditor({
                         </label>
                       ))}
                     </div>
+                    {containment && (
+                      <fieldset className="space-y-2">
+                        {(['dismount', 'kickOnFailure'] as const).map((key) => (
+                          <label key={key} className="flex items-start gap-2 text-sm">
+                            <input
+                              className="mt-1"
+                              type="checkbox"
+                              checked={z.movement[key]}
+                              onChange={(e) =>
+                                change({ movement: { ...z.movement, [key]: e.target.checked } })
+                              }
+                            />
+                            {t(`sdtd.zones.${key}`)}
+                          </label>
+                        ))}
+                        <p className="max-w-prose text-xs text-muted">
+                          {t('sdtd.zones.failureHelp')}
+                        </p>
+                      </fieldset>
+                    )}
                     <label className="block space-y-1 text-sm">
                       {t('sdtd.zones.movementMessage')}
                       <Input
@@ -611,7 +777,9 @@ export function SevenDaysZoneEditor({
                       />
                     </label>
                     <p className="max-w-prose text-xs text-muted">
-                      {t('sdtd.zones.movementLimits')}
+                      {t(
+                        containment ? 'sdtd.zones.containmentLimits' : 'sdtd.zones.movementLimits',
+                      )}
                     </p>
                   </>
                 )}

@@ -59,15 +59,18 @@ namespace Aurum.Companion.Core.Game
                     Enter = Text(map, "enter", 240), Exit = Text(map, "exit", 240), Bonus = Text(map, "bonus", 24),
                     CommandsEnabled = Boolean(map, "commandsEnabled"), CommandCooldown = (int)Number(map, "commandCooldown", 10, 86400, true),
                     EnterCommands = Commands(map, "enterCommands"), ExitCommands = Commands(map, "exitCommands"),
-                    Movement = ReadMovement(map["movement"])
+                    Movement = ReadMovement(map["movement"], allowLegacy)
                 };
                 if (!Regex.IsMatch(z.Id, "\\A[a-z0-9][a-z0-9_-]{0,47}\\z") || !ids.Add(z.Id) ||
                     string.IsNullOrWhiteSpace(z.Name) || z.X1 >= z.X2 || z.Z1 >= z.Z2 ||
-                    !new[] { "safe", "information", "sanctuary", "bonus", "custom", "restricted", "portal" }.Contains(z.Type) ||
+                    !new[] { "safe", "information", "sanctuary", "bonus", "custom", "restricted", "portal", "prison", "event" }.Contains(z.Type) ||
                     !new[] { "none", "regeneration", "stamina", "speed" }.Contains(z.Bonus)) throw Invalid();
                 zones.Add(z);
             }
             result.Zones = zones.ToArray();
+            var prisoners = result.Zones.Where(z => z.Enabled && z.Movement.Mode == "prison")
+                .SelectMany(z => z.Movement.Sentences).Select(s => s.Player).ToArray();
+            if (prisoners.Distinct(StringComparer.Ordinal).Count() != prisoners.Length) throw Invalid();
             if (result.Zones.Any(z => z.Enabled && z.Movement.Mode != "none" && !ZoneMovementPolicy.DestinationClear(result, z.Movement)))
                 throw new JsonReader.JsonException("zones_destination_conflict");
             return result;
@@ -106,23 +109,37 @@ namespace Aurum.Companion.Core.Game
                 Pair("movement", WriteMovement(z.Movement))
             })))) });
 
-        private static ZoneMovement ReadMovement(object? value)
+        private static ZoneMovement ReadMovement(object? value, bool allowLegacy)
         {
             if (!(value is Dictionary<string, object?> map)) throw Invalid();
-            Keys(map, "mode", "priority", "minLevel", "maxLevel", "players", "x", "y", "z", "cooldown", "message");
+            if (allowLegacy && !map.ContainsKey("sentences") && !map.ContainsKey("dismount") && !map.ContainsKey("kickOnFailure"))
+            { map["sentences"] = new List<object?>(); map["dismount"] = false; map["kickOnFailure"] = false; }
+            Keys(map, "mode", "priority", "minLevel", "maxLevel", "players", "x", "y", "z", "cooldown", "message", "sentences", "dismount", "kickOnFailure");
             var m = new ZoneMovement {
                 Mode = Text(map, "mode", 16), Priority = (int)Number(map, "priority", -1000, 1000, true),
                 MinLevel = (int)Number(map, "minLevel", 0, 10000, true), MaxLevel = (int)Number(map, "maxLevel", 0, 10000, true),
                 X = (int)Number(map, "x", -500000, 500000, true), Y = (int)Number(map, "y", 2, 251, true),
                 Z = (int)Number(map, "z", -500000, 500000, true), Cooldown = (int)Number(map, "cooldown", 10, 86400, true),
-                Message = Text(map, "message", 240)
+                Message = Text(map, "message", 240), Dismount = Boolean(map, "dismount"), KickOnFailure = Boolean(map, "kickOnFailure")
             };
-            if (!new[] { "none", "restricted", "portal" }.Contains(m.Mode) || (m.MaxLevel != 0 && m.MinLevel > m.MaxLevel) ||
+            if (!new[] { "none", "restricted", "portal", "prison", "event" }.Contains(m.Mode) || (m.MaxLevel != 0 && m.MinLevel > m.MaxLevel) ||
                 !(map["players"] is List<object?> list) || list.Count > 64) throw Invalid();
             var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in list)
                 if (!(item is string id) || !Regex.IsMatch(id, "\\A[A-Za-z][A-Za-z0-9]{0,23}_[A-Za-z0-9_-]{1,96}\\z") || !ids.Add(id)) throw Invalid();
             m.Players = ids.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+            if (!(map["sentences"] is List<object?> sentences) || sentences.Count > 64) throw Invalid();
+            var assignments = new List<ZoneSentence>();
+            ids.Clear();
+            foreach (var item in sentences)
+            {
+                if (!(item is Dictionary<string, object?> sentence)) throw Invalid();
+                Keys(sentence, "player", "until");
+                var id = Text(sentence, "player", 121);
+                if (!Regex.IsMatch(id, "\\A[A-Za-z][A-Za-z0-9]{0,23}_[A-Za-z0-9_-]{1,96}\\z") || !ids.Add(id)) throw Invalid();
+                assignments.Add(new ZoneSentence { Player = id, Until = (long)Number(sentence, "until", 0, 253402300799, true) });
+            }
+            m.Sentences = assignments.OrderBy(s => s.Player, StringComparer.Ordinal).ToArray();
             return m;
         }
         private static string WriteMovement(ZoneMovement m) => JsonWriter.Object(new[] {
@@ -130,7 +147,10 @@ namespace Aurum.Companion.Core.Game
             Pair("minLevel", JsonWriter.Number(m.MinLevel)), Pair("maxLevel", JsonWriter.Number(m.MaxLevel)),
             Pair("players", JsonWriter.Array(m.Players.Select(JsonWriter.String))),
             Pair("x", JsonWriter.Number(m.X)), Pair("y", JsonWriter.Number(m.Y)), Pair("z", JsonWriter.Number(m.Z)),
-            Pair("cooldown", JsonWriter.Number(m.Cooldown)), Pair("message", JsonWriter.String(m.Message))
+            Pair("cooldown", JsonWriter.Number(m.Cooldown)), Pair("message", JsonWriter.String(m.Message)),
+            Pair("dismount", JsonWriter.Bool(m.Dismount)), Pair("kickOnFailure", JsonWriter.Bool(m.KickOnFailure)),
+            Pair("sentences", JsonWriter.Array(m.Sentences.Select(s => JsonWriter.Object(new[] {
+                Pair("player", JsonWriter.String(s.Player)), Pair("until", JsonWriter.Number(s.Until)) }))))
         });
 
         private static KeyValuePair<string, string> Pair(string key, string value) => new KeyValuePair<string, string>(key, value);
