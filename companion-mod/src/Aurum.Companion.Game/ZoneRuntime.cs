@@ -21,6 +21,8 @@ namespace Aurum.Companion.Game
         private string? _error;
         private float _nextTick;
         private int _creatureCursor;
+        private readonly ZoneCommandGate _commandGate = new ZoneCommandGate();
+        private double _commandWarningAfter;
         private readonly Dictionary<int, HashSet<string>> _inside = new Dictionary<int, HashSet<string>>();
         private readonly Dictionary<int, float> _noticeAfter = new Dictionary<int, float>();
         private static readonly string[] Buffs = { "aurumZoneProtection", "aurumZoneRegeneration", "aurumZoneStamina", "aurumZoneSpeed" };
@@ -37,8 +39,10 @@ namespace Aurum.Companion.Game
                 Patch(typeof(World), nameof(World.SpawnEntityInWorld), nameof(AfterSpawn), true, typeof(Entity));
                 Current = this;
                 ModEvents.GameUpdate.RegisterHandler(Update);
+                ModEvents.PlayerSpawnedInWorld.RegisterHandler(PlayerSpawned);
+                ModEvents.PlayerDisconnected.RegisterHandler(PlayerLeft);
             }
-            catch { Unpatch(); throw; }
+            catch { Dispose(); throw; }
         }
 
         private void Patch(Type type, string name, string hook, bool postfix, params Type[] parameters)
@@ -54,13 +58,13 @@ namespace Aurum.Companion.Game
             if (GameManager.Instance?.World == null) throw new InvalidOperationException("world_loading");
             string path = Path.Combine(GameIO.GetSaveGameDir(), "aurum-zones.json");
             if (_path == path) return;
-            _path = path; _rules = new ZoneRules(); _inside.Clear(); _noticeAfter.Clear(); _error = null;
+            _path = path; _rules = new ZoneRules(); _inside.Clear(); _noticeAfter.Clear(); _commandGate.Clear(); _error = null;
             try
             {
                 if (File.Exists(path))
                 {
                     if (new FileInfo(path).Length > 131072) throw new InvalidDataException("zones_file_too_large");
-                    var loaded = ZoneRules.Read(File.ReadAllText(path));
+                    var loaded = ZoneRules.Read(File.ReadAllText(path), allowLegacy: true);
                     CheckBuffs(loaded);
                     _rules = loaded;
                 }
@@ -111,6 +115,12 @@ namespace Aurum.Companion.Game
                 if (z.NoDamage && BuffManager.GetBuff(Buffs[0]) == null) throw new InvalidOperationException("zones_buffs_missing");
                 int bonus = BonusIndex(z.Bonus);
                 if (bonus > 0 && BuffManager.GetBuff(Buffs[bonus]) == null) throw new InvalidOperationException("zones_buffs_missing");
+                if (z.CommandsEnabled)
+                    foreach (string command in z.EnterCommands.Concat(z.ExitCommands))
+                    {
+                        var p = ZoneCommands.Parse(command);
+                        if (p[0] != "teleportplayer" && BuffManager.GetBuff(p[2]) == null) throw new InvalidOperationException("zones_command_buff_missing");
+                    }
             }
         }
 
@@ -124,18 +134,20 @@ namespace Aurum.Companion.Game
                 if (_error != null) return;
                 var world = GameManager.Instance.World;
                 var online = new HashSet<int>();
+                int commandBudget = 8;
                 foreach (var player in world.Players.list)
                 {
                     if (player == null || player.IsDead()) continue;
                     online.Add(player.entityId);
                     var active = _rules.Zones.Where(z => z.Contains(player.position.x, player.position.z)).ToArray();
                     var ids = new HashSet<string>(active.Select(z => z.Id), StringComparer.Ordinal);
-                    if (_inside.TryGetValue(player.entityId, out var before) &&
+                    bool observed = _inside.TryGetValue(player.entityId, out var before);
+                    if (observed &&
                         (!_noticeAfter.TryGetValue(player.entityId, out float after) || Time.realtimeSinceStartup >= after))
                     {
                         var notices = new List<string>();
-                        foreach (var z in active) if (!before.Contains(z.Id) && z.Enter.Length > 0) notices.Add(z.Enter.Replace("{zone}", z.Name));
-                        foreach (var z in _rules.Zones) if (before.Contains(z.Id) && !ids.Contains(z.Id) && z.Exit.Length > 0) notices.Add(z.Exit.Replace("{zone}", z.Name));
+                        foreach (var z in active) if (!before!.Contains(z.Id) && z.Enter.Length > 0) notices.Add(z.Enter.Replace("{zone}", z.Name));
+                        foreach (var z in _rules.Zones) if (before!.Contains(z.Id) && !ids.Contains(z.Id) && z.Exit.Length > 0) notices.Add(z.Exit.Replace("{zone}", z.Name));
                         var client = ConnectionManager.Instance.Clients.ForEntityId(player.entityId);
                         if (client?.InternalId != null)
                             foreach (string message in notices.Take(3)) _bridge.SendPrivateMessage(client.InternalId.CombinedString, message);
@@ -148,6 +160,14 @@ namespace Aurum.Companion.Game
                         if (wanted) player.Buffs.AddBuff(Buffs[i]); // Short lease; expires if mod stops/fails.
                         else if (player.Buffs.HasBuff(Buffs[i])) player.Buffs.RemoveBuff(Buffs[i]);
                     }
+                    if (observed)
+                        foreach (var z in _rules.Zones)
+                        {
+                            bool entered = ids.Contains(z.Id) && !before!.Contains(z.Id);
+                            bool exited = !ids.Contains(z.Id) && before!.Contains(z.Id);
+                            if (z.Enabled && z.CommandsEnabled && (entered || exited))
+                                RunCommands(player, z, entered, ref commandBudget);
+                        }
                 }
                 foreach (int id in _inside.Keys.Where(id => !online.Contains(id)).ToArray()) { _inside.Remove(id); _noticeAfter.Remove(id); }
                 // ponytail: bounded scan of loaded entities only (64/sec). Use a native movement hook if a measured need arises.
@@ -172,7 +192,48 @@ namespace Aurum.Companion.Game
             }
         }
 
+        private void RunCommands(EntityPlayer player, ZoneRule zone, bool entering, ref int budget)
+        {
+            var commands = entering ? zone.EnterCommands : zone.ExitCommands;
+            if (commands.Length == 0) return;
+            var client = ConnectionManager.Instance.Clients.ForEntityId(player.entityId);
+            if (client?.InternalId == null) return;
+            double now = Time.realtimeSinceStartup;
+            if (commands.Length > budget)
+            {
+                if (now >= _commandWarningAfter) { Log.Warning("[AurumCompanion] Zone command budget reached; transition skipped, not queued."); _commandWarningAfter = now + 60; }
+                return;
+            }
+            if (!_commandGate.TryBegin(client.InternalId.CombinedString, zone.Id, entering, zone.CommandCooldown,
+                commands.Any(c => c.StartsWith("teleportplayer ", StringComparison.Ordinal)), now)) return;
+            budget -= commands.Length;
+            // Native handlers only; no command strings assembled from player names or chat.
+            foreach (string command in commands)
+            {
+                try
+                {
+                    var p = ZoneCommands.Parse(command);
+                    var args = p.Skip(1).ToList();
+                    args[0] = player.entityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (p[0] != "teleportplayer" && BuffManager.GetBuff(p[2]) == null) throw new InvalidOperationException("buff_missing");
+                    ConsoleCmdAbstract handler = p[0] == "buffplayer" ? (ConsoleCmdAbstract)new ConsoleCmdBuffPlayer() :
+                        p[0] == "debuffplayer" ? new ConsoleCmdDebuffPlayer() : new ConsoleCmdTeleportPlayer();
+                    handler.Execute(args, default(CommandSenderInfo));
+                    Log.Out("[AurumCompanion] Zone command dispatched: " + zone.Id + " " + (entering ? "enter" : "exit") + " entity=" + args[0] + " " + command);
+                }
+                catch (Exception e) { Log.Error("[AurumCompanion] Zone command failed (not retried): " + zone.Id + " " + e.Message); break; }
+            }
+        }
+
         private static int BonusIndex(string bonus) => bonus == "regeneration" ? 1 : bonus == "stamina" ? 2 : bonus == "speed" ? 3 : 0;
+        private void PlayerSpawned(ref ModEvents.SPlayerSpawnedInWorldData data)
+        {
+            if (data.RespawnType != RespawnType.Teleport) { _inside.Remove(data.EntityId); _noticeAfter.Remove(data.EntityId); }
+        }
+        private void PlayerLeft(ref ModEvents.SPlayerDisconnectedData data)
+        {
+            if (data.ClientInfo != null) { _inside.Remove(data.ClientInfo.entityId); _noticeAfter.Remove(data.ClientInfo.entityId); }
+        }
         private static int Category(Entity e)
         {
             if (!(e is EntityAlive alive) || e is EntityPlayer || e is EntityTrader || !e.IsAlive()) return 0;
@@ -191,13 +252,15 @@ namespace Aurum.Companion.Game
             if (Current?.Deny(__instance, _damageSource) != true) return true;
             __result = -1; return false;
         }
-        private static bool BeforePacket(NetPackageDamageEntity __instance, World _world)
+        // The reference assembly is publicized. These fields are private in the real game:
+        // Harmony injects their values; never emit direct field access from our assembly.
+        private static bool BeforePacket(World _world, int ___entityId, int ___attackerEntityId)
         {
             var current = Current;
             if (current == null || current._error != null || _world == null || _world.IsRemote()) return true;
-            var victim = _world.GetEntity(__instance.entityId) as EntityPlayer;
+            var victim = _world.GetEntity(___entityId) as EntityPlayer;
             if (victim == null) return true;
-            var attacker = _world.GetEntity(__instance.attackerEntityId);
+            var attacker = _world.GetEntity(___attackerEntityId);
             bool pvp = attacker is EntityPlayer && attacker.entityId != victim.entityId;
             return !current._rules.DenyDamage(victim.position.x, victim.position.z, pvp, attacker?.position.x ?? 0, attacker?.position.z ?? 0);
         }
@@ -211,9 +274,12 @@ namespace Aurum.Companion.Game
         public void Dispose()
         {
             ModEvents.GameUpdate.UnregisterHandler(Update);
+            ModEvents.PlayerSpawnedInWorld.UnregisterHandler(PlayerSpawned);
+            ModEvents.PlayerDisconnected.UnregisterHandler(PlayerLeft);
             if (Current == this) Current = null;
             Unpatch();
             _inside.Clear(); _noticeAfter.Clear();
+            _commandGate.Clear();
         }
         private void Unpatch()
         {

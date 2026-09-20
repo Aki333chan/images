@@ -189,7 +189,7 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'event-ids',
   'blood-moon-schedule',
   'map-read',
-  'zones-v1',
+  'zones-v2',
   'map-pois',
   'inventory-read',
   'inventory-saved-read',
@@ -343,6 +343,8 @@ export interface SevenDaysActionDto {
 }
 
 export const SEVENDAYS_PERMISSIONS = {
+  zonesManage: 'sevendays.zones.manage',
+  zonesCommands: 'sevendays.zones.commands',
   toolsManage: 'sevendays.tools.manage',
   teleport: 'sevendays.teleport',
   mapView: 'sevendays.map.view',

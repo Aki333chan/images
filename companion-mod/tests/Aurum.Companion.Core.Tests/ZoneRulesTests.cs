@@ -6,6 +6,33 @@ namespace Aurum.Companion.Core.Tests;
 
 public sealed class ZoneRulesTests
 {
+    [Fact]
+    public void CommandsRejectInjectionAndLegacyWritesButReadOldFilesExplicitly()
+    {
+        var rules = new ZoneRules { Zones = new[] { Safe() } };
+        rules.Zones[0].EnterCommands = new[] { "buffplayer {player} buffExample", "teleportplayer {player} -12 -1 80" };
+        Assert.Equal(rules.Write(), ZoneRules.Read(rules.Write()).Write());
+        foreach (string command in new[] { "shutdown", "buffplayer Alice buffExample", "buffplayer {player} buffExample;shutdown", "buffplayer {player} aurumZoneProtection", "buffplayer {player} buffExample\nshutdown", "teleportplayer {player} 0 -2 0" })
+            Assert.Throws<ArgumentException>(() => ZoneCommands.Parse(command));
+        rules.Zones[0].EnterCommands = Array.Empty<string>();
+        string old = rules.Write().Replace(",\"commandsEnabled\":false,\"commandCooldown\":30,\"enterCommands\":[],\"exitCommands\":[]", "");
+        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(old));
+        Assert.False(ZoneRules.Read(old, allowLegacy: true).Zones[0].CommandsEnabled);
+    }
+
+    [Fact]
+    public void CooldownSeparatesEntryExitAndBlocksCrossZoneTeleportLoops()
+    {
+        var gate = new ZoneCommandGate();
+        Assert.True(gate.TryBegin("Steam_1", "a", true, 30, false, 0));
+        Assert.False(gate.TryBegin("Steam_1", "a", true, 30, false, 1));
+        Assert.True(gate.TryBegin("Steam_1", "a", false, 30, false, 1));
+        Assert.True(gate.TryBegin("Steam_1", "b", true, 30, true, 2));
+        Assert.False(gate.TryBegin("Steam_1", "c", true, 30, true, 3));
+        Assert.True(gate.TryBegin("Steam_2", "c", true, 30, true, 3));
+        Assert.True(gate.TryBegin("Steam_1", "c", true, 30, true, 12));
+        Assert.True(gate.TryBegin("Steam_1", "a", true, 30, false, 30));
+    }
     private static ZoneRule Safe() => new ZoneRule { Id = "spawn", Name = "Spawn", X1 = -10, Z1 = -10, X2 = 10, Z2 = 10 };
 
     [Fact]

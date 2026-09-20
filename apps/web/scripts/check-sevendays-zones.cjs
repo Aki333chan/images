@@ -12,7 +12,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       b.onResolve({ filter: /\/lib\/(api|auth)$/ }, a => ({ path: a.path.endsWith('auth') ? 'auth' : 'api', namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, ({ path: name }) => ({ loader: 'js', contents: name === 'i18n'
         ? `const c=${JSON.stringify(catalog)};export const useI18n=()=>({t:k=>c[k]||k});`
-        : name === 'auth' ? `export const useAuth=()=>({hasPermission:()=>window.allowed});`
+        : name === 'auth' ? `export const useAuth=()=>({hasPermission:(p)=>window.allowed && (p!=='sevendays.zones.commands'||window.commandsAllowed!==false)});`
         : `window.calls=[];window.zones={revision:0,worldId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',zones:[]};export async function api(url,init){let body=init?.body?JSON.parse(init.body):null;window.calls.push({url,body});if(url.endsWith('/zones')){if(body){if(window.conflict)throw Error('zones_revision_conflict');window.zones={...body,revision:body.revision+1};}return structuredClone(window.zones);}if(url.endsWith('/map'))return {available:true,reason:'native_map_missing',info:null,players:[{id:'p',name:'Test player',x:0,z:0}],claims:[],truncated:false};throw Error('Unexpected fixture '+url);}` }));
     }}] });
   const assets = path.join(repo, 'apps/web/dist/assets');
@@ -56,6 +56,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await button('sdtd.zones.close').click();
     await map.locator('[data-zone-id]').focus(); await page.keyboard.press('Enter');
     await page.getByLabel(catalog['sdtd.zones.name'], { exact: true }).waitFor();
+    await page.getByText(catalog['sdtd.zones.commands'], {exact:true}).click();
+    await page.getByLabel(catalog['sdtd.zones.enterCommands'], {exact:true}).fill('teleportplayer {player} 100 -1 200');
+    await page.getByLabel(catalog['sdtd.zones.commandCooldown'], {exact:true}).fill('45');
+    await page.getByLabel(catalog['sdtd.zones.commandsEnabled'], {exact:true}).check();
+    await button('sdtd.zones.save').click();
+    await page.waitForFunction(() => window.zones.revision === 3);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].commandCooldown), 45);
+    assert.deepEqual(await page.evaluate(() => window.zones.zones[0].enterCommands), ['teleportplayer {player} 100 -1 200']);
     for (const [name, width] of [['desktop', 1200], ['mobile', 390]]) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(() => document.fonts.ready); await page.evaluate(() => scrollTo(0, 0));
@@ -67,6 +75,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await button('sdtd.zones.save').click();
     await page.getByText('zones_revision_conflict', { exact: false }).waitFor();
     assert.equal(await page.getByLabel(catalog['sdtd.zones.name'], { exact: true }).inputValue(), 'Unsaved edit');
+    await page.evaluate(() => { window.conflict = false; window.commandsAllowed = false; window.render(); });
+    await button('sdtd.zones.title').click();
+    await page.locator('svg [data-zone-id]').click();
+    assert.equal(await page.getByLabel(catalog['sdtd.zones.name'], {exact:true}).isDisabled(), true);
+    assert.equal(await button('sdtd.zones.delete').isDisabled(), true);
     await page.evaluate(() => { window.allowed = false; window.render(); });
     await button('sdtd.zones.title').click();
     assert.equal(await button('sdtd.zones.add').count(), 0);

@@ -61,6 +61,16 @@ export const sevenDaysManifest: GameModuleManifest = {
   },
   permissions: [
     {
+      key: SEVENDAYS_PERMISSIONS.zonesManage,
+      description: 'Создание и изменение игровых зон',
+      defaultRoles: ['ADMIN'],
+    },
+    {
+      key: SEVENDAYS_PERMISSIONS.zonesCommands,
+      description: 'Настройка зон с автоматическими командами входа/выхода',
+      defaultRoles: ['ADMIN'],
+    },
+    {
       key: SEVENDAYS_PERMISSIONS.toolsManage,
       description: 'Сохранённые точки, наборы предметов и административные области',
       defaultRoles: ['ADMIN'],

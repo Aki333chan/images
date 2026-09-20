@@ -1,6 +1,11 @@
-import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { SevenDaysMapSnapshot, SevenDaysMapPois, SevenDaysMapPoi } from '@aurum/shared';
-import { parseSevenDaysZones } from '@aurum/shared';
+import { parseSevenDaysZones, hasZoneCommands } from '@aurum/shared';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 
 const blank = (reason: SevenDaysMapSnapshot['reason']): SevenDaysMapSnapshot => ({
@@ -113,7 +118,7 @@ export class SevenDaysMapService {
   private readonly poiRequests = new Map<string, Promise<SevenDaysMapPois>>();
   constructor(private readonly companion: SevenDaysCompanionService) {}
 
-  async zones(serverId: string, payload?: unknown) {
+  async zones(serverId: string, payload?: unknown, commandsAllowed = false) {
     let body: unknown;
     if (payload !== undefined) {
       try {
@@ -123,6 +128,18 @@ export class SevenDaysMapService {
       }
       if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 60000)
         throw new BadRequestException('zones_payload_too_large');
+      if (!commandsAllowed) {
+        const next = parseSevenDaysZones(body);
+        const current = parseSevenDaysZones(await this.companion.zoneRequest(serverId));
+        // Protect the entire scripted zone, including bounds/enable/delete, not just command text.
+        const protectedZones = (zones: typeof next.zones) =>
+          zones.filter(hasZoneCommands).sort((a, b) => a.id.localeCompare(b.id));
+        if (
+          JSON.stringify(protectedZones(next.zones)) !==
+          JSON.stringify(protectedZones(current.zones))
+        )
+          throw new ForbiddenException('zones_commands_permission_required');
+      }
     }
     return parseSevenDaysZones(await this.companion.zoneRequest(serverId, body));
   }

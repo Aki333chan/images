@@ -4,6 +4,7 @@ import {
   SEVENDAYS_ZONE_TYPES,
   SEVENDAYS_ZONE_BONUSES,
   parseSevenDaysZones,
+  hasZoneCommands,
   type SevenDaysZone,
   type SevenDaysZones,
 } from '@aurum/shared';
@@ -29,7 +30,8 @@ export function zonePreset(type: SevenDaysZone['type']) {
 export function useSevenDaysZones(serverId: string) {
   const { hasPermission } = useAuth();
   const { t } = useI18n();
-  const manage = hasPermission(SEVENDAYS_PERMISSIONS.configure);
+  const manage = hasPermission(SEVENDAYS_PERMISSIONS.zonesManage);
+  const commandsManage = hasPermission(SEVENDAYS_PERMISSIONS.zonesCommands);
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<SevenDaysZones | null>(null);
   const [draft, setDraft] = useState<SevenDaysZone | null>(null);
@@ -93,6 +95,10 @@ export function useSevenDaysZones(serverId: string) {
       z2: z + 10,
       enter: '',
       exit: '',
+      commandsEnabled: false,
+      commandCooldown: 30,
+      enterCommands: [],
+      exitCommands: [],
       ...zonePreset('safe'),
     });
     setCorner(null);
@@ -118,6 +124,7 @@ export function useSevenDaysZones(serverId: string) {
   }
   async function save(remove = false) {
     if (!manage || !draft || !data || lock.current) return;
+    if (!commandsManage && hasZoneCommands(draft)) return;
     if (remove && !window.confirm(t('sdtd.zones.confirmDelete'))) return;
     const existing = data.zones.find((z) => z.id === draft.id);
     if (
@@ -130,7 +137,18 @@ export function useSevenDaysZones(serverId: string) {
     try {
       next = parseSevenDaysZones({
         ...data,
-        zones: [...data.zones.filter((z) => z.id !== draft.id), ...(remove ? [] : [draft])],
+        zones: [
+          ...data.zones.filter((z) => z.id !== draft.id),
+          ...(remove
+            ? []
+            : [
+                {
+                  ...draft,
+                  enterCommands: draft.enterCommands.map((c) => c.trim()).filter(Boolean),
+                  exitCommands: draft.exitCommands.map((c) => c.trim()).filter(Boolean),
+                },
+              ]),
+        ],
       });
     } catch {
       setError(t('sdtd.zones.invalid'));
@@ -173,6 +191,8 @@ export function useSevenDaysZones(serverId: string) {
     busy,
     dirty,
     manage,
+    commandsManage,
+    scriptedLocked: !commandsManage && !!draft && hasZoneCommands(draft),
     choose,
     add,
     pick,
@@ -261,7 +281,13 @@ export function SevenDaysZoneEditor({ zone }: { zone: ReturnType<typeof useSeven
               {t(zone.corner ? 'sdtd.zones.secondCorner' : 'sdtd.zones.firstCorner')}
             </p>
           )}
-          <fieldset disabled={!zone.manage || zone.busy} className="space-y-4">
+          {zone.scriptedLocked && (
+            <p className="text-sm text-muted">{t('sdtd.zones.commandsLocked')}</p>
+          )}
+          <fieldset
+            disabled={!zone.manage || zone.busy || zone.scriptedLocked}
+            className="space-y-4"
+          >
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1 text-sm">
                 {t('sdtd.zones.name')}
@@ -392,10 +418,58 @@ export function SevenDaysZoneEditor({ zone }: { zone: ReturnType<typeof useSeven
                 </label>
               ))}
             </div>
+            <details className="border-t border-border pt-3">
+              <summary className="cursor-pointer text-sm font-semibold">
+                {t('sdtd.zones.commands')}
+              </summary>
+              <fieldset disabled={!zone.commandsManage} className="mt-3 space-y-3">
+                <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.commandsHelp')}</p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={z.commandsEnabled}
+                    onChange={(e) => change({ commandsEnabled: e.target.checked })}
+                  />
+                  {t('sdtd.zones.commandsEnabled')}
+                </label>
+                <label className="block max-w-xs space-y-1 text-sm">
+                  {t('sdtd.zones.commandCooldown')}
+                  <Input
+                    type="number"
+                    min={10}
+                    max={86400}
+                    step={1}
+                    value={z.commandCooldown}
+                    onChange={(e) => change({ commandCooldown: Number(e.target.value) })}
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(['enterCommands', 'exitCommands'] as const).map((key) => (
+                    <label key={key} className="block space-y-1 text-sm">
+                      {t(`sdtd.zones.${key}`)}
+                      <textarea
+                        rows={4}
+                        maxLength={644}
+                        className={`${selectClass} font-mono`}
+                        value={z[key].join('\n')}
+                        onChange={(e) => change({ [key]: e.target.value.split(/\r?\n/) })}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="max-w-prose whitespace-pre-line text-xs text-muted">
+                  {t('sdtd.zones.commandSyntax')}
+                </p>
+                <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.commandsCaution')}</p>
+              </fieldset>
+            </details>
           </fieldset>
           <div className="flex flex-wrap gap-2">
             {zone.manage && (
-              <Button type="submit" disabled={zone.busy || !zone.dirty || !z.name.trim()}>
+              <Button
+                type="submit"
+                disabled={zone.busy || zone.scriptedLocked || !zone.dirty || !z.name.trim()}
+              >
                 {t('sdtd.zones.save')}
               </Button>
             )}
@@ -412,7 +486,7 @@ export function SevenDaysZoneEditor({ zone }: { zone: ReturnType<typeof useSeven
                 className="sm:ml-auto"
                 variant="destructive"
                 type="button"
-                disabled={zone.busy}
+                disabled={zone.busy || zone.scriptedLocked}
                 onClick={() => void zone.save(true)}
               >
                 {t('sdtd.zones.delete')}

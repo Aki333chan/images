@@ -23,10 +23,12 @@ FORM: Precisely specified local extension; no concept seed or comp. Signature in
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
 
-Scope this increment: safe/information/sanctuary/bonus/custom presets, editable flags and messages. Advanced CSMM scenarios are not implemented. Runtime protection remains RC pending in-game smoke tests; no claim of universal invulnerability.
+Scope this increment: extend the five presets with one collapsible command section below messages. Independent enable toggle, cooldown, enter/exit command textareas and visible allowed syntax; same save action, no extra modal. Map layout and identity unchanged. Separate permissions protect scripted zones. Access policies/schedules remain future work. Runtime protection remains RC pending in-game smoke tests; no claim of universal invulnerability.
 
 ## Documentation outcome
 
 This is an extension of the incumbent system evidenced by `tailwind.config.ts`, `src/index.css`, `src/components/ui.tsx`, `MapTab.tsx` and `ZoneEditor.tsx`. It adds no global visual system. PRODUCT.md and DESIGN.md were absent at both repository and app roots before this work; the ordinary-extension documentation pass preserves that state rather than inventing brand context or repairing global drift.
+
+The command extension was compared with those sources and both final captures at 1200px and 390px. Its native disclosure follows the message fields, reuses the editor's border and field styling, and retains the existing save actions. Command fields use the established monospace stack, with paired textareas on desktop and stacked fields on mobile; the enable toggle, cooldown, allowed syntax and caution remain within the disclosure. This introduces no durable token or component-system change.
 
 Desktop and mobile evidence lives in `.impeccable/review/zones-desktop.png` and `zones-mobile.png`. These are synthetic, intentionally terrain-free browser fixtures, not live game evidence or shipping raster assets. The supplied finish-review disposition is `ship` with no UI fixes; the supplied detector result is `[]` and the browser harness passed. Both final captures were regenerated and opened after the fixture header charset correction; this does not establish in-game runtime protection.

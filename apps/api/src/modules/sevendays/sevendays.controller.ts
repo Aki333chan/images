@@ -22,7 +22,8 @@ import {
 } from '@aurum/shared';
 import { Query } from '@nestjs/common';
 import { AuditRedactBody } from '../../audit/audit.decorators';
-import { CurrentUser, type AuthUser } from '../../auth/decorators';
+import { CurrentUser, CurrentPermissions, type AuthUser } from '../../auth/decorators';
+import type { EffectivePermissions } from '../../rbac/permissions.service';
 import { SevenDaysItemsService } from './sevendays-items.service';
 import { SevenDaysToolsService } from './sevendays-tools.service';
 import { ItemGrantDto, SavedStackDto } from './dto';
@@ -151,10 +152,18 @@ export class SevenDaysController {
   }
 
   @Put('zones')
-  @RequirePermission(SEVENDAYS_PERMISSIONS.configure)
+  @RequirePermission(SEVENDAYS_PERMISSIONS.zonesManage)
   @ServerScoped('serverId')
-  saveZones(@Param('serverId') serverId: string, @Body() body: unknown) {
-    return this.map.zones(serverId, body);
+  saveZones(
+    @Param('serverId') serverId: string,
+    @Body() body: unknown,
+    @CurrentPermissions() access: EffectivePermissions,
+  ) {
+    return this.map.zones(
+      serverId,
+      body,
+      access.permissions.has(SEVENDAYS_PERMISSIONS.zonesCommands),
+    );
   }
 
   @Post('players/:playerId/saved-stack')

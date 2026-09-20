@@ -25,6 +25,10 @@ const fixture = (): SevenDaysZones => ({
       enter: '',
       exit: '',
       bonus: 'none',
+      commandsEnabled: false,
+      commandCooldown: 30,
+      enterCommands: [],
+      exitCommands: [],
     },
   ],
 });
@@ -55,10 +59,10 @@ describe('7DTD zones', () => {
     const service = new SevenDaysMapService(remote as unknown as SevenDaysCompanionService);
     await expect(service.zones('s', { revision: 0 })).rejects.toThrow('invalid_zones');
     expect(remote.zoneRequest).not.toHaveBeenCalled();
-    await service.zones('s', fixture());
+    await service.zones('s', fixture(), true);
     expect(remote.zoneRequest).toHaveBeenCalledWith('s', fixture());
     remote.zoneRequest.mockRejectedValue(new Error('lost reply'));
-    await expect(service.zones('s', fixture())).rejects.toThrow('lost reply');
+    await expect(service.zones('s', fixture(), true)).rejects.toThrow('lost reply');
     expect(remote.zoneRequest).toHaveBeenCalledTimes(2);
   });
   it('separates map read and server configuration authority', () => {
@@ -66,10 +70,39 @@ describe('7DTD zones', () => {
       'sevendays.map.view',
     ]);
     expect(Reflect.getMetadata(PERMISSION_KEY, SevenDaysController.prototype.saveZones)).toEqual([
-      'sevendays.configure',
+      'sevendays.zones.manage',
     ]);
     expect(Reflect.getMetadata(SERVER_SCOPE_PARAM, SevenDaysController.prototype.saveZones)).toBe(
       'serverId',
     );
+  });
+  it('protects scripted zone bounds, disabling and deletion without command authority', async () => {
+    const current = fixture();
+    current.zones[0]!.enterCommands = ['buffplayer {player} buffExample'];
+    const remote = { zoneRequest: jest.fn().mockResolvedValue(current) };
+    const service = new SevenDaysMapService(remote as unknown as SevenDaysCompanionService);
+    for (const next of [
+      { ...current, zones: [] },
+      { ...current, zones: [{ ...current.zones[0], x1: -11 }] },
+      { ...current, zones: [{ ...current.zones[0], enabled: false }] },
+      fixture(),
+    ])
+      await expect(service.zones('s', next)).rejects.toThrow('zones_commands_permission_required');
+    expect(remote.zoneRequest.mock.calls.every((c) => c.length === 1)).toBe(true);
+    await service.zones('s', current);
+    expect(remote.zoneRequest).toHaveBeenLastCalledWith('s', current);
+  });
+  it('rejects console injection and malformed command targets', () => {
+    for (const command of [
+      'shutdown',
+      'buffplayer Alice buffExample',
+      'buffplayer {player} buffExample;shutdown',
+      'buffplayer {player} aurumZoneProtection',
+      'teleportplayer {player} 0 -2 0',
+    ]) {
+      const next = fixture();
+      next.zones[0]!.enterCommands = [command];
+      expect(() => parseSevenDaysZones(next)).toThrow('invalid_zones');
+    }
   });
 });

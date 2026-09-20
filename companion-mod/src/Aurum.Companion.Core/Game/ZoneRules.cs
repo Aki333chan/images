@@ -14,6 +14,9 @@ namespace Aurum.Companion.Core.Game
         public double X1, Z1, X2, Z2;
         public int BlockSpawn, Despawn;
         public string Bonus = "none";
+        public bool CommandsEnabled;
+        public int CommandCooldown = 30;
+        public string[] EnterCommands = Array.Empty<string>(), ExitCommands = Array.Empty<string>();
         public bool Contains(double x, double z) => Enabled &&
             x >= X1 && x <= X2 && z >= Z1 && z <= Z2;
     }
@@ -25,7 +28,7 @@ namespace Aurum.Companion.Core.Game
         public string WorldId = Guid.NewGuid().ToString("N");
         public ZoneRule[] Zones = Array.Empty<ZoneRule>();
 
-        public static ZoneRules Read(string json)
+        public static ZoneRules Read(string json, bool allowLegacy = false)
         {
             if (System.Text.Encoding.UTF8.GetByteCount(json) > 60000) throw Invalid();
             var root = JsonReader.ParseObject(json);
@@ -38,14 +41,21 @@ namespace Aurum.Companion.Core.Game
             foreach (var row in rows)
             {
                 if (!(row is Dictionary<string, object?> map)) throw Invalid();
-                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus");
+                if (allowLegacy && !map.ContainsKey("commandsEnabled") && !map.ContainsKey("commandCooldown") && !map.ContainsKey("enterCommands") && !map.ContainsKey("exitCommands"))
+                {
+                    map["commandsEnabled"] = false; map["commandCooldown"] = 30d;
+                    map["enterCommands"] = new List<object?>(); map["exitCommands"] = new List<object?>();
+                }
+                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands");
                 var z = new ZoneRule {
                     Id = Text(map, "id", 48), Name = Text(map, "name", 80), Type = Text(map, "type", 24),
                     Enabled = Boolean(map, "enabled"), NoPvp = Boolean(map, "noPvp"), NoDamage = Boolean(map, "noDamage"),
                     X1 = Number(map, "x1", -500000, 500000), Z1 = Number(map, "z1", -500000, 500000),
                     X2 = Number(map, "x2", -500000, 500000), Z2 = Number(map, "z2", -500000, 500000),
                     BlockSpawn = (int)Number(map, "blockSpawn", 0, 7, true), Despawn = (int)Number(map, "despawn", 0, 7, true),
-                    Enter = Text(map, "enter", 240), Exit = Text(map, "exit", 240), Bonus = Text(map, "bonus", 24)
+                    Enter = Text(map, "enter", 240), Exit = Text(map, "exit", 240), Bonus = Text(map, "bonus", 24),
+                    CommandsEnabled = Boolean(map, "commandsEnabled"), CommandCooldown = (int)Number(map, "commandCooldown", 10, 86400, true),
+                    EnterCommands = Commands(map, "enterCommands"), ExitCommands = Commands(map, "exitCommands")
                 };
                 if (!Regex.IsMatch(z.Id, "\\A[a-z0-9][a-z0-9_-]{0,47}\\z") || !ids.Add(z.Id) ||
                     string.IsNullOrWhiteSpace(z.Name) || z.X1 >= z.X2 || z.Z1 >= z.Z2 ||
@@ -84,11 +94,26 @@ namespace Aurum.Companion.Core.Game
                 Pair("x2", JsonWriter.Number(z.X2)), Pair("z2", JsonWriter.Number(z.Z2)),
                 Pair("noPvp", JsonWriter.Bool(z.NoPvp)), Pair("noDamage", JsonWriter.Bool(z.NoDamage)),
                 Pair("blockSpawn", JsonWriter.Number(z.BlockSpawn)), Pair("despawn", JsonWriter.Number(z.Despawn)),
-                Pair("enter", JsonWriter.String(z.Enter)), Pair("exit", JsonWriter.String(z.Exit)), Pair("bonus", JsonWriter.String(z.Bonus))
+                Pair("enter", JsonWriter.String(z.Enter)), Pair("exit", JsonWriter.String(z.Exit)), Pair("bonus", JsonWriter.String(z.Bonus)),
+                Pair("commandsEnabled", JsonWriter.Bool(z.CommandsEnabled)), Pair("commandCooldown", JsonWriter.Number(z.CommandCooldown)),
+                Pair("enterCommands", JsonWriter.Array(z.EnterCommands.Select(JsonWriter.String))), Pair("exitCommands", JsonWriter.Array(z.ExitCommands.Select(JsonWriter.String)))
             })))) });
 
         private static KeyValuePair<string, string> Pair(string key, string value) => new KeyValuePair<string, string>(key, value);
         private static JsonReader.JsonException Invalid() => new JsonReader.JsonException("invalid_zones");
+        private static string[] Commands(Dictionary<string, object?> map, string key)
+        {
+            if (!(map[key] is List<object?> list) || list.Count > 4) throw Invalid();
+            var result = new List<string>();
+            foreach (var value in list)
+            {
+                if (!(value is string command)) throw Invalid();
+                try { ZoneCommands.Parse(command); } catch (ArgumentException) { throw Invalid(); }
+                result.Add(command);
+            }
+            if (result.Count(c => c.StartsWith("teleportplayer ", StringComparison.Ordinal)) > 1) throw Invalid();
+            return result.ToArray();
+        }
         private static void Keys(Dictionary<string, object?> map, params string[] keys)
         {
             if (map.Count != keys.Length || keys.Any(k => !map.ContainsKey(k))) throw Invalid();

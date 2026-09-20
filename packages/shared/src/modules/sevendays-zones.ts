@@ -23,12 +23,35 @@ export interface SevenDaysZone {
   enter: string;
   exit: string;
   bonus: (typeof SEVENDAYS_ZONE_BONUSES)[number];
+  commandsEnabled: boolean;
+  commandCooldown: number;
+  enterCommands: string[];
+  exitCommands: string[];
 }
 export interface SevenDaysZones {
   revision: number;
   worldId: string;
   zones: SevenDaysZone[];
 }
+
+export function validZoneCommand(command: string): boolean {
+  if (command.length > 160) return false;
+  if (/^(buffplayer|debuffplayer) \{player\} [A-Za-z][A-Za-z0-9_]{0,79}$/.test(command))
+    return !command.split(' ')[2]!.toLowerCase().startsWith('aurumzone');
+  const m = /^teleportplayer \{player\} (-?[0-9]{1,6}) (-?[0-9]{1,6}) (-?[0-9]{1,6})$/.exec(
+    command,
+  );
+  return (
+    !!m &&
+    Math.abs(Number(m[1])) <= 500000 &&
+    Number(m[2]) >= -1 &&
+    Number(m[2]) <= 2048 &&
+    Math.abs(Number(m[3])) <= 500000
+  );
+}
+
+export const hasZoneCommands = (zone: SevenDaysZone): boolean =>
+  zone.commandsEnabled || zone.enterCommands.length > 0 || zone.exitCommands.length > 0;
 
 /** Same strict boundary in API, browser and companion. No silent unknown rule fallback. */
 export function parseSevenDaysZones(value: unknown): SevenDaysZones {
@@ -78,6 +101,10 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'enter',
       'exit',
       'bonus',
+      'commandsEnabled',
+      'commandCooldown',
+      'enterCommands',
+      'exitCommands',
     ]);
     if (
       !text(z.id, 48) ||
@@ -99,7 +126,16 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       !number(z.blockSpawn, 0, 7, true) ||
       !number(z.despawn, 0, 7, true) ||
       !text(z.enter, 240) ||
-      !text(z.exit, 240)
+      !text(z.exit, 240) ||
+      typeof z.commandsEnabled !== 'boolean' ||
+      !number(z.commandCooldown, 10, 86400, true) ||
+      ![z.enterCommands, z.exitCommands].every(
+        (list) =>
+          Array.isArray(list) &&
+          list.length <= 4 &&
+          list.every((c) => text(c, 160) && validZoneCommand(c)) &&
+          list.filter((c) => c.startsWith('teleportplayer ')).length <= 1,
+      )
     )
       return invalid();
     ids.add(z.id);
