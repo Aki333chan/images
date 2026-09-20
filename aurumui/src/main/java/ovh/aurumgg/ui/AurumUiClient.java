@@ -15,7 +15,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
 
 public final class AurumUiClient implements ClientModInitializer {
-    static final String VERSION = "0.11.0";
+    static final String VERSION = "0.12.0";
     private static final UiSettings SETTINGS = UiSettings.load();
     private static volatile List<UiPanel> panels = List.of();
     private static volatile long revision = -1;
@@ -30,7 +30,7 @@ public final class AurumUiClient implements ClientModInitializer {
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("aurumui", "main"));
         KeyMapping menu = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.aurumui.settings", InputConstants.Type.KEYSYM, InputConstants.KEY_U, category));
+                "key.aurumui.settings", InputConstants.Type.KEYBOARD, InputConstants.KEY_U, category));
 
         PayloadTypeRegistry.serverboundPlay().register(HelloPayload.TYPE, HelloPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(AdminRequestPayload.TYPE, AdminRequestPayload.CODEC);

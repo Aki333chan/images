@@ -1,5 +1,10 @@
 # AurumUI
 
+## Minecraft 26.3 (0.12.0)
+
+Built for Minecraft 26.3 with Fabric Loader 0.19.5, Fabric API 0.161.0+26.3,
+Loom 1.17 and Java 25. The server wire protocol is unchanged.
+
 ## Commerce settings (0.11.0)
 
 With AddonsNPC 2.4.0 and Companion 0.13.3, shop cards offer a paged selector
@@ -122,7 +127,7 @@ or Party. Existing admin object editors and the vanilla HUD fallback remain supp
 The normal player tabs do not require `aurumui.admin`. Role restrictions follow
 the existing GuildService/PartyService rules, not client-supplied flags.
 
-Optional Fabric 26.2 client for the Aurum Paper plugin ecosystem.
+Optional Fabric 26.3 client for the Aurum Paper plugin ecosystem.
 
 ## Runtime layout
 
@@ -152,10 +157,10 @@ Server (`plugins/`):
 
 Client (`mods/`):
 
-1. Minecraft Java 26.2.
+1. Minecraft Java 26.3.
 2. Fabric Loader 0.19.5 or newer.
-3. Fabric API for 26.2.
-4. `AurumUI-0.11.0.jar`.
+3. Fabric API for 26.3.
+4. `AurumUI-0.12.0.jar`.
 
 ## Client controls
 
