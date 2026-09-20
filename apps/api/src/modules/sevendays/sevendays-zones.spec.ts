@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { parseSevenDaysZones, type SevenDaysZones } from '@aurum/shared';
+import { parseSevenDaysZones, defaultZoneMovement, type SevenDaysZones } from '@aurum/shared';
 import { SevenDaysMapService } from './sevendays-map.service';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysController } from './sevendays.controller';
@@ -29,11 +29,51 @@ const fixture = (): SevenDaysZones => ({
       commandCooldown: 30,
       enterCommands: [],
       exitCommands: [],
+      movement: defaultZoneMovement(),
     },
   ],
 });
 
 describe('7DTD zones', () => {
+  it('validates movement rules, identities, destination conflicts and protects automatic teleports', async () => {
+    const current = fixture();
+    current.zones[0]!.movement = {
+      ...defaultZoneMovement(),
+      mode: 'restricted',
+      minLevel: 10,
+      x: 100,
+      players: ['Steam_2', 'Steam_1'],
+    };
+    const normalized = parseSevenDaysZones(current);
+    expect(normalized.zones[0]!.movement.players).toEqual(['Steam_1', 'Steam_2']);
+    for (const patch of [
+      { y: -1 },
+      { y: 252 },
+      { players: ['Alice'] },
+      { players: ['Steam_1', 'Steam_1'] },
+      { maxLevel: 5 },
+      { x: 0 },
+      { cooldown: 0 },
+      { mode: 'jail' },
+    ]) {
+      const next = structuredClone(current);
+      Object.assign(next.zones[0]!.movement, patch);
+      expect(() => parseSevenDaysZones(next)).toThrow();
+    }
+    const old = structuredClone(current) as unknown as { zones: Record<string, unknown>[] };
+    delete old.zones[0]!.movement;
+    expect(() => parseSevenDaysZones(old)).toThrow();
+    const remote = { zoneRequest: jest.fn().mockResolvedValue(normalized) };
+    const service = new SevenDaysMapService(remote as unknown as SevenDaysCompanionService);
+    await expect(service.zones('s', fixture())).rejects.toThrow(
+      'zones_commands_permission_required',
+    );
+    await expect(service.zones('s', { ...normalized, zones: [] })).rejects.toThrow(
+      'zones_commands_permission_required',
+    );
+    await service.zones('s', current);
+    expect(remote.zoneRequest).toHaveBeenLastCalledWith('s', normalized);
+  });
   it('retains independent settings and rejects unknown or malformed rules', () => {
     const data = fixture();
     expect(parseSevenDaysZones(data)).toEqual(data);

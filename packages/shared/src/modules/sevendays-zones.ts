@@ -4,7 +4,33 @@ export const SEVENDAYS_ZONE_TYPES = [
   'sanctuary',
   'bonus',
   'custom',
+  'restricted',
+  'portal',
 ] as const;
+export interface SevenDaysZoneMovement {
+  mode: 'none' | 'restricted' | 'portal';
+  priority: number;
+  minLevel: number;
+  maxLevel: number;
+  players: string[];
+  x: number;
+  y: number;
+  z: number;
+  cooldown: number;
+  message: string;
+}
+export const defaultZoneMovement = (): SevenDaysZoneMovement => ({
+  mode: 'none',
+  priority: 0,
+  minLevel: 0,
+  maxLevel: 0,
+  players: [],
+  x: 0,
+  y: 65,
+  z: 0,
+  cooldown: 10,
+  message: '',
+});
 export const SEVENDAYS_ZONE_BONUSES = ['none', 'regeneration', 'stamina', 'speed'] as const;
 export interface SevenDaysZone {
   id: string;
@@ -27,6 +53,7 @@ export interface SevenDaysZone {
   commandCooldown: number;
   enterCommands: string[];
   exitCommands: string[];
+  movement: SevenDaysZoneMovement;
 }
 export interface SevenDaysZones {
   revision: number;
@@ -51,7 +78,10 @@ export function validZoneCommand(command: string): boolean {
 }
 
 export const hasZoneCommands = (zone: SevenDaysZone): boolean =>
-  zone.commandsEnabled || zone.enterCommands.length > 0 || zone.exitCommands.length > 0;
+  zone.commandsEnabled ||
+  zone.enterCommands.length > 0 ||
+  zone.exitCommands.length > 0 ||
+  zone.movement.mode !== 'none';
 
 /** Same strict boundary in API, browser and companion. No silent unknown rule fallback. */
 export function parseSevenDaysZones(value: unknown): SevenDaysZones {
@@ -105,7 +135,39 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'commandCooldown',
       'enterCommands',
       'exitCommands',
+      'movement',
     ]);
+    const movement = object(z.movement, [
+      'mode',
+      'priority',
+      'minLevel',
+      'maxLevel',
+      'players',
+      'x',
+      'y',
+      'z',
+      'cooldown',
+      'message',
+    ]);
+    if (
+      !['none', 'restricted', 'portal'].includes(movement.mode as string) ||
+      !number(movement.priority, -1000, 1000, true) ||
+      !number(movement.minLevel, 0, 10000, true) ||
+      !number(movement.maxLevel, 0, 10000, true) ||
+      (movement.maxLevel !== 0 && movement.minLevel > movement.maxLevel) ||
+      !number(movement.x, -500000, 500000, true) ||
+      !number(movement.z, -500000, 500000, true) ||
+      !number(movement.y, 2, 251, true) ||
+      !number(movement.cooldown, 10, 86400, true) ||
+      !text(movement.message, 240) ||
+      !Array.isArray(movement.players) ||
+      movement.players.length > 64 ||
+      !movement.players.every(
+        (id) => text(id, 121) && /^[A-Za-z][A-Za-z0-9]{0,23}_[A-Za-z0-9_-]{1,96}$/.test(id),
+      ) ||
+      new Set(movement.players).size !== movement.players.length
+    )
+      return invalid();
     if (
       !text(z.id, 48) ||
       !/^[a-z0-9][a-z0-9_-]{0,47}$/.test(z.id) ||
@@ -139,7 +201,27 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
     )
       return invalid();
     ids.add(z.id);
-    return { ...z } as unknown as SevenDaysZone;
+    return {
+      ...z,
+      movement: { ...movement, players: [...movement.players].sort() },
+    } as unknown as SevenDaysZone;
   });
+  for (const zone of zones) {
+    const m = zone.movement;
+    if (
+      zone.enabled &&
+      m.mode !== 'none' &&
+      zones.some(
+        (other) =>
+          other.enabled &&
+          other.movement.mode !== 'none' &&
+          m.x + 0.5 >= other.x1 &&
+          m.x + 0.5 <= other.x2 &&
+          m.z + 0.5 >= other.z1 &&
+          m.z + 0.5 <= other.z2,
+      )
+    )
+      throw new Error('zones_destination_conflict');
+  }
   return { revision: root.revision, worldId: root.worldId, zones };
 }

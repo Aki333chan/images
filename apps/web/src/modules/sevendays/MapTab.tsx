@@ -680,7 +680,7 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
           {t(zones.open ? 'sdtd.zones.coordinates' : 'sdtd.map.readOnly')}
         </p>
       </div>
-      <SevenDaysZoneEditor zone={zones} />
+      <SevenDaysZoneEditor zone={zones} players={data?.players} />
     </Card>
   );
 }

@@ -5,6 +5,7 @@ import {
   SEVENDAYS_ZONE_BONUSES,
   parseSevenDaysZones,
   hasZoneCommands,
+  defaultZoneMovement,
   type SevenDaysZone,
   type SevenDaysZones,
 } from '@aurum/shared';
@@ -19,7 +20,7 @@ const selectClass =
 export function zonePreset(type: SevenDaysZone['type']) {
   return {
     type,
-    noPvp: type === 'safe' || type === 'sanctuary',
+    noPvp: type === 'safe' || type === 'sanctuary' || type === 'restricted',
     noDamage: false,
     blockSpawn: type === 'sanctuary' ? 5 : 0,
     despawn: 0,
@@ -99,6 +100,7 @@ export function useSevenDaysZones(serverId: string) {
       commandCooldown: 30,
       enterCommands: [],
       exitCommands: [],
+      movement: defaultZoneMovement(),
       ...zonePreset('safe'),
     });
     setCorner(null);
@@ -146,12 +148,22 @@ export function useSevenDaysZones(serverId: string) {
                   ...draft,
                   enterCommands: draft.enterCommands.map((c) => c.trim()).filter(Boolean),
                   exitCommands: draft.exitCommands.map((c) => c.trim()).filter(Boolean),
+                  movement: {
+                    ...draft.movement,
+                    players: draft.movement.players.map((id) => id.trim()).filter(Boolean),
+                  },
                 },
               ]),
         ],
       });
-    } catch {
-      setError(t('sdtd.zones.invalid'));
+    } catch (e) {
+      setError(
+        t(
+          (e as Error).message === 'zones_destination_conflict'
+            ? 'sdtd.zones.destinationConflict'
+            : 'sdtd.zones.invalid',
+        ),
+      );
       return;
     }
     lock.current = true;
@@ -170,7 +182,11 @@ export function useSevenDaysZones(serverId: string) {
       setNotice(t('sdtd.zones.saved'));
     } catch (e) {
       if (activeBase.current === base)
-        setError(`${(e as Error).message} ${t('sdtd.zones.retryHelp')}`);
+        setError(
+          (e as Error).message.includes('zones_destination_unavailable')
+            ? t('sdtd.zones.destinationUnavailable')
+            : `${(e as Error).message} ${t('sdtd.zones.retryHelp')}`,
+        );
     } finally {
       lock.current = false;
       setBusy(false);
@@ -207,7 +223,13 @@ export function useSevenDaysZones(serverId: string) {
   };
 }
 
-export function SevenDaysZoneEditor({ zone }: { zone: ReturnType<typeof useSevenDaysZones> }) {
+export function SevenDaysZoneEditor({
+  zone,
+  players = [],
+}: {
+  zone: ReturnType<typeof useSevenDaysZones>;
+  players?: { id: string; name: string }[];
+}) {
   const { t } = useI18n();
   const z = zone.draft;
   const selectedId = z?.id;
@@ -305,10 +327,25 @@ export function SevenDaysZoneEditor({ zone }: { zone: ReturnType<typeof useSeven
                   className={selectClass}
                   aria-label={t('sdtd.zones.type')}
                   value={z.type}
-                  onChange={(e) => change(zonePreset(e.target.value as SevenDaysZone['type']))}
+                  onChange={(e) => {
+                    const type = e.target.value as SevenDaysZone['type'];
+                    change({
+                      ...zonePreset(type),
+                      movement: {
+                        ...z.movement,
+                        mode: type === 'restricted' || type === 'portal' ? type : 'none',
+                      },
+                    });
+                  }}
                 >
                   {SEVENDAYS_ZONE_TYPES.map((type) => (
-                    <option key={type} value={type}>
+                    <option
+                      key={type}
+                      value={type}
+                      disabled={
+                        !zone.commandsManage && (type === 'restricted' || type === 'portal')
+                      }
+                    >
                       {t(`sdtd.zones.type.${type}`)}
                     </option>
                   ))}
@@ -418,6 +455,168 @@ export function SevenDaysZoneEditor({ zone }: { zone: ReturnType<typeof useSeven
                 </label>
               ))}
             </div>
+            <details
+              className="border-t border-border pt-3"
+              open={z.movement.mode !== 'none' ? true : undefined}
+            >
+              <summary className="cursor-pointer text-sm font-semibold">
+                {t('sdtd.zones.movement')}
+              </summary>
+              <fieldset disabled={!zone.commandsManage} className="mt-3 space-y-3">
+                <label className="block space-y-1 text-sm">
+                  {t('sdtd.zones.movementMode')}
+                  <select
+                    className={selectClass}
+                    value={z.movement.mode}
+                    aria-label={t('sdtd.zones.movementMode')}
+                    onChange={(e) =>
+                      change({
+                        movement: {
+                          ...z.movement,
+                          mode: e.target.value as SevenDaysZone['movement']['mode'],
+                        },
+                      })
+                    }
+                  >
+                    {(['none', 'restricted', 'portal'] as const).map((mode) => (
+                      <option key={mode} value={mode}>
+                        {t(`sdtd.zones.movement.${mode}`)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {z.movement.mode !== 'none' && (
+                  <>
+                    <p className="max-w-prose text-xs text-muted">
+                      {t(`sdtd.zones.movementHelp.${z.movement.mode}`)}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(['minLevel', 'maxLevel'] as const).map((key) => (
+                        <label key={key} className="block space-y-1 text-sm">
+                          {t(`sdtd.zones.${key}`)}
+                          <Input
+                            required
+                            type="number"
+                            min={0}
+                            max={10000}
+                            step={1}
+                            value={Number.isFinite(z.movement[key]) ? z.movement[key] : ''}
+                            onChange={(e) =>
+                              change({ movement: { ...z.movement, [key]: e.target.valueAsNumber } })
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <label className="block space-y-1 text-sm">
+                      {t('sdtd.zones.allowedPlayers')}
+                      <textarea
+                        rows={3}
+                        aria-label={t('sdtd.zones.allowedPlayers')}
+                        maxLength={7808}
+                        className={`${selectClass} font-mono`}
+                        value={z.movement.players.join('\n')}
+                        onChange={(e) =>
+                          change({
+                            movement: { ...z.movement, players: e.target.value.split(/\r?\n/) },
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="block space-y-1 text-sm">
+                      {t('sdtd.zones.addOnlinePlayer')}
+                      <select
+                        className={selectClass}
+                        aria-label={t('sdtd.zones.addOnlinePlayer')}
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value)
+                            change({
+                              movement: {
+                                ...z.movement,
+                                players: [...z.movement.players.filter(Boolean), e.target.value],
+                              },
+                            });
+                        }}
+                      >
+                        <option value="">{t('sdtd.zones.chooseOnlinePlayer')}</option>
+                        {players
+                          .filter((p) => !z.movement.players.includes(p.id))
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.accessHelp')}</p>
+                    <fieldset className="space-y-2">
+                      <legend className="mb-2 text-sm font-semibold">
+                        {t(
+                          z.movement.mode === 'restricted'
+                            ? 'sdtd.zones.returnPoint'
+                            : 'sdtd.zones.destination',
+                        )}
+                      </legend>
+                      <div className="grid grid-cols-3 gap-3">
+                        {(['x', 'y', 'z'] as const).map((key) => (
+                          <label key={key} className="block space-y-1 text-sm">
+                            {key.toUpperCase()}
+                            <Input
+                              required
+                              type="number"
+                              min={key === 'y' ? 2 : -500000}
+                              max={key === 'y' ? 251 : 500000}
+                              step={1}
+                              value={Number.isFinite(z.movement[key]) ? z.movement[key] : ''}
+                              onChange={(e) =>
+                                change({
+                                  movement: { ...z.movement, [key]: e.target.valueAsNumber },
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <p className="max-w-prose text-xs text-muted">
+                        {t('sdtd.zones.destinationHelp')}
+                      </p>
+                    </fieldset>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(['priority', 'cooldown'] as const).map((key) => (
+                        <label key={key} className="block space-y-1 text-sm">
+                          {t(`sdtd.zones.movement.${key}`)}
+                          <Input
+                            required
+                            type="number"
+                            min={key === 'priority' ? -1000 : 10}
+                            max={key === 'priority' ? 1000 : 86400}
+                            step={1}
+                            value={Number.isFinite(z.movement[key]) ? z.movement[key] : ''}
+                            onChange={(e) =>
+                              change({ movement: { ...z.movement, [key]: e.target.valueAsNumber } })
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <label className="block space-y-1 text-sm">
+                      {t('sdtd.zones.movementMessage')}
+                      <Input
+                        maxLength={240}
+                        value={z.movement.message}
+                        onChange={(e) =>
+                          change({ movement: { ...z.movement, message: e.target.value } })
+                        }
+                      />
+                    </label>
+                    <p className="max-w-prose text-xs text-muted">
+                      {t('sdtd.zones.movementLimits')}
+                    </p>
+                  </>
+                )}
+              </fieldset>
+            </details>
             <details className="border-t border-border pt-3">
               <summary className="cursor-pointer text-sm font-semibold">
                 {t('sdtd.zones.commands')}

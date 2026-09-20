@@ -13,7 +13,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       b.onLoad({ filter: /.*/, namespace: 'mock' }, ({ path: name }) => ({ loader: 'js', contents: name === 'i18n'
         ? `const c=${JSON.stringify(catalog)};export const useI18n=()=>({t:k=>c[k]||k});`
         : name === 'auth' ? `export const useAuth=()=>({hasPermission:(p)=>window.allowed && (p!=='sevendays.zones.commands'||window.commandsAllowed!==false)});`
-        : `window.calls=[];window.zones={revision:0,worldId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',zones:[]};export async function api(url,init){let body=init?.body?JSON.parse(init.body):null;window.calls.push({url,body});if(url.endsWith('/zones')){if(body){if(window.conflict)throw Error('zones_revision_conflict');window.zones={...body,revision:body.revision+1};}return structuredClone(window.zones);}if(url.endsWith('/map'))return {available:true,reason:'native_map_missing',info:null,players:[{id:'p',name:'Test player',x:0,z:0}],claims:[],truncated:false};throw Error('Unexpected fixture '+url);}` }));
+        : `window.calls=[];window.zones={revision:0,worldId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',zones:[]};export async function api(url,init){let body=init?.body?JSON.parse(init.body):null;window.calls.push({url,body});if(url.endsWith('/zones')){if(body){if(window.conflict)throw Error('zones_revision_conflict');if(window.unavailable)throw Error('zones_destination_unavailable');window.zones={...body,revision:body.revision+1};}return structuredClone(window.zones);}if(url.endsWith('/map'))return {available:true,reason:'native_map_missing',info:null,players:[{id:'Steam_123',name:'Test player',x:0,z:0}],claims:[],truncated:false};throw Error('Unexpected fixture '+url);}` }));
     }}] });
   const assets = path.join(repo, 'apps/web/dist/assets');
   const css = fs.readFileSync(path.join(assets, fs.readdirSync(assets).find(f => f.endsWith('.css'))));
@@ -64,6 +64,24 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.waitForFunction(() => window.zones.revision === 3);
     assert.equal(await page.evaluate(() => window.zones.zones[0].commandCooldown), 45);
     assert.deepEqual(await page.evaluate(() => window.zones.zones[0].enterCommands), ['teleportplayer {player} 100 -1 200']);
+    await page.getByLabel(catalog['sdtd.zones.type'], { exact: true }).selectOption('restricted');
+    await page.getByLabel(catalog['sdtd.zones.minLevel'], {exact:true}).fill('10');
+    await page.getByLabel(catalog['sdtd.zones.addOnlinePlayer'], {exact:true}).selectOption('Steam_123');
+    assert.equal(await page.getByLabel(catalog['sdtd.zones.allowedPlayers'], {exact:true}).inputValue(), 'Steam_123');
+    await page.getByLabel('X', {exact:true}).fill('10000');
+    await page.getByLabel(catalog['sdtd.zones.movementMessage'], {exact:true}).fill('Вход в {zone} ограничен');
+    await page.evaluate(() => window.unavailable = true);
+    await button('sdtd.zones.save').click();
+    await page.getByText(catalog['sdtd.zones.destinationUnavailable'], {exact:true}).waitFor();
+    assert.equal(await page.getByLabel('X', {exact:true}).inputValue(), '10000');
+    await page.evaluate(() => window.unavailable = false);
+    await button('sdtd.zones.save').click();
+    await page.waitForFunction(() => window.zones.revision === 4);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.mode), 'restricted');
+    await page.getByLabel(catalog['sdtd.zones.movementMode'], {exact:true}).selectOption('portal');
+    await button('sdtd.zones.save').click();
+    await page.waitForFunction(() => window.zones.revision === 5);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].movement.mode), 'portal');
     for (const [name, width] of [['desktop', 1200], ['mobile', 390]]) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(() => document.fonts.ready); await page.evaluate(() => scrollTo(0, 0));
@@ -84,6 +102,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await button('sdtd.zones.title').click();
     assert.equal(await button('sdtd.zones.add').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: two corners, default rules, one save per double click, stable edit, keyboard selection, conflict retains draft, read-only controls, desktop/mobile overflow.');
+    console.log('PASS: two corners, defaults, stable save, restricted/portal settings, online IDs, unloaded destination retains draft, command authority, keyboard selection, conflict, read-only, desktop/mobile overflow.');
   } finally { await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -17,6 +17,7 @@ namespace Aurum.Companion.Core.Game
         public bool CommandsEnabled;
         public int CommandCooldown = 30;
         public string[] EnterCommands = Array.Empty<string>(), ExitCommands = Array.Empty<string>();
+        public ZoneMovement Movement = new ZoneMovement();
         public bool Contains(double x, double z) => Enabled &&
             x >= X1 && x <= X2 && z >= Z1 && z <= Z2;
     }
@@ -46,7 +47,9 @@ namespace Aurum.Companion.Core.Game
                     map["commandsEnabled"] = false; map["commandCooldown"] = 30d;
                     map["enterCommands"] = new List<object?>(); map["exitCommands"] = new List<object?>();
                 }
-                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands");
+                if (allowLegacy && !map.ContainsKey("movement"))
+                    map["movement"] = JsonReader.ParseObject(WriteMovement(new ZoneMovement()));
+                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands", "movement");
                 var z = new ZoneRule {
                     Id = Text(map, "id", 48), Name = Text(map, "name", 80), Type = Text(map, "type", 24),
                     Enabled = Boolean(map, "enabled"), NoPvp = Boolean(map, "noPvp"), NoDamage = Boolean(map, "noDamage"),
@@ -55,15 +58,18 @@ namespace Aurum.Companion.Core.Game
                     BlockSpawn = (int)Number(map, "blockSpawn", 0, 7, true), Despawn = (int)Number(map, "despawn", 0, 7, true),
                     Enter = Text(map, "enter", 240), Exit = Text(map, "exit", 240), Bonus = Text(map, "bonus", 24),
                     CommandsEnabled = Boolean(map, "commandsEnabled"), CommandCooldown = (int)Number(map, "commandCooldown", 10, 86400, true),
-                    EnterCommands = Commands(map, "enterCommands"), ExitCommands = Commands(map, "exitCommands")
+                    EnterCommands = Commands(map, "enterCommands"), ExitCommands = Commands(map, "exitCommands"),
+                    Movement = ReadMovement(map["movement"])
                 };
                 if (!Regex.IsMatch(z.Id, "\\A[a-z0-9][a-z0-9_-]{0,47}\\z") || !ids.Add(z.Id) ||
                     string.IsNullOrWhiteSpace(z.Name) || z.X1 >= z.X2 || z.Z1 >= z.Z2 ||
-                    !new[] { "safe", "information", "sanctuary", "bonus", "custom" }.Contains(z.Type) ||
+                    !new[] { "safe", "information", "sanctuary", "bonus", "custom", "restricted", "portal" }.Contains(z.Type) ||
                     !new[] { "none", "regeneration", "stamina", "speed" }.Contains(z.Bonus)) throw Invalid();
                 zones.Add(z);
             }
             result.Zones = zones.ToArray();
+            if (result.Zones.Any(z => z.Enabled && z.Movement.Mode != "none" && !ZoneMovementPolicy.DestinationClear(result, z.Movement)))
+                throw new JsonReader.JsonException("zones_destination_conflict");
             return result;
         }
 
@@ -96,8 +102,36 @@ namespace Aurum.Companion.Core.Game
                 Pair("blockSpawn", JsonWriter.Number(z.BlockSpawn)), Pair("despawn", JsonWriter.Number(z.Despawn)),
                 Pair("enter", JsonWriter.String(z.Enter)), Pair("exit", JsonWriter.String(z.Exit)), Pair("bonus", JsonWriter.String(z.Bonus)),
                 Pair("commandsEnabled", JsonWriter.Bool(z.CommandsEnabled)), Pair("commandCooldown", JsonWriter.Number(z.CommandCooldown)),
-                Pair("enterCommands", JsonWriter.Array(z.EnterCommands.Select(JsonWriter.String))), Pair("exitCommands", JsonWriter.Array(z.ExitCommands.Select(JsonWriter.String)))
+                Pair("enterCommands", JsonWriter.Array(z.EnterCommands.Select(JsonWriter.String))), Pair("exitCommands", JsonWriter.Array(z.ExitCommands.Select(JsonWriter.String))),
+                Pair("movement", WriteMovement(z.Movement))
             })))) });
+
+        private static ZoneMovement ReadMovement(object? value)
+        {
+            if (!(value is Dictionary<string, object?> map)) throw Invalid();
+            Keys(map, "mode", "priority", "minLevel", "maxLevel", "players", "x", "y", "z", "cooldown", "message");
+            var m = new ZoneMovement {
+                Mode = Text(map, "mode", 16), Priority = (int)Number(map, "priority", -1000, 1000, true),
+                MinLevel = (int)Number(map, "minLevel", 0, 10000, true), MaxLevel = (int)Number(map, "maxLevel", 0, 10000, true),
+                X = (int)Number(map, "x", -500000, 500000, true), Y = (int)Number(map, "y", 2, 251, true),
+                Z = (int)Number(map, "z", -500000, 500000, true), Cooldown = (int)Number(map, "cooldown", 10, 86400, true),
+                Message = Text(map, "message", 240)
+            };
+            if (!new[] { "none", "restricted", "portal" }.Contains(m.Mode) || (m.MaxLevel != 0 && m.MinLevel > m.MaxLevel) ||
+                !(map["players"] is List<object?> list) || list.Count > 64) throw Invalid();
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in list)
+                if (!(item is string id) || !Regex.IsMatch(id, "\\A[A-Za-z][A-Za-z0-9]{0,23}_[A-Za-z0-9_-]{1,96}\\z") || !ids.Add(id)) throw Invalid();
+            m.Players = ids.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+            return m;
+        }
+        private static string WriteMovement(ZoneMovement m) => JsonWriter.Object(new[] {
+            Pair("mode", JsonWriter.String(m.Mode)), Pair("priority", JsonWriter.Number(m.Priority)),
+            Pair("minLevel", JsonWriter.Number(m.MinLevel)), Pair("maxLevel", JsonWriter.Number(m.MaxLevel)),
+            Pair("players", JsonWriter.Array(m.Players.Select(JsonWriter.String))),
+            Pair("x", JsonWriter.Number(m.X)), Pair("y", JsonWriter.Number(m.Y)), Pair("z", JsonWriter.Number(m.Z)),
+            Pair("cooldown", JsonWriter.Number(m.Cooldown)), Pair("message", JsonWriter.String(m.Message))
+        });
 
         private static KeyValuePair<string, string> Pair(string key, string value) => new KeyValuePair<string, string>(key, value);
         private static JsonReader.JsonException Invalid() => new JsonReader.JsonException("invalid_zones");

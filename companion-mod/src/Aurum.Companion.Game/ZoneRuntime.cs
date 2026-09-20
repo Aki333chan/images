@@ -89,6 +89,14 @@ namespace Aurum.Companion.Game
             if (_error != null) throw new InvalidOperationException(_error);
             if (next.Revision != _rules.Revision || next.WorldId != _rules.WorldId) throw new InvalidOperationException("zones_revision_conflict");
             CheckBuffs(next);
+            foreach (var zone in next.Zones)
+            {
+                var old = _rules.Zones.FirstOrDefault(z => z.Id == zone.Id);
+                bool changed = old == null || !old.Enabled || old.Movement.Mode != zone.Movement.Mode ||
+                    old.Movement.X != zone.Movement.X || old.Movement.Y != zone.Movement.Y || old.Movement.Z != zone.Movement.Z;
+                if (changed && zone.Enabled && zone.Movement.Mode != "none" && !DestinationReady(zone.Movement))
+                    throw new InvalidOperationException("zones_destination_unavailable");
+            }
             next.Revision++;
             string temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
@@ -142,6 +150,11 @@ namespace Aurum.Companion.Game
                     var active = _rules.Zones.Where(z => z.Contains(player.position.x, player.position.z)).ToArray();
                     var ids = new HashSet<string>(active.Select(z => z.Id), StringComparer.Ordinal);
                     bool observed = _inside.TryGetValue(player.entityId, out var before);
+                    var clientInfo = ConnectionManager.Instance.Clients.ForEntityId(player.entityId);
+                    var identities = new[] { clientInfo?.InternalId?.CombinedString, clientInfo?.PlatformId?.CombinedString,
+                        clientInfo?.CrossplatformId?.CombinedString }.Where(id => id != null).Cast<string>().ToArray();
+                    var movement = ZoneMovementPolicy.Select(_rules, player.position.x, player.position.z,
+                        player.Progression?.Level ?? -1, identities, before);
                     if (observed &&
                         (!_noticeAfter.TryGetValue(player.entityId, out float after) || Time.realtimeSinceStartup >= after))
                     {
@@ -160,7 +173,9 @@ namespace Aurum.Companion.Game
                         if (wanted) player.Buffs.AddBuff(Buffs[i]); // Short lease; expires if mod stops/fails.
                         else if (player.Buffs.HasBuff(Buffs[i])) player.Buffs.RemoveBuff(Buffs[i]);
                     }
-                    if (observed)
+                    // Denied players cannot trigger entry rewards; a structured portal owns this transition.
+                    if (movement != null) RunMovement(player, clientInfo, movement, ref commandBudget);
+                    else if (observed)
                         foreach (var z in _rules.Zones)
                         {
                             bool entered = ids.Contains(z.Id) && !before!.Contains(z.Id);
@@ -190,6 +205,40 @@ namespace Aurum.Companion.Game
                 _error = "zones_runtime_failed";
                 Log.Error("[AurumCompanion] Zones runtime failed; effect leases expire: " + e);
             }
+        }
+
+        private bool DestinationReady(ZoneMovement movement)
+        {
+            var world = GameManager.Instance.World;
+            var destination = new Vector3(movement.X + 0.5f, movement.Y, movement.Z + 0.5f);
+            // Native spawn check: loaded chunk, suitable floor, body/head space and no water.
+            // Never load/generate a distant chunk synchronously just to service a portal.
+            return world.InBoundsForPlayersPercent(destination) >= 0.5f &&
+                world.CanPlayersSpawnAtPos(destination);
+        }
+
+        private void RunMovement(EntityPlayer player, ClientInfo? client, ZoneRule zone, ref int budget)
+        {
+            if (budget < 1 || client?.InternalId == null) return;
+            var m = zone.Movement;
+            if (!_commandGate.TryBegin(client.InternalId.CombinedString, zone.Id + "/movement", true,
+                m.Cooldown, true, Time.realtimeSinceStartup)) return;
+            budget--;
+            try
+            {
+                // Do not teleport an occupied vehicle or detach a passenger implicitly.
+                if (player.AttachedToEntity != null || !ZoneMovementPolicy.DestinationClear(_rules, m) || !DestinationReady(m))
+                {
+                    Log.Warning("[AurumCompanion] Zone movement skipped: " + zone.Id + " entity=" + player.entityId + " destination unavailable or player mounted.");
+                    return;
+                }
+                // Public native packet, same path as teleportplayer; never call publicized protected helpers.
+                LockManager.Instance.ForceUnlockByPlayer(player.entityId);
+                client.SendPackage(NetPackageManager.GetPackage<NetPackageTeleportPlayer>().Setup(new Vector3(m.X + 0.5f, m.Y, m.Z + 0.5f)));
+                if (m.Message.Length > 0) _bridge.SendPrivateMessage(client.InternalId.CombinedString, m.Message.Replace("{zone}", zone.Name));
+                Log.Out("[AurumCompanion] Zone movement dispatched: " + zone.Id + " entity=" + player.entityId + " mode=" + m.Mode);
+            }
+            catch (Exception e) { Log.Error("[AurumCompanion] Zone movement failed (no immediate retry): " + zone.Id + " " + e.Message); }
         }
 
         private void RunCommands(EntityPlayer player, ZoneRule zone, bool entering, ref int budget)

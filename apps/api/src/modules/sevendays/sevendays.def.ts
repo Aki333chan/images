@@ -67,7 +67,7 @@ export const sevenDaysManifest: GameModuleManifest = {
     },
     {
       key: SEVENDAYS_PERMISSIONS.zonesCommands,
-      description: 'Настройка зон с автоматическими командами входа/выхода',
+      description: 'Настройка зон с командами, ограниченным входом и порталами',
       defaultRoles: ['ADMIN'],
     },
     {

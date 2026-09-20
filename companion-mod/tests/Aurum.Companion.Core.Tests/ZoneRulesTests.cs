@@ -36,6 +36,57 @@ public sealed class ZoneRulesTests
     private static ZoneRule Safe() => new ZoneRule { Id = "spawn", Name = "Spawn", X1 = -10, Z1 = -10, X2 = 10, Z2 = 10 };
 
     [Fact]
+    public void MovementCombinesIdsAndLevelsAndDenialWinsDeterministically()
+    {
+        var low = Safe(); low.Id = "a"; low.Movement = new ZoneMovement { Mode = "restricted", MinLevel = 10, MaxLevel = 50, Players = new[] { "Steam_123" }, X = 100 };
+        var high = Safe(); high.Id = "b"; high.Movement = new ZoneMovement { Mode = "restricted", MinLevel = 30, Priority = 5, X = 100 };
+        var portal = Safe(); portal.Id = "portal"; portal.Movement = new ZoneMovement { Mode = "portal", Priority = 1000, X = 100 };
+        var rules = new ZoneRules { Zones = new[] { portal, low, high } };
+        Assert.False(low.Movement.Allows(9, new[] { "Steam_123" }));
+        Assert.False(low.Movement.Allows(51, new[] { "Steam_123" }));
+        Assert.False(low.Movement.Allows(20, new[] { "Steam_999" }));
+        Assert.True(low.Movement.Allows(20, new[] { "EOS_other", "Steam_123" }));
+        Assert.Equal("b", ZoneMovementPolicy.Select(rules, 0, 0, 20, new[] { "Steam_123" }, null)?.Id);
+        Array.Reverse(rules.Zones);
+        Assert.Equal("b", ZoneMovementPolicy.Select(rules, 0, 0, 20, new[] { "Steam_123" }, null)?.Id);
+        high.Movement.Priority = 0;
+        Assert.Equal("a", ZoneMovementPolicy.Select(rules, 0, 0, 1, new[] { "Steam_123" }, null)?.Id);
+        Assert.Null(ZoneMovementPolicy.Select(rules, 0, 0, 40, new[] { "Steam_123" }, null));
+        Assert.Equal("portal", ZoneMovementPolicy.Select(rules, 0, 0, 40, new[] { "Steam_123" }, new System.Collections.Generic.HashSet<string>())?.Id);
+        Assert.Null(ZoneMovementPolicy.Select(rules, 0, 0, 40, new[] { "Steam_123" }, new System.Collections.Generic.HashSet<string> { "portal" }));
+        Assert.Null(ZoneMovementPolicy.Select(rules, 1000, 1000, 1, Array.Empty<string>(), null));
+    }
+
+    [Fact]
+    public void MovementRejectsUnsafeConfigAndLoadsOldFilesOnlyExplicitly()
+    {
+        var zone = Safe(); var rules = new ZoneRules { Zones = new[] { zone } };
+        const string movement = ",\"movement\":{\"mode\":\"none\",\"priority\":0,\"minLevel\":0,\"maxLevel\":0,\"players\":[],\"x\":0,\"y\":65,\"z\":0,\"cooldown\":10,\"message\":\"\"}";
+        string legacy = rules.Write().Replace(movement, "");
+        Assert.NotEqual(rules.Write(), legacy);
+        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(legacy));
+        Assert.Equal("none", ZoneRules.Read(legacy, true).Zones[0].Movement.Mode);
+        zone.Movement.Mode = "restricted";
+        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(rules.Write())); // Return is inside its own restriction.
+        zone.Movement.X = 100;
+        Assert.Equal(rules.Write(), ZoneRules.Read(rules.Write()).Write());
+        foreach (int y in new[] { -1, 0, 252 }) {
+            zone.Movement.Y = y;
+            Assert.ThrowsAny<Exception>(() => ZoneRules.Read(rules.Write()));
+        }
+        zone.Movement.Y = 65; zone.Movement.Players = new[] { "Alice" };
+        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(rules.Write()));
+        zone.Movement.Players = new[] { "Steam_123", "Steam_123" };
+        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(rules.Write()));
+        zone.Movement.Players = Array.Empty<string>();
+        var other = Safe(); other.Id = "destination"; other.X1 = 90; other.X2 = 110; other.Movement.Mode = "portal"; other.Movement.X = 1000;
+        rules.Zones = new[] { zone, other };
+        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(rules.Write())); // Cross-zone chain.
+        other.Enabled = false;
+        Assert.Equal(rules.Write(), ZoneRules.Read(rules.Write()).Write());
+    }
+
+    [Fact]
     public void RoundtripPreservesFlagsMessagesAndNegativeCoordinates()
     {
         var z = Safe(); z.BlockSpawn = 5; z.Despawn = 2; z.Enter = "Welcome \"friend\""; z.NoDamage = true;
