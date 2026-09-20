@@ -185,6 +185,7 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'map-read',
   'map-pois',
   'inventory-read',
+  'inventory-saved-read',
   'item-drop',
 ] as const;
 export type SevenDaysCompanionCapability = (typeof SEVENDAYS_COMPANION_CAPABILITIES)[number];
@@ -207,12 +208,30 @@ export interface SevenDaysInventory {
   /** Absent for companion 1.0.7; never infer trailing empty slots. */
   slotCounts?: Record<SevenDaysInventoryItem['section'], number> | null;
   available: boolean;
-  reason?: 'mod_update' | 'mod_unavailable' | 'offline' | 'snapshot_pending';
-  source: 'client_snapshot';
+  reason?:
+    | 'mod_update'
+    | 'mod_unavailable'
+    | 'offline'
+    | 'snapshot_pending'
+    | 'save_missing'
+    | 'save_invalid'
+    | 'save_busy'
+    | 'save_unavailable';
+  source: 'client_snapshot' | 'saved_file';
+  /** Primary save modification time, not the panel fetch time. */
+  savedAt?: string | null;
   /** Panel fetch time, NOT snapshot creation time (not supplied by the game). */
   fetchedAt: string | null;
   items: SevenDaysInventoryItem[];
   truncated: boolean;
+}
+
+export interface SevenDaysSavedPlayers {
+  ready: boolean;
+  players: { id: string; name: string }[];
+  hasMore: boolean;
+  truncated: boolean;
+  reason?: 'mod_update' | 'mod_unavailable';
 }
 
 export interface SevenDaysItemCatalogue {

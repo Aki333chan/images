@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   parseInventory,
+  parseSavedPlayers,
   unavailableInventory,
   validateInventoryPlayerId,
 } from './sevendays-inventory';
@@ -48,20 +49,60 @@ export class SevenDaysCompanionService {
       false,
     );
   }
-  async inventory(serverId: string, playerId: string) {
+  async inventory(serverId: string, playerId: string, saved = false) {
     validateInventoryPlayerId(playerId);
+    const source = saved ? 'saved_file' : 'client_snapshot';
     if (this.inventoryReads >= 4) throw new ServiceUnavailableException('inventory_busy');
     this.inventoryReads++;
     try {
       const ping = await this.ping(serverId);
-      if (!ping) return unavailableInventory('mod_unavailable');
-      if (!ping.compatible || !ping.capabilities?.includes('inventory-read'))
-        return unavailableInventory('mod_update');
+      if (!ping) return unavailableInventory('mod_unavailable', source);
+      if (
+        !ping.compatible ||
+        !ping.capabilities?.includes(saved ? 'inventory-saved-read' : 'inventory-read')
+      )
+        return unavailableInventory('mod_update', source);
       return parseInventory(
         await this.call<unknown>(
           serverId,
           'GET',
-          `/players/${encodeURIComponent(playerId)}/inventory`,
+          `/players/${encodeURIComponent(playerId)}/${saved ? 'saved-inventory' : 'inventory'}`,
+          undefined,
+          false,
+        ),
+        source,
+      );
+    } finally {
+      this.inventoryReads--;
+    }
+  }
+
+  async savedPlayers(serverId: string, query: string, offset: number) {
+    if (
+      typeof query !== 'string' ||
+      query.length > 80 ||
+      !Number.isInteger(offset) ||
+      offset < 0 ||
+      offset > 10000
+    )
+      throw new BadRequestException('invalid_saved_players_query');
+    if (this.inventoryReads >= 4) throw new ServiceUnavailableException('inventory_busy');
+    this.inventoryReads++;
+    try {
+      const ping = await this.ping(serverId);
+      if (!ping || !ping.compatible || !ping.capabilities?.includes('inventory-saved-read'))
+        return {
+          ready: false,
+          players: [],
+          hasMore: false,
+          truncated: false,
+          reason: !ping ? 'mod_unavailable' : 'mod_update',
+        };
+      return parseSavedPlayers(
+        await this.call(
+          serverId,
+          'GET',
+          `/saved-players/${encodeURIComponent(query || '_')}/${offset}`,
           undefined,
           false,
         ),

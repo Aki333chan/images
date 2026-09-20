@@ -39,6 +39,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
                   : `window.stats={inventory:0,aborted:0,searches:0,grants:[]};window.spawnedIds=new Set();window.mode='ready';window.grantMode='lost';export async function api(p,init){
           if(p.includes('/items?q=')){window.stats.searches++; if(window.searchFails)throw Error('old companion');return {sessionId:'ac67354a-2548-4dc5-8f23-a43a90b55d9d',ready:true,truncated:true,items:[{itemId:1,name:'gunPistol',hasQuality:true,maxCount:1},{itemId:2,name:'ammoLongName'.repeat(8),hasQuality:false,maxCount:1000},...Array.from({length:20},(_,i)=>({itemId:i+3,name:'ammoFixture'+i,hasQuality:false,maxCount:1000}))]};}
           if(p.endsWith('/item-drop')){const g=JSON.parse(init.body);window.stats.grants.push(g);await new Promise(r=>setTimeout(r,120));if(window.grantMode==='offline')return {requestId:g.requestId,status:'offline'};window.spawnedIds.add(g.requestId);if(window.grantMode==='lost')throw Error('reply lost after spawn');return {requestId:g.requestId,status:'spawned'};}
+          if(p.includes('/saved-players?')){window.savedCalls=(window.savedCalls||0)+1;return window.savedOld ? {ready:false,reason:'mod_update',players:[],hasMore:false,truncated:false} : {ready:true,players:[{id:'Steam_456',name:'Offline Test Player'}],hasMore:p.includes('offset=0'),truncated:false};}
+          if(p.endsWith('/saved-inventory')){window.savedReads=(window.savedReads||0)+1;return window.savedBusy ? {available:false,source:'saved_file',reason:'save_busy',items:[]} : {available:true,source:'saved_file',savedAt:'2026-09-19T08:00:00Z',fetchedAt:'2026-09-20T12:00:00Z',slotCounts:{belt:10,bag:45,equipment:4,cursor:1},truncated:false,items:[{section:'belt',slot:0,itemId:1,name:'gunPistol',count:1,quality:6}]};}
           if(p.endsWith('/players'))return {online:1,players:[{entityId:1,name:'Test Player',platformId:'Steam_123',crossId:null,level:5,ping:20,position:null}]};
           if(p.endsWith('/state'))return {available:false,reason:'Test server'};
           if(p.endsWith('/inventory')){window.stats.inventory++;await new Promise((ok,no)=>{const timer=setTimeout(ok,80);init.signal.addEventListener('abort',()=>{window.stats.aborted++;clearTimeout(timer);no(new DOMException('aborted','AbortError'));},{once:true});});
@@ -364,6 +366,63 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await open();
     await page.getByRole('button', { name: catalog['common.close'], exact: true }).click();
     await page.waitForTimeout(120);
+    assert.equal(await page.evaluate(() => window.savedCalls || 0), 0, 'saved catalogue is lazy');
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.savedPlayers'], exact: true })
+      .click();
+    await page.getByText('Offline Test Player', { exact: true }).waitFor();
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.savedNext'], exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.savedNext'], exact: true })
+      .isDisabled();
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.savedOpen'], exact: true })
+      .click();
+    await page.getByText(catalog['sdtd.inventory.savedNote'], { exact: true }).waitFor();
+    await page.locator('[data-inventory-slot="belt:0"]').waitFor();
+    assert.equal(
+      await page.getByRole('button', { name: catalog['sdtd.give.open'], exact: true }).count(),
+      0,
+      'no grant control for saved inventory',
+    );
+    assert.match(await page.locator('#sdtd-inventory').innerText(), /19\.09\.2026/);
+    for (const [label, width] of [
+      ['desktop', 1200],
+      ['mobile', 390],
+    ]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+      );
+      if (process.env.INVENTORY_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: path.join(process.env.INVENTORY_SCREENSHOT_DIR, `7dtd-saved-${label}.png`),
+          fullPage: true,
+        });
+    }
+    await page.evaluate(() => {
+      window.savedBusy = true;
+    });
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.refresh'], exact: true })
+      .click();
+    await page.getByText(catalog['sdtd.inventory.save_busy'], { exact: true }).waitFor();
+    assert.equal(
+      await page.locator('[data-inventory-slot]').count(),
+      0,
+      'busy save never leaves stale inventory',
+    );
+    await page.getByRole('button', { name: catalog['common.close'], exact: true }).click();
+    await page.evaluate(() => {
+      window.savedOld = true;
+    });
+    await page
+      .getByRole('button', { name: catalog['sdtd.inventory.savedFind'], exact: true })
+      .click();
+    await page.getByText(catalog['sdtd.inventory.mod_update'], { exact: true }).waitFor();
     const calls = await page.evaluate(() => window.stats.inventory);
     await page.evaluate(() => window.unmount());
     await page.waitForTimeout(150);

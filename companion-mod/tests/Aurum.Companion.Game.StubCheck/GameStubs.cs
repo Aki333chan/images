@@ -49,7 +49,10 @@ public enum EnumGamePrefs
 }
 
 public enum EnumGameStats { BloodMoonDay, LandClaimSize }
-public static class GameIO { public static string GetSaveGameDir() => "/test"; }
+public static class GameIO { public static string GetSaveGameDir() => "/test"; public static string GetPlayerDataDir() => "/test/Player"; }
+public class PooledBinaryReader : System.IDisposable { public void SetBaseStream(System.IO.Stream stream) { } public void Dispose() { } }
+public static class MemoryPools { public static ReaderPool poolBinaryReader = new ReaderPool(); }
+public class ReaderPool { public PooledBinaryReader AllocSync(bool reset) => new PooledBinaryReader(); }
 public class PersistentPlayerName { public string DisplayName => ""; }
 public class PersistentPlayerData
 {

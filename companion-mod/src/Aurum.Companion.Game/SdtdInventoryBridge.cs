@@ -20,6 +20,11 @@ namespace Aurum.Companion.Game
             // No forced save, disk reads, network requests or background scans.
             var data = client.latestPlayerData;
             if (data == null) return "{\"available\":false,\"reason\":\"snapshot_pending\"}";
+            return InventoryJson(data, "client_snapshot", null);
+        });
+
+        private static string InventoryJson(PlayerDataFile data, string source, string? savedAt)
+        {
             var items = new List<string>();
             bool truncated = false;
             void Add(string section, int slot, ItemValue? value, int count)
@@ -51,7 +56,7 @@ namespace Aurum.Companion.Game
             }
             if (data.dragAndDropItem != null) Add("cursor", 0, data.dragAndDropItem.itemValue, data.dragAndDropItem.count);
             return JsonWriter.Object(new[] {
-                F("available", "true"), F("source", JsonWriter.String("client_snapshot")),
+                F("available", "true"), F("source", JsonWriter.String(source)), F("savedAt", JsonWriter.String(savedAt)),
                 F("slotCounts", JsonWriter.Object(new[] {
                     F("belt", JsonWriter.Number(Math.Min(data.inventory?.Length ?? 0, 32))),
                     F("bag", JsonWriter.Number(Math.Min(bag?.Length ?? 0, 256))),
@@ -60,6 +65,6 @@ namespace Aurum.Companion.Game
                 })),
                 F("items", JsonWriter.Array(items)), F("truncated", JsonWriter.Bool(truncated))
             });
-        });
+        }
     }
 }

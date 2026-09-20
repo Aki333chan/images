@@ -11,11 +11,13 @@ export function SevenDaysInventoryPanel({
   serverId,
   playerId,
   name,
+  saved = false,
   onClose,
 }: {
   serverId: string;
   playerId: string;
   name: string;
+  saved?: boolean;
   onClose: () => void;
 }) {
   const { t, locale } = useI18n();
@@ -34,7 +36,7 @@ export function SevenDaysInventoryPanel({
   }, [selected]);
   useEffect(() => {
     heading.current?.focus();
-  }, [serverId, playerId]);
+  }, [serverId, playerId, saved]);
   useEffect(() => {
     const abort = new AbortController();
     setBusy(true);
@@ -42,7 +44,7 @@ export function SevenDaysInventoryPanel({
     setData(null);
     setSelected(null);
     void api<SevenDaysInventory>(
-      `/api/modules/sevendays/servers/${serverId}/players/${encodeURIComponent(playerId)}/inventory`,
+      `/api/modules/sevendays/servers/${serverId}/players/${encodeURIComponent(playerId)}/${saved ? 'saved-inventory' : 'inventory'}`,
       { signal: abort.signal },
     )
       .then((result) => {
@@ -55,7 +57,7 @@ export function SevenDaysInventoryPanel({
         if (!abort.signal.aborted) setBusy(false);
       });
     return () => abort.abort();
-  }, [serverId, playerId, revision]);
+  }, [serverId, playerId, saved, revision]);
   return (
     <Card>
       <section id="sdtd-inventory" aria-labelledby="sdtd-inventory-title" className="space-y-4">
@@ -88,8 +90,10 @@ export function SevenDaysInventoryPanel({
             </Button>
           </div>
         </div>
-        <p className="max-w-prose text-sm text-muted">{t('sdtd.inventory.note')}</p>
-        {hasPermission('sevendays.inventory.give') && (
+        <p className="max-w-prose text-sm text-muted">
+          {t(saved ? 'sdtd.inventory.savedNote' : 'sdtd.inventory.note')}
+        </p>
+        {!saved && hasPermission('sevendays.inventory.give') && (
           <SevenDaysGiveItemPanel
             key={`${serverId}:${playerId}`}
             serverId={serverId}
@@ -98,6 +102,11 @@ export function SevenDaysInventoryPanel({
           />
         )}
         <div role="status" aria-live="polite">
+          {data?.available && data.savedAt && (
+            <p className="text-sm">
+              {t('sdtd.inventory.savedAt')} {new Date(data.savedAt).toLocaleString(locale)}
+            </p>
+          )}
           {busy && <Spinner />}
           {error && <ErrorText>{error}</ErrorText>}
           {!busy && data && !data.available && (

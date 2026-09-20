@@ -126,6 +126,31 @@ export class SevenDaysController {
   }
 
   /** Игровой день, время суток, версия, онлайн. */
+  @Get('saved-players')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryView)
+  @ServerScoped('serverId')
+  savedPlayers(
+    @Param('serverId') serverId: string,
+    @Query('q') query = '',
+    @Query('offset') offset = '0',
+  ) {
+    return this.companion.savedPlayers(
+      serverId,
+      query,
+      /^\d{1,5}$/.test(offset) ? Number(offset) : -1,
+    );
+  }
+
+  @Get('players/:playerId/saved-inventory')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermission(SEVENDAYS_PERMISSIONS.inventoryView)
+  @ServerScoped('serverId')
+  savedInventory(@Param('serverId') serverId: string, @Param('playerId') playerId: string) {
+    return this.companion.inventory(serverId, playerId, true);
+  }
+
+  /** Игровой день, время суток, версия, онлайн. */
   @Get('state')
   @RequirePermission(SEVENDAYS_PERMISSIONS.playersView)
   @ServerScoped('serverId')

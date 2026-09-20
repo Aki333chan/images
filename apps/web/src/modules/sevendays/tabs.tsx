@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SevenDaysInventoryPanel } from './InventoryPanel';
+import { SevenDaysSavedPlayersPanel } from './SavedPlayersPanel';
 import {
   SEVENDAYS_BAN_UNITS,
   SEVENDAYS_PERMISSIONS,
@@ -56,12 +57,22 @@ function targetOf(player: SevenDaysPlayerDto): string {
 
 export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: ModuleTabProps) {
   const { hasPermission } = useAuth();
-  const [inventoryPlayer, setInventoryPlayer] = useState<SevenDaysPlayerDto | null>(null);
+  const [inventoryPlayer, setInventoryPlayer] = useState<{
+    id: string;
+    name: string;
+    entityId?: number;
+    saved: boolean;
+  } | null>(null);
   const inventoryTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => setInventoryPlayer(null), [serverId]);
   const showInventory = (player: SevenDaysPlayerDto) => {
     inventoryTrigger.current = document.activeElement as HTMLElement | null;
-    setInventoryPlayer(player);
+    setInventoryPlayer({
+      id: (player.platformId ?? player.crossId)!,
+      name: player.name,
+      entityId: player.entityId,
+      saved: false,
+    });
   };
   const [data, setData] = useState<SevenDaysPlayersResponse | null>(null);
   const [state, setState] = useState<SevenDaysStateDto | null>(null);
@@ -198,12 +209,23 @@ export function SevenDaysPlayersTab({ serverId, moduleId, capabilityState }: Mod
         )}
       </Card>
 
+      {hasPermission(SEVENDAYS_PERMISSIONS.inventoryView) && (
+        <SevenDaysSavedPlayersPanel
+          key={serverId}
+          serverId={serverId}
+          onInventory={(player) => {
+            inventoryTrigger.current = document.activeElement as HTMLElement | null;
+            setInventoryPlayer({ ...player, saved: true });
+          }}
+        />
+      )}
       {inventoryPlayer && hasPermission(SEVENDAYS_PERMISSIONS.inventoryView) && (
         <SevenDaysInventoryPanel
-          key={`${serverId}/${inventoryPlayer.entityId}`}
+          key={`${serverId}/${inventoryPlayer.id}/${inventoryPlayer.saved}`}
           serverId={serverId}
-          playerId={(inventoryPlayer.platformId ?? inventoryPlayer.crossId)!}
+          playerId={inventoryPlayer.id}
           name={inventoryPlayer.name}
+          saved={inventoryPlayer.saved}
           onClose={() => {
             setInventoryPlayer(null);
             const trigger = inventoryTrigger.current;

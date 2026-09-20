@@ -1,5 +1,9 @@
 import 'reflect-metadata';
-import { parseInventory, validateInventoryPlayerId } from './sevendays-inventory';
+import {
+  parseInventory,
+  parseSavedPlayers,
+  validateInventoryPlayerId,
+} from './sevendays-inventory';
 import { SevenDaysController } from './sevendays.controller';
 import { sevenDaysManifest } from './sevendays.def';
 import { SevenDaysCompanionService } from './sevendays-companion.service';
@@ -15,6 +19,76 @@ const item = {
 };
 const snapshot = { available: true, source: 'client_snapshot', items: [item], truncated: false };
 describe('read-only 7DTD inventory', () => {
+  it('distinguishes saved data and rejects invalid timestamps and mixed sources', () => {
+    const saved = { ...snapshot, source: 'saved_file', savedAt: '2026-09-20T12:00:00Z' };
+    expect(parseInventory(saved, 'saved_file')).toMatchObject({
+      source: 'saved_file',
+      savedAt: saved.savedAt,
+      available: true,
+    });
+    expect(() => parseInventory(saved)).toThrow();
+    for (const savedAt of [null, '', 'bad', 42])
+      expect(() => parseInventory({ ...saved, savedAt }, 'saved_file')).toThrow();
+    for (const reason of ['save_missing', 'save_invalid', 'save_busy', 'save_unavailable']) {
+      expect(parseInventory({ available: false, reason }, 'saved_file')).toMatchObject({
+        available: false,
+        source: 'saved_file',
+        reason,
+        items: [],
+      });
+      expect(() => parseInventory({ available: false, reason })).toThrow();
+    }
+  });
+  it('bounds the known-player catalogue and strips extra private fields', () => {
+    const list = {
+      ready: true,
+      players: [{ id: 'Steam_1', name: 'Tester', ip: 'hidden' }],
+      hasMore: false,
+      truncated: false,
+    };
+    expect(parseSavedPlayers(list).players).toEqual([{ id: 'Steam_1', name: 'Tester' }]);
+    for (const players of [
+      Array(51).fill(list.players[0]),
+      [list.players[0], list.players[0]],
+      [{ id: '../Steam_1', name: 'x' }],
+      [{ id: 'Steam_1', name: 'x'.repeat(81) }],
+    ])
+      expect(() => parseSavedPlayers({ ...list, players })).toThrow();
+  });
+  it('protects both saved read routes with scoped inventory permission', () => {
+    for (const method of [
+      SevenDaysController.prototype.savedPlayers,
+      SevenDaysController.prototype.savedInventory,
+    ]) {
+      expect(Reflect.getMetadata('requiredPermission', method)).toEqual([
+        'sevendays.inventory.view',
+      ]);
+      expect(Reflect.getMetadata('serverScopeParam', method)).toBe('serverId');
+    }
+  });
+  it('requires saved-read capability and validates search before contacting the mod', async () => {
+    const service = new SevenDaysCompanionService({} as SevenDaysConfigService);
+    const ping = jest
+      .spyOn(service, 'ping')
+      .mockResolvedValue({
+        version: '1',
+        contract: '1',
+        compatible: true,
+        capabilities: ['inventory-read'],
+        language: null,
+      });
+    await expect(service.savedPlayers('s', 'x'.repeat(81), 0)).rejects.toThrow();
+    await expect(service.savedPlayers('s', '', -1)).rejects.toThrow();
+    expect(ping).not.toHaveBeenCalled();
+    await expect(service.savedPlayers('s', '', 0)).resolves.toMatchObject({
+      ready: false,
+      reason: 'mod_update',
+    });
+    await expect(service.inventory('s', 'Steam_1', true)).resolves.toMatchObject({
+      source: 'saved_file',
+      reason: 'mod_update',
+    });
+  });
   it('supports old snapshots without guessing capacity and validates native slot counts', () => {
     expect(parseInventory(snapshot).slotCounts).toBeNull();
     const slotCounts = { belt: 10, bag: 45, equipment: 4, cursor: 1 };

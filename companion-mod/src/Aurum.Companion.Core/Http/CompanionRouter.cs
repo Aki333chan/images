@@ -44,6 +44,7 @@ namespace Aurum.Companion.Core.Http
             if (config?.ForwardDeaths ?? true) capabilities.Add("death-events");
             if (game is IMapBridge) { capabilities.Add("map-read"); capabilities.Add("map-pois"); }
             if (game is IInventoryBridge) { capabilities.Add("inventory-read"); capabilities.Add("item-drop"); }
+            if (game is ISavedInventoryBridge) capabilities.Add("inventory-saved-read");
             _capabilitiesJson = JsonWriter.Array(capabilities.ConvertAll(JsonWriter.String));
         }
 
@@ -97,6 +98,23 @@ namespace Aurum.Companion.Core.Http
                     var grant = ItemGrant.Read(Uri.UnescapeDataString(parts[1]), request.Body);
                     string status = _grants.Execute(grant, () => itemBridge.DropItem(grant));
                     return HttpResponseData.Ok(JsonWriter.Object(new[] {Field("status", JsonWriter.String(status)), Field("requestId", JsonWriter.String(grant.RequestId))}));
+                }
+            }
+            if (request.Method == "GET" && _game is ISavedInventoryBridge saved)
+            {
+                if (parts.Length == 3 && parts[0] == "saved-players")
+                {
+                    string query = Uri.UnescapeDataString(parts[1]);
+                    if (query == "_") query = "";
+                    if (query.Length > 80 || !int.TryParse(parts[2], out int offset) || offset < 0 || offset > 10000)
+                        return HttpResponseData.BadRequest("invalid_saved_players_query");
+                    return HttpResponseData.Ok(saved.SavedPlayers(query, offset));
+                }
+                if (parts.Length == 3 && parts[0] == "players" && parts[2] == "saved-inventory")
+                {
+                    string id = Uri.UnescapeDataString(parts[1]);
+                    if (!InventoryRequest.ValidPlayerId(id)) return HttpResponseData.BadRequest("invalid_player_id");
+                    return HttpResponseData.Ok(saved.ReadSavedInventory(id));
                 }
             }
             if (request.Method == "GET" && parts.Length == 3 && parts[0] == "players" && parts[2] == "inventory" && _game is IInventoryBridge inventory)
