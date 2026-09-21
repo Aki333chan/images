@@ -46,11 +46,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       assert.equal(await toggle.isChecked(), false);
       await toggle.check();
     }
+    for (const [key, value] of [['regeneration', '1.5'], ['stamina', '6'], ['speed', '15']]) {
+      const input = page.getByLabel(catalog['sdtd.zones.bonus.' + key], {exact:true});
+      assert.equal(await input.inputValue(), '0');
+      await input.fill(value);
+    }
     await button('sdtd.zones.save').dblclick();
     await page.getByText(catalog['sdtd.zones.saved'], { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.calls.filter(c => c.body).length), 1);
     assert.equal(await page.evaluate(() => window.zones.zones[0].noCreatureBlockDamage), true);
     assert.equal(await page.evaluate(() => window.zones.zones[0].noExplosionBlockDamage), true);
+    assert.deepEqual(await page.evaluate(() => window.zones.zones[0].bonuses), {regeneration:1.5,stamina:6,speed:15});
     assert.equal(await map.locator('[data-zone-id]').count(), 1);
     // Normal editing updates the same rectangle, not a second zone.
     await page.getByLabel(catalog['sdtd.zones.type'], { exact: true }).selectOption('sanctuary');
@@ -59,6 +65,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.evaluate(() => window.zones.zones.length), 1);
     assert.equal(await page.evaluate(() => window.zones.zones[0].blockSpawn), 5);
     assert.equal(await page.evaluate(() => window.zones.zones[0].despawn), 0);
+    assert.deepEqual(await page.evaluate(() => window.zones.zones[0].bonuses), {regeneration:0,stamina:0,speed:0});
     // Keyboard selection from the drawn rectangle.
     await button('sdtd.zones.close').click();
     await map.locator('[data-zone-id]').focus(); await page.keyboard.press('Enter');
@@ -141,6 +148,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByLabel(catalog['sdtd.zones.schedule.mon'], {exact:true}).uncheck();
     await page.getByText(catalog['sdtd.zones.schedule.noDays'], {exact:true}).waitFor();
     await page.getByLabel(catalog['sdtd.zones.schedule.mon'], {exact:true}).check();
+    const speed = page.getByLabel(catalog['sdtd.zones.bonus.speed'], {exact:true});
+    const beforeInvalid = await page.evaluate(() => window.calls.filter(c => c.body).length);
+    for (const value of ['', '-1', '101']) {
+      await speed.fill(value);
+      await button('sdtd.zones.save').click();
+      assert.equal(await speed.evaluate(input => input.validity.valid), false);
+      if (value === '') assert.equal(await speed.evaluate(input => input.validity.valueMissing), true);
+      assert.equal(await page.evaluate(() => window.calls.filter(c => c.body).length), beforeInvalid);
+    }
+    for (const [key, value] of [['regeneration', '1.5'], ['stamina', '6'], ['speed', '15']])
+      await page.getByLabel(catalog['sdtd.zones.bonus.' + key], {exact:true}).fill(value);
     await button('sdtd.zones.save').click();
     await page.waitForFunction(() => window.zones.revision === 11);
     for (const [name, width] of [['desktop', 1200], ['mobile', 390]]) {
@@ -159,6 +177,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     // Tiny zone overlaps the player marker; select by the native zone list instead.
     await page.getByLabel(catalog['sdtd.zones.select'], {exact:true}).selectOption(await page.evaluate(() => window.zones.zones[0].id));
     assert.equal(await page.getByLabel(catalog['sdtd.zones.name'], {exact:true}).isDisabled(), true);
+    assert.equal(await page.getByLabel(catalog['sdtd.zones.bonus.speed'], {exact:true}).isDisabled(), true);
     assert.equal(await button('sdtd.zones.delete').isDisabled(), true);
     await page.evaluate(() => { window.allowed = false; window.render(); });
     await button('sdtd.zones.title').click();

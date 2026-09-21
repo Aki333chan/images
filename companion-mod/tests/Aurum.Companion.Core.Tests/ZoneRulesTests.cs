@@ -140,7 +140,7 @@ public sealed class ZoneRulesTests
         var rules = new ZoneRules { Zones = new[] { Safe() } };
         string json = rules.Write();
         Assert.ThrowsAny<Exception>(() => ZoneRules.Read(json.Replace("\"noPvp\":true", "\"noPvp\":\"true\"")));
-        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(json.Replace("\"bonus\":\"none\"", "\"bonus\":\"unknown\"")));
+        Assert.ThrowsAny<Exception>(() => ZoneRules.Read(json.Replace("\"speed\":0", "\"speed\":101")));
         Assert.ThrowsAny<Exception>(() => ZoneRules.Read(json.Replace("\"x2\":10", "\"x2\":-10")));
         rules.Zones = new[] { Safe(), Safe() };
         Assert.ThrowsAny<Exception>(() => ZoneRules.Read(rules.Write()));

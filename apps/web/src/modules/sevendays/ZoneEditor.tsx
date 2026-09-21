@@ -3,6 +3,7 @@ import {
   SEVENDAYS_PERMISSIONS,
   SEVENDAYS_ZONE_TYPES,
   SEVENDAYS_ZONE_BONUSES,
+  SEVENDAYS_ZONE_BONUS_MAX,
   parseSevenDaysZones,
   hasZoneCommands,
   defaultZoneMovement,
@@ -28,7 +29,7 @@ export function zonePreset(type: SevenDaysZone['type']) {
     noExplosionBlockDamage: false,
     blockSpawn: type === 'sanctuary' ? 5 : 0,
     despawn: 0,
-    bonus: type === 'bonus' ? ('regeneration' as const) : ('none' as const),
+    bonuses: { regeneration: type === 'bonus' ? 1 : 0, stamina: 0, speed: 0 },
   };
 }
 
@@ -615,21 +616,28 @@ export function SevenDaysZoneEditor({
               ))}
               <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.despawnWarning')}</p>
             </fieldset>
-            <label className="block space-y-1 text-sm">
-              {t('sdtd.zones.bonus')}
-              <select
-                className={selectClass}
-                aria-label={t('sdtd.zones.bonus')}
-                value={z.bonus}
-                onChange={(e) => change({ bonus: e.target.value as SevenDaysZone['bonus'] })}
-              >
+            <fieldset className="space-y-3 rounded border border-border p-3">
+              <legend className="px-1 text-sm font-medium">{t('sdtd.zones.bonus')}</legend>
+              <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.bonus.help')}</p>
+              <div className="grid gap-3 sm:grid-cols-3">
                 {SEVENDAYS_ZONE_BONUSES.map((b) => (
-                  <option key={b} value={b}>
+                  <label key={b} className="space-y-1 text-sm">
                     {t(`sdtd.zones.bonus.${b}`)}
-                  </option>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={SEVENDAYS_ZONE_BONUS_MAX[b]}
+                      step="any"
+                      required
+                      value={Number.isNaN(z.bonuses[b]) ? '' : z.bonuses[b]}
+                      onChange={(e) =>
+                        change({ bonuses: { ...z.bonuses, [b]: e.target.valueAsNumber } })
+                      }
+                    />
+                  </label>
                 ))}
-              </select>
-            </label>
+              </div>
+            </fieldset>
             <div className="grid gap-3 sm:grid-cols-2">
               {(['enter', 'exit'] as const).map((key) => (
                 <label key={key} className="space-y-1 text-sm">

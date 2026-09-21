@@ -10,6 +10,52 @@ import { SevenDaysCompanionService } from './sevendays-companion.service';
 import { SevenDaysController } from './sevendays.controller';
 import { PERMISSION_KEY, SERVER_SCOPE_PARAM } from '../../rbac/rbac.decorators';
 
+describe('zone bonus strengths', () => {
+  it.each(['zones-v6', 'zones-v7'])(
+    'gates both reads and writes on the new schema: %s',
+    async (capability) => {
+      const call = jest.fn().mockResolvedValue(fixture());
+      const service = Object.assign(Object.create(SevenDaysCompanionService.prototype), {
+        ping: jest.fn().mockResolvedValue({ compatible: true, capabilities: [capability] }),
+        call,
+      }) as SevenDaysCompanionService;
+      for (const payload of [undefined, fixture()]) {
+        if (capability === 'zones-v7')
+          await expect(service.zoneRequest('s', payload)).resolves.toEqual(fixture());
+        else
+          await expect(service.zoneRequest('s', payload)).rejects.toThrow(
+            'zones_mod_update_required',
+          );
+      }
+      expect(call).toHaveBeenCalledTimes(capability === 'zones-v7' ? 2 : 0);
+    },
+  );
+  it('roundtrips simultaneous effects and fractional strength', () => {
+    const value = fixture();
+    value.zones[0]!.bonuses = { regeneration: 1.5, stamina: 6, speed: 15 };
+    expect(parseSevenDaysZones(value)).toEqual(value);
+  });
+  it.each([
+    {},
+    { regeneration: -1, stamina: 0, speed: 0 },
+    { regeneration: 11, stamina: 0, speed: 0 },
+    { regeneration: 0, stamina: 31, speed: 0 },
+    { regeneration: 0, stamina: 0, speed: 101 },
+    { regeneration: 0, stamina: 0, speed: NaN },
+    { regeneration: 0, stamina: 0, speed: Infinity },
+    { regeneration: 0, stamina: 0, speed: '15' },
+  ])('rejects malformed strengths %p', (bonuses) => {
+    const value = fixture();
+    Object.assign(value.zones[0]!, { bonuses });
+    expect(() => parseSevenDaysZones(value)).toThrow('invalid_zones');
+  });
+  it('rejects the old key rather than silently ignoring it', () => {
+    const value = fixture();
+    Object.assign(value.zones[0]!, { bonus: 'speed' });
+    expect(() => parseSevenDaysZones(value)).toThrow('invalid_zones');
+  });
+});
+
 const fixture = (): SevenDaysZones => ({
   revision: 0,
   worldId: 'a'.repeat(32),
@@ -31,7 +77,7 @@ const fixture = (): SevenDaysZones => ({
       despawn: 0,
       enter: '',
       exit: '',
-      bonus: 'none',
+      bonuses: { regeneration: 0, stamina: 0, speed: 0 },
       commandsEnabled: false,
       commandCooldown: 30,
       enterCommands: [],

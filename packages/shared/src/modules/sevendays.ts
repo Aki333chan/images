@@ -189,7 +189,7 @@ export const SEVENDAYS_COMPANION_CAPABILITIES = [
   'event-ids',
   'blood-moon-schedule',
   'map-read',
-  'zones-v6',
+  'zones-v7',
   'map-pois',
   'inventory-read',
   'inventory-saved-read',

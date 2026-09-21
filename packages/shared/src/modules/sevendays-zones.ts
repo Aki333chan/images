@@ -39,7 +39,9 @@ export const defaultZoneMovement = (): SevenDaysZoneMovement => ({
   dismount: false,
   kickOnFailure: false,
 });
-export const SEVENDAYS_ZONE_BONUSES = ['none', 'regeneration', 'stamina', 'speed'] as const;
+export const SEVENDAYS_ZONE_BONUSES = ['regeneration', 'stamina', 'speed'] as const;
+export const SEVENDAYS_ZONE_BONUS_MAX = { regeneration: 10, stamina: 30, speed: 100 } as const;
+export type SevenDaysZoneBonuses = Record<(typeof SEVENDAYS_ZONE_BONUSES)[number], number>;
 export interface SevenDaysZoneSchedule {
   enabled: boolean;
   start: number;
@@ -77,7 +79,7 @@ export interface SevenDaysZone {
   despawn: number;
   enter: string;
   exit: string;
-  bonus: (typeof SEVENDAYS_ZONE_BONUSES)[number];
+  bonuses: SevenDaysZoneBonuses;
   commandsEnabled: boolean;
   commandCooldown: number;
   enterCommands: string[];
@@ -163,7 +165,7 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'despawn',
       'enter',
       'exit',
-      'bonus',
+      'bonuses',
       'commandsEnabled',
       'commandCooldown',
       'enterCommands',
@@ -171,6 +173,11 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'movement',
       'schedule',
     ]);
+    const bonuses = object(z.bonuses, [...SEVENDAYS_ZONE_BONUSES]);
+    if (
+      SEVENDAYS_ZONE_BONUSES.some((key) => !number(bonuses[key], 0, SEVENDAYS_ZONE_BONUS_MAX[key]))
+    )
+      return invalid();
     const schedule = object(z.schedule, [
       'enabled',
       'start',
@@ -252,7 +259,6 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       !text(z.name, 80) ||
       !z.name.trim() ||
       !SEVENDAYS_ZONE_TYPES.includes(z.type as SevenDaysZone['type']) ||
-      !SEVENDAYS_ZONE_BONUSES.includes(z.bonus as SevenDaysZone['bonus']) ||
       typeof z.enabled !== 'boolean' ||
       typeof z.noPvp !== 'boolean' ||
       typeof z.noDamage !== 'boolean' ||

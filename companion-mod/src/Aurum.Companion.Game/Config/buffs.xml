@@ -5,6 +5,7 @@
       <stack_type value="replace"/><duration value="3"/>
       <effect_group><passive_effect name="GeneralDamageResist" operation="base_add" value="1"/></effect_group>
     </buff>
+    <!-- Keep legacy names so saved characters can load; runtime removes them before applying V2. -->
     <buff name="aurumZoneRegeneration" hidden="true">
       <stack_type value="replace"/><duration value="3"/>
       <effect_group><passive_effect name="HealthChangeOT" operation="base_add" value="1"/></effect_group>
@@ -16,6 +17,18 @@
     <buff name="aurumZoneSpeed" hidden="true">
       <stack_type value="replace"/><duration value="3"/>
       <effect_group><passive_effect name="RunSpeed" operation="perc_add" value="0.15"/></effect_group>
+    </buff>
+    <buff name="aurumZoneRegenerationV2" hidden="true">
+      <stack_type value="replace"/><duration value="3"/>
+      <effect_group><passive_effect name="HealthChangeOT" operation="base_add" value="@aurumZoneRegenerationStrength"/></effect_group>
+    </buff>
+    <buff name="aurumZoneStaminaV2" hidden="true">
+      <stack_type value="replace"/><duration value="3"/>
+      <effect_group><passive_effect name="StaminaChangeOT" operation="base_add" value="@aurumZoneStaminaStrength"/></effect_group>
+    </buff>
+    <buff name="aurumZoneSpeedV2" hidden="true">
+      <stack_type value="replace"/><duration value="3"/>
+      <effect_group><passive_effect name="RunSpeed" operation="perc_add" value="@aurumZoneSpeedStrength"/></effect_group>
     </buff>
   </append>
 </configs>

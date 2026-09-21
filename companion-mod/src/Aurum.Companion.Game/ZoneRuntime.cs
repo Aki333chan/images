@@ -38,7 +38,9 @@ namespace Aurum.Companion.Game
         private double _commandWarningAfter;
         private readonly Dictionary<int, HashSet<string>> _inside = new Dictionary<int, HashSet<string>>();
         private readonly Dictionary<int, float> _noticeAfter = new Dictionary<int, float>();
-        private static readonly string[] Buffs = { "aurumZoneProtection", "aurumZoneRegeneration", "aurumZoneStamina", "aurumZoneSpeed" };
+        private static readonly string[] Buffs = { "aurumZoneProtection", "aurumZoneRegenerationV2", "aurumZoneStaminaV2", "aurumZoneSpeedV2" };
+        private static readonly string[] LegacyBuffs = { "aurumZoneRegeneration", "aurumZoneStamina", "aurumZoneSpeed" };
+        private static readonly string[] StrengthVars = { "", "aurumZoneRegenerationStrength", "aurumZoneStaminaStrength", "aurumZoneSpeedStrength" };
 
         public ZoneRuntime(SdtdGameBridge bridge)
         {
@@ -198,8 +200,8 @@ namespace Aurum.Companion.Game
             {
                 if (!z.Enabled) continue;
                 if (z.NoDamage && BuffManager.GetBuff(Buffs[0]) == null) throw new InvalidOperationException("zones_buffs_missing");
-                int bonus = BonusIndex(z.Bonus);
-                if (bonus > 0 && BuffManager.GetBuff(Buffs[bonus]) == null) throw new InvalidOperationException("zones_buffs_missing");
+                for (int i = 1; i < Buffs.Length; i++)
+                    if (z.Bonuses.NativeValue(i) > 0 && BuffManager.GetBuff(Buffs[i]) == null) throw new InvalidOperationException("zones_buffs_missing");
                 if (z.CommandsEnabled)
                     foreach (string command in z.EnterCommands.Concat(z.ExitCommands))
                     {
@@ -262,9 +264,16 @@ namespace Aurum.Companion.Game
                         if (notices.Count > 0) _noticeAfter[player.entityId] = Time.realtimeSinceStartup + 3f;
                     }
                     _inside[player.entityId] = ids;
+                    var bonuses = ZoneBonuses.Strongest(active);
+                    foreach (string legacy in LegacyBuffs)
+                        if (player.Buffs.HasBuff(legacy)) player.Buffs.RemoveBuff(legacy);
                     for (int i = 0; i < Buffs.Length; i++)
                     {
-                        bool wanted = i == 0 ? active.Any(z => z.NoDamage) : active.Any(z => BonusIndex(z.Bonus) == i);
+                        float strength = bonuses.NativeValue(i);
+                        bool wanted = i == 0 ? active.Any(z => z.NoDamage) : strength > 0;
+                        if (i > 0 && (wanted || player.Buffs.HasCustomVar(StrengthVars[i])) &&
+                            (!observed || player.Buffs.GetCustomVar(StrengthVars[i]) != strength))
+                            player.Buffs.SetCustomVar(StrengthVars[i], strength, true, CVarOperation.set, true);
                         if (wanted) player.Buffs.AddBuff(Buffs[i]); // Short lease; expires if mod stops/fails.
                         else if (player.Buffs.HasBuff(Buffs[i])) player.Buffs.RemoveBuff(Buffs[i]);
                     }
@@ -391,7 +400,6 @@ namespace Aurum.Companion.Game
             }
         }
 
-        private static int BonusIndex(string bonus) => bonus == "regeneration" ? 1 : bonus == "stamina" ? 2 : bonus == "speed" ? 3 : 0;
         private void PlayerSpawned(ref ModEvents.SPlayerSpawnedInWorldData data)
         {
             if (data.RespawnType != RespawnType.Teleport) { _inside.Remove(data.EntityId); _noticeAfter.Remove(data.EntityId); _containment.Remove(data.EntityId); _returns.Remove(data.EntityId); }
