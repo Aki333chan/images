@@ -8,7 +8,7 @@ namespace Aurum.Companion.Game
     internal sealed partial class SdtdGameBridge
     {
         private static int GrantLimit(ItemClass item) => item.HasQuality ? 1 : Math.Min(1000, item.MaxCount);
-        private static bool Grantable(ItemClass? item) => item != null && item.Id > 0 && item.Id <= 65535 &&
+        private static bool Grantable(ItemClass? item) => item != null && item.Id > 0 &&
             item.CreativeMode != EnumCreativeMode.None && item.CreativeMode != EnumCreativeMode.Test && GrantLimit(item) > 0;
 
         public string SearchItems(string query) => MainThread.Get(() =>
@@ -17,8 +17,9 @@ namespace Aurum.Companion.Game
             bool truncated = false;
             if (ItemClass.list == null || GameManager.Instance?.World == null)
                 return "{\"ready\":false,\"items\":[],\"truncated\":false}";
-            // Native table lookup, at most 65536 entries, 100 results. Only on explicit search.
-            for (int i = 0; i < Math.Min(ItemClass.list.Length, 65536); i++)
+            // V3.2 items START at 65536, after the blocks. Scan the native table, not
+            // a ushort range. Still only 100 matches per explicit, debounced search.
+            for (int i = 0; i < ItemClass.list.Length; i++)
             {
                 var item = ItemClass.list[i];
                 if (!Grantable(item)) continue;

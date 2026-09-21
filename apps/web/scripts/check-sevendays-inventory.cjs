@@ -37,7 +37,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
                 : name === 'auth'
                   ? `export const useAuth=()=>({hasPermission:k=>((k==='sevendays.inventory.view'||k==='sevendays.events.view')&&window.allowed)||(k==='sevendays.inventory.give'&&window.giveAllowed)||(k==='sevendays.inventory.edit'&&window.editAllowed)});`
                   : `window.stats={inventory:0,aborted:0,searches:0,grants:[]};window.spawnedIds=new Set();window.mode='ready';window.grantMode='lost';export async function api(p,init){
-          if(p.includes('/items?q=')){window.stats.searches++; if(window.searchFails)throw Error('old companion');return {sessionId:'ac67354a-2548-4dc5-8f23-a43a90b55d9d',ready:true,truncated:true,items:[{itemId:1,name:'gunPistol',hasQuality:true,maxCount:1},{itemId:2,name:'ammoLongName'.repeat(8),hasQuality:false,maxCount:1000},...Array.from({length:20},(_,i)=>({itemId:i+3,name:'ammoFixture'+i,hasQuality:false,maxCount:1000}))]};}
+          if(p.includes('/items?q=')){window.stats.searches++; if(window.searchFails)throw Error('old companion');return {sessionId:'ac67354a-2548-4dc5-8f23-a43a90b55d9d',ready:true,truncated:true,items:[{itemId:65536,name:'gunPistol',hasQuality:true,maxCount:1},{itemId:65537,name:'ammoLongName'.repeat(8),hasQuality:false,maxCount:1000},...Array.from({length:20},(_,i)=>({itemId:i+65538,name:'ammoFixture'+i,hasQuality:false,maxCount:1000}))]};}
           if(p.endsWith('/item-drop')){const g=JSON.parse(init.body);window.stats.grants.push(g);await new Promise(r=>setTimeout(r,120));if(window.grantMode==='offline')return {requestId:g.requestId,status:'offline'};window.spawnedIds.add(g.requestId);if(window.grantMode==='lost')throw Error('reply lost after spawn');return {requestId:g.requestId,status:'spawned'};}
           if(p.includes('/saved-players?')){window.savedCalls=(window.savedCalls||0)+1;return window.savedOld ? {ready:false,reason:'mod_update',players:[],hasMore:false,truncated:false} : {ready:true,players:[{id:'Steam_456',name:'Offline Test Player'}],hasMore:p.includes('offset=0'),truncated:false};}
           if(p.includes('/history?')){window.historyCalls=(window.historyCalls||[]);window.historyCalls.push(p);if(window.historyFail)throw Error('history unavailable');return {retentionDays:14,nextCursor:p.includes('cursor=')?null:'next_fixture',events:Array.from({length:11},(_,i)=>({id:'history'+i,kind:i===0?'player-kill':'chat',playerId:'Steam_456',playerName:'Offline Test Player',actorId:i===0?'Steam_123':null,actorName:i===0?'Test Player':null,text:i===1?'<script>not html</script> '+('LongChatText'.repeat(20)):null,occurredAt:'2026-09-20T12:00:00Z',position:{x:10,y:64,z:-200}}))};}
@@ -310,6 +310,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.deepEqual(grants[0], grants[1], 'retry retains the entire confirmed payload');
     assert.equal(await page.evaluate(() => window.spawnedIds.size), 1);
     assert.equal(grants[0].count, 1000);
+    assert.equal(grants[0].itemId, 65537, 'ordinary item IDs must survive selection and submission');
     assert.equal(grants[0].quality, 0);
     assert.equal(grants[0].reason, 'Panel item grant');
     assert.equal(grants[0].confirmed, true);

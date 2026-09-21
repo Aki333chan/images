@@ -219,14 +219,16 @@ export class SevenDaysService {
 
   /** Каталог для интерфейса: без шаблонов команд — панели они не нужны. */
   listActions(): SevenDaysActionDto[] {
-    return SEVENDAYS_ACTIONS.map(({ id, label, description, permission, args, destructive }) => ({
-      id,
-      label,
-      description,
-      permission,
-      args,
-      destructive,
-    }));
+    return SEVENDAYS_ACTIONS.filter((a) => a.id !== 'shutdown').map(
+      ({ id, label, description, permission, args, destructive }) => ({
+        id,
+        label,
+        description,
+        permission,
+        args,
+        destructive,
+      }),
+    );
   }
 
   findAction(id: string): SevenDaysActionDefinition {

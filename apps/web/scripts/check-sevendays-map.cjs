@@ -18,7 +18,7 @@ const baseline = process.env.MAP_BASELINE === '1';
   );
   const bundle = await req('esbuild').build({
     stdin: {
-      contents: `import React from 'react';import{createRoot}from'react-dom/client';import{SevenDaysMapTab}from'./apps/web/src/modules/sevendays/MapTab';const root=createRoot(document.getElementById('root'));window.unmount=()=>root.unmount();root.render(<SevenDaysMapTab serverId="fixture"/>);`,
+      contents: `import React from 'react';import{createRoot}from'react-dom/client';import{ToastProvider}from'./apps/web/src/components/Toast';import{SevenDaysQuickActionsWidget}from'./apps/web/src/modules/sevendays/tabs';import{SevenDaysMapTab}from'./apps/web/src/modules/sevendays/MapTab';const root=createRoot(document.getElementById('root'));window.unmount=()=>root.unmount();root.render(<ToastProvider><SevenDaysQuickActionsWidget serverId="fixture"/><SevenDaysMapTab serverId="fixture"/></ToastProvider>);`,
       loader: 'tsx',
       resolveDir: repo,
     },
@@ -40,12 +40,41 @@ const baseline = process.env.MAP_BASELINE === '1';
             }));
           b.onResolve({ filter: /\/i18n$/ }, () => ({ path: 'locale', namespace: 'mock' }));
           b.onResolve({ filter: /\/lib\/api$/ }, () => ({ path: 'api', namespace: 'mock' }));
+          b.onResolve({ filter: /\/lib\/auth$/ }, () => ({ path: 'auth', namespace: 'mock' }));
+          b.onLoad({ filter: /api/, namespace: 'mock' }, () => ({
+            loader: 'js',
+            contents: `
+            window.stats={calls:0,pois:0,snapshots:0,active:0,max:0};
+            const canvas=document.createElement('canvas');canvas.width=canvas.height=128;
+            const ctx=canvas.getContext('2d');ctx.fillStyle='#344e38';ctx.fillRect(0,0,128,128);
+            const png=canvas.toDataURL().split(',')[1];
+            export async function api(p,init){
+              window.stats.calls++;
+              if(p.endsWith('/actions'))return {actions:[
+                {id:'save',label:'Save world',permission:'sevendays.quick-actions',args:[],destructive:false},
+                {id:'announce',label:'Announce',permission:'sevendays.quick-actions',args:[],destructive:false},
+                {id:'shutdown',label:'Stop server',permission:'sevendays.shutdown',args:[],destructive:true}
+              ]};
+              if(p.endsWith('/pois')){
+                window.stats.pois++;if(window.oldPois)return {available:false,reason:'mod_update',pois:[],truncated:false};
+                return {available:true,pois:[{id:1,name:'trader_bob',x:-200,z:130,tier:0,trader:true},{id:2,name:'house_01',x:-110,z:120,tier:2,trader:false}],truncated:false};
+              }
+              if(!p.includes('/tiles/')){
+                window.stats.snapshots++;return {available:true,info:{blockSize:128,maxZoom:4},players:[{id:'p',name:'Test Player',x:-320,z:200}],claims:[{ownerId:'p',owner:'Test Owner',x:-180,z:150,size:41}],truncated:false};
+              }
+              window.stats.active++;window.stats.max=Math.max(window.stats.max,window.stats.active);
+              try{await new Promise((resolve,reject)=>{const id=setTimeout(resolve,60);init.signal.addEventListener('abort',()=>{clearTimeout(id);reject(new DOMException('aborted','AbortError'))},{once:true})});if(window.failTiles)throw Error('map_busy');return {png:window.emptyTiles?null:png};}
+              finally{window.stats.active--;}
+            }`,
+          }));
           b.onLoad({ filter: /.*/, namespace: 'mock' }, ({ path: name }) => ({
             loader: 'js',
             contents:
-              name === 'locale'
-                ? `const c=${JSON.stringify(catalog)};export const useI18n=()=>({t:k=>c[k]||k});export const useT=()=>useI18n().t;`
-                : `window.stats={calls:0,pois:0,snapshots:0,active:0,max:0};const canvas=document.createElement('canvas');canvas.width=canvas.height=128;const ctx=canvas.getContext('2d');ctx.fillStyle='#344e38';ctx.fillRect(0,0,128,128);const png=canvas.toDataURL().split(',')[1];export async function api(p,init){window.stats.calls++;if(p.endsWith('/pois')){window.stats.pois++;if(window.oldPois)return {available:false,reason:'mod_update',pois:[],truncated:false};return {available:true,pois:[{id:1,name:'trader_bob',x:-200,z:130,tier:0,trader:true},{id:2,name:'house_01',x:-110,z:120,tier:2,trader:false}],truncated:false}}if(!p.includes('/tiles/')){window.stats.snapshots++;return {available:true,info:{blockSize:128,maxZoom:4},players:[{id:'p',name:'Test Player',x:-320,z:200}],claims:[{ownerId:'p',owner:'Test Owner',x:-180,z:150,size:41}],truncated:false}}window.stats.active++;window.stats.max=Math.max(window.stats.max,window.stats.active);try{await new Promise((resolve,reject)=>{const id=setTimeout(resolve,60);init.signal.addEventListener('abort',()=>{clearTimeout(id);reject(new DOMException('aborted','AbortError'))},{once:true})});if(window.failTiles)throw Error('map_busy');return {png:window.emptyTiles?null:png}}finally{window.stats.active--}}`,
+              name === 'auth'
+                ? `export const useAuth=()=>({hasPermission:p=>p!=='sevendays.zones.manage'});`
+                : name === 'locale'
+                  ? `const c=${JSON.stringify(catalog)};export const useI18n=()=>({t:k=>c[k]||k});export const useT=()=>useI18n().t;`
+                  : `throw Error('Unknown fixture');`,
           }));
         },
       },
@@ -83,6 +112,13 @@ const baseline = process.env.MAP_BASELINE === '1';
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.waitForFunction(() => document.querySelectorAll('svg image').length >= 28);
+    assert.equal(
+      await page.getByRole('button', { name: 'Stop server', exact: true }).count(),
+      0,
+      'legacy server action must stay hidden',
+    );
+    assert.equal(await page.getByRole('button', { name: 'Save world', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: 'Announce', exact: true }).count(), 1);
     await page.evaluate(() => {
       window.blankFrames = 0;
       window.monitor = true;
@@ -116,7 +152,10 @@ const baseline = process.env.MAP_BASELINE === '1';
     const map = page.locator('svg[role="group"]');
     const view = await map.getAttribute('viewBox');
     assert.equal(view, '0 0 1000 450', '25% shorter map viewport');
-    assert.ok((await map.boundingBox()).height <= 0.56 * page.viewportSize().height, 'map fits the screen height');
+    assert.ok(
+      (await map.boundingBox()).height <= 0.56 * page.viewportSize().height,
+      'map fits the screen height',
+    );
     await page.getByRole('button', { name: catalog['sdtd.map.clearSelection'] }).click();
     assert.equal(await page.getByRole('status').count(), 0);
     assert.equal(await map.getAttribute('viewBox'), view);
@@ -171,6 +210,53 @@ const baseline = process.env.MAP_BASELINE === '1';
     assert.ok(hit.width >= 23 && hit.height >= 23, 'small claim needs usable hit area');
     await page.touchscreen.tap(hit.x + hit.width / 2, hit.y + hit.height / 2);
     await page.getByRole('status').filter({ hasText: 'Test Owner' }).waitFor();
+    // Actual Chromium touch input, not dispatchEvent(pointermove). The page must
+    // not take over the gesture, including a drag that begins on a map marker.
+    await page.evaluate(() => {
+      document.body.style.minHeight = '2000px';
+    });
+    const cdp = await page.context().newCDPSession(page);
+    async function swipe(x, y, dx, dy) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x, y, id: 1 }],
+      });
+      for (let i = 1; i <= 12; i++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: x + (dx * i) / 12, y: y + (dy * i) / 12, id: 1 }],
+        });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(200);
+    }
+    await map.scrollIntoViewIfNeeded();
+    const touchBox = await map.boundingBox();
+    const scrollBefore = await page.evaluate(() => scrollY);
+    const coordinates = () => map.locator('xpath=../following-sibling::div').innerText();
+    const startCoords = await coordinates();
+    assert.equal(
+      await map.evaluate((el) => getComputedStyle(el.parentElement).touchAction),
+      'none',
+    );
+    await swipe(touchBox.x + touchBox.width * 0.6, touchBox.y + touchBox.height * 0.6, -50, -45);
+    assert.notEqual(await coordinates(), startCoords, 'touch must pan the map');
+    assert.equal(
+      await page.evaluate(() => scrollY),
+      scrollBefore,
+      'map swipe must not scroll page',
+    );
+    const nextCoords = await coordinates();
+    await swipe(touchBox.x + touchBox.width * 0.4, touchBox.y + touchBox.height * 0.4, 45, 35);
+    assert.notEqual(await coordinates(), nextCoords, 'next swipe must work after pointer release');
+    assert.equal(await page.evaluate(() => scrollY), scrollBefore);
+    await swipe(5, 550, 0, -180);
+    assert.ok((await page.evaluate(() => scrollY)) > scrollBefore, 'outside map must still scroll');
+    await page.evaluate(() => {
+      document.body.style.minHeight = '';
+      window.scrollTo(0, 0);
+    });
+    await cdp.detach();
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,

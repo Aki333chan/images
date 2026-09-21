@@ -27,7 +27,7 @@ namespace Aurum.Companion.Core.Game
             c.Replace = Text("operation") == "replace";
             if (c.Replace)
             {
-                c.ItemId = Number("itemId", 65535); c.Quality = Number("quality", 6); c.ItemName = Text("itemName");
+                c.ItemId = Number("itemId", int.MaxValue); c.Quality = Number("quality", 6); c.ItemName = Text("itemName");
                 if (c.ItemId < 1 || c.Count < 1 || c.Count > 1000 || c.ItemName.Length < 1 || c.ItemName.Length > 128)
                     throw new JsonReader.JsonException("invalid_stack");
             }

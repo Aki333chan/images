@@ -22,7 +22,7 @@ namespace Aurum.Companion.Core.Game
                 return (int)n;
             }
             var grant = new ItemGrant { PlayerId = playerId, SessionId = Text("sessionId"), RequestId = Text("requestId"),
-                ItemName = Text("itemName"), ItemId = Number("itemId", 1, 65535), Count = Number("count", 1, 1000), Quality = Number("quality", 0, 6) };
+                ItemName = Text("itemName"), ItemId = Number("itemId", 1, int.MaxValue), Count = Number("count", 1, 1000), Quality = Number("quality", 0, 6) };
             if (!InventoryRequest.ValidPlayerId(playerId) || !Guid.TryParseExact(grant.SessionId, "D", out _) ||
                 !Guid.TryParseExact(grant.RequestId, "D", out _) || grant.ItemName.Length == 0 || grant.ItemName.Length > 128)
                 throw new JsonReader.JsonException("invalid_grant");

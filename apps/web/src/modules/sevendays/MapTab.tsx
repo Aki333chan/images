@@ -355,225 +355,203 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
           {t(zones.corner ? 'sdtd.zones.secondCorner' : 'sdtd.zones.firstCorner')}
         </p>
       )}
-      <svg
-        ref={svg}
-        viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
-        role="group"
-        tabIndex={-1}
-        aria-label={t('sdtd.map.title')}
-        className="w-full rounded-lg border border-border bg-black/30"
-        style={{
-          maxWidth: '122svh',
-          display: 'block',
-          marginInline: 'auto',
-          touchAction: 'none',
-          cursor: zones.drawing ? 'crosshair' : 'grab',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-        }}
-        onDragStart={(e) => e.preventDefault()}
-        onPointerDown={(e) => {
-          if (e.button !== 0 || !e.isPrimary) return;
-          e.preventDefault();
-          const marker = (e.target as Element).closest('[data-map-details]');
-          drag.current = {
-            id: e.pointerId,
-            x: e.clientX,
-            y: e.clientY,
-            cx: view.x,
-            cz: view.z,
-            units: MAP_WIDTH / e.currentTarget.getBoundingClientRect().width,
-            span,
-            moved: false,
-            details: marker?.getAttribute('data-map-details') ?? null,
-            zoneId:
-              (e.target as Element).closest('[data-zone-id]')?.getAttribute('data-zone-id') ?? null,
-          };
-          e.currentTarget.style.cursor = 'grabbing';
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current;
-          if (!d || d.id !== e.pointerId) return;
-          const dx = e.clientX - d.x,
-            dy = e.clientY - d.y;
-          d.moved ||= Math.hypot(dx, dy) > 4;
-          if (!d.moved) return;
-          setView((v) => ({
-            ...v,
-            x: Math.max(-500000, Math.min(500000, d.cx - ((dx * d.units) / TILE_PIXELS) * d.span)),
-            z: Math.max(-500000, Math.min(500000, d.cz + ((dy * d.units) / TILE_PIXELS) * d.span)),
-          }));
-        }}
-        onPointerUp={(e) => {
-          const d = drag.current;
-          if (!d || d.id !== e.pointerId) return;
-          if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 4) {
-            if (zones.open && zones.drawing) {
-              const rect = e.currentTarget.getBoundingClientRect();
-              zones.pick(
-                Math.round(
-                  view.x +
-                    ((((e.clientX - rect.left) * MAP_WIDTH) / rect.width - MAP_WIDTH / 2) /
-                      TILE_PIXELS) *
-                      span,
-                ),
-                Math.round(
-                  view.z -
-                    ((((e.clientY - rect.top) * MAP_HEIGHT) / rect.height - MAP_HEIGHT / 2) /
-                      TILE_PIXELS) *
-                      span,
-                ),
-              );
-            } else if (d.zoneId && zones.open)
-              zones.choose(zones.data?.zones.find((z) => z.id === d.zoneId) ?? null);
-            else if (d.details) setSelected(d.details);
-          }
-          drag.current = null;
-          e.currentTarget.style.cursor = zones.drawing ? 'crosshair' : 'grab';
-          if (e.currentTarget.hasPointerCapture(e.pointerId))
-            e.currentTarget.releasePointerCapture(e.pointerId);
-        }}
-        onLostPointerCapture={(e) => {
-          drag.current = null;
-          e.currentTarget.style.cursor = zones.drawing ? 'crosshair' : 'grab';
-        }}
+      {/* Safari needs touch-action on an HTML layout box, not only SVG content. */}
+      <div
+        className="touch-none overscroll-contain"
+        style={{ maxWidth: '122svh', marginInline: 'auto' }}
       >
-        {tiles.map(({ x, z }) => {
-          const key = `${level}/${x}/${z}`,
-            p = point(x * span, (z + 1) * span);
-          return (
-            <g key={key}>
-              <rect
-                x={p.x}
-                y={p.y}
-                width={TILE_PIXELS}
-                height={TILE_PIXELS}
-                fill="none"
-                stroke="#ffffff12"
-                pointerEvents="none"
-              />
-            </g>
-          );
-        })}
-        {Object.entries(images)
-          // Previous zoom levels are a scaled backdrop until current tiles are ready.
-          .sort(([a], [b]) => {
-            const az = Number(a.split('/')[0]),
-              bz = Number(b.split('/')[0]);
-            return (az === level ? 100 : az) - (bz === level ? 100 : bz);
-          })
-          .map(([key, url]) => {
-            const [zoom, x, z] = key.split('/').map(Number) as [number, number, number];
-            const oldSpan = tileSpan(data.info?.blockSize ?? 128, maxZoom, zoom);
-            const p = point(x * oldSpan, (z + 1) * oldSpan);
-            const size = (oldSpan / span) * TILE_PIXELS;
-            if (!onScreen(p.x, p.y, size)) return null;
+        <svg
+          ref={svg}
+          viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+          role="group"
+          tabIndex={-1}
+          aria-label={t('sdtd.map.title')}
+          className="w-full rounded-lg border border-border bg-black/30"
+          style={{
+            maxWidth: '122svh',
+            display: 'block',
+            marginInline: 'auto',
+            touchAction: 'none',
+            cursor: zones.drawing ? 'crosshair' : 'grab',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+          }}
+          onDragStart={(e) => e.preventDefault()}
+          onPointerDown={(e) => {
+            if (e.button !== 0 || !e.isPrimary) return;
+            e.preventDefault();
+            const marker = (e.target as Element).closest('[data-map-details]');
+            drag.current = {
+              id: e.pointerId,
+              x: e.clientX,
+              y: e.clientY,
+              cx: view.x,
+              cz: view.z,
+              units: MAP_WIDTH / e.currentTarget.getBoundingClientRect().width,
+              span,
+              moved: false,
+              details: marker?.getAttribute('data-map-details') ?? null,
+              zoneId:
+                (e.target as Element).closest('[data-zone-id]')?.getAttribute('data-zone-id') ??
+                null,
+            };
+            e.currentTarget.style.cursor = 'grabbing';
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current;
+            if (!d || d.id !== e.pointerId) return;
+            const dx = e.clientX - d.x,
+              dy = e.clientY - d.y;
+            d.moved ||= Math.hypot(dx, dy) > 4;
+            if (!d.moved) return;
+            setView((v) => ({
+              ...v,
+              x: Math.max(
+                -500000,
+                Math.min(500000, d.cx - ((dx * d.units) / TILE_PIXELS) * d.span),
+              ),
+              z: Math.max(
+                -500000,
+                Math.min(500000, d.cz + ((dy * d.units) / TILE_PIXELS) * d.span),
+              ),
+            }));
+          }}
+          onPointerUp={(e) => {
+            const d = drag.current;
+            if (!d || d.id !== e.pointerId) return;
+            if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= 4) {
+              if (zones.open && zones.drawing) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                zones.pick(
+                  Math.round(
+                    view.x +
+                      ((((e.clientX - rect.left) * MAP_WIDTH) / rect.width - MAP_WIDTH / 2) /
+                        TILE_PIXELS) *
+                        span,
+                  ),
+                  Math.round(
+                    view.z -
+                      ((((e.clientY - rect.top) * MAP_HEIGHT) / rect.height - MAP_HEIGHT / 2) /
+                        TILE_PIXELS) *
+                        span,
+                  ),
+                );
+              } else if (d.zoneId && zones.open)
+                zones.choose(zones.data?.zones.find((z) => z.id === d.zoneId) ?? null);
+              else if (d.details) setSelected(d.details);
+            }
+            drag.current = null;
+            e.currentTarget.style.cursor = zones.drawing ? 'crosshair' : 'grab';
+            if (e.currentTarget.hasPointerCapture(e.pointerId))
+              e.currentTarget.releasePointerCapture(e.pointerId);
+          }}
+          onLostPointerCapture={(e) => {
+            if (drag.current?.id !== e.pointerId) return;
+            drag.current = null;
+            e.currentTarget.style.cursor = zones.drawing ? 'crosshair' : 'grab';
+          }}
+          onPointerCancel={(e) => {
+            if (drag.current?.id !== e.pointerId) return;
+            drag.current = null;
+            e.currentTarget.style.cursor = zones.drawing ? 'crosshair' : 'grab';
+          }}
+        >
+          {tiles.map(({ x, z }) => {
+            const key = `${level}/${x}/${z}`,
+              p = point(x * span, (z + 1) * span);
             return (
-              <image
-                key={key}
-                href={url}
-                x={p.x}
-                y={p.y}
-                width={size}
-                height={size}
-                pointerEvents="none"
-              />
-            );
-          })}
-        {zones.open &&
-          [
-            ...(zones.data?.zones ?? []).filter((z) => z.id !== zones.draft?.id),
-            ...(zones.draft && !zones.drawing ? [zones.draft] : []),
-          ].map((z) => {
-            const p = point(z.x1, z.z2),
-              q = point(z.x2, z.z1);
-            if (![p.x, p.y, q.x, q.y].every(Number.isFinite)) return null;
-            return (
-              <g
-                key={z.id}
-                role="button"
-                tabIndex={0}
-                aria-label={z.name || t('sdtd.zones.new')}
-                data-zone-id={z.id}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    zones.choose(z);
-                  }
-                }}
-              >
+              <g key={key}>
                 <rect
                   x={p.x}
                   y={p.y}
-                  width={q.x - p.x}
-                  height={q.y - p.y}
-                  fill={zones.draft?.id === z.id ? '#a78bfa33' : '#34d39922'}
-                  stroke={z.enabled ? '#a78bfa' : '#9ca3af'}
-                  strokeWidth={zones.draft?.id === z.id ? 3 : 2}
-                  strokeDasharray={z.enabled ? undefined : '6 4'}
+                  width={TILE_PIXELS}
+                  height={TILE_PIXELS}
+                  fill="none"
+                  stroke="#ffffff12"
+                  pointerEvents="none"
                 />
-                <title>{z.name}</title>
               </g>
             );
           })}
-        {zones.open && zones.corner && (
-          <circle
-            cx={point(zones.corner.x, zones.corner.z).x}
-            cy={point(zones.corner.x, zones.corner.z).y}
-            r={5 * markerScale}
-            fill="#a78bfa"
-            stroke="white"
-            pointerEvents="none"
-          />
-        )}
-        {visiblePois.slice(0, 200).map((p) => {
-          const q = point(p.x, p.z),
-            r = 6 * markerScale;
-          const details = `${p.name} · ${p.trader ? t('sdtd.map.poiTraders') + ' · ' : ''}${t('sdtd.map.poiTier')} ${p.tier} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`;
-          return (
-            <g
-              key={`poi/${p.id}`}
-              role="button"
-              tabIndex={0}
-              aria-label={details}
-              data-map-details={details}
-              style={{ cursor: 'pointer' }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setSelected(details);
-                }
-              }}
-            >
-              <path
-                d={`M ${q.x} ${q.y - r} L ${q.x + r} ${q.y} L ${q.x} ${q.y + r} L ${q.x - r} ${q.y} Z`}
-                fill={p.trader ? '#34d399' : '#38bdf8'}
-                stroke="white"
-                pointerEvents="none"
-              />
-              <rect
-                x={q.x - 12 * markerScale}
-                y={q.y - 12 * markerScale}
-                width={24 * markerScale}
-                height={24 * markerScale}
-                fill="transparent"
-                pointerEvents="all"
-              />
-              <title>{details}</title>
-            </g>
-          );
-        })}
-        {layers.claims &&
-          data.claims.map((c, i) => {
-            const p = point(c.x + 0.5, c.z + 0.5),
-              size = (c.size / span) * TILE_PIXELS;
-            if (!onScreen(p.x, p.y, size)) return null;
-            const hitSize = Math.max(size, 24 * markerScale);
-            const details = `${t('sdtd.map.claims')} · ${c.owner || c.ownerId} · X ${c.x} / Z ${c.z} · ${c.size}×${c.size}`;
+          {Object.entries(images)
+            // Previous zoom levels are a scaled backdrop until current tiles are ready.
+            .sort(([a], [b]) => {
+              const az = Number(a.split('/')[0]),
+                bz = Number(b.split('/')[0]);
+              return (az === level ? 100 : az) - (bz === level ? 100 : bz);
+            })
+            .map(([key, url]) => {
+              const [zoom, x, z] = key.split('/').map(Number) as [number, number, number];
+              const oldSpan = tileSpan(data.info?.blockSize ?? 128, maxZoom, zoom);
+              const p = point(x * oldSpan, (z + 1) * oldSpan);
+              const size = (oldSpan / span) * TILE_PIXELS;
+              if (!onScreen(p.x, p.y, size)) return null;
+              return (
+                <image
+                  key={key}
+                  href={url}
+                  x={p.x}
+                  y={p.y}
+                  width={size}
+                  height={size}
+                  pointerEvents="none"
+                />
+              );
+            })}
+          {zones.open &&
+            [
+              ...(zones.data?.zones ?? []).filter((z) => z.id !== zones.draft?.id),
+              ...(zones.draft && !zones.drawing ? [zones.draft] : []),
+            ].map((z) => {
+              const p = point(z.x1, z.z2),
+                q = point(z.x2, z.z1);
+              if (![p.x, p.y, q.x, q.y].every(Number.isFinite)) return null;
+              return (
+                <g
+                  key={z.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={z.name || t('sdtd.zones.new')}
+                  data-zone-id={z.id}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      zones.choose(z);
+                    }
+                  }}
+                >
+                  <rect
+                    x={p.x}
+                    y={p.y}
+                    width={q.x - p.x}
+                    height={q.y - p.y}
+                    fill={zones.draft?.id === z.id ? '#a78bfa33' : '#34d39922'}
+                    stroke={z.enabled ? '#a78bfa' : '#9ca3af'}
+                    strokeWidth={zones.draft?.id === z.id ? 3 : 2}
+                    strokeDasharray={z.enabled ? undefined : '6 4'}
+                  />
+                  <title>{z.name}</title>
+                </g>
+              );
+            })}
+          {zones.open && zones.corner && (
+            <circle
+              cx={point(zones.corner.x, zones.corner.z).x}
+              cy={point(zones.corner.x, zones.corner.z).y}
+              r={5 * markerScale}
+              fill="#a78bfa"
+              stroke="white"
+              pointerEvents="none"
+            />
+          )}
+          {visiblePois.slice(0, 200).map((p) => {
+            const q = point(p.x, p.z),
+              r = 6 * markerScale;
+            const details = `${p.name} · ${p.trader ? t('sdtd.map.poiTraders') + ' · ' : ''}${t('sdtd.map.poiTier')} ${p.tier} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`;
             return (
               <g
-                key={`${c.ownerId}/${c.x}/${c.z}/${i}`}
+                key={`poi/${p.id}`}
                 role="button"
                 tabIndex={0}
                 aria-label={details}
@@ -586,75 +564,116 @@ export function SevenDaysMapTab({ serverId }: ModuleTabProps) {
                   }
                 }}
               >
-                <rect
-                  x={p.x - size / 2}
-                  y={p.y - size / 2}
-                  width={size}
-                  height={size}
-                  fill="#facc1522"
-                  stroke="#facc15"
-                  strokeWidth={selected === details ? 3 : 1.5}
+                <path
+                  d={`M ${q.x} ${q.y - r} L ${q.x + r} ${q.y} L ${q.x} ${q.y + r} L ${q.x - r} ${q.y} Z`}
+                  fill={p.trader ? '#34d399' : '#38bdf8'}
+                  stroke="white"
                   pointerEvents="none"
                 />
                 <rect
-                  data-map-hit
-                  x={p.x - hitSize / 2}
-                  y={p.y - hitSize / 2}
-                  width={hitSize}
-                  height={hitSize}
+                  x={q.x - 12 * markerScale}
+                  y={q.y - 12 * markerScale}
+                  width={24 * markerScale}
+                  height={24 * markerScale}
                   fill="transparent"
                   pointerEvents="all"
                 />
-                <title>{`${c.owner} (${c.x}, ${c.z})`}</title>
+                <title>{details}</title>
               </g>
             );
           })}
-        {layers.players &&
-          data.players.map((p) => {
-            const q = point(p.x, p.z);
-            if (!onScreen(q.x, q.y)) return null;
-            const details = `${p.name} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`;
-            return (
-              <g
-                key={p.id}
-                role="button"
-                tabIndex={0}
-                aria-label={details}
-                data-map-details={details}
-                style={{ cursor: 'pointer' }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setSelected(details);
-                  }
-                }}
-              >
-                <circle cx={q.x} cy={q.y} r={6 * markerScale} fill="#818cf8" stroke="white" />
-                <text
-                  x={q.x + 10 * markerScale}
-                  y={q.y - 9 * markerScale}
-                  fill="white"
-                  fontSize={14 * markerScale}
-                  stroke="#000"
-                  strokeWidth={3 * markerScale}
-                  paintOrder="stroke"
+          {layers.claims &&
+            data.claims.map((c, i) => {
+              const p = point(c.x + 0.5, c.z + 0.5),
+                size = (c.size / span) * TILE_PIXELS;
+              if (!onScreen(p.x, p.y, size)) return null;
+              const hitSize = Math.max(size, 24 * markerScale);
+              const details = `${t('sdtd.map.claims')} · ${c.owner || c.ownerId} · X ${c.x} / Z ${c.z} · ${c.size}×${c.size}`;
+              return (
+                <g
+                  key={`${c.ownerId}/${c.x}/${c.z}/${i}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={details}
+                  data-map-details={details}
+                  style={{ cursor: 'pointer' }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelected(details);
+                    }
+                  }}
                 >
-                  {p.name}
-                </text>
-                <title>{p.name}</title>
-              </g>
-            );
-          })}
-        <text
-          x={12 * markerScale}
-          y={22 * markerScale}
-          fill="white"
-          fontSize={16 * markerScale}
-          pointerEvents="none"
-        >
-          N ↑
-        </text>
-      </svg>
+                  <rect
+                    x={p.x - size / 2}
+                    y={p.y - size / 2}
+                    width={size}
+                    height={size}
+                    fill="#facc1522"
+                    stroke="#facc15"
+                    strokeWidth={selected === details ? 3 : 1.5}
+                    pointerEvents="none"
+                  />
+                  <rect
+                    data-map-hit
+                    x={p.x - hitSize / 2}
+                    y={p.y - hitSize / 2}
+                    width={hitSize}
+                    height={hitSize}
+                    fill="transparent"
+                    pointerEvents="all"
+                  />
+                  <title>{`${c.owner} (${c.x}, ${c.z})`}</title>
+                </g>
+              );
+            })}
+          {layers.players &&
+            data.players.map((p) => {
+              const q = point(p.x, p.z);
+              if (!onScreen(q.x, q.y)) return null;
+              const details = `${p.name} · X ${Math.round(p.x)} / Z ${Math.round(p.z)}`;
+              return (
+                <g
+                  key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={details}
+                  data-map-details={details}
+                  style={{ cursor: 'pointer' }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelected(details);
+                    }
+                  }}
+                >
+                  <circle cx={q.x} cy={q.y} r={6 * markerScale} fill="#818cf8" stroke="white" />
+                  <text
+                    x={q.x + 10 * markerScale}
+                    y={q.y - 9 * markerScale}
+                    fill="white"
+                    fontSize={14 * markerScale}
+                    stroke="#000"
+                    strokeWidth={3 * markerScale}
+                    paintOrder="stroke"
+                  >
+                    {p.name}
+                  </text>
+                  <title>{p.name}</title>
+                </g>
+              );
+            })}
+          <text
+            x={12 * markerScale}
+            y={22 * markerScale}
+            fill="white"
+            fontSize={16 * markerScale}
+            pointerEvents="none"
+          >
+            N ↑
+          </text>
+        </svg>
+      </div>
       <div className="space-y-1">
         {selected && (
           <div className="flex items-start gap-2 rounded border border-border bg-background pl-3 text-sm">

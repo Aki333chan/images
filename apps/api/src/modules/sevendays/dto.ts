@@ -116,7 +116,7 @@ export class ActionRunDto {
 export class ItemGrantDto {
   @IsUUID() sessionId!: string;
   @IsUUID() requestId!: string;
-  @IsInt() @Min(1) @Max(65535) itemId!: number;
+  @IsInt() @Min(1) @Max(2147483647) itemId!: number;
   @IsString() @MinLength(1) @MaxLength(128) itemName!: string;
   @IsInt() @Min(1) @Max(1000) count!: number;
   @IsInt() @Min(0) @Max(6) quality!: number;
@@ -129,7 +129,7 @@ export class SavedStackDto {
   @ValidateIf((o) => o.operation === 'replace' || o.itemId !== undefined)
   @IsInt()
   @Min(1)
-  @Max(65535)
+  @Max(2147483647)
   itemId?: number;
   @ValidateIf((o) => o.operation === 'replace' || o.itemName !== undefined)
   @IsString()

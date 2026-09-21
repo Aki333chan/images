@@ -27,6 +27,52 @@ const catalogue = {
     items: [{ itemId: 1, name: 'test', hasQuality: false, maxCount: 1000 }],
   },
 };
+
+describe('native 32-bit item IDs', () => {
+  it.each([65535, 65536, 81919])(
+    'accepts %i in catalogue, grant and saved replacement',
+    async (itemId) => {
+      expect(
+        parseItemCatalogue({
+          ...catalogue,
+          catalogue: {
+            ...catalogue.catalogue,
+            items: [{ ...catalogue.catalogue.items[0], itemId }],
+          },
+        }).items[0]?.itemId,
+      ).toBe(itemId);
+      expect(await validate(Object.assign(new ItemGrantDto(), { ...grant, itemId }))).toHaveLength(
+        0,
+      );
+      const saved = Object.assign(new SavedStackDto(), {
+        operation: 'replace',
+        itemId,
+        itemName: 'foodCornBread',
+        quality: 0,
+        requestId,
+        revision: 'a'.repeat(64),
+        section: 'bag',
+        slot: 0,
+        count: 1,
+        confirmed: true,
+      });
+      expect(await validate(saved)).toHaveLength(0);
+      saved.itemId = 2147483648;
+      expect((await validate(saved)).some((e) => e.property === 'itemId')).toBe(true);
+    },
+  );
+  it.each([0, -1, 1.5, 2147483648])('rejects invalid item ID %i', async (itemId) => {
+    expect(() =>
+      parseItemCatalogue({
+        ...catalogue,
+        catalogue: { ...catalogue.catalogue, items: [{ ...catalogue.catalogue.items[0], itemId }] },
+      }),
+    ).toThrow();
+    expect(
+      await validate(Object.assign(new ItemGrantDto(), { ...grant, itemId })),
+    ).not.toHaveLength(0);
+  });
+});
 function fixture() {
   const companion = {
     ping: jest.fn().mockResolvedValue({ compatible: true, capabilities: ['item-drop'] }),
@@ -150,7 +196,9 @@ describe('7DTD item grants', () => {
     ]) {
       expect(Reflect.getMetadata('requiredPermission', route)).toEqual([
         'sevendays.inventory.give',
-        ...(route === SevenDaysController.prototype.itemSearch ? ['sevendays.inventory.edit', 'sevendays.tools.manage'] : []),
+        ...(route === SevenDaysController.prototype.itemSearch
+          ? ['sevendays.inventory.edit', 'sevendays.tools.manage']
+          : []),
       ]);
       expect(Reflect.getMetadata('serverScopeParam', route)).toBe('serverId');
     }

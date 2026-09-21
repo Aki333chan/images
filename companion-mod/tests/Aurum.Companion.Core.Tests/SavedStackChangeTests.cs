@@ -7,6 +7,15 @@ namespace Aurum.Companion.Core.Tests;
 
 public sealed class SavedStackChangeTests
 {
+    [Theory]
+    [InlineData(65536)]
+    [InlineData(81919)]
+    public void Replacement_supports_item_ids_above_the_block_range(int id)
+    {
+        var c = SavedStackChange.Read("Steam_123", Body.Replace("\"itemId\":2", "\"itemId\":" + id));
+        Assert.True(c.MatchesItem(id, "gunPistol", 1, true));
+        Assert.False(c.MatchesItem(id - 1, "gunPistol", 1, true));
+    }
     private static string Body => "{\"requestId\":\"" + Guid.NewGuid() + "\",\"revision\":\"" + new string('a', 64) + "\",\"section\":\"bag\",\"slot\":0,\"count\":1,\"confirmed\":true,\"operation\":\"replace\",\"itemId\":2,\"itemName\":\"gunPistol\",\"quality\":6}";
     [Fact] public void Replacement_matches_current_native_catalogue_and_quality_rules()
     {
@@ -23,6 +32,7 @@ public sealed class SavedStackChangeTests
     }
     [Theory]
     [InlineData("\"itemId\":2", "\"itemId\":0")]
+    [InlineData("\"itemId\":2", "\"itemId\":2147483648")]
     [InlineData("\"quality\":6", "\"quality\":7")]
     [InlineData("\"quality\":6", "\"quality\":1.5")]
     [InlineData("\"quality\":6", "\"quality\":null")]

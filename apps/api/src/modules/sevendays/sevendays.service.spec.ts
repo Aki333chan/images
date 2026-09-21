@@ -2,7 +2,7 @@ process.env.NODE_ENV = 'test';
 
 import { BadRequestException } from '@nestjs/common';
 import { arg, optionalArg } from './sevendays-console.service';
-import { buildCommand } from './sevendays.service';
+import { buildCommand, SevenDaysService } from './sevendays.service';
 import { SEVENDAYS_ACTIONS } from './sevendays-actions.config';
 
 /**
@@ -49,6 +49,13 @@ describe('arg', () => {
 });
 
 describe('buildCommand', () => {
+  it('hides duplicate shutdown from quick actions without removing its separate permission route', () => {
+    const actions = SevenDaysService.prototype.listActions();
+    expect(actions.map((a) => a.id)).toEqual(['announce', 'save']);
+    expect(SEVENDAYS_ACTIONS.find((a) => a.id === 'shutdown')?.permission).toBe(
+      'sevendays.shutdown',
+    );
+  });
   const announce = SEVENDAYS_ACTIONS.find((a) => a.id === 'announce')!;
   const save = SEVENDAYS_ACTIONS.find((a) => a.id === 'save')!;
 

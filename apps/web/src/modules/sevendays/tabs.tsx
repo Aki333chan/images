@@ -802,11 +802,7 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
     setBusy(true);
     setError('');
     try {
-      // Остановка сервера — отдельный роут со своим правом, см. контроллер.
-      const path =
-        action.id === 'shutdown'
-          ? `${base(serverId)}/shutdown`
-          : `${base(serverId)}/actions/${action.id}`;
+      const path = `${base(serverId)}/actions/${action.id}`;
       const res = await api<{ ok: boolean; message: string }>(path, {
         method: 'POST',
         body: JSON.stringify({ args: values }),
@@ -825,7 +821,7 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
 
   // Показываем только то, на что у роли есть право: кнопка, ведущая в 403,
   // хуже, чем её отсутствие.
-  const allowed = actions.filter((a) => hasPermission(a.permission));
+  const allowed = actions.filter((a) => a.id !== 'shutdown' && hasPermission(a.permission));
   if (allowed.length === 0) return null;
 
   return (

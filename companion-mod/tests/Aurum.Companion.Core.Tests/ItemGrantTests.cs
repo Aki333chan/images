@@ -8,6 +8,16 @@ namespace Aurum.Companion.Core.Tests;
 
 public sealed class ItemGrantTests
 {
+    [Theory]
+    [InlineData(65535)]
+    [InlineData(65536)]
+    [InlineData(81919)]
+    public void Items_above_block_range_are_not_rejected(int id)
+    {
+        string body = "{\"sessionId\":\"" + Guid.NewGuid() + "\",\"requestId\":\"" + Guid.NewGuid() + "\",\"itemId\":" + id + ",\"itemName\":\"ammo9mmBulletBall\",\"count\":5,\"quality\":0,\"confirmed\":true}";
+        Assert.Equal(id, ItemGrant.Read("Steam_123", body).ItemId);
+        Assert.Throws<JsonReader.JsonException>(() => ItemGrant.Read("Steam_123", body.Replace("\"itemId\":" + id, "\"itemId\":2147483648")));
+    }
     private static ItemGrant Grant(ItemGrantGate gate) => ItemGrant.Read("Steam_123", "{\"sessionId\":\"" + gate.SessionId + "\",\"requestId\":\"" + Guid.NewGuid() + "\",\"itemId\":1,\"itemName\":\"test\",\"count\":5,\"quality\":0,\"confirmed\":true}");
     [Fact]
     public void Replay_and_parallel_calls_never_repeat_spawn()

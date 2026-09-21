@@ -30,7 +30,7 @@ export function parseItemCatalogue(value: unknown): SevenDaysItemCatalogue {
       !p ||
       !Number.isInteger(p.itemId) ||
       p.itemId < 1 ||
-      p.itemId > 65535 ||
+      p.itemId > 2147483647 ||
       ids.has(p.itemId) ||
       typeof p.name !== 'string' ||
       !p.name ||
@@ -133,6 +133,7 @@ export class SevenDaysItemsService {
   async search(serverId: string, query: string) {
     if (typeof query !== 'string') throw new BadRequestException('invalid_item_search');
     query = query.trim();
+    // eslint-disable-next-line no-control-regex -- explicitly reject control characters at this input boundary
     if (query.length < 2 || query.length > 64 || /[\x00-\x1f\x7f]/.test(query))
       throw new BadRequestException('invalid_item_search');
     if (this.active >= 4) throw new ServiceUnavailableException('inventory_busy');
