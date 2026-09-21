@@ -21,7 +21,7 @@ namespace Aurum.Companion.Game
         private string? _path;
         private World? _loadedWorld;
         private string? _error;
-        private bool _creatureBlockProtection, _explosionBlockProtection;
+        private bool _creatureBlockProtection, _explosionBlockProtection, _biomeSpawnProtection, _biomeSpawnFailed;
         private float _nextTick;
         private int _creatureCursor;
         private readonly ZoneSpawnChecks _spawnChecks = new ZoneSpawnChecks();
@@ -61,6 +61,7 @@ namespace Aurum.Companion.Game
                 _harmony.Patch(explosion,
                     prefix: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(BeginExplosion), BindingFlags.Static | BindingFlags.NonPublic)),
                     finalizer: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(EndExplosion), BindingFlags.Static | BindingFlags.NonPublic)));
+                TryPatchBiomeSpawn();
                 Current = this;
                 ModEvents.GameUpdate.RegisterHandler(Update);
                 ModEvents.GameUpdate.RegisterHandler(CheckSpawnedEntities);
@@ -86,7 +87,7 @@ namespace Aurum.Companion.Game
             _loadedWorld = GameManager.Instance.World;
             _spawnChecks.Clear(); _spawnWarningAfter = 0;
             _path = path; _rules = new ZoneRules(); _inside.Clear(); _noticeAfter.Clear(); _commandGate.Clear(); _error = null;
-            _creatureBlockProtection = _explosionBlockProtection = false;
+            _creatureBlockProtection = _explosionBlockProtection = _biomeSpawnProtection = false;
             _containment.Clear(); _returns.Clear();
             try
             {
@@ -215,6 +216,51 @@ namespace Aurum.Companion.Game
         {
             _creatureBlockProtection = _rules.Zones.Any(z => z.IsActive && z.NoCreatureBlockDamage);
             _explosionBlockProtection = _rules.Zones.Any(z => z.IsActive && z.NoExplosionBlockDamage);
+            _biomeSpawnProtection = _rules.Zones.Any(z => z.IsActive && z.BlockSpawn != 0);
+        }
+
+        private void TryPatchBiomeSpawn()
+        {
+            MethodInfo? target = null;
+            try
+            {
+                target = ZoneBiomeSpawnPatch.Target ?? throw new MissingMethodException("SpawnManagerBiomes.SpawnUpdate");
+                _patched.Add(target);
+                _harmony.Patch(target, transpiler: new HarmonyMethod(AccessTools.Method(typeof(ZoneBiomeSpawnPatch), "Transpile")));
+                Log.Out("[AurumCompanion] Early biome spawn gate installed; other spawn sources use deferred checks.");
+            }
+            catch (Exception e)
+            {
+                _biomeSpawnFailed = true;
+                if (target != null) _harmony.Unpatch(target, HarmonyPatchType.All, _harmony.Id);
+                Log.Warning("[AurumCompanion] Early biome spawn gate unavailable; deferred spawn checks remain: " + e.Message);
+            }
+        }
+
+        private static bool DenyBiomeSpawn(World world, int entityClass, Vector3 position)
+        {
+            var current = Current;
+            if (current == null || current._biomeSpawnFailed || !current._biomeSpawnProtection ||
+                current._error != null || current._loadedWorld != world || world.IsRemote()) return false;
+            try
+            {
+                if (!EntityClass.list.TryGetValue(entityClass, out var definition)) return false;
+                // The factory may randomly downgrade a class above the sandbox tier limit.
+                // Never draw that replacement twice or decide using the wrong category.
+                if (definition.EntityTier > EntityFactory.MaxEntityTier) return false;
+                var type = definition.classname;
+                if (type == null || !typeof(EntityAlive).IsAssignableFrom(type) ||
+                    typeof(EntityPlayer).IsAssignableFrom(type) || typeof(EntityTrader).IsAssignableFrom(type)) return false;
+                int category = (definition.entityFlags & EntityFlags.Animal) != 0 ? (definition.bIsEnemyEntity ? 4 : 2) :
+                    (definition.entityFlags & EntityFlags.Zombie) != 0 ? 1 : 0;
+                return current._rules.DenyCreature(position.x, position.z, category, false);
+            }
+            catch (Exception e)
+            {
+                current._biomeSpawnFailed = true;
+                Log.Warning("[AurumCompanion] Early biome spawn gate failed; deferred spawn checks remain: " + e.Message);
+                return false;
+            }
         }
 
         private void Update(ref ModEvents.SGameUpdateData data)
