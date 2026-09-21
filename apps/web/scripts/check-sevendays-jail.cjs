@@ -33,7 +33,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             contents: `
         import {defaultZoneMovement, defaultZoneSchedule} from '@aurum/shared';
         window.calls=[];window.writes=[];
-        const zone=(id,name,x)=>({id,name,type:'prison',enabled:true,x1:x,z1:0,x2:x+10,z2:10,noPvp:true,noDamage:false,noCreatureBlockDamage:false,noExplosionBlockDamage:false,blockSpawn:0,despawn:0,bonuses:{regeneration:0,stamina:0,speed:0},enter:'',exit:'',commandsEnabled:false,commandCooldown:30,enterCommands:[],exitCommands:[],movement:{...defaultZoneMovement(),mode:'prison',x:x+2,z:2},schedule:defaultZoneSchedule()});
+        const zone=(id,name,x)=>({id,name,type:'prison',enabled:true,x1:x,z1:0,x2:x+10,z2:10,noPvp:true,noDamage:false,noCreatureBlockDamage:false,noExplosionBlockDamage:false,traderProtection:false,blockSpawn:0,despawn:0,bonuses:{regeneration:0,stamina:0,speed:0},enter:'',exit:'',commandsEnabled:false,commandCooldown:30,enterCommands:[],exitCommands:[],movement:{...defaultZoneMovement(),mode:'prison',x:x+2,z:2},schedule:defaultZoneSchedule()});
         window.zones={revision:7,worldId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',zones:[zone('prison-one','Central prison',0),zone('prison-two','Northern prison',30)]};
         window.players=[{entityId:1,name:'[VIP] Łukasz / 雪',platformId:'Steam_1',crossId:'EOS_1'},{entityId:2,name:'[VIP] Łukasz / 雪',platformId:'Steam_2',crossId:'EOS_2'},{entityId:3,name:'Visitor',platformId:'Steam_3',crossId:null}];
         export async function api(url,options={}){

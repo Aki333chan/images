@@ -11,7 +11,7 @@ import { SevenDaysController } from './sevendays.controller';
 import { PERMISSION_KEY, SERVER_SCOPE_PARAM } from '../../rbac/rbac.decorators';
 
 describe('zone bonus strengths', () => {
-  it.each(['zones-v6', 'zones-v7'])(
+  it.each(['zones-v6', 'zones-v7', 'zones-v8'])(
     'gates both reads and writes on the new schema: %s',
     async (capability) => {
       const call = jest.fn().mockResolvedValue(fixture());
@@ -20,14 +20,14 @@ describe('zone bonus strengths', () => {
         call,
       }) as SevenDaysCompanionService;
       for (const payload of [undefined, fixture()]) {
-        if (capability === 'zones-v7')
+        if (capability === 'zones-v8')
           await expect(service.zoneRequest('s', payload)).resolves.toEqual(fixture());
         else
           await expect(service.zoneRequest('s', payload)).rejects.toThrow(
             'zones_mod_update_required',
           );
       }
-      expect(call).toHaveBeenCalledTimes(capability === 'zones-v7' ? 2 : 0);
+      expect(call).toHaveBeenCalledTimes(capability === 'zones-v8' ? 2 : 0);
     },
   );
   it('roundtrips simultaneous effects and fractional strength', () => {
@@ -73,6 +73,7 @@ const fixture = (): SevenDaysZones => ({
       noDamage: false,
       noCreatureBlockDamage: false,
       noExplosionBlockDamage: false,
+      traderProtection: false,
       blockSpawn: 0,
       despawn: 0,
       enter: '',
@@ -89,6 +90,23 @@ const fixture = (): SevenDaysZones => ({
 });
 
 describe('7DTD zones', () => {
+  it('validates startup Protect and preserves authoritative response diagnostics', () => {
+    const data = fixture();
+    data.zones[0]!.traderProtection = true;
+    data.protection = { pending: true, applied: 0, error: '' };
+    expect(parseSevenDaysZones(data)).toEqual(data);
+    data.zones[0]!.schedule.enabled = true;
+    expect(() => parseSevenDaysZones(data)).toThrow('zones_protect_schedule');
+    data.zones[0]!.schedule.enabled = false;
+    data.zones[0]!.x1 = -10.5;
+    expect(() => parseSevenDaysZones(data)).toThrow('zones_protect_bounds');
+    data.zones[0]!.x1 = -10;
+    data.zones[0]!.x2 = 32751;
+    expect(() => parseSevenDaysZones(data)).toThrow('zones_protect_bounds');
+    data.zones[0]!.x2 = 10;
+    data.protection.applied = 101;
+    expect(() => parseSevenDaysZones(data)).toThrow('invalid_zones');
+  });
   it('roundtrips independent block protection flags and rejects old wire format', () => {
     const data = fixture();
     data.zones[0]!.noCreatureBlockDamage = true;

@@ -28,6 +28,7 @@ namespace Aurum.Companion.Game
         private float _spawnWarningAfter;
         private readonly ZoneCommandGate _commandGate = new ZoneCommandGate();
         private readonly ZoneContainment _containment = new ZoneContainment();
+        private readonly ZoneTraderRuntime _traderProtection = new ZoneTraderRuntime();
         private readonly Dictionary<int, ReturnAttempts> _returns = new Dictionary<int, ReturnAttempts>();
         private sealed class ReturnAttempts
         {
@@ -64,6 +65,10 @@ namespace Aurum.Companion.Game
                 TryPatchBiomeSpawn();
                 TryPatchWanderingSpawn();
                 Current = this;
+                Patch(typeof(TraderArea), nameof(TraderArea.SetClosed), nameof(BeforeTraderClosed), false,
+                    typeof(World), typeof(bool), typeof(EntityTrader), typeof(bool));
+                Patch(typeof(ClientInfo), nameof(ClientInfo.SendPackage), nameof(BeforeSendAreas), false, typeof(NetPackage));
+                ModEvents.GameStartDone.RegisterHandler(GameStarted);
                 ModEvents.GameUpdate.RegisterHandler(Update);
                 ModEvents.GameUpdate.RegisterHandler(CheckSpawnedEntities);
                 ModEvents.PlayerSpawnedInWorld.RegisterHandler(PlayerSpawned);
@@ -78,6 +83,29 @@ namespace Aurum.Companion.Game
             var handler = new HarmonyMethod(typeof(ZoneRuntime).GetMethod(hook, BindingFlags.Static | BindingFlags.NonPublic));
             _patched.Add(method);
             _harmony.Patch(method, prefix: postfix ? null : handler, postfix: postfix ? handler : null);
+        }
+
+        private void GameStarted(ref ModEvents.SGameStartDoneData data)
+        {
+            try
+            {
+                EnsureWorld();
+                if (_error == null) _traderProtection.Start(GameManager.Instance.World, _rules);
+            }
+            catch (Exception e) { Log.Error("[AurumCompanion] Protect startup failed: " + e.Message); }
+        }
+
+        // Even an admin-spawned trader must not acquire a protection-only area or lock its doors.
+        private static bool BeforeTraderClosed(TraderArea __instance, ref bool __result)
+        {
+            if (Current?._traderProtection.Owns(__instance) != true) return true;
+            __result = true;
+            return false;
+        }
+
+        private static void BeforeSendAreas(ClientInfo __instance, NetPackage _package)
+        {
+            if (_package is NetPackageWorldAreas areas) Current?._traderProtection.FilterForAdmin(__instance, areas);
         }
 
         private void EnsureWorld()
@@ -157,7 +185,7 @@ namespace Aurum.Companion.Game
         {
             EnsureWorld();
             if (_error != null) throw new InvalidOperationException(_error);
-            return _rules.Write();
+            return _rules.Write(_traderProtection.Status(_rules));
         }
 
         public string Save(ZoneRules next)
@@ -166,6 +194,7 @@ namespace Aurum.Companion.Game
             if (_error != null) throw new InvalidOperationException(_error);
             if (next.Revision != _rules.Revision || next.WorldId != _rules.WorldId) throw new InvalidOperationException("zones_revision_conflict");
             CheckBuffs(next);
+            _traderProtection.Validate(GameManager.Instance.World, next);
             foreach (var zone in next.Zones)
             {
                 var old = _rules.Zones.FirstOrDefault(z => z.Id == zone.Id);
@@ -193,7 +222,7 @@ namespace Aurum.Companion.Game
             _returns.Clear();
             _inside.Clear(); // Edits must not replay entry/exit messages or future rewards.
             _nextTick = 0;
-            return _rules.Write();
+            return _rules.Write(_traderProtection.Status(_rules));
         }
 
         private static void CheckBuffs(ZoneRules rules)
@@ -542,6 +571,7 @@ namespace Aurum.Companion.Game
         }
         public void Dispose()
         {
+            ModEvents.GameStartDone.UnregisterHandler(GameStarted);
             ModEvents.GameUpdate.UnregisterHandler(Update);
             ModEvents.GameUpdate.UnregisterHandler(CheckSpawnedEntities);
             ModEvents.PlayerSpawnedInWorld.UnregisterHandler(PlayerSpawned);

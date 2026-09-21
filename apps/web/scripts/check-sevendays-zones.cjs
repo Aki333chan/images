@@ -161,6 +161,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.getByLabel(catalog['sdtd.zones.bonus.' + key], {exact:true}).fill(value);
     await button('sdtd.zones.save').click();
     await page.waitForFunction(() => window.zones.revision === 11);
+    assert.equal(await page.getByLabel(catalog['sdtd.zones.protect.label'], {exact:true}).isDisabled(), true);
+    await page.getByLabel(catalog['sdtd.zones.schedule.enabled'], {exact:true}).uncheck();
+    await page.getByLabel(catalog['sdtd.zones.protect.label'], {exact:true}).check();
+    assert.equal(await page.getByLabel(catalog['sdtd.zones.schedule.enabled'], {exact:true}).isDisabled(), true);
+    for (const [key, value] of [['X1','-10'], ['Z1','-10'], ['X2','10'], ['Z2','10']])
+      await page.getByLabel(key, {exact:true}).fill(value);
+    await button('sdtd.zones.save').click();
+    await page.waitForFunction(() => window.zones.revision === 12);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].traderProtection), true);
+    // Runtime diagnostics come from the server, not a browser guess after save.
+    await page.evaluate(() => { window.zones.protection = {pending:true, applied:1, error:''}; window.render(); });
+    await button('sdtd.zones.title').click();
+    await page.getByLabel(catalog['sdtd.zones.select'], {exact:true}).selectOption(await page.evaluate(() => window.zones.zones[0].id));
+    await page.getByText(catalog['sdtd.zones.protect.pending'], {exact:true}).waitFor();
     for (const [name, width] of [['desktop', 1200], ['mobile', 390]]) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(() => document.fonts.ready); await page.evaluate(() => scrollTo(0, 0));
@@ -179,10 +193,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.getByLabel(catalog['sdtd.zones.name'], {exact:true}).isDisabled(), true);
     assert.equal(await page.getByLabel(catalog['sdtd.zones.bonus.speed'], {exact:true}).isDisabled(), true);
     assert.equal(await button('sdtd.zones.delete').isDisabled(), true);
+    await page.evaluate(() => { window.commandsAllowed = true; window.render(); });
+    await button('sdtd.zones.title').click();
+    await page.getByLabel(catalog['sdtd.zones.select'], {exact:true}).selectOption(await page.evaluate(() => window.zones.zones[0].id));
+    await button('sdtd.zones.delete').click();
+    await page.waitForFunction(() => window.zones.zones.length === 0);
+    await page.getByText(catalog['sdtd.zones.protect.pending'], {exact:true}).waitFor();
     await page.evaluate(() => { window.allowed = false; window.render(); });
     await button('sdtd.zones.title').click();
     assert.equal(await button('sdtd.zones.add').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: drawing, movement/containment, weekly/overnight schedule, UTC offset dates, prison disables schedule, empty-day warning, permissions, keyboard, conflict, desktop/mobile.');
+    console.log('PASS: drawing, movement/containment, schedule, Protect exclusivity and pending notice after deletion, permissions, keyboard, conflict, desktop/mobile.');
   } finally { await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

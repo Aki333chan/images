@@ -27,6 +27,7 @@ export function zonePreset(type: SevenDaysZone['type']) {
     noDamage: false,
     noCreatureBlockDamage: false,
     noExplosionBlockDamage: false,
+    traderProtection: false,
     blockSpawn: type === 'sanctuary' ? 5 : 0,
     despawn: 0,
     bonuses: { regeneration: type === 'bonus' ? 1 : 0, stamina: 0, speed: 0 },
@@ -169,7 +170,9 @@ export function useSevenDaysZones(serverId: string) {
             ? 'sdtd.zones.destinationConflict'
             : (e as Error).message === 'zones_prison_schedule'
               ? 'sdtd.zones.schedule.prison'
-              : 'sdtd.zones.invalid',
+              : (e as Error).message.startsWith('zones_protect_')
+                ? 'sdtd.zones.protect.invalid'
+                : 'sdtd.zones.invalid',
         ),
       );
       return;
@@ -283,6 +286,21 @@ export function SevenDaysZoneEditor({
       </div>
       <p className="max-w-prose text-sm text-muted">{t('sdtd.zones.help')}</p>
       {zone.error && <ErrorText>{zone.error}</ErrorText>}
+      {zone.data?.protection?.error && (
+        <ErrorText>
+          {t('sdtd.zones.protect.failed')} ({zone.data.protection.error})
+        </ErrorText>
+      )}
+      {zone.data?.protection?.pending && (
+        <p role="status" className="max-w-prose text-sm text-amber-300">
+          {t('sdtd.zones.protect.pending')}
+        </p>
+      )}
+      {!!zone.data?.protection?.applied && (
+        <p className="text-sm text-muted">
+          {t('sdtd.zones.protect.applied')}: {zone.data.protection.applied}
+        </p>
+      )}
       {zone.notice && (
         <p role="status" className="text-sm text-emerald-400">
           {zone.notice}
@@ -355,6 +373,7 @@ export function SevenDaysZoneEditor({
                     const type = e.target.value as SevenDaysZone['type'];
                     change({
                       ...zonePreset(type),
+                      traderProtection: z.traderProtection,
                       schedule: type === 'prison' ? { ...z.schedule, enabled: false } : z.schedule,
                       movement: {
                         ...z.movement,
@@ -402,15 +421,17 @@ export function SevenDaysZoneEditor({
               <div className="mt-3 space-y-3">
                 <p className="max-w-prose text-xs text-muted">
                   {t(
-                    z.movement.mode === 'prison'
-                      ? 'sdtd.zones.schedule.prison'
-                      : 'sdtd.zones.schedule.help',
+                    z.traderProtection
+                      ? 'sdtd.zones.protect.schedule'
+                      : z.movement.mode === 'prison'
+                        ? 'sdtd.zones.schedule.prison'
+                        : 'sdtd.zones.schedule.help',
                   )}
                 </p>
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    disabled={z.movement.mode === 'prison'}
+                    disabled={z.movement.mode === 'prison' || z.traderProtection}
                     checked={z.schedule.enabled}
                     onChange={(e) =>
                       change({ schedule: { ...z.schedule, enabled: e.target.checked } })
@@ -587,6 +608,20 @@ export function SevenDaysZoneEditor({
               ))}
               <p className="max-w-prose text-xs text-muted">
                 {t('sdtd.zones.blockProtectionHelp')}
+              </p>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  className="mt-1"
+                  type="checkbox"
+                  checked={z.traderProtection}
+                  disabled={z.schedule.enabled}
+                  aria-describedby="zone-protect-help"
+                  onChange={(e) => change({ traderProtection: e.target.checked })}
+                />
+                {t('sdtd.zones.protect.label')}
+              </label>
+              <p id="zone-protect-help" className="max-w-prose text-xs text-muted">
+                {t('sdtd.zones.protect.help')}
               </p>
             </fieldset>
             <fieldset className="space-y-3">

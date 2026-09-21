@@ -74,6 +74,7 @@ export interface SevenDaysZone {
   noDamage: boolean;
   noCreatureBlockDamage: boolean;
   noExplosionBlockDamage: boolean;
+  traderProtection: boolean;
   /** Bits: 1 zombie, 2 peaceful animal, 4 hostile animal. */
   blockSpawn: number;
   despawn: number;
@@ -91,6 +92,8 @@ export interface SevenDaysZones {
   revision: number;
   worldId: string;
   zones: SevenDaysZone[];
+  /** Response-only startup snapshot diagnostics, never trusted as configuration. */
+  protection?: { pending: boolean; applied: number; error: string };
 }
 
 export function validZoneCommand(command: string): boolean {
@@ -137,7 +140,20 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
     v >= min &&
     v <= max &&
     (!integer || Number.isInteger(v));
-  const root = object(value, ['revision', 'worldId', 'zones']);
+  const hasProtection = !!value && typeof value === 'object' && Object.hasOwn(value, 'protection');
+  const root = object(value, [
+    'revision',
+    'worldId',
+    'zones',
+    ...(hasProtection ? ['protection'] : []),
+  ]);
+  let protection: SevenDaysZones['protection'];
+  if (hasProtection) {
+    const p = object(root.protection, ['pending', 'applied', 'error']);
+    if (typeof p.pending !== 'boolean' || !number(p.applied, 0, 100, true) || !text(p.error, 80))
+      return invalid();
+    protection = { pending: p.pending, applied: p.applied, error: p.error };
+  }
   if (
     !text(root.worldId, 32) ||
     !/^[a-f0-9]{32}$/.test(root.worldId) ||
@@ -161,6 +177,7 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'noDamage',
       'noCreatureBlockDamage',
       'noExplosionBlockDamage',
+      'traderProtection',
       'blockSpawn',
       'despawn',
       'enter',
@@ -263,6 +280,7 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       typeof z.noPvp !== 'boolean' ||
       typeof z.noDamage !== 'boolean' ||
       typeof z.noCreatureBlockDamage !== 'boolean' ||
+      typeof z.traderProtection !== 'boolean' ||
       typeof z.noExplosionBlockDamage !== 'boolean' ||
       !number(z.x1, -500000, 500000) ||
       !number(z.z1, -500000, 500000) ||
@@ -285,6 +303,15 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       )
     )
       return invalid();
+    if (z.traderProtection) {
+      if (schedule.enabled) throw new Error('zones_protect_schedule');
+      if (
+        ![z.x1, z.z1, z.x2, z.z2].every(Number.isInteger) ||
+        (z.x2 as number) - (z.x1 as number) > 32760 ||
+        (z.z2 as number) - (z.z1 as number) > 32760
+      )
+        throw new Error('zones_protect_bounds');
+    }
     ids.add(z.id);
     return {
       ...z,
@@ -318,5 +345,10 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
     )
       throw new Error('zones_destination_conflict');
   }
-  return { revision: root.revision, worldId: root.worldId, zones };
+  return {
+    revision: root.revision,
+    worldId: root.worldId,
+    zones,
+    ...(protection ? { protection } : {}),
+  };
 }

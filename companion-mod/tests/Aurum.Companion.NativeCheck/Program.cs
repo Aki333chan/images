@@ -59,6 +59,37 @@ internal static class Program
         }
         Console.WriteLine("PASS: supplied biome IL transformation, early-return stack/branch, four incompatible-body refusals. Native Harmony application and gameplay remain live checks.");
         CheckWandering(game, mod);
+        CheckTraderProtection(game, mod);
+    }
+
+    private static void CheckTraderProtection(Assembly game, Assembly mod)
+    {
+        var vector = game.GetType("Vector3i") ?? AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("Vector3i")).First(t => t != null)!;
+        object V(int x, int y, int z) => Activator.CreateInstance(vector, x, y, z)!;
+        var area = game.GetType("TraderArea")!;
+        var constructor = area.GetConstructors().Single();
+        var volumes = Activator.CreateInstance(constructor.GetParameters()[3].ParameterType, new object?[] { null });
+        object Area(int x) => constructor.Invoke(new[] { V(x, 0, -20), V(20, 256, 40), V(-2, 0, -2), volumes });
+        var real = Area(100); var ours = Area(-10);
+        var protectPos = area.GetField("ProtectPosition")!.GetValue(ours)!;
+        var protectSize = area.GetField("ProtectSize")!.GetValue(ours)!;
+        Require((int)vector.GetField("x")!.GetValue(protectPos)! == -10 && (int)vector.GetField("z")!.GetValue(protectPos)! == -20, "Trader protection shifted origin");
+        Require((int)vector.GetField("x")!.GetValue(protectSize)! == 20 && (int)vector.GetField("z")!.GetValue(protectSize)! == 40, "Trader constructor padding changed");
+        Require(!(bool)area.GetProperty("IsInitialized")!.GetValue(ours)!, "Protection acquired a trader");
+        var listType = typeof(List<>).MakeGenericType(area);
+        var original = (System.Collections.IList)Activator.CreateInstance(listType)!;
+        original.Add(real); original.Add(ours);
+        var runtimeType = mod.GetType("Aurum.Companion.Game.ZoneTraderRuntime")!;
+        var runtime = Activator.CreateInstance(runtimeType, true)!;
+        ((System.Collections.IList)runtimeType.GetField("_areas", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(runtime)!).Add(ours);
+        var filtered = (System.Collections.IList)runtimeType.GetMethod("ForAdmin", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(runtime, new object[] { original })!;
+        Require(filtered.Count == 1 && ReferenceEquals(filtered[0], real), "Admin filtering removed native traders");
+        Require(original.Count == 2, "Admin filtering mutated the shared player list");
+        var write = ReadBody(area.GetMethod("Write")!, out _);
+        var read = ReadBody(area.GetMethod("Read")!, out _);
+        Require(write.Count(c => c.opcode == OpCodes.Conv_I2) == 3 && write.Count(c => c.opcode == OpCodes.Conv_I1) >= 3, "Native trader dimensions wire widths changed");
+        Require(read.Count(c => c.operand is Mono.Cecil.MethodReference m && m.Name == "ReadInt16") == 3, "Native trader size decoder changed");
+        Console.WriteLine("PASS: native trader constructor geometry, no owning NPC, admin-only list filtering without shared mutation, native size codec contract. Not a client/Harmony gameplay test.");
     }
 
     private static void CheckWandering(Assembly game, Assembly mod)

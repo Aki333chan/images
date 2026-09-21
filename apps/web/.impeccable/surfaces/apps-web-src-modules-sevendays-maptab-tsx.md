@@ -25,7 +25,31 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 Scope this increment: replace the single bonus selector with three independent numeric strengths in the existing editor: health regeneration, stamina regeneration and additional running speed. Zero disables an effect; overlaps use the highest strength of each effect, never a sum. Show units and bounds, retain the shared Save, permissions, enable/schedule and existing styles. Three columns on desktop, stacked on mobile. No new zone types, modal, poller, assets or dependencies. Import existing single bonuses without changing their strength. Native behavior remains RC pending live checks.
 
-## Documentation outcome
+## Protect extension contract (2026-09-21)
+
+THESIS: Distinguish saved settings from startup-applied protection; never imply that saving moves the live protected boundary.
+
+OWN-WORLD: Existing Aurum dark forms, Inter, violet buttons and shared help/error treatment remain unchanged.
+
+STORY: Enable Protect in the block protection group, read its startup-only scope, save, and see a persistent pending-restart notice even after deleting a zone. Native permission-level-zero admins are exempt on their next connection; real traders remain protected.
+
+FIRST VIEWPORT: Keep the map and editor layout. Place global pending/error status above the zone selector, so it survives deselection and deletion. Put one checkbox and concise limitations beside block protection. Preserve mobile stacking and keyboard labels.
+
+FORM: Narrow code-led extension, no seed or comp. Signature behavior is pending status returned by the mod, never inferred from a successful save. Protect and scheduling cannot coexist. No new modal, assets, timer or dependency.
+
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+
+## Protect documentation outcome (2026-09-21)
+
+The completed extension preserves the incumbent map/editor composition, dark surfaces, Inter, violet controls, native form fields and shared help/error treatment. `ZoneEditor.tsx` adds an opt-in Protect checkbox within block protection and a global runtime status above the zone selector. Pending-restart status comes from Companion and remains visible after deselection or deletion; saving settings does not assert that the live boundary changed. The existing global CSS, Tailwind configuration and shared UI components have no changes for this extension. No global design-system change, new raster asset, PRODUCT.md, DESIGN.md or design sidecar is introduced.
+
+Protect requires a server restart to enable, move or remove protection. Its help records blocked mining, building and pickup, possible placement blocking just outside the boundary, whole-block coordinates and a maximum span of 32,760 blocks. Scheduling and Protect are mutually exclusive, with a dedicated explanation in the schedule section. The generic zone help in English, Russian and Polish now distinguishes settings that apply after saving from Protect changes that require restart; the action reads Save rather than Save & apply. Native in-game administrators at permission level 0 bypass these custom zones after reconnecting, while real traders remain protected. Preserve these distinctions in future copy and behavior changes.
+
+The main agent and finish reviewer inspected the final desktop and mobile captures at `.impeccable/review/zones-desktop.png` and `.impeccable/review/zones-mobile.png`, relative to the app root. These reused paths now contain the Protect review evidence, superseding the earlier bonus captures described below. The reviewer accepted the corrected generic help, Save label and Protect schedule explanation. The supplied browser suite passed, including the Protect assertions in `check-sevendays-zones.cjs`. This records the supplied review and verification outcome; the documentation pass itself did not repeat browser or gameplay checks.
+
+Protect remains an opt-in release-candidate feature with live gameplay unverified. Screenshot and browser acceptance establish the panel behavior, not in-game enforcement. This ordinary-extension documentation pass preserves the existing design and preexisting documentation state; no separate handoff document is created.
+
+## Earlier documentation outcome
 
 This is an extension of the incumbent system evidenced by `tailwind.config.ts`, `src/index.css`, `src/components/ui.tsx`, `MapTab.tsx` and `ZoneEditor.tsx`. It adds no global visual system. PRODUCT.md and DESIGN.md were absent at both repository and app roots before this work; the ordinary-extension documentation pass preserves that state rather than inventing brand context or repairing global drift.
 

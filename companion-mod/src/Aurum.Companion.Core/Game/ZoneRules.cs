@@ -12,6 +12,7 @@ namespace Aurum.Companion.Core.Game
         public string Id = "", Name = "", Type = "safe", Enter = "", Exit = "";
         public bool Enabled = true, NoPvp = true, NoDamage;
         public bool NoCreatureBlockDamage, NoExplosionBlockDamage;
+        public bool TraderProtection;
         public double X1, Z1, X2, Z2;
         public int BlockSpawn, Despawn;
         public ZoneBonuses Bonuses;
@@ -39,6 +40,8 @@ namespace Aurum.Companion.Core.Game
         {
             if (System.Text.Encoding.UTF8.GetByteCount(json) > 60000) throw Invalid();
             var root = JsonReader.ParseObject(json);
+            // Response-only diagnostic data must never become authority or persist to disk.
+            root.Remove("protection");
             Keys(root, "revision", "worldId", "zones");
             var result = new ZoneRules { Revision = (long)Number(root, "revision", 0, 9007199254740990, true), WorldId = Text(root, "worldId", 32) };
             if (!Regex.IsMatch(result.WorldId, "\\A[a-f0-9]{32}\\z") || !root.TryGetValue("zones", out var value) || !(value is List<object?> rows) || rows.Count > MaxZones)
@@ -55,6 +58,7 @@ namespace Aurum.Companion.Core.Game
                 }
                 if (allowLegacy && !map.ContainsKey("movement"))
                     map["movement"] = JsonReader.ParseObject(WriteMovement(new ZoneMovement()));
+                if (allowLegacy && !map.ContainsKey("traderProtection")) map["traderProtection"] = false;
                 if (allowLegacy && !map.ContainsKey("schedule"))
                     map["schedule"] = JsonReader.ParseObject(WriteSchedule(new ZoneSchedule()));
                 if (allowLegacy && !map.ContainsKey("noCreatureBlockDamage") && !map.ContainsKey("noExplosionBlockDamage"))
@@ -68,10 +72,11 @@ namespace Aurum.Companion.Core.Game
                         Speed = old == "speed" ? 15 : 0 }));
                     map.Remove("bonus");
                 }
-                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonuses", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands", "movement", "schedule", "noCreatureBlockDamage", "noExplosionBlockDamage");
+                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonuses", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands", "movement", "schedule", "noCreatureBlockDamage", "noExplosionBlockDamage", "traderProtection");
                 var z = new ZoneRule {
                     Id = Text(map, "id", 48), Name = Text(map, "name", 80), Type = Text(map, "type", 24),
                     Enabled = Boolean(map, "enabled"), NoPvp = Boolean(map, "noPvp"), NoDamage = Boolean(map, "noDamage"),
+                    TraderProtection = Boolean(map, "traderProtection"),
                     NoCreatureBlockDamage = Boolean(map, "noCreatureBlockDamage"), NoExplosionBlockDamage = Boolean(map, "noExplosionBlockDamage"),
                     X1 = Number(map, "x1", -500000, 500000), Z1 = Number(map, "z1", -500000, 500000),
                     X2 = Number(map, "x2", -500000, 500000), Z2 = Number(map, "z2", -500000, 500000),
@@ -85,6 +90,7 @@ namespace Aurum.Companion.Core.Game
                     string.IsNullOrWhiteSpace(z.Name) || z.X1 >= z.X2 || z.Z1 >= z.Z2 ||
                     !new[] { "safe", "information", "sanctuary", "bonus", "custom", "restricted", "portal", "prison", "event" }.Contains(z.Type)) throw Invalid();
                 zones.Add(z);
+                ZoneTraderProtection.Validate(z);
                 if (z.Movement.Mode == "prison" && z.Schedule.Enabled) throw new JsonReader.JsonException("zones_prison_schedule");
             }
             result.Zones = zones.ToArray();
@@ -137,19 +143,20 @@ namespace Aurum.Companion.Core.Game
             return false;
         }
 
-        public string Write() => JsonWriter.Object(new[] {
+        public string Write(string? protection = null) => JsonWriter.Object(new[] {
             Pair("revision", JsonWriter.Number(Revision)), Pair("worldId", JsonWriter.String(WorldId)), Pair("zones", JsonWriter.Array(Zones.Select(z => JsonWriter.Object(new[] {
                 Pair("id", JsonWriter.String(z.Id)), Pair("name", JsonWriter.String(z.Name)), Pair("type", JsonWriter.String(z.Type)),
                 Pair("enabled", JsonWriter.Bool(z.Enabled)), Pair("x1", JsonWriter.Number(z.X1)), Pair("z1", JsonWriter.Number(z.Z1)),
                 Pair("x2", JsonWriter.Number(z.X2)), Pair("z2", JsonWriter.Number(z.Z2)),
                 Pair("noPvp", JsonWriter.Bool(z.NoPvp)), Pair("noDamage", JsonWriter.Bool(z.NoDamage)),
+                Pair("traderProtection", JsonWriter.Bool(z.TraderProtection)),
                 Pair("noCreatureBlockDamage", JsonWriter.Bool(z.NoCreatureBlockDamage)), Pair("noExplosionBlockDamage", JsonWriter.Bool(z.NoExplosionBlockDamage)),
                 Pair("blockSpawn", JsonWriter.Number(z.BlockSpawn)), Pair("despawn", JsonWriter.Number(z.Despawn)),
                 Pair("enter", JsonWriter.String(z.Enter)), Pair("exit", JsonWriter.String(z.Exit)), Pair("bonuses", WriteBonuses(z.Bonuses)),
                 Pair("commandsEnabled", JsonWriter.Bool(z.CommandsEnabled)), Pair("commandCooldown", JsonWriter.Number(z.CommandCooldown)),
                 Pair("enterCommands", JsonWriter.Array(z.EnterCommands.Select(JsonWriter.String))), Pair("exitCommands", JsonWriter.Array(z.ExitCommands.Select(JsonWriter.String))),
                 Pair("movement", WriteMovement(z.Movement)), Pair("schedule", WriteSchedule(z.Schedule))
-            })))) });
+            })))) }.Concat(protection == null ? Array.Empty<KeyValuePair<string, string>>() : new[] { Pair("protection", protection) }));
 
         private static ZoneBonuses ReadBonuses(object? value)
         {

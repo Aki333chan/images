@@ -23,7 +23,7 @@
 
   <!-- Исходники игрового слоя как есть, без копирования. -->
   <ItemGroup>
-    <Compile Include="../../src/Aurum.Companion.Game/**/*.cs" Exclude="../../src/Aurum.Companion.Game/obj/**/*.cs;../../src/Aurum.Companion.Game/bin/**/*.cs;../../src/Aurum.Companion.Game/ZoneRuntime.cs;../../src/Aurum.Companion.Game/ZoneBiomeSpawnPatch.cs;../../src/Aurum.Companion.Game/ZoneWanderingSpawnPatch.cs" />
+    <Compile Include="../../src/Aurum.Companion.Game/**/*.cs" Exclude="../../src/Aurum.Companion.Game/obj/**/*.cs;../../src/Aurum.Companion.Game/bin/**/*.cs;../../src/Aurum.Companion.Game/ZoneRuntime.cs;../../src/Aurum.Companion.Game/ZoneBiomeSpawnPatch.cs;../../src/Aurum.Companion.Game/ZoneWanderingSpawnPatch.cs;../../src/Aurum.Companion.Game/ZoneTraderRuntime.cs" />
   </ItemGroup>
 
 </Project>
