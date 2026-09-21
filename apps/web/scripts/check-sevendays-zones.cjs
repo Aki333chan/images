@@ -41,9 +41,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.ok(Number(await page.getByLabel('X1', { exact: true }).inputValue()) < Number(await page.getByLabel('X2', { exact: true }).inputValue()));
     assert.equal(await page.getByLabel(catalog['sdtd.zones.noPvp'], { exact: true }).isChecked(), true);
     assert.equal(await page.getByLabel(catalog['sdtd.zones.noDamage'], { exact: true }).isChecked(), false);
+    for (const key of ['noCreatureBlockDamage', 'noExplosionBlockDamage']) {
+      const toggle = page.getByLabel(catalog['sdtd.zones.' + key], { exact: true });
+      assert.equal(await toggle.isChecked(), false);
+      await toggle.check();
+    }
     await button('sdtd.zones.save').dblclick();
     await page.getByText(catalog['sdtd.zones.saved'], { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.calls.filter(c => c.body).length), 1);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].noCreatureBlockDamage), true);
+    assert.equal(await page.evaluate(() => window.zones.zones[0].noExplosionBlockDamage), true);
     assert.equal(await map.locator('[data-zone-id]').count(), 1);
     // Normal editing updates the same rectangle, not a second zone.
     await page.getByLabel(catalog['sdtd.zones.type'], { exact: true }).selectOption('sanctuary');

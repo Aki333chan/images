@@ -70,6 +70,8 @@ export interface SevenDaysZone {
   z2: number;
   noPvp: boolean;
   noDamage: boolean;
+  noCreatureBlockDamage: boolean;
+  noExplosionBlockDamage: boolean;
   /** Bits: 1 zombie, 2 peaceful animal, 4 hostile animal. */
   blockSpawn: number;
   despawn: number;
@@ -155,6 +157,8 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       'z2',
       'noPvp',
       'noDamage',
+      'noCreatureBlockDamage',
+      'noExplosionBlockDamage',
       'blockSpawn',
       'despawn',
       'enter',
@@ -252,6 +256,8 @@ export function parseSevenDaysZones(value: unknown): SevenDaysZones {
       typeof z.enabled !== 'boolean' ||
       typeof z.noPvp !== 'boolean' ||
       typeof z.noDamage !== 'boolean' ||
+      typeof z.noCreatureBlockDamage !== 'boolean' ||
+      typeof z.noExplosionBlockDamage !== 'boolean' ||
       !number(z.x1, -500000, 500000) ||
       !number(z.z1, -500000, 500000) ||
       !number(z.x2, -500000, 500000) ||

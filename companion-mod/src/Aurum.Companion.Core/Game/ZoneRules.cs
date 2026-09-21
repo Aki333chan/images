@@ -11,6 +11,7 @@ namespace Aurum.Companion.Core.Game
     {
         public string Id = "", Name = "", Type = "safe", Enter = "", Exit = "";
         public bool Enabled = true, NoPvp = true, NoDamage;
+        public bool NoCreatureBlockDamage, NoExplosionBlockDamage;
         public double X1, Z1, X2, Z2;
         public int BlockSpawn, Despawn;
         public string Bonus = "none";
@@ -56,10 +57,13 @@ namespace Aurum.Companion.Core.Game
                     map["movement"] = JsonReader.ParseObject(WriteMovement(new ZoneMovement()));
                 if (allowLegacy && !map.ContainsKey("schedule"))
                     map["schedule"] = JsonReader.ParseObject(WriteSchedule(new ZoneSchedule()));
-                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands", "movement", "schedule");
+                if (allowLegacy && !map.ContainsKey("noCreatureBlockDamage") && !map.ContainsKey("noExplosionBlockDamage"))
+                { map["noCreatureBlockDamage"] = false; map["noExplosionBlockDamage"] = false; }
+                Keys(map, "id", "name", "type", "enabled", "x1", "z1", "x2", "z2", "noPvp", "noDamage", "blockSpawn", "despawn", "enter", "exit", "bonus", "commandsEnabled", "commandCooldown", "enterCommands", "exitCommands", "movement", "schedule", "noCreatureBlockDamage", "noExplosionBlockDamage");
                 var z = new ZoneRule {
                     Id = Text(map, "id", 48), Name = Text(map, "name", 80), Type = Text(map, "type", 24),
                     Enabled = Boolean(map, "enabled"), NoPvp = Boolean(map, "noPvp"), NoDamage = Boolean(map, "noDamage"),
+                    NoCreatureBlockDamage = Boolean(map, "noCreatureBlockDamage"), NoExplosionBlockDamage = Boolean(map, "noExplosionBlockDamage"),
                     X1 = Number(map, "x1", -500000, 500000), Z1 = Number(map, "z1", -500000, 500000),
                     X2 = Number(map, "x2", -500000, 500000), Z2 = Number(map, "z2", -500000, 500000),
                     BlockSpawn = (int)Number(map, "blockSpawn", 0, 7, true), Despawn = (int)Number(map, "despawn", 0, 7, true),
@@ -107,6 +111,15 @@ namespace Aurum.Companion.Core.Game
             return false;
         }
 
+        // Only the target block matters. Explosions are a separate source, even when player-initiated.
+        public bool DenyBlockDamage(double x, double z, bool explosion, bool creature)
+        {
+            if (!explosion && !creature) return false;
+            foreach (var zone in Zones)
+                if (zone.Contains(x, z) && (explosion ? zone.NoExplosionBlockDamage : zone.NoCreatureBlockDamage)) return true;
+            return false;
+        }
+
         // Bits: 1 zombies, 2 peaceful animals, 4 hostile animals. No player/trader/vehicle bit.
         public bool DenyCreature(double x, double z, int category, bool existing)
         {
@@ -122,6 +135,7 @@ namespace Aurum.Companion.Core.Game
                 Pair("enabled", JsonWriter.Bool(z.Enabled)), Pair("x1", JsonWriter.Number(z.X1)), Pair("z1", JsonWriter.Number(z.Z1)),
                 Pair("x2", JsonWriter.Number(z.X2)), Pair("z2", JsonWriter.Number(z.Z2)),
                 Pair("noPvp", JsonWriter.Bool(z.NoPvp)), Pair("noDamage", JsonWriter.Bool(z.NoDamage)),
+                Pair("noCreatureBlockDamage", JsonWriter.Bool(z.NoCreatureBlockDamage)), Pair("noExplosionBlockDamage", JsonWriter.Bool(z.NoExplosionBlockDamage)),
                 Pair("blockSpawn", JsonWriter.Number(z.BlockSpawn)), Pair("despawn", JsonWriter.Number(z.Despawn)),
                 Pair("enter", JsonWriter.String(z.Enter)), Pair("exit", JsonWriter.String(z.Exit)), Pair("bonus", JsonWriter.String(z.Bonus)),
                 Pair("commandsEnabled", JsonWriter.Bool(z.CommandsEnabled)), Pair("commandCooldown", JsonWriter.Number(z.CommandCooldown)),

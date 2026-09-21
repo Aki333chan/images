@@ -24,6 +24,8 @@ export function zonePreset(type: SevenDaysZone['type']) {
     type,
     noPvp: ['safe', 'sanctuary', 'restricted', 'prison', 'event'].includes(type),
     noDamage: false,
+    noCreatureBlockDamage: false,
+    noExplosionBlockDamage: false,
     blockSpawn: type === 'sanctuary' ? 5 : 0,
     despawn: 0,
     bonus: type === 'bonus' ? ('regeneration' as const) : ('none' as const),
@@ -566,6 +568,25 @@ export function SevenDaysZoneEditor({
                 </label>
               ))}
               <p className="max-w-prose text-xs text-muted">{t('sdtd.zones.protectionHelp')}</p>
+            </fieldset>
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-semibold">
+                {t('sdtd.zones.blockProtection')}
+              </legend>
+              {(['noCreatureBlockDamage', 'noExplosionBlockDamage'] as const).map((key) => (
+                <label key={key} className="flex items-start gap-2 text-sm">
+                  <input
+                    className="mt-1"
+                    type="checkbox"
+                    checked={z[key]}
+                    onChange={(e) => change({ [key]: e.target.checked })}
+                  />
+                  {t(`sdtd.zones.${key}`)}
+                </label>
+              ))}
+              <p className="max-w-prose text-xs text-muted">
+                {t('sdtd.zones.blockProtectionHelp')}
+              </p>
             </fieldset>
             <fieldset className="space-y-3">
               <legend className="mb-2 text-sm font-semibold">{t('sdtd.zones.creatures')}</legend>

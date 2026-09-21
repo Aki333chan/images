@@ -13,12 +13,14 @@ namespace Aurum.Companion.Game
     internal sealed class ZoneRuntime : IDisposable
     {
         internal static ZoneRuntime? Current;
+        [ThreadStatic] private static World? _explosionWorld;
         private readonly SdtdGameBridge _bridge;
         private readonly Harmony _harmony = new Harmony("ovh.aurumgg.companion.zones");
         private readonly List<MethodBase> _patched = new List<MethodBase>();
         private ZoneRules _rules = new ZoneRules();
         private string? _path;
         private string? _error;
+        private bool _creatureBlockProtection, _explosionBlockProtection;
         private float _nextTick;
         private int _creatureCursor;
         private readonly ZoneCommandGate _commandGate = new ZoneCommandGate();
@@ -45,6 +47,15 @@ namespace Aurum.Companion.Game
                 Patch(typeof(NetPackageDamageEntity), nameof(NetPackageDamageEntity.ProcessPackage), nameof(BeforePacket), false,
                     typeof(World), typeof(GameManager));
                 Patch(typeof(World), nameof(World.SpawnEntityInWorld), nameof(AfterSpawn), true, typeof(Entity));
+                PatchBlockDamageFamily();
+                Patch(typeof(World), nameof(World.GetLandProtectionHardnessModifier), nameof(BeforeHardness), false,
+                    typeof(Vector3i), typeof(EntityAlive), typeof(PersistentPlayerData));
+                var explosion = typeof(Explosion).GetMethod(nameof(Explosion.AttackBlocks), new[] { typeof(int), typeof(ItemValue) })
+                    ?? throw new MissingMethodException("Explosion.AttackBlocks");
+                _patched.Add(explosion);
+                _harmony.Patch(explosion,
+                    prefix: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(BeginExplosion), BindingFlags.Static | BindingFlags.NonPublic)),
+                    finalizer: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(EndExplosion), BindingFlags.Static | BindingFlags.NonPublic)));
                 Current = this;
                 ModEvents.GameUpdate.RegisterHandler(Update);
                 ModEvents.PlayerSpawnedInWorld.RegisterHandler(PlayerSpawned);
@@ -67,6 +78,7 @@ namespace Aurum.Companion.Game
             string path = Path.Combine(GameIO.GetSaveGameDir(), "aurum-zones.json");
             if (_path == path) return;
             _path = path; _rules = new ZoneRules(); _inside.Clear(); _noticeAfter.Clear(); _commandGate.Clear(); _error = null;
+            _creatureBlockProtection = _explosionBlockProtection = false;
             _containment.Clear(); _returns.Clear();
             try
             {
@@ -77,6 +89,7 @@ namespace Aurum.Companion.Game
                     CheckBuffs(loaded);
                     _rules = loaded;
                     _rules.RefreshSchedules(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                    RefreshBlockProtection();
                 }
             }
             catch (Exception e)
@@ -84,6 +97,50 @@ namespace Aurum.Companion.Game
                 _error = "zones_configuration_invalid";
                 Log.Error("[AurumCompanion] Zones inactive; configuration was not changed: " + e.Message);
             }
+        }
+
+        private void PatchBlockDamageFamily()
+        {
+            // Patch overrides too: some blocks run destruction side effects before calling base.
+            // Reflection is startup-only; no direct references to publicized game members.
+            var roots = typeof(Block).GetMethods().Where(m => m.Name == "DamageBlock" || m.Name == "OnBlockDamaged").ToArray();
+            if (roots.Length != 2) throw new MissingMethodException("Block damage family changed");
+            foreach (var type in typeof(Block).Assembly.GetTypes().Where(t => typeof(Block).IsAssignableFrom(t)))
+                foreach (var method in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                    if (!method.IsAbstract && roots.Contains(method.GetBaseDefinition()))
+                    {
+                        _patched.Add(method);
+                        _harmony.Patch(method, prefix: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(BeforeBlockDamage), BindingFlags.Static | BindingFlags.NonPublic)));
+                    }
+        }
+
+        private static bool BeforeBlockDamage(WorldBase __0, BlockValueRef __1, int __3, int __4, ref int __result)
+        {
+            var current = Current;
+            if (current == null || !current._creatureBlockProtection || current._error != null || __0.IsRemote() ||
+                __0 == _explosionWorld || __3 <= 0 || !__1.TryGetBlockPos(out var pos)) return true;
+            var attacker = __0.GetEntity(__4);
+            if (attacker == null || Category(attacker) == 0 || !current._rules.DenyBlockDamage(pos.x, pos.z, false, true)) return true;
+            __result = 0;
+            return false;
+        }
+
+        // Restrict the hardness override to synchronous native explosion calculation only.
+        // Finalizer restores the previous context on exceptions and nested explosions.
+        private static void BeginExplosion(World ___world, out World? __state)
+        {
+            __state = _explosionWorld;
+            _explosionWorld = ___world.IsRemote() ? null : ___world;
+        }
+        private static void EndExplosion(World? __state) => _explosionWorld = __state;
+        private static bool BeforeHardness(World __instance, Vector3i blockPos, ref float __result)
+        {
+            var current = Current;
+            if (current == null || !current._explosionBlockProtection || current._error != null || __instance != _explosionWorld ||
+                !current._rules.DenyBlockDamage(blockPos.x, blockPos.z, true, false)) return true;
+            // Native explosion divides damage by hardness before destruction/drop callbacks.
+            __result = float.PositiveInfinity;
+            return false;
         }
 
         public string Read()
@@ -121,6 +178,7 @@ namespace Aurum.Companion.Game
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
             _rules = next;
             _rules.RefreshSchedules(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            RefreshBlockProtection();
             _containment.RulesChanged(next);
             _returns.Clear();
             _inside.Clear(); // Edits must not replay entry/exit messages or future rewards.
@@ -145,6 +203,12 @@ namespace Aurum.Companion.Game
             }
         }
 
+        private void RefreshBlockProtection()
+        {
+            _creatureBlockProtection = _rules.Zones.Any(z => z.IsActive && z.NoCreatureBlockDamage);
+            _explosionBlockProtection = _rules.Zones.Any(z => z.IsActive && z.NoExplosionBlockDamage);
+        }
+
         private void Update(ref ModEvents.SGameUpdateData data)
         {
             if (Time.realtimeSinceStartup < _nextTick || GameManager.Instance?.World == null) return;
@@ -157,7 +221,7 @@ namespace Aurum.Companion.Game
                 var online = new HashSet<int>();
                 long utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 var scheduleChanges = _rules.RefreshSchedules(utc);
-                if (scheduleChanges.Length != 0) _containment.RulesChanged(_rules);
+                if (scheduleChanges.Length != 0) { _containment.RulesChanged(_rules); RefreshBlockProtection(); }
                 int commandBudget = 8;
                 foreach (var player in world.Players.list)
                 {

@@ -188,7 +188,7 @@ export class SevenDaysCompanionService {
 
   async zoneRequest(serverId: string, payload?: unknown): Promise<unknown> {
     const ping = await this.ping(serverId);
-    if (!ping?.compatible || !ping.capabilities?.includes('zones-v5'))
+    if (!ping?.compatible || !ping.capabilities?.includes('zones-v6'))
       throw new BadRequestException('zones_mod_update_required');
     return this.call<unknown>(
       serverId,

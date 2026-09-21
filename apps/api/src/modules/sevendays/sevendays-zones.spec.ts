@@ -25,6 +25,8 @@ const fixture = (): SevenDaysZones => ({
       z2: 20,
       noPvp: true,
       noDamage: false,
+      noCreatureBlockDamage: false,
+      noExplosionBlockDamage: false,
       blockSpawn: 0,
       despawn: 0,
       enter: '',
@@ -41,6 +43,15 @@ const fixture = (): SevenDaysZones => ({
 });
 
 describe('7DTD zones', () => {
+  it('roundtrips independent block protection flags and rejects old wire format', () => {
+    const data = fixture();
+    data.zones[0]!.noCreatureBlockDamage = true;
+    data.zones[0]!.noExplosionBlockDamage = true;
+    expect(parseSevenDaysZones(data)).toEqual(data);
+    const old = JSON.parse(JSON.stringify(data));
+    delete old.zones[0].noExplosionBlockDamage;
+    expect(() => parseSevenDaysZones(old)).toThrow('invalid_zones');
+  });
   it('validates schedules and protects timed script activation with command authority', async () => {
     const data = fixture();
     data.zones[0]!.schedule = {
@@ -164,6 +175,8 @@ describe('7DTD zones', () => {
     for (const patch of [
       { x1: 100 },
       { noPvp: 'true' },
+      { noCreatureBlockDamage: 'true' },
+      { noExplosionBlockDamage: 1 },
       { type: 'unknown' },
       { blockSpawn: 8 },
       { despawn: 0.5 },
