@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SevenDaysInventoryPanel } from './InventoryPanel';
 import { SevenDaysSavedPlayersPanel } from './SavedPlayersPanel';
 import { SevenDaysToolsPanel } from './ToolsPanel';
+import { SevenDaysJailAction } from './JailAction';
 import {
   SEVENDAYS_BAN_UNITS,
   SEVENDAYS_PERMISSIONS,
@@ -822,7 +823,12 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
   // Показываем только то, на что у роли есть право: кнопка, ведущая в 403,
   // хуже, чем её отсутствие.
   const allowed = actions.filter((a) => a.id !== 'shutdown' && hasPermission(a.permission));
-  if (allowed.length === 0) return null;
+  const canJail = [
+    SEVENDAYS_PERMISSIONS.zonesManage,
+    SEVENDAYS_PERMISSIONS.mapView,
+    SEVENDAYS_PERMISSIONS.playersView,
+  ].every(hasPermission);
+  if (allowed.length === 0 && !canJail) return null;
 
   return (
     <Card className="space-y-3">
@@ -848,6 +854,9 @@ export function SevenDaysQuickActionsWidget({ serverId }: ModuleTabProps) {
             {a.label}
           </Button>
         ))}
+        {canJail && (
+          <SevenDaysJailAction key={serverId} serverId={serverId} disabled={busy || !!active} />
+        )}
       </div>
 
       <ErrorText>{error}</ErrorText>

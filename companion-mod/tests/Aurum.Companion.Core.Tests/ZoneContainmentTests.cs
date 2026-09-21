@@ -12,6 +12,24 @@ public sealed class ZoneContainmentTests
         Movement = new ZoneMovement { Mode = mode }
     };
     [Fact]
+    public void UnsentencedVisitorCanEnterAndLeavePrisonWithoutBecomingAResident()
+    {
+        var prison = Zone("prison");
+        prison.Movement.Sentences = new[] { new ZoneSentence { Player = "Steam_convict" } };
+        var rules = new ZoneRules { Zones = new[] { prison } };
+        var state = new ZoneContainment();
+        var visitor = new[] { "Steam_visitor", "EOS_visitor" };
+        foreach (var x in new[] { 100, 0, 10, 11, 100, 0, -100 })
+        {
+            Assert.Null(state.Select(rules, 1, visitor, x, 0, new HashSet<string> { "prison" }, 1));
+            Assert.Null(ZoneMovementPolicy.Select(rules, x, 0, 1, visitor, new HashSet<string> { "prison" }));
+        }
+        Assert.Equal(prison, state.Select(rules, 2, new[] { "Steam_convict" }, 100, 0, null, 1));
+        prison.Movement.Sentences = Array.Empty<ZoneSentence>();
+        Assert.Null(state.Select(rules, 2, new[] { "Steam_convict" }, 100, 0, null, 1));
+    }
+
+    [Fact]
     public void PrisonPersistsReconnectDeathAndRoundtripAndExpiresAtExactUtcDeadline()
     {
         var prison = Zone("prison");
