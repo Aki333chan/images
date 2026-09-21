@@ -19,10 +19,13 @@ namespace Aurum.Companion.Game
         private readonly List<MethodBase> _patched = new List<MethodBase>();
         private ZoneRules _rules = new ZoneRules();
         private string? _path;
+        private World? _loadedWorld;
         private string? _error;
         private bool _creatureBlockProtection, _explosionBlockProtection;
         private float _nextTick;
         private int _creatureCursor;
+        private readonly ZoneSpawnChecks _spawnChecks = new ZoneSpawnChecks();
+        private float _spawnWarningAfter;
         private readonly ZoneCommandGate _commandGate = new ZoneCommandGate();
         private readonly ZoneContainment _containment = new ZoneContainment();
         private readonly Dictionary<int, ReturnAttempts> _returns = new Dictionary<int, ReturnAttempts>();
@@ -58,6 +61,7 @@ namespace Aurum.Companion.Game
                     finalizer: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(EndExplosion), BindingFlags.Static | BindingFlags.NonPublic)));
                 Current = this;
                 ModEvents.GameUpdate.RegisterHandler(Update);
+                ModEvents.GameUpdate.RegisterHandler(CheckSpawnedEntities);
                 ModEvents.PlayerSpawnedInWorld.RegisterHandler(PlayerSpawned);
                 ModEvents.PlayerDisconnected.RegisterHandler(PlayerLeft);
             }
@@ -76,7 +80,9 @@ namespace Aurum.Companion.Game
         {
             if (GameManager.Instance?.World == null) throw new InvalidOperationException("world_loading");
             string path = Path.Combine(GameIO.GetSaveGameDir(), "aurum-zones.json");
-            if (_path == path) return;
+            if (_path == path && _loadedWorld == GameManager.Instance.World) return;
+            _loadedWorld = GameManager.Instance.World;
+            _spawnChecks.Clear(); _spawnWarningAfter = 0;
             _path = path; _rules = new ZoneRules(); _inside.Clear(); _noticeAfter.Clear(); _commandGate.Clear(); _error = null;
             _creatureBlockProtection = _explosionBlockProtection = false;
             _containment.Clear(); _returns.Clear();
@@ -427,13 +433,46 @@ namespace Aurum.Companion.Game
         private static void AfterSpawn(World __instance, Entity _entity)
         {
             var current = Current;
-            if (current == null || current._error != null || _entity == null || __instance.IsRemote()) return;
-            if (current._rules.DenyCreature(_entity.position.x, _entity.position.z, Category(_entity), false))
-                __instance.RemoveEntity(_entity.entityId, EnumRemoveEntityReason.Despawned);
+            if (current == null || current._error != null || _entity == null || __instance.IsRemote() ||
+                current._loadedWorld != __instance ||
+                !current._rules.DenyCreature(_entity.position.x, _entity.position.z, Category(_entity), false)) return;
+            if (!current._spawnChecks.TryAdd(_entity.entityId, _entity.entityClass, _entity.position.x, _entity.position.z) &&
+                Time.realtimeSinceStartup >= current._spawnWarningAfter)
+            {
+                current._spawnWarningAfter = Time.realtimeSinceStartup + 60f;
+                Log.Warning("[AurumCompanion] Zone spawn check queue full; excess checks skipped. No synchronous removal fallback.");
+            }
+        }
+        private void CheckSpawnedEntities(ref ModEvents.SGameUpdateData data)
+        {
+            if (_spawnChecks.Count == 0) return;
+            var world = GameManager.Instance?.World;
+            if (_error != null || world == null || world != _loadedWorld) { _spawnChecks.Clear(); return; }
+            try
+            {
+                // Runs after the spawning call stack, not from its postfix. Native callers
+                // may set targets, counters, particles or quest state after SpawnEntityInWorld.
+                // Newly queued checks during removal wait for another update.
+                int count = Math.Min(ZoneSpawnChecks.PerUpdate, _spawnChecks.Count);
+                for (int i = 0; i < count && _spawnChecks.TryTake(out var check); i++)
+                {
+                    var entity = world.GetEntity(check.EntityId);
+                    if (entity != null && entity.entityClass == check.EntityClass &&
+                        _rules.DenyCreature(check.X, check.Z, Category(entity), false))
+                        world.RemoveEntity(check.EntityId, EnumRemoveEntityReason.Despawned);
+                }
+            }
+            catch (Exception e)
+            {
+                _spawnChecks.Clear();
+                _error = "zones_runtime_failed";
+                Log.Error("[AurumCompanion] Deferred zone spawn check failed; zones inactive: " + e);
+            }
         }
         public void Dispose()
         {
             ModEvents.GameUpdate.UnregisterHandler(Update);
+            ModEvents.GameUpdate.UnregisterHandler(CheckSpawnedEntities);
             ModEvents.PlayerSpawnedInWorld.UnregisterHandler(PlayerSpawned);
             ModEvents.PlayerDisconnected.UnregisterHandler(PlayerLeft);
             if (Current == this) Current = null;
@@ -441,6 +480,7 @@ namespace Aurum.Companion.Game
             _inside.Clear(); _noticeAfter.Clear();
             _commandGate.Clear();
             _containment.Clear(); _returns.Clear();
+            _spawnChecks.Clear(); _loadedWorld = null;
         }
         private void Unpatch()
         {
