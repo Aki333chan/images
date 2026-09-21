@@ -21,7 +21,7 @@ namespace Aurum.Companion.Game
         private string? _path;
         private World? _loadedWorld;
         private string? _error;
-        private bool _creatureBlockProtection, _explosionBlockProtection, _biomeSpawnProtection, _biomeSpawnFailed;
+        private bool _creatureBlockProtection, _explosionBlockProtection, _earlySpawnProtection, _earlySpawnFailed;
         private float _nextTick;
         private int _creatureCursor;
         private readonly ZoneSpawnChecks _spawnChecks = new ZoneSpawnChecks();
@@ -62,6 +62,7 @@ namespace Aurum.Companion.Game
                     prefix: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(BeginExplosion), BindingFlags.Static | BindingFlags.NonPublic)),
                     finalizer: new HarmonyMethod(typeof(ZoneRuntime).GetMethod(nameof(EndExplosion), BindingFlags.Static | BindingFlags.NonPublic)));
                 TryPatchBiomeSpawn();
+                TryPatchWanderingSpawn();
                 Current = this;
                 ModEvents.GameUpdate.RegisterHandler(Update);
                 ModEvents.GameUpdate.RegisterHandler(CheckSpawnedEntities);
@@ -87,7 +88,7 @@ namespace Aurum.Companion.Game
             _loadedWorld = GameManager.Instance.World;
             _spawnChecks.Clear(); _spawnWarningAfter = 0;
             _path = path; _rules = new ZoneRules(); _inside.Clear(); _noticeAfter.Clear(); _commandGate.Clear(); _error = null;
-            _creatureBlockProtection = _explosionBlockProtection = _biomeSpawnProtection = false;
+            _creatureBlockProtection = _explosionBlockProtection = _earlySpawnProtection = false;
             _containment.Clear(); _returns.Clear();
             try
             {
@@ -216,7 +217,7 @@ namespace Aurum.Companion.Game
         {
             _creatureBlockProtection = _rules.Zones.Any(z => z.IsActive && z.NoCreatureBlockDamage);
             _explosionBlockProtection = _rules.Zones.Any(z => z.IsActive && z.NoExplosionBlockDamage);
-            _biomeSpawnProtection = _rules.Zones.Any(z => z.IsActive && z.BlockSpawn != 0);
+            _earlySpawnProtection = _rules.Zones.Any(z => z.IsActive && z.BlockSpawn != 0);
         }
 
         private void TryPatchBiomeSpawn()
@@ -227,20 +228,36 @@ namespace Aurum.Companion.Game
                 target = ZoneBiomeSpawnPatch.Target ?? throw new MissingMethodException("SpawnManagerBiomes.SpawnUpdate");
                 _patched.Add(target);
                 _harmony.Patch(target, transpiler: new HarmonyMethod(AccessTools.Method(typeof(ZoneBiomeSpawnPatch), "Transpile")));
-                Log.Out("[AurumCompanion] Early biome spawn gate installed; other spawn sources use deferred checks.");
+                Log.Out("[AurumCompanion] Early biome spawn gate installed.");
             }
             catch (Exception e)
             {
-                _biomeSpawnFailed = true;
                 if (target != null) _harmony.Unpatch(target, HarmonyPatchType.All, _harmony.Id);
                 Log.Warning("[AurumCompanion] Early biome spawn gate unavailable; deferred spawn checks remain: " + e.Message);
             }
         }
 
-        private static bool DenyBiomeSpawn(World world, int entityClass, Vector3 position)
+        private void TryPatchWanderingSpawn()
+        {
+            MethodInfo? target = null;
+            try
+            {
+                target = ZoneWanderingSpawnPatch.Target ?? throw new MissingMethodException("AIWanderingHordeSpawner.UpdateSpawn");
+                _patched.Add(target);
+                _harmony.Patch(target, transpiler: new HarmonyMethod(AccessTools.Method(typeof(ZoneWanderingSpawnPatch), "Transpile")));
+                Log.Out("[AurumCompanion] Early wandering spawn gate installed; other spawn sources use deferred checks.");
+            }
+            catch (Exception e)
+            {
+                if (target != null) _harmony.Unpatch(target, HarmonyPatchType.All, _harmony.Id);
+                Log.Warning("[AurumCompanion] Early wandering spawn gate unavailable; deferred spawn checks remain: " + e.Message);
+            }
+        }
+
+        private static bool DenyEarlySpawn(World world, int entityClass, Vector3 position)
         {
             var current = Current;
-            if (current == null || current._biomeSpawnFailed || !current._biomeSpawnProtection ||
+            if (current == null || current._earlySpawnFailed || !current._earlySpawnProtection ||
                 current._error != null || current._loadedWorld != world || world.IsRemote()) return false;
             try
             {
@@ -257,8 +274,8 @@ namespace Aurum.Companion.Game
             }
             catch (Exception e)
             {
-                current._biomeSpawnFailed = true;
-                Log.Warning("[AurumCompanion] Early biome spawn gate failed; deferred spawn checks remain: " + e.Message);
+                current._earlySpawnFailed = true;
+                Log.Warning("[AurumCompanion] Early spawn checks failed; deferred spawn checks remain: " + e.Message);
                 return false;
             }
         }

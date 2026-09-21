@@ -35,7 +35,7 @@ internal static class Program
         var original = ReadBody(target, out var gen);
         var rewritten = Apply(original, gen);
         Require(rewritten.Count == original.Count + 9, "Unexpected guard size");
-        var gates = rewritten.Where(c => c.operand is MethodInfo m && m.Name == "DenyBiomeSpawn").ToArray();
+        var gates = rewritten.Where(c => c.operand is MethodInfo m && m.Name == "DenyEarlySpawn").ToArray();
         Require(gates.Length == 1, "Expected one source-specific guard");
         int at = rewritten.IndexOf(gates[0]);
         Require(string.Join(",", rewritten.Skip(at + 1).Take(5).Select(c => c.opcode.Name)) == "brfalse,pop,pop,ret,callvirt", "Unsafe stack/branch sequence");
@@ -58,6 +58,48 @@ internal static class Program
             Require(rejected, "Changed body accepted: " + mode);
         }
         Console.WriteLine("PASS: supplied biome IL transformation, early-return stack/branch, four incompatible-body refusals. Native Harmony application and gameplay remain live checks.");
+        CheckWandering(game, mod);
+    }
+
+    private static void CheckWandering(Assembly game, Assembly mod)
+    {
+        var target = game.GetType("AIWanderingHordeSpawner")!.GetMethod("UpdateSpawn", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+        var transpiler = mod.GetType("Aurum.Companion.Game.ZoneWanderingSpawnPatch")!.GetMethod("Transpile", BindingFlags.Static | BindingFlags.NonPublic)!;
+        List<CodeInstruction> Apply(List<CodeInstruction> code, ILGenerator generator) =>
+            ((IEnumerable<CodeInstruction>)transpiler.Invoke(null, new object[] { code, generator })!).ToList();
+        var original = ReadBody(target, out var gen);
+        int factory = original.FindIndex(c => c.operand is MethodInfo m && m.Name == "CreateEntity");
+        var entryLabels = original[factory - 2].labels.ToArray();
+        // This exact supplied method has an empty stack before the two local loads:
+        // preceding branch is the native missing-class return, not an enclosing call.
+        Require(original[factory - 3].opcode == OpCodes.Ret, "Unproven entry stack");
+        var rewritten = Apply(original, gen);
+        Require(rewritten.Count == original.Count + 7, "Unexpected wandering guard size");
+        int at = rewritten.FindIndex(c => c.operand is MethodInfo m && m.Name == "DenyEarlySpawn");
+        Require(at == factory + 1, "Wrong wandering guard position");
+        Require(rewritten[at - 3].opcode == OpCodes.Ldarg_1, "World argument not loaded");
+        Require(entryLabels.All(l => rewritten[at - 3].labels.Contains(l)), "Native entry can bypass guard");
+        Require(string.Join(",", rewritten.Skip(at + 1).Take(3).Select(c => c.opcode.Name)) == "brfalse,ldc.i4.0,ret", "Unsafe wandering return");
+        Require(rewritten[at + 4].labels.Contains((Label)rewritten[at + 1].operand), "Allow branch skips factory arguments");
+        Require(((MethodInfo)rewritten[at + 6].operand).Name == "CreateEntity", "Allow branch skips native factory");
+        foreach (string mode in new[] { "missing-factory", "duplicate-factory", "nonlocal-class", "nonlocal-position", "exception-block", "unproven-stack" })
+        {
+            var code = ReadBody(target, out gen);
+            switch (mode)
+            {
+                case "missing-factory": code.RemoveAt(factory); break;
+                case "duplicate-factory": code.Add(new CodeInstruction(code[factory])); break;
+                case "nonlocal-class": code[factory - 2] = new CodeInstruction(OpCodes.Ldc_I4_0); break;
+                case "nonlocal-position": code[factory - 1] = new CodeInstruction(OpCodes.Ldnull); break;
+                case "exception-block": code[factory].blocks.Add(new ExceptionBlock(ExceptionBlockType.BeginExceptionBlock)); break;
+                case "unproven-stack": code[factory - 3] = new CodeInstruction(OpCodes.Nop); break;
+            }
+            bool rejected = false;
+            try { Apply(code, gen); }
+            catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException inner && inner.Message.StartsWith("Unsupported wandering spawn")) { rejected = true; }
+            Require(rejected, "Changed wandering body accepted: " + mode);
+        }
+        Console.WriteLine("PASS: supplied wandering IL, empty-stack early false return, native entry/allow labels, six incompatible-body refusals. Not a live Harmony test.");
     }
     private static List<CodeInstruction> ReadBody(MethodInfo target, out ILGenerator generator)
     {
@@ -78,7 +120,7 @@ internal static class Program
         {
             object? operand = instruction.Operand;
             if (operand is Mono.Cecil.MethodReference reference &&
-                (reference.Name == "IncCount" || reference.Name == "SetupEntityCreationData"))
+                (reference.Name == "IncCount" || reference.Name == "SetupEntityCreationData" || reference.Name == "CreateEntity"))
                 operand = target.Module.ResolveMethod(reference.MetadataToken.ToInt32());
             else if (operand is Mono.Cecil.Cil.VariableDefinition variable) operand = locals[variable.Index];
             else if (operand is Mono.Cecil.Cil.Instruction branch) operand = labels[branch];

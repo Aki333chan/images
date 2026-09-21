@@ -41,7 +41,7 @@ namespace Aurum.Companion.Game
                 first, new CodeInstruction(OpCodes.Ldfld, world),
                 new CodeInstruction(code[at + 1].opcode, code[at + 1].operand),
                 new CodeInstruction(code[at + 2].opcode, code[at + 2].operand),
-                new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(ZoneRuntime), "DenyBiomeSpawn")),
+                new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(ZoneRuntime), "DenyEarlySpawn")),
                 new CodeInstruction(OpCodes.Brfalse, resume),
                 // IncCount's receiver and argument are still on the stack. No count changed yet.
                 new CodeInstruction(OpCodes.Pop), new CodeInstruction(OpCodes.Pop), new CodeInstruction(OpCodes.Ret)
