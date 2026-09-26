@@ -8,15 +8,19 @@
 # Переменные берутся из /etc/aurum-panel/backup.env:
 #   PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
 #   BACKUP_DIR      куда складывать (по умолчанию /var/backups/aurum-panel)
-#   KEEP_DAYS       сколько дней хранить (по умолчанию 14)
+#   KEEP_DAYS       сколько дней хранить (по умолчанию 2)
 #
 # Запуск вручную:  sudo -u aurum BACKUP_DIR=/tmp/test ./backup-db.sh
 
 set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/aurum-panel}"
-KEEP_DAYS="${KEEP_DAYS:-14}"
+KEEP_DAYS="${KEEP_DAYS:-2}"
 PGDATABASE="${PGDATABASE:-aurum_panel}"
+if [[ ! "$KEEP_DAYS" =~ ^[0-9]+$ ]] || (( KEEP_DAYS < 1 || KEEP_DAYS > 365 )); then
+  echo "KEEP_DAYS должен быть числом от 1 до 365" >&2
+  exit 1
+fi
 
 timestamp="$(date +%Y-%m-%d_%H-%M-%S)"
 target="${BACKUP_DIR}/${PGDATABASE}_${timestamp}.dump"
@@ -51,7 +55,7 @@ size="$(du -h "$target" | cut -f1)"
 echo "Готово: ${target} (${size})"
 
 # Чистим старое — только свои дампы, по маске имени базы.
-deleted="$(find "$BACKUP_DIR" -maxdepth 1 -name "${PGDATABASE}_*.dump" -type f -mtime "+${KEEP_DAYS}" -print -delete | wc -l)"
+deleted="$(find "$BACKUP_DIR" -maxdepth 1 -name "${PGDATABASE}_*.dump" -type f -mmin "+$((KEEP_DAYS * 1440))" -print -delete | wc -l)"
 echo "Удалено дампов старше ${KEEP_DAYS} дней: ${deleted}"
 
 remaining="$(find "$BACKUP_DIR" -maxdepth 1 -name "${PGDATABASE}_*.dump" -type f | wc -l)"
