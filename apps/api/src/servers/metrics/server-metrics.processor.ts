@@ -38,7 +38,11 @@ export class ServerMetricsScheduler implements OnModuleInit {
   constructor(@InjectQueue(METRICS_QUEUE) private readonly queue: Queue) {}
 
   async onModuleInit() {
-    await this.queue.upsertJobScheduler('server-metrics-sample', { every: SAMPLE_EVERY_MS });
+    await this.queue.upsertJobScheduler(
+      'server-metrics-sample',
+      { every: SAMPLE_EVERY_MS },
+      { opts: { removeOnComplete: 100, removeOnFail: 100 } },
+    );
   }
 }
 

@@ -25,7 +25,11 @@ export class BanExpiryScheduler implements OnModuleInit {
   constructor(@InjectQueue(BAN_EXPIRY_QUEUE) private readonly queue: Queue) {}
 
   async onModuleInit() {
-    await this.queue.upsertJobScheduler('minecraft-ban-expiry-every-1m', { every: 60_000 });
+    await this.queue.upsertJobScheduler(
+      'minecraft-ban-expiry-every-1m',
+      { every: 60_000 },
+      { opts: { removeOnComplete: 100, removeOnFail: 100 } },
+    );
   }
 }
 

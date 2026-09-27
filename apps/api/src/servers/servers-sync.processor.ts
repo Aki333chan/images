@@ -11,7 +11,11 @@ export class ServersSyncScheduler implements OnModuleInit {
   constructor(@InjectQueue(SYNC_QUEUE) private readonly queue: Queue) {}
 
   async onModuleInit() {
-    await this.queue.upsertJobScheduler('ptero-sync-every-5m', { every: 5 * 60 * 1000 });
+    await this.queue.upsertJobScheduler(
+      'ptero-sync-every-5m',
+      { every: 5 * 60 * 1000 },
+      { opts: { removeOnComplete: 100, removeOnFail: 100 } },
+    );
   }
 }
 
