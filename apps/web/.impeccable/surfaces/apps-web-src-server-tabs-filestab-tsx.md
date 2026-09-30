@@ -31,4 +31,6 @@ Recorded verification: detector returned `[]` in its single run; TypeScript, pro
 
 Synthetic local QA evidence only: `E:/Codex/2026-08-26/new-chat/work/tooling/aurum-files-dragdrop-evidence-2026-09-30`. The set contains `files-desktop.png` (1440 × 900), `files-mobile.png` (390 × 844), `files-drag-desktop.png`, `files-upload-desktop.png`, incumbent references `files-before-desktop.png` / `files-before-mobile.png`, and `files-fixture.tsx`. These are development fixtures, not shipped assets.
 
-The production panel has not been deployed. This documentation pass changes only this surface brief and canonizes no new global rules or defects.
+At the initial completion review, the production panel had not been deployed. The documentation pass changed only this surface brief and canonized no new global rules or defects.
+
+Deployment: with separate user approval, web commit `30b7b52` was published on 2026-09-30. A real browser check through `https://manage.aurumgg.ovh` passed: desktop/mobile login, new JavaScript/CSS (HTTP 200), upload strings in the public bundle, no page errors, and public API readiness with PostgreSQL/Redis OK. No API/game restarts or DB changes. This release smoke does not replace an authenticated live-upload test. Local capture evidence: `E:/Codex/2026-08-26/new-chat/work/tooling/aurum-panel-public-evidence-2026-09-30`.
