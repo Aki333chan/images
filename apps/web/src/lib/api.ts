@@ -56,10 +56,14 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  let res = await rawFetch(path, init);
+  return request<T>(path, () => rawFetch(path, init));
+}
+
+async function request<T>(path: string, send: () => Promise<Response>): Promise<T> {
+  let res = await send();
   if (res.status === 401 && !path.startsWith('/api/auth/login') && !path.startsWith('/api/auth/2fa')) {
     if (await tryRefresh()) {
-      res = await rawFetch(path, init);
+      res = await send();
     } else {
       onSessionExpired?.();
     }
@@ -108,7 +112,32 @@ async function errorFor(res: Response): Promise<{ message: string; code?: string
  * работа на ровном месте. Заголовок content-type здесь обязателен: без него
  * бэкенд не разберёт тело и запишет пустой файл поверх конфига.
  */
-export async function apiRaw<T>(path: string, body: Blob | File): Promise<T> {
+export async function apiRaw<T>(
+  path: string,
+  body: Blob | File,
+  onProgress?: (loaded: number) => void,
+): Promise<T> {
+  if (onProgress) {
+    // Fetch не сообщает прогресс отправки; XHR использует тот же auth/retry
+    // и разбор ошибок, без отдельного публичного API или новых зависимостей.
+    return request<T>(path, () => new Promise<Response>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', path);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('content-type', 'application/octet-stream');
+      xhr.setRequestHeader('accept-language', currentLocale());
+      if (accessToken) xhr.setRequestHeader('authorization', `Bearer ${accessToken}`);
+      xhr.upload.onprogress = (event) => onProgress(event.loaded);
+      xhr.onload = () => resolve(new Response(
+        xhr.status === 204 ? null : xhr.responseText,
+        { status: xhr.status },
+      ));
+      const fail = () => reject(new ApiError(0, translateOutside('net.uploadFailed')));
+      xhr.onerror = fail;
+      xhr.onabort = fail;
+      xhr.send(body);
+    }));
+  }
   return api<T>(path, {
     method: 'POST',
     body,

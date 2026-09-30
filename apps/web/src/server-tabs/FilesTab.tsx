@@ -3,6 +3,7 @@ import type { PteroDirectoryDto, PteroFileContentDto, PteroFileDto } from '@auru
 import { MAX_TRANSFER_BYTES, formatTransferLimit, isEditableFile } from '@aurum/shared';
 import { api, apiDownload, apiRaw } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useToast } from '../components/Toast';
 import {
   canGoBack,
   canGoForward,
@@ -53,6 +54,7 @@ const base = (serverId: string) => `/api/servers/${serverId}/files`;
 export function FilesTab({ serverId }: ServerTabProps) {
   const t = useT();
   const { hasPermission } = useAuth();
+  const toast = useToast();
   const canManage = hasPermission('files.manage');
   const canDelete = hasPermission('files.delete');
 
@@ -66,16 +68,20 @@ export function FilesTab({ serverId }: ServerTabProps) {
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<PteroFileDto | null>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
+  const uploadLock = useRef(false);
+  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState(false);
   /**
    * Что заливается прямо сейчас.
    *
    * null — не заливается ничего. Имя и счётчик, а не просто крутилка: при
    * нескольких файлах без них непонятно, застряло оно или идёт дальше.
    */
-  const [uploading, setUploading] = useState<{ name: string; done: number; total: number } | null>(
+  const [uploading, setUploading] = useState<{ name: string; done: number; total: number; percent: number } | null>(
     null,
   );
   const [history, setHistory] = useState<DirHistory>(() => initialHistory('/'));
+  const canUpload = canManage && !busy && !editing && !creating && !renaming && !!dir;
 
   const load = useCallback(
     (target: string) => {
@@ -109,6 +115,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
   /** Шаг по своей истории. null от goBack/goForward значит «идти некуда». */
   const step = useCallback(
     (move: (h: DirHistory) => DirHistory | null) => {
+      if (uploadLock.current) return;
       setHistory((h) => {
         const next = move(h);
         if (!next) return h;
@@ -122,6 +129,30 @@ export function FilesTab({ serverId }: ServerTabProps) {
   useEffect(() => {
     void load('/');
   }, [load]);
+
+  // Файл, отпущенный мимо списка, не должен увести браузер со страницы.
+  // Блокируем только файловые drag/drop и только пока открыта эта вкладка.
+  useEffect(() => {
+    const preventFileNavigation = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+    };
+    const resetDrag = () => {
+      dragDepth.current = 0;
+      setDragging(false);
+    };
+    window.addEventListener('dragover', preventFileNavigation);
+    window.addEventListener('drop', preventFileNavigation);
+    window.addEventListener('drop', resetDrag);
+    window.addEventListener('dragend', resetDrag);
+    window.addEventListener('blur', resetDrag);
+    return () => {
+      window.removeEventListener('dragover', preventFileNavigation);
+      window.removeEventListener('drop', preventFileNavigation);
+      window.removeEventListener('drop', resetDrag);
+      window.removeEventListener('dragend', resetDrag);
+      window.removeEventListener('blur', resetDrag);
+    };
+  }, []);
 
   /**
    * Кнопки «назад» и «вперёд» на мыши ходят по папкам, а не уводят со страницы.
@@ -226,23 +257,45 @@ export function FilesTab({ serverId }: ServerTabProps) {
     }
   }
 
-  async function upload(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  async function upload(files: FileList | File[] | null) {
+    if (!canUpload || uploadLock.current || !files || files.length === 0) return;
+    const queue = Array.from(files);
+    const rejectUpload = (message: string) => {
+      setError(message);
+      toast.error(message);
+      if (uploadInput.current) uploadInput.current.value = '';
+    };
 
     // Размер проверяем ДО отправки. Иначе человек ждёт, пока мегабайты уедут
     // на сервер, и только там получает отказ — а на мобильном интернете это
     // ещё и потраченный трафик. Предел тот же, что и на бэкенде: общая
     // константа, а не переписанное здесь число.
-    const tooBig = Array.from(files).find((file) => file.size > MAX_TRANSFER_BYTES);
+    const tooBig = queue.find((file) => file.size > MAX_TRANSFER_BYTES);
     if (tooBig) {
-      setError(
+      rejectUpload(
         t('files.tooBig', { name: tooBig.name, limit: formatTransferLimit(t) }),
       );
+      return;
+    }
+
+    if (new Set(queue.map((file) => file.name)).size !== queue.length) {
+      rejectUpload(t('files.duplicateNames'));
+      return;
+    }
+    const existing = queue.filter((file) => dir?.entries.some((entry) => entry.name === file.name));
+    if (existing.length && !confirm(t('files.confirmOverwrite', {
+      names: existing.map((file) => file.name).join(', '),
+    }))) {
       if (uploadInput.current) uploadInput.current.value = '';
       return;
     }
 
-    const queue = Array.from(files);
+    uploadLock.current = true;
+    const destination = path;
+    const totalBytes = queue.reduce((sum, file) => sum + file.size, 0);
+    let sentBytes = 0;
+    let completed = 0;
+    let failure = '';
     setBusy(true);
     setError('');
     try {
@@ -250,18 +303,34 @@ export function FilesTab({ serverId }: ServerTabProps) {
         const file = queue[i]!;
         // Имя обновляется ПЕРЕД отправкой: иначе, пока файл едет, на экране
         // висело бы имя предыдущего.
-        setUploading({ name: file.name, done: i, total: queue.length });
+        const updateProgress = (loaded: number) => {
+          const fraction = totalBytes > 0
+            ? (sentBytes + Math.min(file.size, loaded)) / totalBytes
+            : i / queue.length;
+          // 100% только после ответа API: отправка ещё не означает запись.
+          setUploading({ name: file.name, done: i, total: queue.length, percent: Math.min(99, Math.floor(fraction * 100)) });
+        };
+        updateProgress(0);
         await apiRaw(
-          `${base(serverId)}/upload?path=${encodeURIComponent(path)}&name=${encodeURIComponent(file.name)}`,
+          `${base(serverId)}/upload?path=${encodeURIComponent(destination)}&name=${encodeURIComponent(file.name)}`,
           file,
+          updateProgress,
         );
+        sentBytes += file.size;
+        completed++;
       }
-      await load(path);
+      setUploading((current) => current ? { ...current, percent: 100 } : current);
+      toast.success(t('files.uploaded', { count: completed, path: destination }));
     } catch (e) {
-      setError((e as Error).message);
+      failure = (e as Error).message;
+      rejectUpload(failure);
     } finally {
+      // Даже при ошибке следующего файла показываем уже загруженные.
+      if (completed > 0) await load(destination);
+      if (failure) setError(failure);
       setUploading(null);
       setBusy(false);
+      uploadLock.current = false;
       if (uploadInput.current) uploadInput.current.value = '';
     }
   }
@@ -272,7 +341,40 @@ export function FilesTab({ serverId }: ServerTabProps) {
 
   return (
     <div className="space-y-4">
-      <Card className="space-y-3">
+      <Card
+        className={'relative space-y-3 transition-colors duration-200 ' + (dragging && canUpload ? 'border-primary' : '')}
+        onDragEnter={(event) => {
+          if (!event.dataTransfer.types.includes('Files')) return;
+          event.preventDefault();
+          if (!canUpload) return;
+          dragDepth.current++;
+          setDragging(true);
+        }}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes('Files')) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = canUpload ? 'copy' : 'none';
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.types.includes('Files')) return;
+          event.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          if (!canUpload) return;
+          // Не загружаем папку как пустой файл с её именем.
+          if (Array.from(event.dataTransfer.items).some((item) => item.webkitGetAsEntry?.()?.isDirectory)) {
+            const message = t('files.foldersNotSupported');
+            setError(message);
+            toast.error(message);
+            return;
+          }
+          void upload(Array.from(event.dataTransfer.files));
+        }}
+      >
         {/* Хлебные крошки считает бэкенд: так обе стороны одинаково понимают,
             что такое путь, и не расходятся на первом необычном имени.
 
@@ -283,7 +385,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
           <button
             type="button"
             onClick={() => step(goBack)}
-            disabled={!canGoBack(history)}
+            disabled={busy || !canGoBack(history)}
             title={t('files.backTitle')}
             aria-label={t('files.back')}
             className="rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-surface hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
@@ -293,7 +395,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
           <button
             type="button"
             onClick={() => step(goForward)}
-            disabled={!canGoForward(history)}
+            disabled={busy || !canGoForward(history)}
             title={t('files.forwardTitle')}
             aria-label={t('files.forward')}
             className="mr-1 rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-surface hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
@@ -306,6 +408,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
               <button
                 type="button"
                 onClick={() => void navigate(crumb.path)}
+                disabled={busy}
                 className="rounded-sm px-1 py-0.5 text-primary-200 transition-colors hover:bg-surface"
               >
                 {crumb.name}
@@ -318,13 +421,25 @@ export function FilesTab({ serverId }: ServerTabProps) {
             её осталось. Раньше кнопки просто гасли, и на большом файле это
             выглядело как зависшая панель. */}
         {uploading && (
-          <div className="flex items-center gap-2 rounded border border-border bg-surface/60 px-3 py-2 text-xs">
-            <Spinner />
-            <span className="min-w-0 flex-1 truncate">
-              {t('files.uploading', { name: uploading.name })}
-              {uploading.total > 1 &&
-                t('files.uploadingOf', { done: uploading.done + 1, total: uploading.total })}
-            </span>
+          <div className="space-y-2 rounded-md border border-border bg-background/40 px-3 py-3 text-sm" role="status">
+            <div className="flex items-start gap-3">
+              <span className="min-w-0 flex-1 break-words">
+                {t('files.uploading', { name: uploading.name })}
+                {uploading.total > 1 &&
+                  t('files.uploadingOf', { done: uploading.done + 1, total: uploading.total })}
+              </span>
+              <span className="shrink-0 tabular-nums">{uploading.percent}%</span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label={t('files.uploadBusy')}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={uploading.percent}
+              className="h-1.5 overflow-hidden rounded-full bg-border"
+            >
+              <div className="h-full bg-primary motion-safe:transition-[width] motion-safe:duration-200" style={{ width: `${uploading.percent}%` }} />
+            </div>
           </div>
         )}
 
@@ -391,6 +506,24 @@ export function FilesTab({ serverId }: ServerTabProps) {
           )}
         </div>
 
+        {canManage && !uploading && (
+          <button
+            type="button"
+            onClick={() => uploadInput.current?.click()}
+            disabled={!canUpload}
+            className={'flex w-full items-center gap-3 rounded-md border border-dashed px-3 py-4 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-50 ' +
+              (dragging ? 'border-primary bg-primary/10 text-primary-200' : 'border-border text-neutral-300 hover:border-primary/60 hover:bg-primary/5')}
+          >
+            <IconUpload size={20} />
+            <span className="min-w-0 space-y-1">
+              <span className="block text-sm font-medium">{t(dragging ? 'files.dropReady' : 'files.dropHint')}</span>
+              <span className="block break-all text-xs text-neutral-400">
+                {t('files.uploadDestination', { path, limit: formatTransferLimit(t) })}
+              </span>
+            </span>
+          </button>
+        )}
+
         <ErrorText>{error}</ErrorText>
 
         {dir && dir.entries.length === 0 ? (
@@ -415,6 +548,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
                 <button
                   type="button"
                   onClick={() => void open(entry)}
+                  disabled={busy}
                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 >
                   <span className={entry.isFile ? 'text-muted' : 'text-primary-200'}>
@@ -436,7 +570,7 @@ export function FilesTab({ serverId }: ServerTabProps) {
                     </Button>
                   )}
                   {canManage && (
-                    <Button size="sm" variant="ghost" onClick={() => setRenaming(entry)} title={t('files.rename')}>
+                    <Button size="sm" variant="ghost" onClick={() => setRenaming(entry)} disabled={busy} title={t('files.rename')}>
                       ⋯
                     </Button>
                   )}
