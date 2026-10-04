@@ -1,8 +1,7 @@
 /**
  * Контракт AI-ассистента между apps/api и apps/web.
  *
- * Ассистент работает через DeepSeek: API OpenAI-совместимый, base_url
- * https://api.deepseek.com. Ключ API наружу не отдаётся никогда — только
+ * Ассистент работает через DeepSeek или Gemini. Ключ API наружу не отдаётся никогда — только
  * флаг «задан / не задан», как и остальные секреты панели.
  */
 
@@ -12,6 +11,14 @@ export type AiMessageRole = 'user' | 'assistant';
 export interface AiChatMessage {
   role: AiMessageRole;
   content: string;
+}
+
+export type AiProvider = 'deepseek' | 'gemini';
+
+/** Navigation is a hint, never an authority for server access. */
+export interface AiPageContext {
+  serverId?: string;
+  tab?: string;
 }
 
 /**
@@ -46,7 +53,7 @@ export interface AiPendingActionDto {
    * об этом отдельно.
    */
   fromUntrustedInput: boolean;
-  status: 'pending' | 'approved' | 'rejected' | 'failed' | 'expired';
+  status: 'pending' | 'executing' | 'approved' | 'rejected' | 'failed' | 'expired';
   result?: string | null;
 }
 
@@ -77,6 +84,12 @@ export interface AiSettingsDto {
   /** Лимиты на пользователя. */
   requestsPerHour: number;
   tokensPerDay: number;
+  provider: AiProvider;
+  providerKeys: Record<AiProvider, boolean>;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  dailyBudgetUsd: number;
+  monthlyBudgetUsd: number;
 }
 
 /** Сколько израсходовано и сколько осталось до лимита. */
@@ -85,23 +98,35 @@ export interface AiUsageDto {
   requestsPerHour: number;
   tokensToday: number;
   tokensPerDay: number;
+  dailyCostUsd?: number;
+  monthlyCostUsd?: number;
+  dailyBudgetUsd?: number;
+  monthlyBudgetUsd?: number;
 }
 
 /**
- * Модели DeepSeek на момент написания модуля (август 2026).
+ * Поддерживаемые модели DeepSeek.
  *
  * Прежние имена deepseek-chat и deepseek-reasoner отключены 24.07.2026 —
- * подставлять их бессмысленно. Список нужен только для выпадающего списка
- * в настройках: поле остаётся текстовым, чтобы новую модель можно было
- * вписать руками, не дожидаясь правки кода.
+ * подставлять их бессмысленно. Выбор ограничен моделями с известными тарифами:
+ * без тарифа нельзя надёжно резервировать бюджет обращения.
  */
 export const DEEPSEEK_MODELS = [
   // Имя модели не переводится, а пояснение к нему — да, потому и разнесены.
-  { value: 'deepseek-v4-flash', name: 'V4 Flash', noteKey: 'ai.model.flash' },
+  { value: 'deepseek-flash', name: 'DeepSeek Flash', noteKey: 'ai.model.flash' },
   { value: 'deepseek-v4-pro', name: 'V4 Pro', noteKey: 'ai.model.pro' },
 ] as const;
 
+export const GEMINI_MODELS = [
+  { value: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', noteKey: 'ai.model.flash' },
+  { value: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite', noteKey: 'ai.model.lite' },
+  { value: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', noteKey: 'ai.model.lite' },
+] as const;
+
+export const AI_MODELS = { deepseek: DEEPSEEK_MODELS, gemini: GEMINI_MODELS } as const;
+
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
+export const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
 
 /** Право на общение с ассистентом. Настройки — под users.manage (ГМ). */
 export const AI_PERMISSION = 'ai.chat';

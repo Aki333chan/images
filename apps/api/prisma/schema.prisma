@@ -412,11 +412,17 @@ model AuditLog {
   @@map("audit_log")
 }
 
-/// Расход на обращения к DeepSeek: по нему считаются лимиты и деньги.
+/// Расход на обращения к AI-провайдерам: по нему считаются лимиты и бюджет.
 model AiUsageLog {
   id               BigInt   @id @default(autoincrement())
   userId           String   @map("user_id")
   model            String
+  provider         String   @default("deepseek")
+  /// Conservative USD estimate. Reserving the ceiling prevents concurrent overspend.
+  costUsdMicros    BigInt   @default(0) @map("cost_usd_micros")
+  reservedCostUsdMicros BigInt @default(0) @map("reserved_cost_usd_micros")
+  reservedTokens   Int      @default(0) @map("reserved_tokens")
+  status           String   @default("complete")
   promptTokens     Int      @default(0) @map("prompt_tokens")
   completionTokens Int      @default(0) @map("completion_tokens")
   /// Сколько инструментов вызвано за обращение — видно, кто «гоняет» модель.
@@ -426,6 +432,7 @@ model AiUsageLog {
   createdAt        DateTime @default(now()) @map("created_at")
 
   @@index([userId, createdAt])
+  @@index([createdAt])
   @@map("ai_usage_log")
 }
 
@@ -456,6 +463,7 @@ model AiPendingAction {
 
 enum AiActionStatus {
   pending
+  executing
   approved
   rejected
   failed

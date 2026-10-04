@@ -58,6 +58,16 @@ export function AiAssistant() {
   const [error, setError] = useState('');
   const [usage, setUsage] = useState<AiUsageDto | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  const resolving = useRef(new Set<string>());
+  const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
+
+  const stop = useCallback(() => requestRef.current?.abort(), []);
+  const close = useCallback(() => {
+    stop();
+    setOpen(false);
+  }, [stop]);
+  useEffect(() => () => requestRef.current?.abort(), []);
 
   const loadUsage = useCallback(() => {
     api<AiUsageDto>('/api/ai/usage')
@@ -76,20 +86,23 @@ export function AiAssistant() {
   // Escape закрывает окно — как и у остальных всплывающих элементов панели.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, close]);
 
   /** История для сервера: следы инструментов туда не нужны, только реплики. */
   const historyFor = (items: FeedItem[]): AiChatMessage[] =>
     items
       .filter((i): i is Extract<FeedItem, { kind: 'message' }> => i.kind === 'message')
-      .map((i) => ({ role: i.role, content: i.text }));
+      .slice(-20)
+      .map((i) => ({ role: i.role, content: i.text.slice(0, 4000) }));
 
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || requestRef.current) return;
+    const abort = new AbortController();
+    requestRef.current = abort;
 
     const next: FeedItem[] = [...feed, { kind: 'message', role: 'user', text }];
     setFeed(next);
@@ -122,11 +135,20 @@ export function AiAssistant() {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         credentials: 'include',
+        signal: abort.signal,
         headers: {
           'content-type': 'application/json',
+          'accept-language': locale,
           ...(getAccessToken() ? { authorization: `Bearer ${getAccessToken()!}` } : {}),
         },
-        body: JSON.stringify({ messages: historyFor(next) }),
+        body: JSON.stringify({
+          messages: historyFor(next),
+          context: {
+            serverId: /^\/servers\/([^/]+)(?:\/|$)/.exec(location.pathname)?.[1],
+            tab: document.querySelector<HTMLElement>('main [data-tab][aria-current="page"]')
+              ?.dataset.tab,
+          },
+        }),
       });
       if (!res.ok || !res.body) {
         throw new Error(t(res.status === 403 ? 'ai.noAccess' : 'ai.unavailable'));
@@ -164,8 +186,9 @@ export function AiAssistant() {
         }
       }
     } catch (e) {
-      setError((e as Error).message);
+      setError(abort.signal.aborted ? t('ai.cancelled') : (e as Error).message);
     } finally {
+      if (requestRef.current === abort) requestRef.current = null;
       setBusy(false);
       loadUsage();
       // Пустой ответ ассистента убираем: висящий пузырь ни о чём.
@@ -176,6 +199,9 @@ export function AiAssistant() {
   }
 
   async function resolve(action: AiPendingActionDto, approve: boolean) {
+    if (resolving.current.has(action.id)) return;
+    resolving.current.add(action.id);
+    setPendingActions(new Set(resolving.current));
     try {
       const updated = await api<AiPendingActionDto>(`/api/ai/actions/${action.id}`, {
         method: 'POST',
@@ -190,6 +216,21 @@ export function AiAssistant() {
       );
     } catch (e) {
       setError((e as Error).message);
+      // A network failure is not proof that a monetary operation failed. Read its state; never auto-retry approval.
+      const updated = await api<AiPendingActionDto>(`/api/ai/actions/${action.id}`).catch(
+        () => null,
+      );
+      if (updated)
+        setFeed((prev) =>
+          prev.map((item) =>
+            item.kind === 'action' && item.action.id === action.id
+              ? { kind: 'action', action: updated }
+              : item,
+          ),
+        );
+    } finally {
+      resolving.current.delete(action.id);
+      setPendingActions(new Set(resolving.current));
     }
   }
 
@@ -232,7 +273,10 @@ export function AiAssistant() {
                 {view === 'chat' && (
                   <button
                     type="button"
-                    onClick={() => setView('help')}
+                    onClick={() => {
+                      stop();
+                      setView('help');
+                    }}
                     aria-label={t('ai.help.back')}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
                   >
@@ -267,6 +311,16 @@ export function AiAssistant() {
                       })}
                     </div>
                   )}
+                  {view === 'chat' && usage?.dailyCostUsd !== undefined && (
+                    <div className="truncate text-[11px] text-muted">
+                      {t('ai.budgetUsage', {
+                        day: usage.dailyCostUsd.toFixed(2),
+                        dayLimit: usage.dailyBudgetUsd ?? 0,
+                        month: (usage.monthlyCostUsd ?? 0).toFixed(2),
+                        monthLimit: usage.monthlyBudgetUsd ?? 0,
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -274,16 +328,17 @@ export function AiAssistant() {
                   <button
                     type="button"
                     onClick={() => setFeed([])}
+                    disabled={busy || pendingActions.size > 0}
                     title={t('ai.clear')}
                     aria-label={t('ai.clear')}
-                    className="flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
+                    className="flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100 disabled:opacity-40"
                   >
                     <IconEraser size={16} />
                   </button>
                 )}
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={close}
                   aria-label={t('common.close')}
                   className="flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-white/5 hover:text-neutral-100"
                 >
@@ -298,7 +353,7 @@ export function AiAssistant() {
                 pathname={location.pathname}
                 canChat={canChat}
                 onChat={() => setView('chat')}
-                onOpenGuide={() => setOpen(false)}
+                onOpenGuide={close}
               />
             ) : (
               <>
@@ -323,7 +378,14 @@ export function AiAssistant() {
                       );
                     }
                     if (item.kind === 'action') {
-                      return <ActionCard key={i} action={item.action} onResolve={resolve} />;
+                      return (
+                        <ActionCard
+                          key={i}
+                          action={item.action}
+                          busy={pendingActions.has(item.action.id)}
+                          onResolve={resolve}
+                        />
+                      );
                     }
                     return (
                       <div
@@ -351,14 +413,26 @@ export function AiAssistant() {
                       onKeyDown={(e) => e.key === 'Enter' && void send()}
                       placeholder={t(busy ? 'ai.typing' : 'ai.ask')}
                       disabled={busy}
+                      maxLength={4000}
                     />
-                    <Button
-                      onClick={() => void send()}
-                      disabled={busy || !input.trim()}
-                      aria-label={t('ai.send')}
-                    >
-                      <IconSend size={16} />
-                    </Button>
+                    {busy ? (
+                      <Button
+                        variant="outline"
+                        onClick={stop}
+                        aria-label={t('ai.stop')}
+                        title={t('ai.stop')}
+                      >
+                        <IconClose size={16} />
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => void send()}
+                        disabled={!input.trim()}
+                        aria-label={t('ai.send')}
+                      >
+                        <IconSend size={16} />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </>
@@ -432,9 +506,11 @@ function HelpHome({
  */
 function ActionCard({
   action,
+  busy,
   onResolve,
 }: {
   action: AiPendingActionDto;
+  busy: boolean;
   onResolve: (action: AiPendingActionDto, approve: boolean) => void;
 }) {
   const { t } = useI18n();
@@ -454,7 +530,10 @@ function ActionCard({
 
       <dl className="mt-2 space-y-0.5 text-[11px] text-muted">
         {Object.entries(action.args).map(([key, value]) => {
-          const text = String(value);
+          const text =
+            typeof value === 'object' && value !== null
+              ? JSON.stringify(value, null, 2)
+              : String(value);
           // Многострочное значение — это почти всегда ASCII-арт. Показать его
           // через break-all значило бы показать кашу, а подтверждать человек
           // должен ровно то, что уйдёт собеседнику.
@@ -464,8 +543,11 @@ function ActionCard({
                 <dt className="font-mono">{key}:</dt>
                 <dd>
                   <pre
-                    className="mt-1 overflow-x-auto rounded bg-black/30 p-2 font-mono text-[11px] leading-[1.15] text-neutral-100"
-                    style={{ whiteSpace: 'pre' }}
+                    className="mt-1 max-h-64 overflow-auto rounded bg-black/30 p-2 font-mono text-[11px] leading-[1.15] text-neutral-100"
+                    style={{
+                      whiteSpace: typeof value === 'string' ? 'pre' : 'pre-wrap',
+                      overflowWrap: 'anywhere',
+                    }}
                   >
                     {text}
                   </pre>
@@ -490,11 +572,21 @@ function ActionCard({
 
       {!settled ? (
         <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row">
-          <Button size="sm" variant="ghost" onClick={() => onResolve(action, false)}>
+          <Button
+            size="sm"
+            disabled={busy}
+            variant="ghost"
+            onClick={() => onResolve(action, false)}
+          >
             {t('ai.reject')}
           </Button>
-          <Button size="sm" variant="destructive" onClick={() => onResolve(action, true)}>
-            {t('ai.approve')}
+          <Button
+            size="sm"
+            disabled={busy}
+            variant="destructive"
+            onClick={() => onResolve(action, true)}
+          >
+            {t(busy ? 'ai.status.executing' : 'ai.approve')}
           </Button>
         </div>
       ) : (
@@ -510,7 +602,9 @@ function ActionCard({
           >
             {t(STATUS_KEYS[action.status])}
           </span>
-          {action.result ? ` · ${action.result}` : ''}
+          {action.result
+            ? ` · ${action.result.startsWith('ai.') ? t(action.result) : action.result}`
+            : ''}
         </p>
       )}
     </div>
@@ -519,6 +613,7 @@ function ActionCard({
 
 const STATUS_KEYS: Record<AiPendingActionDto['status'], string> = {
   pending: 'ai.status.pending',
+  executing: 'ai.status.executing',
   approved: 'ai.status.approved',
   rejected: 'ai.status.rejected',
   failed: 'ai.status.failed',

@@ -9,7 +9,7 @@ import { AiController } from './ai.controller';
 import { AiSettingsService } from './ai-settings.service';
 import { AiToolsService } from './ai-tools.service';
 import { AiService } from './ai.service';
-import { DeepseekClient } from './deepseek.client';
+import { AiProviderClient } from './ai-provider.client';
 
 /**
  * AI-ассистент.
@@ -26,6 +26,6 @@ import { DeepseekClient } from './deepseek.client';
 @Module({
   imports: [RbacModule, AuditModule, ServersModule, TicketsModule, MessagesModule, MinecraftModule],
   controllers: [AiController],
-  providers: [AiSettingsService, AiToolsService, AiService, DeepseekClient],
+  providers: [AiSettingsService, AiToolsService, AiService, AiProviderClient],
 })
 export class AiModule {}

@@ -2,10 +2,13 @@ import { Body, Controller, Get, Param, Post, Put, Req, Res } from '@nestjs/commo
 import type { Request, Response } from 'express';
 import {
   IsArray,
+  ArrayMaxSize,
+  ArrayMinSize,
   IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
+  IsNumber,
   IsString,
   Max,
   MaxLength,
@@ -13,7 +16,13 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import type { AiSettingsDto, AiStreamEvent, AiUsageDto } from '@aurum/shared';
+import type {
+  AiPageContext,
+  AiProvider,
+  AiSettingsDto,
+  AiStreamEvent,
+  AiUsageDto,
+} from '@aurum/shared';
 import { AuthUser, CurrentUser } from '../auth/decorators';
 import { AuditRedactBody } from '../audit/audit.decorators';
 import { RequirePermission } from '../rbac/rbac.decorators';
@@ -31,19 +40,32 @@ class ChatMessageDto {
   content!: string;
 }
 
+class PageContextDto implements AiPageContext {
+  @IsOptional() @IsString() @MaxLength(64) serverId?: string;
+  @IsOptional() @IsString() @MaxLength(32) tab?: string;
+}
+
 class ChatDto {
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDto)
   messages!: ChatMessageDto[];
+  @IsOptional() @ValidateNested() @Type(() => PageContextDto) context?: PageContextDto;
 }
 
 class SettingsPatchDto {
+  @IsOptional() @IsIn(['deepseek', 'gemini']) provider?: AiProvider;
   @IsOptional() @IsBoolean() enabled?: boolean;
   @IsOptional() @IsString() @MaxLength(64) model?: string;
   @IsOptional() @IsString() @MaxLength(8000) systemPrompt?: string;
   @IsOptional() @IsInt() @Min(1) @Max(1000) requestsPerHour?: number;
   @IsOptional() @IsInt() @Min(1000) @Max(100_000_000) tokensPerDay?: number;
+  @IsOptional() @IsInt() @Min(4096) @Max(131072) maxInputTokens?: number;
+  @IsOptional() @IsInt() @Min(256) @Max(16384) maxOutputTokens?: number;
+  @IsOptional() @IsNumber() @Min(0.05) @Max(1000) dailyBudgetUsd?: number;
+  @IsOptional() @IsNumber() @Min(0.05) @Max(10000) monthlyBudgetUsd?: number;
   /** Пусто — не менять сохранённый ключ. */
   @IsOptional() @IsString() @MaxLength(200) apiKey?: string;
   @IsOptional() @IsBoolean() clearApiKey?: boolean;
@@ -93,10 +115,14 @@ export class AiController {
     res.flushHeaders?.();
 
     let closed = false;
-    // Человек закрыл окно — дальше писать некуда.
-    req.on('close', () => {
+    const abort = new AbortController();
+    const disconnect = () => {
       closed = true;
-    });
+      abort.abort();
+    };
+    // IncomingMessage.close also fires after the POST body, before SSE has finished.
+    res.on('close', disconnect);
+    req.on('aborted', disconnect);
 
     const emit = (event: AiStreamEvent) => {
       if (closed) return;
@@ -108,15 +134,37 @@ export class AiController {
       // вопрос «на каком языке отвечать» даёт само сообщение, и его читает
       // модель; сюда доезжает только то, чем крыть, если сообщение — это
       // ник или одна команда.
-      await this.ai.chat(user.id, dto.messages, emit, this.i18n.localeOf(req.headers['accept-language']));
-    } catch (e) {
-      emit({ type: 'error', message: (e as Error).message });
+      await this.ai.chat(
+        user.id,
+        dto.messages,
+        emit,
+        this.i18n.localeOf(req.headers['accept-language']),
+        dto.context,
+        abort.signal,
+      );
+    } catch {
+      // Unexpected setup/database errors must not expose queries, infrastructure or secrets.
+      emit({
+        type: 'error',
+        message: this.i18n.t(
+          this.i18n.localeOf(req.headers['accept-language']),
+          'ai.err.providerUnavailable',
+        ),
+      });
     } finally {
+      res.off('close', disconnect);
+      req.off('aborted', disconnect);
       if (!closed) res.end();
     }
   }
 
   /** Решение по предложенному действию: подтвердить или отклонить. */
+  @Get('actions/:actionId')
+  @RequirePermission('ai.chat')
+  action(@CurrentUser() user: AuthUser, @Param('actionId') actionId: string, @Req() req: Request) {
+    return this.ai.action(user.id, actionId, this.i18n.localeOf(req.headers['accept-language']));
+  }
+
   @Post('actions/:actionId')
   @RequirePermission('ai.chat')
   resolve(
@@ -161,11 +209,16 @@ export class AiController {
   @AuditRedactBody() // в теле ключ API
   updateSettings(@Body() dto: SettingsPatchDto): Promise<AiSettingsDto> {
     return this.settings.update({
+      ...(dto.provider !== undefined ? { provider: dto.provider } : {}),
       ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
       ...(dto.model !== undefined ? { model: dto.model } : {}),
       ...(dto.systemPrompt !== undefined ? { systemPrompt: dto.systemPrompt } : {}),
       ...(dto.requestsPerHour !== undefined ? { requestsPerHour: dto.requestsPerHour } : {}),
       ...(dto.tokensPerDay !== undefined ? { tokensPerDay: dto.tokensPerDay } : {}),
+      ...(dto.maxInputTokens !== undefined ? { maxInputTokens: dto.maxInputTokens } : {}),
+      ...(dto.maxOutputTokens !== undefined ? { maxOutputTokens: dto.maxOutputTokens } : {}),
+      ...(dto.dailyBudgetUsd !== undefined ? { dailyBudgetUsd: dto.dailyBudgetUsd } : {}),
+      ...(dto.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: dto.monthlyBudgetUsd } : {}),
       ...(dto.clearApiKey ? { apiKey: null } : dto.apiKey ? { apiKey: dto.apiKey } : {}),
     });
   }

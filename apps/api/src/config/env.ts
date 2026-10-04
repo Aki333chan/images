@@ -26,7 +26,7 @@ function intVar(name: string, def: number): number {
   return n;
 }
 
-import { DEEPSEEK_BASE_URL as DEEPSEEK_BASE_URL_DEFAULT } from '@aurum/shared';
+import { DEEPSEEK_BASE_URL as DEEPSEEK_BASE_URL_DEFAULT, GEMINI_BASE_URL } from '@aurum/shared';
 
 const isTest = process.env.NODE_ENV === 'test';
 
@@ -72,6 +72,7 @@ export const env = {
    * тестах. Имя модели и ключ при этом остаются настройками панели.
    */
   DEEPSEEK_BASE_URL: optional('DEEPSEEK_BASE_URL', DEEPSEEK_BASE_URL_DEFAULT),
+  GEMINI_BASE_URL: optional('GEMINI_BASE_URL', GEMINI_BASE_URL),
 
   /**
    * Базовые адреса маркета плагинов. Переопределяются по той же причине, что и

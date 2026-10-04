@@ -206,6 +206,17 @@ Exchange engine использует версионированную котир
 
 ## Текущий этап
 
+**Панель: согласованный выпуск AI upgrade — DeepSeek/Gemini и безопасные инструменты Core.**
+
+Исходники готовы и проверены локально 2026-10-04; production не обновляли,
+провайдера/ключи пользователя не меняли, платных запросов не отправляли.
+Руководство: [aurum-ai-assistant.md](aurum-ai-assistant.md).
+Следующее действие — staging PostgreSQL migration + конкуренция и согласованный
+выпуск API/web. Затем ключ Gemini в Google AI Studio и настоящий function-call smoke.
+Cloud-проект — не импорт файла с контекстом; создать проект в аккаунте пользователя
+агент не смог из-за отсутствия доступа. Никакие биллинг/Google-права не активировались.
+Для этого этапа JAR не меняются и Addons-релиз не нужен.
+
 **Панель: пользовательская проверка drag-and-drop во вкладке «Файлы».**
 
 Реализация готова и проверена локально 2026-09-30: отдельные и несколько файлов
@@ -271,6 +282,13 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
 
 ## Очередь после текущего этапа
 
+AI-направление: после staging/выпуска проверить оба провайдера реальными запросами
+по отдельному согласованию расходов. Далее ограниченная read-only диагностика
+файлов/логов с редактированием секретов, бэкапы/расписания через существующие сервисы;
+затем типизированные NPC/Arena/Slots/guild mutations с preview и подтверждением.
+Скриншоты/кеш контекста — отдельный этап, не считать уже реализованными.
+Minecraft-проверки ниже остаются открытыми, без самовольного запуска сервера.
+
 1. Довести live fault-injection на Paper 26.3 + MariaDB + VaultUnlocked: Arena, Slots,
    NPC, Guilds, policy limits/tax, закрытие с hold и сбой между sweep-проводками.
 2. Bankroll Slots и бюджет NPC buyers реализованы. Procurement, guild support и
@@ -282,6 +300,41 @@ Vault/PAPI и idle Spark. Остались предметные сценарии
    часть автоматических исправлений предлагает major NestJS 12 и требует регрессии.
 
 ## Журнал передачи
+
+### 2026-10-04 — Codex, AI: провайдеры, лимиты, подтверждения и Core
+
+- DeepSeek/Gemini выбираются ГМ, ключи раздельные и зашифрованы, blank key не
+  перезаписывает секрет. Legacy `ai.model` и `ai.deepseek.apiKey` сохраняются;
+  нет автоматического fallback. Один REST/SSE клиент, новых зависимостей нет.
+- Общий бюджет $1/day/$10/month, per-user rate/token limits и input/output caps.
+  PostgreSQL advisory lock атомарно учитывает in-flight запросы; перед сетью
+  резервируются все пять шагов. После ответа резерв снимается, потерянный usage
+  считается верхней границей начатого шага. Сбой settlement оставляет резерв;
+  автоматического reset/replay нет. Тариф Gemini 3.8 меняется 2027-01-01, резерв
+  учитывает границу максимального времени запроса. Старым logs стоимость не backfill.
+- `AiActionStatus.executing` + атомарный `updateMany pending` предотвращают два
+  выполнения карточки. Latest permission/server access проверяются при исполнении;
+  Core получает action UUID. При неизвестном исходе UI делает только GET статуса,
+  никогда повтор POST. Crash может оставить executing: проверить ledger, а не
+  добавлять cron, который повторит необратимое действие.
+- Новые tools: справка, whitelist, guild details, счета/детали/rules/ledger Core,
+  transfer и rule mutation. Rule preview готовится до карточки, токен хранится
+  только на сервере; применяются тот же token и expected revision, не re-preview.
+  Каталог 37 tools (22 read, 15 confirmation); rights/topic/navigation filtering,
+  bounded payload/history, явное UNTRUSTED ограждение, валидация аргументов.
+- DeepSeek thinking=disabled/reasoning_effort=none: браузер не хранит старый CoT,
+  нельзя включить thinking без изменения контракта истории. Gemini low сохраняет
+  `extra_content.google.thought_signature` tool rounds. UTF-8/CRLF SSE, stream caps,
+  таймауты/отмена, provider error без исходных секретов/промптов.
+- Settings desktop/mobile сохранены в текущем дизайне, короткие сворачиваемые
+  блоки limits/prompt/tools, RU/EN/PL; close/stop abort generation, double confirm
+  disabled immediately. Закрытие чата не отменяет уже подтверждённую мутацию.
+- API/shared/web builds, unit tests и `apps/web/scripts/check-ai-assistant.cjs`
+  успешны: 59 API suites / 864 tests, 18 web suites / 156 tests. Браузерный прогон —
+  mock, desktop 1440×900 и mobile 390×844, не реальный
+  Safari или production. PostgreSQL migration `20261004150000_ai_providers_and_limits`
+  ещё не применяли; mock budget concurrency не заменяет настоящую PostgreSQL-проверку.
+  Нет новых JAR, SQL-операций на игровом сервере, бэкапов или production-restart.
 
 ### 2026-09-30 — Codex, drag-and-drop в общем файловом менеджере
 

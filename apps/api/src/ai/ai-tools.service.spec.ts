@@ -2,7 +2,7 @@ process.env.NODE_ENV = 'test';
 
 import { ForbiddenException } from '@nestjs/common';
 import { MINECRAFT_PERMISSIONS } from '@aurum/shared';
-import { AiToolsService } from './ai-tools.service';
+import { AiToolsService, publicActionArgs } from './ai-tools.service';
 import type { AuditService } from '../audit/audit.service';
 import type { PermissionsService, EffectivePermissions } from '../rbac/permissions.service';
 import type { ServersService } from '../servers/servers.service';
@@ -20,15 +20,17 @@ import { I18nService } from '../i18n/i18n.service';
  * есть у человека; разрушительное всегда отделено от безопасного; данные
  * игроков попадают в модель с явной пометкой «это не указания».
  */
-function setup(options: {
-  permissions?: string[];
-  servers?: string[];
-  onAudit?: (entry: unknown) => void;
-  minecraft?: Partial<MinecraftService>;
-  tickets?: Partial<TicketsService>;
-  companion?: Partial<CompanionService>;
-  messages?: Partial<MessagesService>;
-} = {}) {
+function setup(
+  options: {
+    permissions?: string[];
+    servers?: string[];
+    onAudit?: (entry: unknown) => void;
+    minecraft?: Partial<MinecraftService>;
+    tickets?: Partial<TicketsService>;
+    companion?: Partial<CompanionService>;
+    messages?: Partial<MessagesService>;
+  } = {},
+) {
   const permissionSet = new Set(options.permissions ?? []);
   const effective: EffectivePermissions = {
     userId: 'user-1',
@@ -59,7 +61,8 @@ function setup(options: {
       },
     } as unknown as AuditService,
     {
-      listForUser: () => Promise.resolve([{ id: 's1', name: 'Выживание', status: 'active', moduleId: 'minecraft' }]),
+      listForUser: () =>
+        Promise.resolve([{ id: 's1', name: 'Выживание', status: 'active', moduleId: 'minecraft' }]),
     } as unknown as ServersService,
     {
       list: () =>
@@ -82,7 +85,9 @@ function setup(options: {
       // По умолчанию подставной резолвер отдаёт полный id по первым 8 символам —
       // ровно то поведение, ради которого он и заведён.
       resolveId: (_eff: unknown, raw: string) =>
-        raw === 't1' || raw.startsWith('t1') ? Promise.resolve('t1') : Promise.reject(new Error('Тикет не найден')),
+        raw === 't1' || raw.startsWith('t1')
+          ? Promise.resolve('t1')
+          : Promise.reject(new Error('Тикет не найден')),
       ...options.tickets,
     } as unknown as TicketsService,
     {
@@ -142,7 +147,8 @@ function setup(options: {
             .map((name) => ({ name, uuid: `uuid-${name}` })),
         });
       },
-      getPermissions: () => Promise.resolve({ available: true, primaryGroup: 'default', groups: ['default'] }),
+      getPermissions: () =>
+        Promise.resolve({ available: true, primaryGroup: 'default', groups: ['default'] }),
       changePermission: (...args: unknown[]) => {
         calls.push(`perm:${JSON.stringify(args)}`);
         return Promise.resolve({ available: true, groups: ['default', 'vip'] } as never);
@@ -177,7 +183,13 @@ describe('разделение инструментов', () => {
 
   it('читающие инструменты помечены как безопасные', () => {
     const byName = new Map(service.list().map((t) => [t.name, t.kind]));
-    for (const name of ['list_servers', 'list_players', 'list_tickets', 'list_bans', 'server_performance']) {
+    for (const name of [
+      'list_servers',
+      'list_players',
+      'list_tickets',
+      'list_bans',
+      'server_performance',
+    ]) {
       expect({ name, kind: byName.get(name) }).toEqual({ name, kind: 'safe' });
     }
   });
@@ -205,17 +217,18 @@ describe('права ассистента', () => {
   it('модели предлагаются только те инструменты, на которые есть право', () => {
     const { service, effective } = setup({ permissions: ['servers.view'] });
     const names = service.toolsFor(effective).map((t) => t.function.name);
-    expect(names).toEqual(['list_servers', ...FREE_TOOLS]);
+    expect(names).toEqual(['panel_help', 'list_servers', ...FREE_TOOLS]);
   });
 
   it('без прав остаются только те, что не требуют прав и в панели', () => {
     const { service, effective } = setup({ permissions: [] });
     const names = service.toolsFor(effective).map((t) => t.function.name);
 
-    expect(names).toEqual(FREE_TOOLS);
+    expect(names).toEqual(['panel_help', ...FREE_TOOLS]);
     // Ни один инструмент, трогающий игровой сервер или аккаунты, сюда не попал.
-    expect(names.some((n) => n.includes('player') || n.includes('server') || n.includes('ticket')))
-      .toBe(false);
+    expect(
+      names.some((n) => n.includes('player') || n.includes('server') || n.includes('ticket')),
+    ).toBe(false);
   });
 
   // Главное свойство: ассистент — не способ обойти права. Даже если модель
@@ -223,8 +236,9 @@ describe('права ассистента', () => {
   // проверки, что и обычный запрос пользователя.
   it('вызов инструмента без права отклоняется', async () => {
     const { service } = setup({ permissions: ['servers.view'] });
-    await expect(service.execute('user-1', 'ban_player', { serverId: 's1', player: 'X', reason: 'y' }))
-      .rejects.toThrow(ForbiddenException);
+    await expect(
+      service.execute('user-1', 'ban_player', { serverId: 's1', player: 'X', reason: 'y' }),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('доступ к конкретному серверу проверяется отдельно от права', async () => {
@@ -251,7 +265,10 @@ describe('права ассистента', () => {
 
 describe('аудит действий ассистента', () => {
   it('разрушительное действие пишется с actor_type ai и on_behalf_of', async () => {
-    const { service, audited } = setup({ permissions: [MINECRAFT_PERMISSIONS.kick], servers: ['s1'] });
+    const { service, audited } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.kick],
+      servers: ['s1'],
+    });
     await service.execute('user-1', 'kick_player', {
       serverId: 's1',
       player: 'Steve',
@@ -292,14 +309,28 @@ describe('аудит действий ассистента', () => {
   });
 
   it('успешная попытка помечена ok: true', async () => {
-    const { service, audited } = setup({ permissions: [MINECRAFT_PERMISSIONS.kick], servers: ['s1'] });
-    await service.execute('user-1', 'kick_player', { serverId: 's1', player: 'Steve', reason: 'x' });
+    const { service, audited } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.kick],
+      servers: ['s1'],
+    });
+    await service.execute('user-1', 'kick_player', {
+      serverId: 's1',
+      player: 'Steve',
+      reason: 'x',
+    });
     expect(audited[0]).toMatchObject({ metadata: { ok: true } });
   });
 
   it('в журнале видно, что именно предложил ассистент', async () => {
-    const { service, audited } = setup({ permissions: [MINECRAFT_PERMISSIONS.kick], servers: ['s1'] });
-    await service.execute('user-1', 'kick_player', { serverId: 's1', player: 'Steve', reason: 'спам' });
+    const { service, audited } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.kick],
+      servers: ['s1'],
+    });
+    await service.execute('user-1', 'kick_player', {
+      serverId: 's1',
+      player: 'Steve',
+      reason: 'спам',
+    });
     const entry = audited[0] as { metadata: { summary: string } };
     expect(entry.metadata.summary).toContain('Steve');
     expect(entry.metadata.summary).toContain('спам');
@@ -316,7 +347,10 @@ describe('аудит действий ассистента', () => {
 
 describe('недоверенный ввод', () => {
   it('ники игроков приходят модели с пометкой', async () => {
-    const { service } = setup({ permissions: [MINECRAFT_PERMISSIONS.playersView], servers: ['s1'] });
+    const { service } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.playersView],
+      servers: ['s1'],
+    });
     const result = await service.execute('user-1', 'list_players', { serverId: 's1' });
 
     expect(result.untrusted).toBe(true);
@@ -447,13 +481,11 @@ describe('контракт возможностей в промпте', () => {
 });
 
 describe('справка «где что в панели»', () => {
-  it('рассказывает только про экраны, доступные собеседнику', () => {
-    const { service, effective } = setup({
+  it('рассказывает только про экраны, доступные собеседнику', async () => {
+    const { service } = setup({
       permissions: [MINECRAFT_PERMISSIONS.playersView, 'tickets.view'],
     });
-    const prompt = service.contractPrompt(effective, 'ru');
-
-    expect(prompt).toContain('ГДЕ ЧТО В ПАНЕЛИ');
+    const { content: prompt } = await service.execute('user-1', 'panel_help', {});
     expect(prompt).toContain('«Известные игроки»');
     expect(prompt).toContain('«Тикеты»');
     // Права на дневник событий нет — и рассказывать про него нельзя:
@@ -468,9 +500,9 @@ describe('справка «где что в панели»', () => {
     expect(prompt).toContain('придумывать экран нельзя');
   });
 
-  it('без прав остаётся только то, что есть у всякого вошедшего', () => {
-    const { service, effective } = setup({ permissions: [] });
-    const prompt = service.contractPrompt(effective, 'ru');
+  it('без прав остаётся только то, что есть у всякого вошедшего', async () => {
+    const { service } = setup({ permissions: [] });
+    const { content: prompt } = await service.execute('user-1', 'panel_help', {});
 
     // Свои настройки и переписка с коллегами есть у любого сотрудника.
     expect(prompt).toContain('«Сообщения»');
@@ -489,7 +521,10 @@ describe('инструменты по игроку', () => {
       servers: ['s1'],
     });
 
-    const result = await service.execute('user-1', 'player_balance', { ...server, player: 'Steve' });
+    const result = await service.execute('user-1', 'player_balance', {
+      ...server,
+      player: 'Steve',
+    });
 
     expect(result.content).toContain('250');
   });
@@ -540,20 +575,26 @@ describe('инструменты по игроку', () => {
       servers: ['s1'],
     });
 
-    await service.execute('user-1', 'change_player_balance', {
-      ...server,
-      player: 'Steve',
-      direction: 'deposit',
-      amount: 50,
-      reason: 'компенсация',
-    });
+    await service.execute(
+      'user-1',
+      'change_player_balance',
+      {
+        ...server,
+        player: 'Steve',
+        direction: 'deposit',
+        amount: 50,
+        reason: 'компенсация',
+      },
+      '66da2285-0983-4ce6-bc6a-eed51b0e21ea',
+    );
 
     const call = calls.find((c) => c.startsWith('balance:'));
     expect(call).toContain('"deposit"');
     expect(call).toContain('компенсация');
     // Предпоследний аргумент — тот, от чьего имени всё происходит;
-    // последний — новый UUID операции.
+    // последний — стабильный UUID подтверждённой карточки, не новый UUID при повторе.
     expect(call).toContain('user-1');
+    expect(call).toContain('66da2285-0983-4ce6-bc6a-eed51b0e21ea');
   });
 
   it('смена группы прав — одно изменение за вызов', async () => {
@@ -587,12 +628,20 @@ describe('инструменты по игроку', () => {
       }),
     ).toBe('Списать 100 у игрока Steve — «штраф»');
     expect(
-      service.summarize('change_player_permission', { player: 'Steve', kind: 'group', key: 'vip', remove: true }),
+      service.summarize('change_player_permission', {
+        player: 'Steve',
+        kind: 'group',
+        key: 'vip',
+        remove: true,
+      }),
     ).toBe('Снять группу «vip» у игрока Steve');
   });
 
   it('менять баланс и права без права нельзя даже через ассистента', async () => {
-    const { service } = setup({ permissions: [MINECRAFT_PERMISSIONS.economyView], servers: ['s1'] });
+    const { service } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyView],
+      servers: ['s1'],
+    });
 
     await expect(
       service.execute('user-1', 'change_player_balance', {
@@ -619,7 +668,9 @@ describe('инструменты по игроку', () => {
       commandId: 'ess-heal',
       args: { player: 'Steve' },
     });
-    expect(calls.some((c) => c.startsWith('quick:["s1","ess-heal",{"player":"Steve"}]'))).toBe(true);
+    expect(calls.some((c) => c.startsWith('quick:["s1","ess-heal",{"player":"Steve"}]'))).toBe(
+      true,
+    );
   });
 
   it('всё, что меняет игрока, требует подтверждения человеком', () => {
@@ -629,7 +680,12 @@ describe('инструменты по игроку', () => {
     for (const name of ['change_player_balance', 'change_player_permission', 'run_quick_command']) {
       expect({ name, kind: byName.get(name) }).toEqual({ name, kind: 'destructive' });
     }
-    for (const name of ['player_balance', 'player_permissions', 'player_inventory', 'server_economy']) {
+    for (const name of [
+      'player_balance',
+      'player_permissions',
+      'player_inventory',
+      'server_economy',
+    ]) {
       expect({ name, kind: byName.get(name) }).toEqual({ name, kind: 'safe' });
     }
   });
@@ -679,7 +735,9 @@ describe('ASCII-арт', () => {
       caption: 'держи котика',
     });
 
-    const text = JSON.parse(calls.find((c) => c.startsWith('message:'))!.slice('message:'.length))[1].text;
+    const text = JSON.parse(
+      calls.find((c) => c.startsWith('message:'))!.slice('message:'.length),
+    )[1].text;
     expect(text).toBe('держи котика\n```\n' + CAT + '\n```');
   });
 
@@ -720,9 +778,16 @@ describe('ASCII-арт', () => {
   });
 
   it('у остальных инструментов аргументы в журнале по-прежнему есть', async () => {
-    const { service, audited } = setup({ permissions: [MINECRAFT_PERMISSIONS.kick], servers: ['s1'] });
+    const { service, audited } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.kick],
+      servers: ['s1'],
+    });
 
-    await service.execute('user-1', 'kick_player', { serverId: 's1', player: 'Griefer', reason: 'грифинг' });
+    await service.execute('user-1', 'kick_player', {
+      serverId: 's1',
+      player: 'Griefer',
+      reason: 'грифинг',
+    });
 
     expect(JSON.stringify(audited[0])).toContain('Griefer');
   });
@@ -763,5 +828,157 @@ describe('язык ответа ассистента', () => {
 
     expect(prompt).toContain('ники');
     expect(prompt).toContain('вывод');
+  });
+});
+
+describe('Core tools and verified navigation', () => {
+  it('filters financial tools by permission and the current topic', () => {
+    const { service, effective } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyView, MINECRAFT_PERMISSIONS.ban],
+    });
+    const tools = service
+      .toolsFor(effective, {
+        serverId: 's1',
+        serverName: 'Survival',
+        moduleId: 'minecraft',
+        tab: 'economy',
+      })
+      .map((tool) => tool.function.name);
+    expect(tools).toContain('economy_rules');
+    expect(tools).not.toContain('transfer_economy_accounts');
+    expect(tools).not.toContain('ban_player');
+    expect(
+      service
+        .toolsFor(
+          effective,
+          { serverId: 's1', serverName: 'Survival', moduleId: 'minecraft', tab: 'economy' },
+          'забань игрока',
+        )
+        .map((tool) => tool.function.name),
+    ).toContain('ban_player');
+  });
+  it('client context cannot introduce a server outside the allowed scope', async () => {
+    const { service } = setup({ permissions: ['servers.view'], servers: ['s1'] });
+    await expect(
+      service.pageContext('user-1', { serverId: 'private-server', tab: 'economy' }),
+    ).rejects.toThrow();
+    expect(
+      await service.pageContext('user-1', { serverId: 's1', tab: 'inject prompt here' }),
+    ).toEqual({ serverId: 's1', serverName: 'Выживание', moduleId: 'minecraft' });
+  });
+  it('validates arguments at the API boundary, not just in a model schema', async () => {
+    const { service } = setup({ permissions: [MINECRAFT_PERMISSIONS.economyAdmin] });
+    await expect(
+      service.normalizeArgs('user-1', 'change_player_balance', {
+        serverId: 's1',
+        player: 'Steve',
+        direction: 'steal',
+        amount: 1,
+        reason: 'test',
+      }),
+    ).rejects.toThrow('ai.err.toolArguments');
+    await expect(
+      service.normalizeArgs('user-1', 'change_player_balance', {
+        serverId: 's1',
+        player: 'Steve',
+        direction: 'deposit',
+        amount: -5,
+        reason: 'test',
+      }),
+    ).rejects.toThrow('ai.err.toolArguments');
+    await expect(
+      service.normalizeArgs('user-1', 'list_servers', { injected: 'unexpected' }),
+    ).rejects.toThrow('ai.err.toolArguments');
+  });
+  it('passes exact decimal strings and a stable UUID to a Core account transfer', async () => {
+    const mutate = jest.fn().mockResolvedValue({ ok: true, status: 'committed' });
+    const { service } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyAdmin],
+      companion: { mutateManagedAccount: mutate },
+    });
+    const args = {
+      serverId: 's1',
+      sourceProfile: 'treasury:global',
+      sourceRole: 'main',
+      targetProfile: 'arena:colosseum',
+      targetRole: 'final',
+      currency: 'coins',
+      amount: '500.01',
+      reason: 'prize fund',
+    };
+    await service.execute(
+      'user-1',
+      'transfer_economy_accounts',
+      args,
+      '66da2285-0983-4ce6-bc6a-eed51b0e21ea',
+    );
+    expect(mutate).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({
+        amount: '500.01',
+        idempotencyKey: '66da2285-0983-4ce6-bc6a-eed51b0e21ea',
+        actor: 'ai:user-1',
+      }),
+    );
+  });
+  it('previews rules without applying them; private token stays out of DTO and audit', async () => {
+    const preview = jest.fn().mockResolvedValue({
+      status: 'ready',
+      token: 'private-core-token',
+      current: { revision: 1 },
+      proposed: { revision: 2 },
+      warnings: [],
+      expiresAt: 'tomorrow',
+    });
+    const apply = jest.fn().mockResolvedValue({ status: 'applied', current: { revision: 2 } });
+    const { service, audited } = setup({
+      permissions: [MINECRAFT_PERMISSIONS.economyAdmin],
+      companion: {
+        previewEconomyRule: preview,
+        applyEconomyRule: apply,
+      },
+    });
+    const args = {
+      serverId: 's1',
+      ruleType: 'starting_balance',
+      id: 'global',
+      expectedRevision: 1,
+      fields: { enabled: 'true', amount: '100' },
+      reason: 'starter balance',
+    };
+    const prepared = await service.prepareAction('user-1', 'change_economy_rule', args);
+    expect(apply).not.toHaveBeenCalled();
+    expect(prepared._previewToken).toBe('private-core-token');
+    expect(JSON.stringify(publicActionArgs(prepared))).not.toContain('private-core-token');
+    await service.execute(
+      'user-1',
+      'change_economy_rule',
+      prepared,
+      '66da2285-0983-4ce6-bc6a-eed51b0e21ea',
+    );
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith('s1', {
+      token: 'private-core-token',
+      actor: 'ai:user-1',
+      reason: 'starter balance',
+    });
+    expect(JSON.stringify(audited)).not.toContain('private-core-token');
+  });
+  it('cannot propose a forged preview token or bypass revoked mutation permission', async () => {
+    const { service } = setup({ permissions: [MINECRAFT_PERMISSIONS.economyView] });
+    const args = {
+      serverId: 's1',
+      ruleType: 'policy',
+      id: 'tax',
+      expectedRevision: 1,
+      fields: {},
+      reason: 'test',
+    };
+    await expect(
+      service.prepareAction('user-1', 'change_economy_rule', { ...args, _previewToken: 'forged' }),
+    ).rejects.toThrow('ai.err.toolArguments');
+    await expect(service.prepareAction('user-1', 'change_economy_rule', args)).rejects.toThrow(
+      'ai.err.toolPermission',
+    );
   });
 });
