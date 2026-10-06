@@ -18,6 +18,7 @@ import { MarketService } from './plugins/market.service';
 import { PluginFilesService } from './plugins/plugin-files.service';
 import { PluginTargetsService } from './plugins/plugin-targets.service';
 import { PluginsController } from './plugins/plugins.controller';
+import { SiteBridgeController, SiteBridgeGuard } from './site-bridge.controller';
 
 @Module({
   imports: [
@@ -30,10 +31,11 @@ import { PluginsController } from './plugins/plugins.controller';
     // Именно ActivityModule, а не ServersModule: см. пояснение в activity.module.ts.
     ActivityModule,
   ],
-  controllers: [MinecraftController, MinecraftInternalController, PluginsController],
+  controllers: [MinecraftController, MinecraftInternalController, PluginsController, SiteBridgeController],
   providers: [
     CompanionService,
     CompanionTokenGuard,
+    SiteBridgeGuard,
     JailsService,
     MinecraftService,
     MinecraftTicketDelivery,

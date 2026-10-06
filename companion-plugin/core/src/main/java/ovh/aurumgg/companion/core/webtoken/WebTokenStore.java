@@ -57,10 +57,11 @@ public final class WebTokenStore {
      * одного человека — это просто лишний шанс, что один из них подберут или
      * подсмотрят.
      */
-    public String issue(UUID playerUuid, String username, Instant now) {
+    public synchronized String issue(UUID playerUuid, String username, Instant now) {
+        purgeExpired(now);
         codes.values().removeIf(issued -> issued.playerUuid().equals(playerUuid));
-        String code = generate();
-        codes.put(code, new Issued(playerUuid, username, now));
+        String code;
+        do { code = generate(); } while (codes.putIfAbsent(code, new Issued(playerUuid, username, now)) != null);
         return code;
     }
 

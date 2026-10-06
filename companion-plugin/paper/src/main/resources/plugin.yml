@@ -27,6 +27,10 @@ commands:
   aurumui:
     description: AurumUI diagnostics
     usage: /aurumui status
+  aurumlink:
+    aliases: [alink]
+    description: Link your Minecraft profile to the community website
+    usage: /aurumlink
 
 permissions:
   aurumui.admin:

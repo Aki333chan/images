@@ -62,6 +62,12 @@ tickets:
   # Пауза между командами /ticket от одного игрока, секунды.
   cooldown-seconds: 10
 
+# Player website link codes are separate from /webtoken (staff panel).
+# Enable only on your own website; panel.server-id must match the panel UUID.
+site:
+  enabled: false
+  base-url: "https://aurumgg.ovh"
+
 # Optional Fabric client integration. It uses the Minecraft connection and
 # does not need the HTTP token, panel port or a public network allocation.
 ui:

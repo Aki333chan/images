@@ -64,6 +64,9 @@ export const env = {
   PTERO_BASE_URL: optional('PTERO_BASE_URL', 'https://panel.aurumgg.ovh'),
   PTERO_APP_API_KEY: optional('PTERO_APP_API_KEY'),
   PTERO_CLIENT_API_KEY: optional('PTERO_CLIENT_API_KEY'),
+  /** Private, link-only service credential for Aurum Site; never a staff session. */
+  SITE_BRIDGE_TOKEN: optional('SITE_BRIDGE_TOKEN'),
+  SITE_BRIDGE_SERVERS: optional('SITE_BRIDGE_SERVERS'),
   /**
    * Адрес API DeepSeek. По умолчанию официальный.
    *

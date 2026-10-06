@@ -88,6 +88,8 @@ public final class CompanionHttpServer {
     private final TokenAuth auth;
     private final Consumer<String> logger;
     private final WebTokenStore webTokens;
+    // Separate purpose: a website link code must never sign in to the staff panel.
+    private final WebTokenStore siteLinks = new WebTokenStore(java.time.Duration.ofMinutes(5));
 
     private HttpServer server;
     private ExecutorService executor;
@@ -114,6 +116,8 @@ public final class CompanionHttpServer {
     public WebTokenStore webTokens() {
         return webTokens;
     }
+
+    public WebTokenStore siteLinks() { return siteLinks; }
 
     public void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress(config.bindAddress(), config.port()), 0);
@@ -161,6 +165,23 @@ public final class CompanionHttpServer {
     private void route(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
         String[] parts = splitPath(exchange.getRequestURI().getPath());
+
+        // Code stays in the body, not access logs / URL history. No GET consumption.
+        if (parts.length == 2 && parts[0].equals("site-link") && parts[1].equals("consume")
+                && method.equals("POST")) {
+            Map<String, Object> body = JsonParser.parseObject(readBody(exchange));
+            if (body.size() != 1 || !(body.get("code") instanceof String code)
+                    || !code.matches("[A-Z2-9]{8}")) {
+                throw new IllegalArgumentException("Invalid link code");
+            }
+            Optional<WebTokenStore.Issued> issued = siteLinks.consume(code, java.time.Instant.now());
+            if (issued.isEmpty()) {
+                respond(exchange, 404, PayloadWriter.error("Code not found or expired", "token-invalid"));
+            } else {
+                respond(exchange, 200, PayloadWriter.webToken(issued.get().playerUuid(), issued.get().username()));
+            }
+            return;
+        }
 
         // GET /players
         if (parts.length == 1 && parts[0].equals("players") && method.equals("GET")) {

@@ -1,5 +1,32 @@
 # Aurum Companion
 
+## Release 0.13.6
+
+Adds `/aurumlink` (`/alink`) for the player website. An authenticated player
+receives a copyable one-use code and a clickable HTTPS link; codes expire
+after five minutes and are separate from legacy `/webtoken` staff-panel codes.
+Offline-mode servers require a working AurumAuth API. No database or network
+request runs on the Paper thread; no new polling or public port is added.
+Existing HTTP/Fabric features and custom language files are preserved. Missing
+new translation keys now fall back to the bundled selected language.
+
+### Enable the player website
+
+Set `site.enabled: true`, `site.base-url: "https://aurumgg.ovh"` and the correct
+`panel.server-id` in Companion's `config.yml`. In the panel API environment,
+set a separate random `SITE_BRIDGE_TOKEN` and publish that panel server UUID in
+`SITE_BRIDGE_SERVERS`. The website API uses the same secret through
+`AURUM_PANEL_BRIDGE_TOKEN` and the panel's private origin through
+`AURUM_PANEL_BRIDGE_URL`. Never use staff, Pterodactyl or Companion credentials
+as this website secret. Leave these settings blank/disabled on other installs.
+
+After restarting Minecraft, sign in to the game, run `/aurumlink`, open the
+chat link and sign in to Aurum Site. The code is prefilled but only consumed
+after clicking «Привязать профиль». A new command invalidates the previous
+code; restarting Minecraft clears unused codes, not saved website links.
+No extra LuckPerms permission is needed. An existing server/profile link
+cannot be silently replaced or claimed by another portal account.
+
 ## Release 0.13.5
 
 Compatibility update for Paper 26.3 (built against
@@ -194,6 +221,7 @@ are rate-limited, and allow only one outstanding mutation per player.
 | `POST /economy/rules/{policy\|exchange}/preview` | проверить полную новую ревизию и получить одноразовый токен | только active AurumCore |
 | `POST /economy/rules/apply` | применить подтверждённую ревизию с причиной | только active AurumCore |
 | `POST /webtoken/{code}` | обменять одноразовый код игрока на его UUID и ник | AurumAuth |
+| `POST /site-link/consume` | отдельный одноразовый код Aurum Site в JSON-теле | `/aurumlink`, авторизованный игрок |
 | `POST /auth/reset/{ник}` | выдать игроку одноразовый токен сброса пароля | AurumAuth |
 
 Все запросы требуют заголовок `Authorization: Bearer <токен>` из

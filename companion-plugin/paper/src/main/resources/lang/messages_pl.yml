@@ -30,6 +30,13 @@ webtoken:
   code: "Kod logowania do panelu: {code}"
   codeHint: "Jest jednorazowy i działa kilka minut."
 
+siteLink:
+  unavailable: "Łączenie z witryną nie jest dostępne na tym serwerze."
+  code: "Aurum Link: {code}"
+  copy: "Kliknij, aby skopiować kod"
+  open: "Otwórz stronę Aurum ↗"
+  hint: "Kod jednorazowy, ważny 5 minut. Nie udostępniaj go."
+
 ui:
   noPermission: "§cNie masz uprawnień."
   status: "§6AurumUI §7klienci: §f{clients}"

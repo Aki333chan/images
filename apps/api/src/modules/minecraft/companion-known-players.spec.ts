@@ -32,6 +32,37 @@ function urlOf(call: number): string {
   return String(requestMock.mock.calls[call]?.[0]);
 }
 
+describe('CompanionService — player website linking', () => {
+  beforeEach(() => requestMock.mockReset());
+
+  it('consumes once with a private POST, never putting the code in the URL', async () => {
+    requestMock.mockResolvedValue(reply(200, {
+      uuid: '8667ba71-b85a-4004-af54-457a9734eed7', name: 'Steve', admin: true,
+    }));
+    expect(await setup().consumeSiteLink('srv-1', 'ABCD2345')).toEqual({
+      uuid: '8667ba71-b85a-4004-af54-457a9734eed7', name: 'Steve',
+    });
+    expect(requestMock).toHaveBeenCalledTimes(1);
+    expect(urlOf(0)).toBe('http://10.0.0.2:8085/site-link/consume');
+    expect(requestMock.mock.calls[0][1]).toMatchObject({
+      method: 'POST', body: '{"code":"ABCD2345"}',
+      headers: { authorization: 'Bearer secret', 'content-type': 'application/json' },
+    });
+  });
+
+  it('reports invalid codes, refuses malformed identities and does not retry consumption', async () => {
+    requestMock.mockResolvedValueOnce(reply(404, { code: 'token-invalid' }));
+    await expect(setup().consumeSiteLink('srv-1', 'ABCD2345')).rejects.toMatchObject({ status: 404 });
+    requestMock.mockResolvedValueOnce(reply(200, null));
+    await expect(setup().consumeSiteLink('srv-1', 'ABCD2345')).rejects.toMatchObject({ status: 503 });
+    requestMock.mockResolvedValueOnce(reply(200, { uuid: 'bad', name: 'Steve' }));
+    await expect(setup().consumeSiteLink('srv-1', 'ABCD2345')).rejects.toMatchObject({ status: 503 });
+    expect(requestMock).toHaveBeenCalledTimes(3);
+    await expect(setup(false).consumeSiteLink('srv-1', 'ABCD2345')).rejects.toMatchObject({ status: 503 });
+    expect(requestMock).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe('CompanionService — исторический список игроков', () => {
   beforeEach(() => requestMock.mockReset());
 

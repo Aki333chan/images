@@ -30,6 +30,13 @@ webtoken:
   code: "Panel sign-in code: {code}"
   codeHint: "It is single-use and lasts a few minutes."
 
+siteLink:
+  unavailable: "Website linking is not available on this server."
+  code: "Aurum Link: {code}"
+  copy: "Click to copy the code"
+  open: "Open Aurum website ↗"
+  hint: "Single-use code, valid for 5 minutes. Do not share it."
+
 ui:
   noPermission: "§cYou do not have permission."
   status: "§6AurumUI §7clients: §f{clients}"

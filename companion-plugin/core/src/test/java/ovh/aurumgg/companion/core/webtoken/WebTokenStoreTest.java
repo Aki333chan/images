@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -23,6 +24,16 @@ class WebTokenStoreTest {
 
     private static final UUID PLAYER = UUID.randomUUID();
     private static final Instant T0 = Instant.parse("2026-08-28T12:00:00Z");
+
+    @Test
+    void parallelConsumptionHasExactlyOneWinner() {
+        WebTokenStore store = new WebTokenStore(Duration.ofMinutes(5));
+        String code = store.issue(PLAYER, "Steve", T0);
+        var attempts = java.util.stream.IntStream.range(0, 24)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> store.consume(code, T0).isPresent()))
+                .toList();
+        assertEquals(1, attempts.stream().filter(CompletableFuture::join).count());
+    }
 
     @Test
     void свежийКодОбмениваетсяНаИгрока() {

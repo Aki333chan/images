@@ -221,6 +221,32 @@ export class CompanionService {
     return result.ok ? result.body : null;
   }
 
+  async consumeSiteLink(serverId: string, code: string): Promise<{ uuid: string; name: string }> {
+    const result = await this.callRaw<{ uuid?: unknown; name?: unknown }>(
+      serverId,
+      '/site-link/consume',
+      {
+        method: 'POST',
+        body: { code },
+      },
+    );
+    if (!result.ok) {
+      if (result.status === 404 && result.code === 'token-invalid')
+        throw new NotFoundException('Link code not found or expired');
+      throw new ServiceUnavailableException('Website linking is unavailable');
+    }
+    const { uuid, name } = result.body ?? {};
+    if (
+      typeof uuid !== 'string' ||
+      !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(uuid) ||
+      typeof name !== 'string' ||
+      !/^[A-Za-z0-9_]{1,16}$/.test(name)
+    ) {
+      throw new ServiceUnavailableException('Invalid game identity response');
+    }
+    return { uuid: uuid.toLowerCase(), name };
+  }
+
   /**
    * Как call, но с кодом ответа и телом ошибки.
    *

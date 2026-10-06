@@ -29,6 +29,7 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
     private CompanionHttpServer httpServer;
     private TicketCooldown cooldown;
     private AurumUiChannel uiChannel;
+    private AurumLinkCommand siteLinkCommand;
 
     /**
      * Тексты для игроков.
@@ -71,6 +72,12 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
         startHttpServer(config);
         registerTicketCommand(config);
         registerWebTokenCommand();
+        var link = getCommand("aurumlink");
+        if (link != null) {
+            siteLinkCommand = new AurumLinkCommand(this, httpServer == null ? null : httpServer.siteLinks());
+            link.setExecutor(siteLinkCommand);
+            link.setTabCompleter((sender, command, alias, args) -> java.util.List.of());
+        }
     }
 
     @Override
@@ -192,5 +199,6 @@ public final class AurumCompanionPlugin extends JavaPlugin implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         if (cooldown != null) cooldown.forget(event.getPlayer().getUniqueId());
         if (uiChannel != null) uiChannel.forget(event.getPlayer().getUniqueId());
+        if (siteLinkCommand != null) siteLinkCommand.forget(event.getPlayer().getUniqueId());
     }
 }

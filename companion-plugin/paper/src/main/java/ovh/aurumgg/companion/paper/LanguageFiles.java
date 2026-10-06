@@ -21,14 +21,14 @@ import ovh.aurumgg.companion.core.Messages;
  * ФАЙЛЫ НЕ ПЕРЕЗАПИСЫВАЮТСЯ при обновлении плагина: распаковывается только то,
  * чего на диске ещё нет.
  * Перезапись стирала бы ровно то, ради чего файлы и заведены, — правки
- * админа. Недостающие после обновления ключи берутся из встроенного русского,
+ * админа. Недостающие после обновления ключи берутся из встроенного выбранного языка,
  * поэтому новые сообщения появляются сами, а старые остаются какими были.
  */
 final class LanguageFiles {
 
     private LanguageFiles() {}
 
-    /** Читает выбранный язык и встроенный русский как запасной. */
+    /** Читает выбранный язык с полным встроенным переводом как запасным. */
     static Messages load(Plugin plugin, String language) {
         for (String known : Messages.LANGUAGES) {
             // Существование проверяем САМИ, хотя второй аргумент saveResource
@@ -46,7 +46,8 @@ final class LanguageFiles {
         // Запасной — ИЗ JAR, а не с диска: он должен быть полным. Русский файл
         // на диске админ правит так же, как и остальные, и вычеркнутая там
         // строка не должна утащить за собой сообщение на другом языке.
-        Map<String, Object> fallback = fromJar(plugin, Messages.DEFAULT_LANGUAGE);
+        Map<String, Object> fallback = new HashMap<>(fromJar(plugin, Messages.DEFAULT_LANGUAGE));
+        fallback.putAll(fromJar(plugin, language));
         return new Messages(chosen.isEmpty() ? fallback : chosen, fallback);
     }
 

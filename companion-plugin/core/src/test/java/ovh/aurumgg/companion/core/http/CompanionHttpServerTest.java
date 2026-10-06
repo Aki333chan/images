@@ -1148,6 +1148,36 @@ class CompanionHttpServerTest {
     // ------------------------------------------------- одноразовый код входа
 
     @Test
+    void siteLinkHasSeparatePurposeAndConsumesOnce() throws Exception {
+        String site = server.siteLinks().issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
+        String staff = webTokens.issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
+        assertEquals(404, post("/webtoken/" + site, TOKEN, "").statusCode());
+        assertEquals(404, post("/site-link/consume", TOKEN, "{\"code\":\"" + staff + "\"}").statusCode());
+        HttpResponse<String> result = post("/site-link/consume", TOKEN, "{\"code\":\"" + site + "\"}");
+        assertEquals(200, result.statusCode());
+        assertEquals(FakeGameBridge.STEVE.toString(), JsonParser.parseObject(result.body()).get("uuid"));
+        assertFalse(result.body().contains(site));
+        assertEquals(404, post("/site-link/consume", TOKEN, "{\"code\":\"" + site + "\"}").statusCode());
+        assertEquals(200, post("/webtoken/" + staff, TOKEN, "").statusCode());
+    }
+
+    @Test
+    void siteLinkNeedsAuthenticationAndGetDoesNotConsume() throws Exception {
+        String code = server.siteLinks().issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
+        assertEquals(401, post("/site-link/consume", null, "{\"code\":\"" + code + "\"}").statusCode());
+        assertEquals(404, get("/site-link/consume", TOKEN).statusCode());
+        assertEquals(200, post("/site-link/consume", TOKEN, "{\"code\":\"" + code + "\"}").statusCode());
+    }
+
+    @Test
+    void expiredSiteLinkAndUnexpectedFieldsAreRejected() throws Exception {
+        String expired = server.siteLinks().issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now().minusSeconds(301));
+        assertEquals(404, post("/site-link/consume", TOKEN, "{\"code\":\"" + expired + "\"}").statusCode());
+        assertEquals(400, post("/site-link/consume", TOKEN, "{\"code\":\"ABCD2345\",\"uuid\":\"attacker\"}").statusCode());
+        assertEquals(400, post("/site-link/consume", TOKEN, "{\"code\":42}").statusCode());
+    }
+
+    @Test
     void кодОбмениваетсяНаИгрока() throws Exception {
         String code = webTokens.issue(FakeGameBridge.STEVE, "Steve", java.time.Instant.now());
 
