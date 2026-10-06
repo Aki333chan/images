@@ -29,11 +29,11 @@ import java.util.concurrent.CompletableFuture;
  *
  * <h2>Чего здесь намеренно нет</h2>
  *
- * Нет методов «создать гильдию за игрока» и «пригласить». Создание и набор —
- * это решения самих игроков, и делать их из панели значило бы завести способ
- * записать человека в гильдию без его ведома. Из панели доступно ровно то же,
- * что администратору в игре: посмотреть и вмешаться (исключить, передать
- * лидерство, распустить).
+ * Нет метода «создать гильдию за игрока». Административные вмешательства
+ * отделены от siteAction: сайт вызывает его только с подтверждённым UUID
+ * владельца профиля, а сервис повторно проверяет актуальный игровой ранг.
+ * Приглашение само по себе не записывает игрока; он принимает его лично,
+ * с отдельным подтверждением перехода из другой гильдии.
  */
 public interface AurumGuildsApi {
 
@@ -72,6 +72,15 @@ public interface AurumGuildsApi {
      * поток.
      */
     Optional<GuildMembership> membership(UUID playerUuid);
+
+    /** Player-owned website actions, not administrative impersonation. Older providers fail closed. */
+    default boolean websiteActionsAvailable() { return false; }
+
+    default CompletableFuture<GuildActionResult> siteAction(UUID actor, long guildId, String action, UUID target) {
+        return CompletableFuture.completedFuture(GuildActionResult.fail("guild.err.internal"));
+    }
+
+    default List<GuildSummary> siteInvites(UUID actor) { return List.of(); }
 
     /** Пати игрока. Тоже синхронно: пати вообще существует только в памяти. */
     Optional<PartyView> party(UUID playerUuid);

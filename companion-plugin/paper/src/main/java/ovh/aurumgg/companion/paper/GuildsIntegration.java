@@ -107,6 +107,27 @@ final class GuildsIntegration {
                         membership.joinedAt().toEpochMilli()));
     }
 
+    static boolean siteAvailable() {
+        try { return provider().map(AurumGuildsApi::websiteActionsAvailable).orElse(false); }
+        catch (LinkageError outdatedApi) { return false; }
+    }
+
+    static List<GuildInfo> siteInvites(UUID actor) {
+        if (!siteAvailable()) return List.of();
+        return provider().filter(AurumGuildsApi::websiteActionsAvailable)
+                .map(api -> api.siteInvites(actor).stream().map(GuildsIntegration::toInfo).toList()).orElseGet(List::of);
+    }
+
+    static Optional<GuildActionOutcome> siteAction(UUID actor, long guildId, String action, UUID target) {
+        if (!siteAvailable()) return Optional.empty();
+        return provider().filter(AurumGuildsApi::websiteActionsAvailable).flatMap(api ->
+                await(api.siteAction(actor, guildId, action, target)).map(result -> {
+                    var values = new java.util.HashMap<>(result.values());
+                    values.put("siteText", api.render(result).replaceAll("(?i)[§&][0-9a-fk-orx]", ""));
+                    return new GuildActionOutcome(result.ok(), result.messageKey(), java.util.Map.copyOf(values), result.keyKeys());
+                }));
+    }
+
     static Optional<GuildActionOutcome> disband(long guildId, String actor) {
         return provider().flatMap(api -> await(api.adminDisband(guildId, actor))).map(GuildsIntegration::toOutcome);
     }

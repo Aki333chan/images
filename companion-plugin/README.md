@@ -491,3 +491,18 @@ paper/  адаптер к Bukkit/Paper: точка входа, команды /t
 ```bash
 ./gradlew :core:test
 ```
+
+## Release 0.15.0: player-scoped website guild actions
+
+The private, bearer-authenticated bridge now has `GET /site/players/{uuid}/invites`
+and `POST /site/guild-action`. Only `invite`, `join`, `kick`, `promote`, `demote`
+are accepted, with a positive guild ID and fixed UUID fields. These are **not**
+staff intervention routes: AurumGuilds 0.6.0 checks the actor's actual current
+membership/rank and uses the same actions as game commands. A player switching
+guilds receives the existing explicit second-acceptance warning.
+
+Aurum Site derives the actor UUID from a saved AurumLink proof; the browser cannot
+select another actor. The panel publishes only its allowlisted game servers.
+Old/missing Guilds providers report website actions unavailable instead of linking
+new API classes blindly. No new public port, financial access or automatic write
+retry. Replace both updated JARs and restart, preserving config and data.

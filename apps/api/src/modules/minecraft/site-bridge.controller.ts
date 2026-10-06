@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { Public } from '../../auth/decorators';
 import { constantTimeEquals, isPrivateAddress } from '../../common/private-network';
 import { env } from '../../config/env';
@@ -61,7 +61,18 @@ class SiteGuildsDto {
   query!: string;
 }
 
-/** Fixed link/read operations only. No RCON, IPs, inventory or financial mutations. */
+class SiteGuildDto {
+  @IsUUID() serverId!: string;
+  @IsInt() @Min(1) @Max(Number.MAX_SAFE_INTEGER) guildId!: number;
+  @IsOptional() @IsUUID() playerUuid?: string;
+}
+class SiteGuildActionDto extends SiteProfileDto {
+  @IsInt() @Min(1) @Max(Number.MAX_SAFE_INTEGER) guildId!: number;
+  @IsIn(['invite', 'join', 'kick', 'promote', 'demote']) action!: string;
+  @IsOptional() @IsUUID() targetUuid?: string;
+}
+
+/** Fixed player-owned operations only. No RCON, IPs, inventory or financial mutations. */
 @Public()
 @UseGuards(SiteBridgeGuard)
 @Controller('internal/site/minecraft')
@@ -112,13 +123,29 @@ export class SiteBridgeController {
     return {
       available: guilds !== null,
       // No guild treasury, roster, private UUIDs or administration data.
-      guilds: (guilds ?? []).slice(0, 50).map(({ id, name, tag, leaderName, memberCount }) => ({ id, name, tag, leaderName, memberCount })),
+      guilds: (guilds ?? [])
+        .slice(0, 50)
+        .map(({ id, name, tag, leaderName, memberCount }) => ({ id, name, tag, leaderName, memberCount })),
       limit: 50,
     };
   }
 
+  @Post('guild')
+  async guild(@Body() dto: SiteGuildDto) {
+    await this.publishedServer(dto.serverId);
+    return this.companion.getSiteGuild(dto.serverId, dto.guildId, dto.playerUuid);
+  }
+
+  @Post('guild-action')
+  async guildAction(@Body() dto: SiteGuildActionDto) {
+    await this.publishedServer(dto.serverId);
+    const { serverId, ...action } = dto;
+    return this.companion.executeSiteGuildAction(serverId, action);
+  }
+
   private async publishedServer(id: string) {
     const { servers } = await this.servers();
-    if (!servers.some(server => server.id === id)) throw new ForbiddenException('Server is not published on the website');
+    if (!servers.some((server) => server.id === id))
+      throw new ForbiddenException('Server is not published on the website');
   }
 }

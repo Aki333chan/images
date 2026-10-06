@@ -516,6 +516,7 @@ public final class FakeGameBridge implements GameBridge {
 
     /** Стоит ли «плагин гильдий»: так проверяется ответ 503 без него. */
     public boolean guildsInstalled;
+    public boolean websiteGuildsEnabled;
     public final java.util.List<ovh.aurumgg.companion.core.model.GuildInfo> guilds =
             new java.util.ArrayList<>();
     public ovh.aurumgg.companion.core.model.GuildMembershipInfo membership;
@@ -550,6 +551,13 @@ public final class FakeGameBridge implements GameBridge {
     @Override
     public boolean guildsAvailable() {
         return guildsInstalled;
+    }
+
+    @Override public boolean siteGuildsAvailable() { return guildsInstalled && websiteGuildsEnabled; }
+    @Override public List<ovh.aurumgg.companion.core.model.GuildInfo> siteGuildInvites(UUID actor) { return List.copyOf(guilds); }
+    @Override public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> siteGuildAction(UUID actor,long guildId,String action,UUID target) {
+        guildActions.add("site " + action + " " + guildId + " " + actor + " " + target);
+        return Optional.of(guildOutcome);
     }
 
     @Override

@@ -810,6 +810,12 @@ public final class BukkitGameBridge implements GameBridge {
         return GuildsIntegration.membership(playerUuid);
     }
 
+    @Override public boolean siteGuildsAvailable() { return GuildsIntegration.siteAvailable(); }
+    @Override public List<ovh.aurumgg.companion.core.model.GuildInfo> siteGuildInvites(UUID actor) { return GuildsIntegration.siteInvites(actor); }
+    @Override public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> siteGuildAction(UUID actor, long guildId, String action, UUID target) {
+        return GuildsIntegration.siteAction(actor, guildId, action, target);
+    }
+
     @Override
     public Optional<ovh.aurumgg.companion.core.model.GuildActionOutcome> guildDisband(
             long guildId, String actor) {

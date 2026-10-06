@@ -76,6 +76,39 @@ class GuildServiceTest {
         assertTrue(service.invite(STRANGER, MEMBER).join().ok());
     }
 
+    @Test void websiteActionsUseCurrentRanksAndCannotTargetAnotherGuild() {
+        prepareSwitch();
+        long first=service.byName("First").orElseThrow().id();
+        long second=service.byName("Second").orElseThrow().id();
+        assertFalse(service.siteAction(MEMBER,first,"invite",OFFICER).join().ok());
+        assertFalse(service.siteAction(LEADER,second,"invite",OFFICER).join().ok());
+        assertTrue(service.siteAction(LEADER,first,"promote",MEMBER).join().ok());
+        assertTrue(service.siteAction(MEMBER,first,"invite",OFFICER).join().ok());
+        assertTrue(service.siteAction(LEADER,first,"demote",MEMBER).join().ok());
+        assertFalse(service.siteAction(MEMBER,first,"invite",STRANGER).join().ok());
+        assertFalse(service.siteAction(LEADER,first,"disband",MEMBER).join().ok());
+    }
+
+    @Test void websiteJoinStillRequiresExplicitSecondAcceptance() {
+        prepareSwitch();
+        long second=service.byName("Second").orElseThrow().id();
+        assertEquals(1,service.pendingSummaries(MEMBER).size());
+        assertEquals("guild.join.confirmSwitch",service.siteAction(MEMBER,second,"join",null).join().messageKey());
+        assertEquals("First",service.guildOf(MEMBER).orElseThrow().name());
+        assertTrue(service.siteAction(MEMBER,second,"join",null).join().ok());
+        assertEquals("Second",service.guildOf(MEMBER).orElseThrow().name());
+        assertTrue(service.pendingSummaries(MEMBER).isEmpty());
+    }
+
+    @Test void playerWithoutGuildGetsRefusalsInsteadOfNullMapErrors() {
+        assertFalse(service.invite(STRANGER,MEMBER).join().ok());
+        assertFalse(service.kick(STRANGER,MEMBER).join().ok());
+        assertFalse(service.setRank(STRANGER,MEMBER,GuildRank.OFFICER).join().ok());
+        assertFalse(service.leave(STRANGER).join().ok());
+        assertFalse(service.transfer(STRANGER,MEMBER).join().ok());
+        assertFalse(service.disband(STRANGER).join().ok());
+    }
+
     @Test
     void touchUsernameIgnoresPlayerWithoutGuild() {
         service.touchUsername(STRANGER, "НовоеИмя");

@@ -11,7 +11,7 @@ const context = (ip: string, authorization?: unknown) =>
     switchToHttp: () => ({ getRequest: () => ({ ip, headers: { authorization } }) }),
   }) as ExecutionContext;
 
-describe('read-only website bridge', () => {
+describe('player-scoped website bridge', () => {
   const previous = { token: env.SITE_BRIDGE_TOKEN, servers: env.SITE_BRIDGE_SERVERS };
   beforeEach(() => {
     env.SITE_BRIDGE_TOKEN = token;
@@ -77,21 +77,59 @@ describe('read-only website bridge', () => {
   it('checks publication before reading a profile or guilds', async () => {
     const getSiteProfile = jest.fn();
     const getGuilds = jest.fn();
-    const controller = new SiteBridgeController({ server: { findMany: async () => [] } } as unknown as PrismaService,
-      { getSiteProfile, getGuilds } as unknown as CompanionService);
+    const controller = new SiteBridgeController(
+      { server: { findMany: async () => [] } } as unknown as PrismaService,
+      { getSiteProfile, getGuilds } as unknown as CompanionService,
+    );
     await expect(controller.profile({ serverId, playerUuid: serverId })).rejects.toThrow();
     await expect(controller.guilds({ serverId, query: '' })).rejects.toThrow();
     expect(getSiteProfile).not.toHaveBeenCalled();
     expect(getGuilds).not.toHaveBeenCalled();
   });
 
+  it('website guild writes are fixed player operations and require a published server', async () => {
+    const executeSiteGuildAction = jest.fn().mockResolvedValue({ ok: true, message: 'done' });
+    const findMany = jest.fn().mockResolvedValue([]);
+    const controller = new SiteBridgeController(
+      { server: { findMany } } as unknown as PrismaService,
+      { executeSiteGuildAction } as unknown as CompanionService,
+    );
+    const action = { serverId, playerUuid: serverId, guildId: 1, action: 'join' };
+    await expect(controller.guildAction(action)).rejects.toThrow();
+    expect(executeSiteGuildAction).not.toHaveBeenCalled();
+    findMany.mockResolvedValue([{ id: serverId, name: 'Minecraft' }]);
+    await controller.guildAction(action);
+    expect(executeSiteGuildAction).toHaveBeenCalledWith(serverId, {
+      playerUuid: serverId,
+      guildId: 1,
+      action: 'join',
+    });
+  });
+
   it('guild directory explicitly excludes bank balances, members and leader UUID', async () => {
-    const getGuilds = jest.fn().mockResolvedValue([{ id: 1, name: 'Guild', tag: 'TAG', leaderName: 'Steve',
-      leaderUuid: serverId, bankBalance: 500, memberCount: 2, members: [{ uuid: serverId }] }]);
-    const controller = new SiteBridgeController({ server: { findMany: async () => [{ id: serverId, name: 'Minecraft' }] } } as unknown as PrismaService,
-      { getGuilds } as unknown as CompanionService);
-    expect(await controller.guilds({ serverId, query: ' TAG ' })).toEqual({ available: true,
-      guilds: [{ id: 1, name: 'Guild', tag: 'TAG', leaderName: 'Steve', memberCount: 2 }], limit: 50 });
+    const getGuilds = jest
+      .fn()
+      .mockResolvedValue([
+        {
+          id: 1,
+          name: 'Guild',
+          tag: 'TAG',
+          leaderName: 'Steve',
+          leaderUuid: serverId,
+          bankBalance: 500,
+          memberCount: 2,
+          members: [{ uuid: serverId }],
+        },
+      ]);
+    const controller = new SiteBridgeController(
+      { server: { findMany: async () => [{ id: serverId, name: 'Minecraft' }] } } as unknown as PrismaService,
+      { getGuilds } as unknown as CompanionService,
+    );
+    expect(await controller.guilds({ serverId, query: ' TAG ' })).toEqual({
+      available: true,
+      guilds: [{ id: 1, name: 'Guild', tag: 'TAG', leaderName: 'Steve', memberCount: 2 }],
+      limit: 50,
+    });
     expect(getGuilds).toHaveBeenCalledWith(serverId, 'TAG');
     getGuilds.mockResolvedValue(null);
     expect((await controller.guilds({ serverId, query: '' })).available).toBe(false);

@@ -293,6 +293,10 @@ public final class GuildService implements AutoCloseable {
         return accountReady(guildId) && !disbandPlans.containsKey(guildId);
     }
 
+    public synchronized List<GuildSummary> pendingSummaries(UUID player) {
+        return pendingGuilds(player).stream().limit(50).map(this::toSummary).toList();
+    }
+
     private boolean accountReady(long guildId) {
         // A migrated account never falls back to the old Vault mirror after a
         // restart where Core is temporarily late or absent.
@@ -409,10 +413,13 @@ public final class GuildService implements AutoCloseable {
     }
 
     public CompletableFuture<GuildActionResult> invite(UUID actor, UUID target) {
-        return async(() -> {
+        return async(() -> inviteNow(actor, target));
+    }
+
+    private GuildActionResult inviteNow(UUID actor, UUID target) {
             if (actor.equals(target)) return GuildActionResult.fail("guild.err.inviteSelf");
 
-            StoredGuild guild = guilds.get(memberOf.get(actor));
+            StoredGuild guild = guildOf(actor).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!rankOf(guild, actor).canManageMembers()) {
@@ -438,7 +445,6 @@ public final class GuildService implements AutoCloseable {
             invites.put(target, pending);
 
             return GuildActionResult.ok("guild.invited", Map.of("player", names.nameOf(target)));
-        });
     }
 
     /**
@@ -452,7 +458,10 @@ public final class GuildService implements AutoCloseable {
      * @param guildName имя гильдии; null — принять приглашение
      */
     public CompletableFuture<GuildActionResult> join(UUID player, String guildName) {
-        return async(() -> {
+        return async(() -> joinNow(player, guildName));
+    }
+
+    private GuildActionResult joinNow(UUID player, String guildName) {
             StoredGuild previous = guildOf(player).orElse(null);
             Instant now = clock.get();
             StoredGuild guild;
@@ -521,12 +530,11 @@ public final class GuildService implements AutoCloseable {
             if (previous != null) hooks.memberLeft(previous.id(), player);
             hooks.memberJoined(guild.id(), player);
             return GuildActionResult.ok("guild.joined", Map.of("guild", guild.name()));
-        });
     }
 
     public CompletableFuture<GuildActionResult> leave(UUID player) {
         return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(player));
+            StoredGuild guild = guildOf(player).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (guild.leader().equals(player)) {
@@ -550,8 +558,11 @@ public final class GuildService implements AutoCloseable {
     }
 
     public CompletableFuture<GuildActionResult> kick(UUID actor, UUID target) {
-        return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(actor));
+        return async(() -> kickNow(actor, target));
+    }
+
+    private GuildActionResult kickNow(UUID actor, UUID target) {
+            StoredGuild guild = guildOf(actor).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (actor.equals(target)) return GuildActionResult.fail("guild.err.kickSelf");
@@ -570,12 +581,14 @@ public final class GuildService implements AutoCloseable {
 
             removeMember(guild, target, "исключён из гильдии");
             return GuildActionResult.ok("guild.kicked", Map.of("player", names.nameOf(target)));
-        });
     }
 
     public CompletableFuture<GuildActionResult> setRank(UUID actor, UUID target, GuildRank rank) {
-        return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(actor));
+        return async(() -> setRankNow(actor, target, rank));
+    }
+
+    private GuildActionResult setRankNow(UUID actor, UUID target, GuildRank rank) {
+            StoredGuild guild = guildOf(actor).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
@@ -601,13 +614,35 @@ public final class GuildService implements AutoCloseable {
                     .toList()));
             return GuildActionResult.ok("guild.rankSet",
                     Map.of("player", names.nameOf(target)),
-                    Map.of("rank", rank.titleKey()));
+                        Map.of("rank", rank.titleKey()));
+    }
+
+    /** Website uses the same checks and the same serialized critical section as commands. */
+    public CompletableFuture<GuildActionResult> siteAction(UUID actor, long guildId, String action, UUID target) {
+        if (actor == null || action == null || guildId < 1)
+            return CompletableFuture.completedFuture(GuildActionResult.fail("guild.err.internal"));
+        return async(() -> {
+            StoredGuild guild = byId(guildId).orElse(null);
+            if (guild == null) return GuildActionResult.fail("guild.err.noSuchName");
+            if (!action.equals("join") && guildOf(actor).map(current -> current.id() != guildId).orElse(true))
+                return GuildActionResult.fail("guild.err.notInGuild");
+            if (!action.equals("join") && target == null) return GuildActionResult.fail("guild.err.internal");
+            GuildActionResult result = switch (action) {
+                case "invite" -> inviteNow(actor, target);
+                case "join" -> joinNow(actor, guild.name());
+                case "kick" -> kickNow(actor, target);
+                case "promote" -> setRankNow(actor, target, GuildRank.OFFICER);
+                case "demote" -> setRankNow(actor, target, GuildRank.MEMBER);
+                default -> GuildActionResult.fail("guild.err.internal");
+            };
+            logger.info("Website guild action " + action + " actor=" + actor + " guild=" + guildId + " result=" + result.messageKey());
+            return result;
         });
     }
 
     public CompletableFuture<GuildActionResult> transfer(UUID actor, UUID target) {
         return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(actor));
+            StoredGuild guild = guildOf(actor).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
@@ -625,7 +660,7 @@ public final class GuildService implements AutoCloseable {
 
     public CompletableFuture<GuildActionResult> disband(UUID actor) {
         return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(actor));
+            StoredGuild guild = guildOf(actor).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (!rankOf(guild, actor).canDisband()) {
                 return GuildActionResult.fail("guild.err.disbandLeaderOnly");
@@ -642,7 +677,7 @@ public final class GuildService implements AutoCloseable {
     public CompletableFuture<GuildActionResult> updateSettings(
             UUID actor, java.util.function.UnaryOperator<GuildSettings> change) {
         return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(actor));
+            StoredGuild guild = guildOf(actor).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
@@ -668,7 +703,7 @@ public final class GuildService implements AutoCloseable {
      */
     public CompletableFuture<GuildActionResult> changeTag(UUID actor, String tag) {
         return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(actor));
+            StoredGuild guild = guildOf(actor).orElse(null);
             if (guild == null) return GuildActionResult.fail("guild.err.notInGuild");
             if (disbanding(guild)) return GuildActionResult.fail("guild.err.disbandPending");
             if (!guild.leader().equals(actor)) {
@@ -921,7 +956,7 @@ public final class GuildService implements AutoCloseable {
      */
     public CompletableFuture<GuildActionResult> onAccountDeleted(UUID player, String username) {
         return async(() -> {
-            StoredGuild guild = guilds.get(memberOf.get(player));
+            StoredGuild guild = guildOf(player).orElse(null);
             if (guild == null) return GuildActionResult.ok("guild.admin.wasNotInGuild");
             String guildName = guild.name();
             if (!forceRemove(guild, player, "аккаунт " + username + " удалён")) {
@@ -1622,17 +1657,14 @@ public final class GuildService implements AutoCloseable {
     /**
      * Записать изменение в базу.
      *
-     * Ошибка базы НЕ отменяет изменение в памяти: гильдия уже поменялась для
-     * всех, кто её видит, и откатывать это на глазах у игроков хуже, чем
-     * разойтись с базой до перезапуска. Ошибка при этом громко пишется в лог —
-     * молча расходиться нельзя.
+     * Сначала сохранение, затем изменение в памяти. Отказ базы прерывает
+     * операцию, чтобы команда и сайт не сообщали о несохранённом успехе.
      */
     private void write(Change change, String what) {
         try {
             change.run();
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Не удалось " + what + " — в памяти изменение применено, "
-                    + "в базе нет. Понадобится перезапуск, чтобы состояния сошлись", e);
+            throw new IllegalStateException("Не удалось " + what + "; изменение в памяти отменено", e);
         }
     }
 

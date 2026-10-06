@@ -1274,6 +1274,21 @@ class CompanionHttpServerTest {
                         1_700_000_000_000L))));
     }
 
+    @Test void websiteGuildActionsAreAuthenticatedNarrowAndFailClosedOnOldProviders() throws Exception {
+        withGuild();
+        String body="{\"guildId\":7,\"playerUuid\":\""+FakeGameBridge.STEVE+"\",\"action\":\"join\"}";
+        assertEquals(401,post("/site/guild-action",null,body).statusCode());
+        assertEquals(503,post("/site/guild-action",TOKEN,body).statusCode());
+        bridge.websiteGuildsEnabled=true;
+        assertEquals(200,post("/site/guild-action",TOKEN,body).statusCode());
+        assertEquals(1,bridge.guildActions.size());
+        assertEquals(400,post("/site/guild-action",TOKEN,body.replace("join","disband")).statusCode());
+        assertEquals(400,post("/site/guild-action",TOKEN,body.replace("join","invite")).statusCode());
+        assertEquals(400,post("/site/guild-action",TOKEN,body.replace("7,","7.5,")).statusCode());
+        assertEquals(400,post("/site/guild-action",TOKEN,body.replace("}",",\"admin\":true}")).statusCode());
+        assertEquals(1,bridge.guildActions.size(),"invalid requests never reach the game");
+    }
+
     @Test
     @DisplayName("Без плагина гильдий раздел отвечает 503, а не 404")
     void guildsUnavailable() throws Exception {

@@ -328,6 +328,10 @@ public interface GameBridge {
     /** В какой гильдии состоит игрок. Пусто — ни в какой. */
     Optional<GuildMembershipInfo> guildOf(UUID playerUuid);
 
+    default boolean siteGuildsAvailable() { return false; }
+    default List<GuildInfo> siteGuildInvites(UUID actor) { return List.of(); }
+    default Optional<GuildActionOutcome> siteGuildAction(UUID actor, long guildId, String action, UUID target) { return Optional.empty(); }
+
     /**
      * Распустить гильдию помимо воли лидера.
      *

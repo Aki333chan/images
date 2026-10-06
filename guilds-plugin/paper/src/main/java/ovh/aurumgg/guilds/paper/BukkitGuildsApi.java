@@ -61,6 +61,14 @@ final class BukkitGuildsApi implements AurumGuildsApi {
         return guilds.membership(playerUuid);
     }
 
+    @Override public boolean websiteActionsAvailable() { return true; }
+
+    @Override public CompletableFuture<GuildActionResult> siteAction(UUID actor, long guildId, String action, UUID target) {
+        return guilds.siteAction(actor, guildId, action, target);
+    }
+
+    @Override public List<GuildSummary> siteInvites(UUID actor) { return guilds.pendingSummaries(actor); }
+
     @Override
     public Optional<PartyView> party(UUID playerUuid) {
         return parties.view(playerUuid);

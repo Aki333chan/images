@@ -274,6 +274,32 @@ export class CompanionService {
     };
   }
 
+  async getSiteGuild(serverId: string, guildId: number, uuid?: string) {
+    const [guild, membership, invitations] = await Promise.all([
+      this.getGuild(serverId,guildId),
+      uuid ? this.callRaw<RawGuildMembership>(serverId,`/players/${uuid}/guild`) : null,
+      uuid ? this.callRaw<{ guilds?: RawGuild[] }>(serverId,`/site/players/${uuid}/invites`) : null,
+    ]);
+    if (!guild) throw new NotFoundException('Guild not found or unavailable');
+    return {
+      guild: { id:guild.id,name:guild.name,tag:guild.tag,leaderName:guild.leaderName,createdAt:guild.createdAt,
+        memberCount:guild.memberCount,bankBalance:guild.bankBalance,
+        members:guild.members.map(({uuid,name,rank,joinedAt})=>({uuid,name,rank,joinedAt})) },
+      membership: membership?.ok ? membership.body?.membership ?? null : null,
+      actionsAvailable: invitations?.ok === true,
+      invited: invitations?.ok && (invitations.body.guilds ?? []).some(item=>item.id===guildId),
+    };
+  }
+
+  async executeSiteGuildAction(serverId:string, body:{playerUuid:string;guildId:number;action:string;targetUuid?:string}) {
+    const result=await this.callRaw<RawGuildOutcome>(serverId,'/site/guild-action',{method:'POST',body});
+    const outcome=result.ok ? result.body : result.status===409 ? result.body as RawGuildOutcome | null : null;
+    if (!outcome || typeof outcome.ok !== 'boolean') throw new ServiceUnavailableException('Guild website action unavailable; check state before retrying');
+    return {ok:outcome.ok,messageKey:outcome.message,
+      message:typeof outcome.values?.siteText === 'string' ? outcome.values.siteText.slice(0,500) : '',
+      requiresConfirmation:outcome.message==='guild.join.confirmSwitch'};
+  }
+
   /**
    * Как call, но с кодом ответа и телом ошибки.
    *

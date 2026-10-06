@@ -818,6 +818,20 @@ Citizens спавнит своих NPC настоящими сущностями
 драйвер MariaDB) уже внутри. API AurumCore лежит в `local-repo/` и внутрь jar
 не попадает: зависимость `compileOnly`, классы приходят от плагина AurumCore.
 
+# Release 0.6.0: restricted website membership actions
+
+The API adds capability detection, current pending invitation summaries and
+player-scoped `siteAction(actorUuid, guildId, action, targetUuid)`. It accepts
+only invite/join/kick/promote/demote, checking real membership and rank inside
+the same async serialized section as the command implementation. It cannot
+disband, administer another guild or move funds. Existing guild-switch second
+confirmation remains shared with commands/UI; membership still has one UUID
+primary key. Companion 0.15.0 and the player website use this narrow hook.
+
+Also fixed no-guild null lookups in services that use ConcurrentHashMap and
+propagated SQL write failures instead of reporting success after a failed write.
+There is no schema or economy migration in this update; replace the JAR and restart.
+
 # Release 0.5.1: crash-safe managed account retirement
 
 Guild deletion now has one final durable barrier after all persisted bank shares

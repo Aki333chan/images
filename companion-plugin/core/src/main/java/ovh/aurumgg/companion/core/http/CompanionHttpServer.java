@@ -166,6 +166,26 @@ public final class CompanionHttpServer {
         String method = exchange.getRequestMethod();
         String[] parts = splitPath(exchange.getRequestURI().getPath());
 
+        if (parts.length == 4 && parts[0].equals("site") && parts[1].equals("players") && parts[3].equals("invites") && method.equals("GET")) {
+            if (!bridge.siteGuildsAvailable()) { respond(exchange,503,PayloadWriter.error("Update guild website integration", "site-guilds-unavailable")); return; }
+            respond(exchange,200,PayloadWriter.guilds(bridge.siteGuildInvites(parseUuid(parts[2]))));
+            return;
+        }
+        if (parts.length == 2 && parts[0].equals("site") && parts[1].equals("guild-action") && method.equals("POST")) {
+            if (!bridge.siteGuildsAvailable()) { respond(exchange,503,PayloadWriter.error("Update guild website integration", "site-guilds-unavailable")); return; }
+            Map<String,Object> body=JsonParser.parseObject(readBody(exchange));
+            if (!java.util.Set.of("playerUuid","guildId","action","targetUuid").containsAll(body.keySet())
+                    || !(body.get("guildId") instanceof Number id) || id.longValue() < 1 || id.doubleValue() != id.longValue())
+                throw new IllegalArgumentException("Invalid guild action");
+            String action=stringField(body,"action");
+            if (!java.util.Set.of("invite","join","kick","promote","demote").contains(action)) throw new IllegalArgumentException("Invalid guild action");
+            UUID actor=parseUuid(stringField(body,"playerUuid"));
+            UUID target=body.get("targetUuid") == null ? null : parseUuid(stringField(body,"targetUuid"));
+            if (!action.equals("join") && target == null) throw new IllegalArgumentException("Target required");
+            respondOutcome(exchange,bridge.siteGuildAction(actor,id.longValue(),action,target));
+            return;
+        }
+
         // Code stays in the body, not access logs / URL history. No GET consumption.
         if (parts.length == 2 && parts[0].equals("site-link") && parts[1].equals("consume")
                 && method.equals("POST")) {
