@@ -373,6 +373,18 @@ public final class CompanionHttpServer {
             return;
         }
 
+        // GET /site/players/{uuid} — bounded owner statistics only
+        if (parts.length == 3 && parts[0].equals("site") && parts[1].equals("players")
+                && method.equals("GET")) {
+            var profile = bridge.sitePlayer(parseUuid(parts[2]));
+            if (profile.isEmpty()) {
+                respond(exchange, 503, PayloadWriter.error("Player statistics unavailable", "stats-unavailable"));
+            } else {
+                respond(exchange, 200, PayloadWriter.sitePlayer(profile.get()));
+            }
+            return;
+        }
+
         // GET /players/{uuid}/guild — для карточки игрока
         if (parts.length == 3
                 && parts[0].equals("players")

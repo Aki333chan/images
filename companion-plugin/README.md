@@ -1,5 +1,19 @@
 # Aurum Companion
 
+## Release 0.14.0
+
+AurumLink chat now distinguishes the gold, bold copyable code, aqua clickable
+link and gray hint without replacing custom language files. Adds authenticated
+`GET /site/players/{uuid}`: online state, playtime ticks, deaths and player kills,
+and nothing from staff player DTOs. Live counters are read on Paper; offline
+counters come from one bounded `players/stats/<uuid>.json` file on the HTTP
+worker. No scanning all players, SQL on the game thread or background polling.
+
+The panel's private website bridge adds read-only profile/guild-summary
+operations. Core remains the only balance source. The website derives the
+UUID from the current session's saved link, keeps personal counters/balance
+owner-only, and exposes no guild treasury, private roster or finance commands.
+
 ## Release 0.13.6
 
 Adds `/aurumlink` (`/alink`) for the player website. An authenticated player
@@ -222,6 +236,7 @@ are rate-limited, and allow only one outstanding mutation per player.
 | `POST /economy/rules/apply` | применить подтверждённую ревизию с причиной | только active AurumCore |
 | `POST /webtoken/{code}` | обменять одноразовый код игрока на его UUID и ник | AurumAuth |
 | `POST /site-link/consume` | отдельный одноразовый код Aurum Site в JSON-теле | `/aurumlink`, авторизованный игрок |
+| `GET /site/players/{uuid}` | собственные счётчики Minecraft, без IP/инвентаря/координат | приватный токен Companion, проекция сайта |
 | `POST /auth/reset/{ник}` | выдать игроку одноразовый токен сброса пароля | AurumAuth |
 
 Все запросы требуют заголовок `Authorization: Bearer <токен>` из

@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IsString, IsUUID, Matches } from 'class-validator';
+import { IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { Public } from '../../auth/decorators';
 import { constantTimeEquals, isPrivateAddress } from '../../common/private-network';
 import { env } from '../../config/env';
@@ -44,7 +44,24 @@ class SiteLinkDto {
   code!: string;
 }
 
-/** Two fixed operations only. Site cannot access RCON, player IPs, money or staff tools. */
+class SiteProfileDto {
+  @IsUUID()
+  serverId!: string;
+
+  @IsUUID()
+  playerUuid!: string;
+}
+
+class SiteGuildsDto {
+  @IsUUID()
+  serverId!: string;
+
+  @IsString()
+  @MaxLength(80)
+  query!: string;
+}
+
+/** Fixed link/read operations only. No RCON, IPs, inventory or financial mutations. */
 @Public()
 @UseGuards(SiteBridgeGuard)
 @Controller('internal/site/minecraft')
@@ -80,5 +97,28 @@ export class SiteBridgeController {
       playerUuid: player.uuid,
       playerName: player.name,
     };
+  }
+
+  @Post('profile')
+  async profile(@Body() dto: SiteProfileDto) {
+    await this.publishedServer(dto.serverId);
+    return this.companion.getSiteProfile(dto.serverId, dto.playerUuid);
+  }
+
+  @Post('guilds')
+  async guilds(@Body() dto: SiteGuildsDto) {
+    await this.publishedServer(dto.serverId);
+    const guilds = await this.companion.getGuilds(dto.serverId, dto.query.trim() || null);
+    return {
+      available: guilds !== null,
+      // No guild treasury, roster, private UUIDs or administration data.
+      guilds: (guilds ?? []).slice(0, 50).map(({ id, name, tag, leaderName, memberCount }) => ({ id, name, tag, leaderName, memberCount })),
+      limit: 50,
+    };
+  }
+
+  private async publishedServer(id: string) {
+    const { servers } = await this.servers();
+    if (!servers.some(server => server.id === id)) throw new ForbiddenException('Server is not published on the website');
   }
 }

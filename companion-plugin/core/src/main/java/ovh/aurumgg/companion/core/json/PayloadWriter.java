@@ -256,6 +256,15 @@ public final class PayloadWriter {
         return Json.object(fields);
     }
 
+    public static String sitePlayer(ovh.aurumgg.companion.core.model.SitePlayerInfo info) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("online", Boolean.toString(info.online()));
+        fields.put("playTimeTicks", info.playTimeTicks() == null ? "null" : Json.number(info.playTimeTicks()));
+        fields.put("deaths", info.deaths() == null ? "null" : Json.number(info.deaths()));
+        fields.put("playerKills", info.playerKills() == null ? "null" : Json.number(info.playerKills()));
+        return Json.object(fields);
+    }
+
     public static String managedAccountMutation(ManagedAccountMutationInfo value) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("ok", value.ok() ? "true" : "false");

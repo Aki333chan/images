@@ -7,6 +7,8 @@ import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -46,30 +48,32 @@ final class AurumLinkCommand implements CommandExecutor {
             return true;
         }
         if (!enabled) {
-            player.sendMessage(Component.text(plugin.text("siteLink.unavailable")));
+            player.sendMessage(Component.text(plugin.text("siteLink.unavailable"), NamedTextColor.RED));
             return true;
         }
         // Offline-mode without a working AurumAuth API must fail closed.
         boolean authenticated = AuthIntegration.provider().map(api -> api.isAuthenticated(player.getUniqueId()))
                 .orElse(plugin.getServer().getOnlineMode());
         if (!authenticated) {
-            player.sendMessage(Component.text(plugin.text("webtoken.loginFirst")));
+            player.sendMessage(Component.text(plugin.text("webtoken.loginFirst"), NamedTextColor.RED));
             return true;
         }
         long wait = cooldown.secondsRemaining(player.getUniqueId());
         if (wait > 0) {
-            player.sendMessage(Component.text(plugin.text("ticket.cooldown", Map.of("seconds", String.valueOf(wait)))));
+            player.sendMessage(Component.text(plugin.text("ticket.cooldown", Map.of("seconds", String.valueOf(wait))), NamedTextColor.YELLOW));
             return true;
         }
         String code = tokens.issue(player.getUniqueId(), player.getName(), Instant.now());
-        player.sendMessage(Component.text(plugin.text("siteLink.code", Map.of("code", code)))
+        player.sendMessage(Component.text(plugin.text("siteLink.code", Map.of("code", code)), NamedTextColor.GRAY)
+                .replaceText(builder -> builder.matchLiteral(code)
+                        .replacement(Component.text(code, NamedTextColor.GOLD).decorate(TextDecoration.BOLD)))
                 .clickEvent(ClickEvent.copyToClipboard(code))
                 .hoverEvent(HoverEvent.showText(Component.text(plugin.text("siteLink.copy")))));
         // Fragment is not sent to the web server or included in HTTP Referer.
         String url = siteUrl + "/minecraft/link?server=" + serverId + "#code=" + code;
-        player.sendMessage(Component.text(plugin.text("siteLink.open"))
+        player.sendMessage(Component.text(plugin.text("siteLink.open"), NamedTextColor.AQUA).decorate(TextDecoration.UNDERLINED)
                 .clickEvent(ClickEvent.openUrl(url)));
-        player.sendMessage(Component.text(plugin.text("siteLink.hint")));
+        player.sendMessage(Component.text(plugin.text("siteLink.hint"), NamedTextColor.GRAY));
         return true;
     }
 

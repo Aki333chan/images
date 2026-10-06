@@ -66,6 +66,19 @@ class CompanionHttpServerTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
+    @Test void siteStatisticsRequireTokenAndContainNoStaffData() throws Exception {
+        String path = "/site/players/" + FakeGameBridge.STEVE;
+        assertEquals(401, get(path, null).statusCode());
+        var body = JsonParser.parseObject(get(path, TOKEN).body());
+        assertEquals(java.util.Set.of("online", "playTimeTicks", "deaths", "playerKills"), body.keySet());
+        assertEquals(0.0, body.get("deaths"));
+        bridge.siteStats = java.util.Optional.empty();
+        assertEquals(503, get(path, TOKEN).statusCode());
+        bridge.siteStats = java.util.Optional.of(new ovh.aurumgg.companion.core.model.SitePlayerInfo(false, null, null, null));
+        assertNull(JsonParser.parseObject(get(path, TOKEN).body()).get("playTimeTicks"));
+        assertEquals(400, get("/site/players/not-a-uuid", TOKEN).statusCode());
+    }
+
     @Test
     @DisplayName("Без токена доступ закрыт")
     void rejectsMissingToken() throws Exception {

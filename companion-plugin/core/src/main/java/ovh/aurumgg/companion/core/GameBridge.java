@@ -47,6 +47,11 @@ public interface GameBridge {
 
     List<PlayerInfo> onlinePlayers();
 
+    /** Website owner's statistics, without coordinates, IP, inventory or permissions. */
+    default Optional<ovh.aurumgg.companion.core.model.SitePlayerInfo> sitePlayer(UUID playerUuid) {
+        return Optional.empty();
+    }
+
     /**
      * Все, кто когда-либо заходил, — страницей.
      *

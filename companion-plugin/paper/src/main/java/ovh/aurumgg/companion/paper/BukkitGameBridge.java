@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Statistic;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -73,9 +74,11 @@ public final class BukkitGameBridge implements GameBridge {
 
     private final Plugin plugin;
     private final AurumCoreEconomyIntegration aurumEconomy;
+    private final java.nio.file.Path statsDirectory;
 
     public BukkitGameBridge(Plugin plugin) {
         this.plugin = plugin;
+        this.statsDirectory = plugin.getServer().getLevelDirectory().resolve("players/stats");
         // Provider lookup happens once on the main thread during onEnable.
         // Ledger futures themselves are awaited by the HTTP worker, never by Paper.
         AurumCoreEconomyIntegration selected = null;
@@ -91,6 +94,20 @@ public final class BukkitGameBridge implements GameBridge {
             }
         }
         this.aurumEconomy = selected;
+    }
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.SitePlayerInfo> sitePlayer(UUID playerUuid) {
+        var state = callSync(() -> {
+            Player player = Bukkit.getPlayer(playerUuid);
+            if (player == null) return Optional.of(new ovh.aurumgg.companion.core.model.SitePlayerInfo(false, null, null, null));
+            return Optional.of(new ovh.aurumgg.companion.core.model.SitePlayerInfo(true,
+                    (long) player.getStatistic(Statistic.PLAY_ONE_MINUTE),
+                    (long) player.getStatistic(Statistic.DEATHS),
+                    (long) player.getStatistic(Statistic.PLAYER_KILLS)));
+        }, Optional.<ovh.aurumgg.companion.core.model.SitePlayerInfo>empty());
+        if (state.isEmpty() || state.get().online()) return state;
+        return Optional.of(ovh.aurumgg.companion.core.site.VanillaPlayerStats.read(statsDirectory, playerUuid));
     }
 
     /**

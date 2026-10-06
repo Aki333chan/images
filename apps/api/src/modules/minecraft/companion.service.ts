@@ -247,6 +247,33 @@ export class CompanionService {
     return { uuid: uuid.toLowerCase(), name };
   }
 
+  /** Read-only website projection; never return staff player DTOs or Vault fallback. */
+  async getSiteProfile(serverId: string, uuid: string) {
+    const [stats, balance, guild] = await Promise.all([
+      this.callRaw<{ online?: boolean; playTimeTicks?: number | null; deaths?: number | null; playerKills?: number | null }>(serverId, `/site/players/${uuid}`),
+      this.callRaw<RawBalance>(serverId, `/economy/native/balance/${uuid}`),
+      this.callRaw<RawGuildMembership>(serverId, `/players/${uuid}/guild`),
+    ]);
+    const counter = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 2147483647 ? value : null;
+    const raw = guild.ok ? guild.body?.membership : null;
+    const membership = raw && Number.isSafeInteger(raw.guildId) && Number(raw.guildId) > 0 ? {
+      guildId: raw.guildId!, guildName: raw.guildName ?? '', guildTag: raw.guildTag ?? '', rank: toRank(raw.rank),
+    } : null;
+    return {
+      checkedAt: new Date().toISOString(),
+      player: stats.ok && typeof stats.body?.online === 'boolean' ? {
+        online: stats.body.online, playTimeTicks: counter(stats.body.playTimeTicks),
+        deaths: counter(stats.body.deaths), playerKills: counter(stats.body.playerKills),
+      } : null,
+      balance: balance.ok && typeof balance.body?.balance === 'number' && Number.isFinite(balance.body.balance) ? {
+        amount: balance.body.balance,
+        formatted: typeof balance.body.formatted === 'string' ? balance.body.formatted : null,
+        currency: typeof balance.body.currency === 'string' ? balance.body.currency : null,
+      } : null,
+      guild: { available: guild.ok, membership },
+    };
+  }
+
   /**
    * Как call, но с кодом ответа и телом ошибки.
    *

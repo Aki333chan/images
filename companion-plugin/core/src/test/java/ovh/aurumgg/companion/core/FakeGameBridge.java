@@ -46,6 +46,13 @@ public final class FakeGameBridge implements GameBridge {
     public int freeSpace = Integer.MAX_VALUE;
     public final List<String> permissionWrites = new ArrayList<>();
     public boolean steveOnline = true;
+    public Optional<ovh.aurumgg.companion.core.model.SitePlayerInfo> siteStats = Optional.of(
+            new ovh.aurumgg.companion.core.model.SitePlayerInfo(true, 72000L, 0L, 2L));
+
+    @Override
+    public Optional<ovh.aurumgg.companion.core.model.SitePlayerInfo> sitePlayer(UUID playerUuid) {
+        return siteStats;
+    }
 
     /** Что «установлено» на подставном сервере — тесты это меняют. */
     public final List<PluginInfo> plugins = new ArrayList<>(
